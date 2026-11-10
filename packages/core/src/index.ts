@@ -77,6 +77,7 @@ export {
   emptyRotations,
   loadRotations,
   putRotation,
+  rotateCommand,
   saveRotations,
   unfinishedRotation,
   type Rotation,

@@ -3,7 +3,7 @@ import { ENVIRONMENTS } from "./contracts";
 import { destinationId, type MapResult, receiptSecretKey, secretKey } from "./map";
 import { latestPerSecret, sameRef } from "./plan";
 import type { Registry } from "./registry";
-import type { Rotation } from "./rotations";
+import { type Rotation, rotateCommand, unfinishedRotation } from "./rotations";
 import { addDays, DUE_SOON_DAYS, isDay, periodDays } from "./rotation";
 import type { Generation } from "./secret";
 
@@ -153,13 +153,16 @@ export function buildStatus(input: StatusInput): Status {
           };
         });
 
-        const rotation = input.rotations?.find(
-          (r) => r.keyId === key.id && r.environment === environment && r.stage !== "revoked",
+        const rotation = unfinishedRotation(
+          { version: 1, rotations: [...(input.rotations ?? [])] },
+          key.id,
+          environment,
+          entry.ref,
         );
         if (rotation) {
           add(
             "rotation-unfinished",
-            `${label}: a rotation started ${rotation.startedAt} is at stage "${rotation.stage}"; run keypin rotate ${key.id} to continue`,
+            `${label}: a rotation started ${rotation.startedAt} is at stage "${rotation.stage}"; run ${rotateCommand(key.id, environment)} to continue`,
           );
         }
 

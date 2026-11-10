@@ -1,4 +1,5 @@
 import type { Environment, KeyId, KeyRef } from "./contracts";
+import { sameRef } from "./plan";
 import { type Files, readVersionedJson, writeJsonAtomic } from "./files";
 import { isRecord } from "./record";
 import type { Generation } from "./secret";
@@ -54,10 +55,19 @@ export function unfinishedRotation(
   data: Rotations,
   keyId: KeyId,
   environment: Environment,
+  item: KeyRef,
 ): Rotation | undefined {
   return data.rotations.find(
-    (r) => r.keyId === keyId && r.environment === environment && r.stage !== "revoked",
+    (r) =>
+      r.keyId === keyId &&
+      r.environment === environment &&
+      sameRef(r.item, item) &&
+      r.stage !== "revoked",
   );
+}
+
+export function rotateCommand(keyId: KeyId, environment: Environment): string {
+  return `keypin rotate ${keyId}${environment === "prod" ? "" : ` --env ${environment}`}`;
 }
 
 export function putRotation(data: Rotations, rotation: Rotation): Rotations {

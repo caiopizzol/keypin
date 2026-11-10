@@ -17,6 +17,7 @@ import {
   planPublish,
   type ProviderToken,
   putRotation,
+  rotateCommand,
   type Rotation,
   type Rotations,
   sameAccess,
@@ -101,11 +102,17 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
       say,
     };
     const data = await loadRotations(deps.files, run.rotationsPath);
-    const open = unfinishedRotation(data, key.id, environment);
+    const open = unfinishedRotation(data, key.id, environment, entry.ref);
     if (!open) return start(run, data);
     say(
       `An unfinished rotation of ${key.id} (${environment}), started ${open.startedAt}, is at stage "${open.stage}".`,
     );
+    if (open.provider !== issue.provider || open.account !== issue.account) {
+      say(
+        `Stopped: that rotation made its token as ${open.provider} in account ${open.account}, and the map now says ${issue.provider} in account ${issue.account}. Put the map back to finish it. Nothing was changed.`,
+      );
+      return 1;
+    }
     switch (open.stage) {
       case "issuing":
       case "issued":
@@ -128,6 +135,12 @@ async function start(run: Run, data: Rotations): Promise<number> {
     `  new token: ${issue.provider} in account ${issue.account}, made with the admin token in item "${issue.admin.item}"`,
   );
   for (const target of entry.publish) say(`  to: ${describeTarget(target, key.env)}`);
+  if (!entry.publish.length) {
+    say(
+      `Stopped: the map lists no destinations for ${key.id} (${environment}), so nothing would get the new token. Nothing was changed.`,
+    );
+    return 1;
+  }
 
   const state = await loadState(deps.files, run.statePath);
   const checked = await checkAccounts(key, entry, deps, say);
@@ -205,7 +218,7 @@ async function start(run: Run, data: Rotations): Promise<number> {
     if (found) say(`    ${accountFacts(found.check)}`);
   }
   for (const approval of approvals) say(`    needs approval: ${approval.approval}`);
-  say(`  then stop: the old token stays active until you run keypin rotate ${key.id} again.`);
+  say(`  then stop: the old token stays active until you run ${again(run)} again.`);
 
   if (!(await confirmed(run, approvals.length > 0, "make the new token"))) return NEEDS_APPROVAL;
 
@@ -266,7 +279,7 @@ async function start(run: Run, data: Rotations): Promise<number> {
   } catch (error) {
     say(`Stopped: couldn't store the new value: ${messageOf(error)}.`);
     say(
-      `The new token ${made.token.id} exists, and the old token still works everywhere. Run keypin rotate ${key.id} again to delete the new token and start over.`,
+      `The new token ${made.token.id} exists, and the old token still works everywhere. Run ${again(run)} again to delete the new token and start over.`,
     );
     return 1;
   }
@@ -304,7 +317,10 @@ async function publishNew(
       say(rerun(deps, "rotate", run.args));
       return NEEDS_APPROVAL;
     }
-    announce(deps.stderr, "the value to publish", [entry.ref]);
+    announce(deps.stderr, "the value to publish and the admin token, to check the new token", [
+      entry.ref,
+      run.issue.admin,
+    ]);
     value = await deps.vault().read(entry.ref);
     const generation = await generationOf(value);
     if (generation !== rotation.new.generation) {
@@ -313,6 +329,14 @@ async function publishNew(
       );
       return 1;
     }
+    const problem = await recheck(run, rotation, value);
+    if (problem) {
+      say(
+        `Stopped: ${problem}. Nothing was written, and the rotation stays at "${rotation.stage}". The old token still works where it was published.`,
+      );
+      return 1;
+    }
+    say(`  checked: ${rotation.new.id} is active and has the same policies as ${rotation.old.id}`);
   }
 
   const generation = rotation.new.generation ?? (await generationOf(value));
@@ -340,7 +364,7 @@ async function publishNew(
   });
   if (!written.ok) {
     say(
-      `Stopped. The old token still works where the write failed. Run keypin rotate ${key.id} again to finish publishing.`,
+      `Stopped. The old token still works where the write failed. Run ${again(run)} again to finish publishing.`,
     );
     return 1;
   }
@@ -355,7 +379,7 @@ async function publishNew(
   say("Next, check that every consumer works with the new value:");
   for (const target of entry.publish) say(`  ${describeTarget(target, key.env)}`);
   for (const consumer of key.consumers) say(`  ${consumer.name} (${consumer.kind})`);
-  say(`Then run keypin rotate ${key.id} again to revoke the old token.`);
+  say(`Then run ${again(run)} again to revoke the old token.`);
   return 0;
 }
 
@@ -371,8 +395,21 @@ async function revokeOld(run: Run, data: Rotations, rotation: Rotation): Promise
   for (const step of behind) {
     say(`  ${step.destinationId} doesn't have generation ${generation}: ${step.reason}`);
   }
+  for (const removed of plan.removed) {
+    say(
+      `  ${removed.destinationId} isn't in the map any more, and its last receipt has generation ${removed.lastReceipt.generation}`,
+    );
+  }
   if (behind.length) {
-    say(`Stopped: run keypin publish ${key.id} first. Nothing was revoked.`);
+    say(
+      `Stopped: run keypin publish ${key.id}${environment === "prod" ? "" : ` --env ${environment}`} first. Nothing was revoked.`,
+    );
+    return 1;
+  }
+  if (plan.removed.some((removed) => removed.lastReceipt.generation !== generation)) {
+    say(
+      "Stopped: a destination that left the map may still use the old token. Remove the secret there, or put it back in the map and publish, then run this again. Nothing was revoked.",
+    );
     return 1;
   }
   say(`Every destination's receipt has generation ${generation}.`);
@@ -427,13 +464,6 @@ async function abandon(run: Run, data: Rotations, rotation: Rotation): Promise<n
     announce(deps.stderr, "the current value, to see which token it holds", [entry.ref]);
     const holds = await generationOf(await deps.vault().read(entry.ref));
     if (holds === rotation.new.generation) {
-      const problem = await recheck(run, rotation);
-      if (problem) {
-        say(
-          `Stopped: item "${entry.ref.item}" holds the new value, but ${problem}. Nothing was published; fix it by hand, the old token still works everywhere else.`,
-        );
-        return 1;
-      }
       const stored: Rotation = {
         ...rotation,
         stage: "stored",
@@ -484,7 +514,7 @@ async function abandon(run: Run, data: Rotations, rotation: Rotation): Promise<n
     }
   }
   await saveRotations(deps.files, run.rotationsPath, dropRotation(data, rotation.id));
-  say(`Cleared. Run keypin rotate ${run.key.id} again to start over.`);
+  say(`Cleared. Run ${again(run)} again to start over.`);
   return 1;
 }
 
@@ -501,7 +531,7 @@ async function deleteUnchecked(
   } catch (error) {
     run.say(`Couldn't delete the new token ${id}: ${messageOf(error)}.`);
     run.say(
-      `Nothing else was changed, and the old token still works everywhere. Run keypin rotate ${run.key.id} again to delete it.`,
+      `Nothing else was changed, and the old token still works everywhere. Run ${again(run)} again to delete it.`,
     );
     return 1;
   }
@@ -510,18 +540,16 @@ async function deleteUnchecked(
   return 1;
 }
 
-async function recheck(run: Run, rotation: Rotation): Promise<string | null> {
-  const { entry, issue, deps } = run;
+async function recheck(run: Run, rotation: Rotation, value: Secret): Promise<string | null> {
   if (!rotation.new.id || !rotation.old.id) return "the rotation has no token IDs";
-  announce(deps.stderr, "the new value and the admin token, to check the new token", [
-    entry.ref,
-    issue.admin,
-  ]);
-  const vault = deps.vault();
-  const provider = deps.provider(issue, await vault.read(issue.admin));
+  const provider = run.deps.provider(run.issue, await run.deps.vault().read(run.issue.admin));
   const old = await provider.details(rotation.old.id);
   if (!old) return `the old token ${rotation.old.id} is gone, so its policies can't be compared`;
-  return checkNew(provider, rotation.new.id, await vault.read(entry.ref), old);
+  return checkNew(provider, rotation.new.id, value, old);
+}
+
+function again(run: Run): string {
+  return rotateCommand(run.key.id, run.environment);
 }
 
 async function checkNew(

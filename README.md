@@ -87,7 +87,7 @@ Destinations: GitHub Actions secrets (with `gh`'s login) and Cloudflare Worker s
 ## Rotate
 
 `rotate` replaces a Cloudflare account API token with a new one that has the same permissions. It needs an `issue`
-section on the key's environment:
+section on the key's environment, at least one destination, and a `rotate_every` other than `never`:
 
 ```toml
 [keys.site-deploy.prod.issue]

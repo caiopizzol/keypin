@@ -50,13 +50,20 @@ describe("rotations file", () => {
     );
   });
 
-  test("the unfinished one is any stage but revoked, for that key and environment", () => {
+  test("the unfinished one is any stage but revoked, for that key, environment and item", () => {
     const done = rotation({ id: "r0", stage: "revoked" });
     const open = rotation({ id: "r1", stage: "stored" });
     const dev = rotation({ id: "r2", environment: "dev" });
-    const data = [done, open, dev].reduce(putRotation, emptyRotations());
-    expect(unfinishedRotation(data, "site-deploy", "prod")?.id).toBe("r1");
-    expect(unfinishedRotation(dropRotation(data, "r1"), "site-deploy", "prod")).toBeUndefined();
+    const elsewhere = rotation({
+      id: "r3",
+      item: { ...rotation().item, item: "another project's token" },
+    });
+    const data = [done, open, dev, elsewhere].reduce(putRotation, emptyRotations());
+    const item = rotation().item;
+    expect(unfinishedRotation(data, "site-deploy", "prod", item)?.id).toBe("r1");
+    expect(
+      unfinishedRotation(dropRotation(data, "r1"), "site-deploy", "prod", item),
+    ).toBeUndefined();
   });
 
   test("put replaces by ID", () => {

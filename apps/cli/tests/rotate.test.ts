@@ -627,7 +627,132 @@ describe("keypin rotate: a run that stopped after storing", () => {
     bad.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, policies: [], value: NEW_VALUE });
     expect(await cli(["rotate", "site-deploy"], bad.deps)).toBe(1);
     expect(bad.stderr.text).toContain(`policies differ from ${OLD_ID}'s`);
-    expect(bad.destinations.log).toEqual([]);
-    expect((await bad.rotations()).rotations[0]?.stage).toBe("issued");
+    expect(bad.destinations.log).toEqual(["check github-actions:acme/site"]);
+    expect((await bad.rotations()).rotations[0]?.stage).toBe("stored");
+  });
+});
+
+describe("keypin rotate: review fixes", () => {
+  const record = (overrides: Record<string, unknown> = {}) => ({
+    id: "r1",
+    keyId: "site-deploy",
+    environment: "prod",
+    item: { kind: "1password", account: "my.1password.com", vault: "App Secrets", item: ITEM },
+    provider: "cloudflare-account-token",
+    account: ACCOUNT,
+    stage: "stored",
+    startedAt: "2026-11-10T12:00:00.000Z",
+    updatedAt: "2026-11-10T12:00:01.000Z",
+    old: { id: OLD_ID, name: "cicd-keypin", expiresOn: null, generation: OLD_GENERATION },
+    new: {
+      id: NEW_ID,
+      name: "cicd-keypin 2026-11-10",
+      expiresOn: null,
+      generation: NEW_GENERATION,
+    },
+    ...overrides,
+  });
+  const diskWith = async (rotation: Record<string, unknown>, map = MAP) =>
+    memoryFiles({
+      "/work/billing/keypin.toml": map,
+      [STATE]: JSON.stringify({
+        version: 2,
+        receipts: [await receiptFor(OLD_VALUE)],
+        operations: [],
+      }),
+      [ROTATIONS]: JSON.stringify({ version: 1, rotations: [rotation] }),
+    });
+
+  test("a key with no destinations is refused before anything is read", async () => {
+    const map = MAP.replace(
+      /\[\[keys\.site-deploy\.prod\.publish\]\]\nto = "github-actions"\nrepo = "acme\/site"\n/,
+      "",
+    );
+    const run = await setup({ terminal: ["yes"], map });
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain("lists no destinations");
+    expect(run.vault.calls).toEqual([]);
+    expect(run.provider.log).toEqual([]);
+  });
+
+  test("a stored rotation re-checks the new token before writing, and keeps its stage when it fails", async () => {
+    const run = await setup({ terminal: ["yes"], disk: await diskWith(record()) });
+    run.vault.values.set(ITEM, NEW_VALUE);
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain("HTTP 401");
+    expect(run.destinations.log).toEqual(["check github-actions:acme/site"]);
+    expect(run.provider.tokens.has(OLD_ID)).toBe(true);
+    expect((await run.rotations()).rotations[0]?.stage).toBe("stored");
+  });
+
+  test("a stored rotation whose token still checks out is published", async () => {
+    const run = await setup({ terminal: ["yes"], disk: await diskWith(record()) });
+    run.vault.values.set(ITEM, NEW_VALUE);
+    run.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(0);
+    expect((await run.rotations()).rotations[0]?.stage).toBe("published");
+  });
+
+  test("a rotation made in another account is left alone", async () => {
+    const other = "c".repeat(32);
+    const run = await setup({
+      terminal: ["yes"],
+      disk: await diskWith(record({ stage: "issued", account: other })),
+    });
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain(
+      `made its token as cloudflare-account-token in account ${other}`,
+    );
+    expect(run.provider.log).toEqual([]);
+    expect((await run.rotations()).rotations).toHaveLength(1);
+  });
+
+  test("another project's rotation of the same key ID is ignored", async () => {
+    const elsewhere = record({
+      item: {
+        kind: "1password",
+        account: "my.1password.com",
+        vault: "App Secrets",
+        item: "other token",
+      },
+    });
+    const run = await setup({ terminal: ["no"], disk: await diskWith(elsewhere) });
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(2);
+    expect(run.stderr.text).not.toContain("An unfinished rotation");
+    expect(run.stderr.text).toContain("Plan:");
+  });
+
+  test("a destination that left the map with the old generation blocks the revoke", async () => {
+    const disk = await diskWith(record({ stage: "published" }));
+    const state = JSON.parse(disk.contents.get(STATE) ?? "{}");
+    state.receipts = [
+      { ...(await receiptFor(NEW_VALUE, "2026-11-10T13:00:00.000Z")) },
+      {
+        ...(await receiptFor(OLD_VALUE)),
+        destinationId: "github-actions:acme/old-site:CLOUDFLARE_API_TOKEN",
+      },
+    ];
+    disk.contents.set(STATE, JSON.stringify(state));
+    const run = await setup({ terminal: ["yes"], disk });
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain(
+      "github-actions:acme/old-site:CLOUDFLARE_API_TOKEN isn't in the map any more",
+    );
+    expect(run.asked).toEqual([]);
+    expect(run.provider.tokens.has(OLD_ID)).toBe(true);
+  });
+
+  test("follow-up commands keep --env dev", async () => {
+    const map = MAP.replaceAll("keys.site-deploy.prod", "keys.site-deploy.dev");
+    const ok = await setup({
+      terminal: ["yes", "yes"],
+      map,
+      receipts: [{ ...(await receiptFor(OLD_VALUE)), environment: "dev" }],
+    });
+    expect(await cli(["rotate", "site-deploy", "--env", "dev"], ok.deps)).toBe(0);
+    expect(ok.stderr.text).toContain(
+      "Then run keypin rotate site-deploy --env dev again to revoke the old token.",
+    );
+    expect(ok.stderr.text).not.toMatch(/keypin rotate site-deploy(?! --env dev)/);
   });
 });

@@ -79,7 +79,9 @@ export class CloudflareAccountTokens implements TokenProvider {
     };
     if (request.like.condition) body.condition = request.like.condition;
     const reply = await this.#request("POST", path, this.#admin, body);
-    if (reply.status !== 200) return { refused: failure("POST", path, reply).message };
+    if (reply.status >= 400 && reply.status < 500)
+      return { refused: failure("POST", path, reply).message };
+    if (reply.status !== 200) throw failure("POST", path, reply);
     const result = objectField(reply.body, "result");
     const value = result.value;
     if (typeof value !== "string" || !value)

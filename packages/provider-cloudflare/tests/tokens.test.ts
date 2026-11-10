@@ -36,7 +36,7 @@ const tokenBody = (id: string, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
-type Reply = { status: number; body?: unknown };
+type Reply = { status: number; body?: unknown; raw?: string };
 const ok = (result: unknown): Reply => ({
   status: 200,
   body: { success: true, errors: [], result },
@@ -56,7 +56,7 @@ function setup(routes: Record<string, Reply>) {
       status: 404,
       body: { success: false, errors: [{ code: 1003, message: "not found" }] },
     };
-    return new Response(JSON.stringify(reply.body ?? {}), { status: reply.status });
+    return new Response(reply.raw ?? JSON.stringify(reply.body ?? {}), { status: reply.status });
   };
   const tokens = new CloudflareAccountTokens({
     account: ACCOUNT,
@@ -89,7 +89,10 @@ describe("CloudflareAccountTokens", () => {
 
   test("verify fails with the HTTP status and error codes, never the value", async () => {
     const { tokens } = setup({
-      [`GET ${BASE}/verify`]: { status: 401, body: { errors: [{ code: 1000 }] } },
+      [`GET ${BASE}/verify`]: {
+        status: 401,
+        body: { errors: [{ code: 1000, message: `Invalid API Token ${CURRENT}` }] },
+      },
     });
     const error = await tokens.verify(new Secret(CURRENT)).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(Error);
@@ -178,6 +181,25 @@ describe("CloudflareAccountTokens", () => {
       { refused: `Cloudflare POST /accounts/${ACCOUNT}/tokens returned HTTP 403, codes 9109` },
     );
   });
+
+  test.each([
+    [502, { raw: "<html>Bad gateway</html>" }],
+    [504, { raw: "" }],
+    [500, { body: { errors: [{ code: 10000 }] } }],
+  ])(
+    "issue throws on HTTP %i, because Cloudflare may have made the token anyway",
+    async (status, reply) => {
+      const { tokens } = setup({
+        [`GET ${BASE}/${OLD}`]: ok(tokenBody(OLD)),
+        [`POST ${BASE}`]: { status, ...reply },
+      });
+      const old = await tokens.details(OLD);
+      if (!old) throw new Error("no old token");
+      await expect(
+        tokens.issue({ name: "x", like: old, expiresOn: "2027-01-01T00:00:00Z" }),
+      ).rejects.toThrow(`returned HTTP ${status}`);
+    },
+  );
 
   test("revoke deletes by ID, and treats 404 as already gone", async () => {
     const { tokens, requests } = setup({ [`DELETE ${BASE}/${OLD}`]: ok({ id: OLD }) });

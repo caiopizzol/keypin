@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { INSTALL, installProblem } from "../src/install";
+import { INSTALL, installProblem, REINSTALL } from "../src/install";
 
 function moduleNotFound(message: string): Error {
   return Object.assign(new Error(message), { code: "ERR_MODULE_NOT_FOUND" });
@@ -30,6 +30,12 @@ describe("installProblem", () => {
     const hint = installProblem(moduleNotFound("Cannot find package 'x'"));
     expect(hint).toMatch(/ in \/.+[^/]$/);
     expect(hint).not.toContain("/apps/cli");
+  });
+
+  test("an npm install is told to reinstall, not to run the repo's installer", () => {
+    expect(installProblem(moduleNotFound("Cannot find package '@1password/sdk'"), null)).toBe(
+      `the package @1password/sdk isn't installed; reinstall keypin with "${REINSTALL}"`,
+    );
   });
 
   test("any other error is left alone", () => {

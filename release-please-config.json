@@ -11,7 +11,7 @@
       "initial-version": "0.1.0",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": false,
-      "exclude-paths": ["apps/site", ".github/workflows/site.yml", "keypin.toml"]
+      "exclude-paths": ["apps/site"]
     }
   }
 }

@@ -12,6 +12,18 @@ describe("keypin-site worker", () => {
     expect(response.headers.get("location")).toBe("https://keypin.dev/a?b=1");
   });
 
+  test("sends plain HTTP to HTTPS on the apex", async () => {
+    const response = await worker.fetch(new Request("http://keypin.dev/x"), assets);
+    expect(response.status).toBe(301);
+    expect(response.headers.get("location")).toBe("https://keypin.dev/x");
+  });
+
+  test("sends plain HTTP on www to HTTPS on the apex", async () => {
+    const response = await worker.fetch(new Request("http://www.keypin.dev/"), assets);
+    expect(response.status).toBe(301);
+    expect(response.headers.get("location")).toBe("https://keypin.dev/");
+  });
+
   test("serves the apex from the static assets", async () => {
     const response = await worker.fetch(new Request("https://keypin.dev/"), assets);
     expect(response.status).toBe(200);

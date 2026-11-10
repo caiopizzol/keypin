@@ -75,6 +75,7 @@ keypin unregister [folder]  # stop listing a project; its keypin.toml stays
 keypin status [--json]      # every key, its rotation dates and receipts, then problems
 keypin run -- <command>     # run a command with the project's dev keys in its environment
 keypin publish <key-id>     # check accounts, show the plan, then write the key to every destination
+keypin rotate <key-id>      # replace a token with a new one, publish it, then revoke the old one
 ```
 
 `publish` writes `prod` by default (`--env dev` for dev). It checks each destination is the account the map pins,
@@ -83,13 +84,54 @@ change. `--yes` never gives that approval.
 
 Destinations: GitHub Actions secrets (with `gh`'s login) and Cloudflare Worker secrets (with wrangler's login).
 
+## Rotate
+
+`rotate` replaces a Cloudflare account API token with a new one that has the same permissions. It needs an `issue`
+section on the key's environment, at least one destination, and a `rotate_every` other than `never`:
+
+```toml
+[keys.site-deploy.prod.issue]
+provider = "cloudflare-account-token"
+account = "<your Cloudflare account ID>"
+admin = "shared cloudflare token admin" # an item in the same vault, read only by rotate
+```
+
+The first run:
+
+1. reads the current value and asks Cloudflare which token it is;
+2. reads that token's policies with the admin token, and shows the plan: both tokens, the policies it copies, the
+   item and every destination. Type `yes`, or pass `--yes` when no destination needs approval;
+3. makes a new token with the same policies, named after the old one plus today's date. It expires after the
+   key's `rotate_every` plus 14 days, so `status` shows it due well before it stops working;
+4. checks the new token is active and has the same policies, or deletes it and stops;
+5. stores it in the item with `rotated` set to today, and publishes it like `publish`.
+
+The old token stays active. Check that everything that uses the key works, then run `keypin rotate <key-id>`
+again: it checks every destination has the new value, shows when the old token was last used, and revokes it after
+you type `yes`. `--yes` never revokes.
+
+If a run stops, the next one continues or cleans up. `status` shows an unfinished rotation as a notice.
+
+### The admin token
+
+In the Cloudflare dashboard, go to **Manage account** → **Account API tokens** → **Create Token** → **Custom
+token**:
+
+- Permissions: **Account** → **Account API Tokens** → **Edit**, and nothing else;
+- the account the keys live in;
+- a short expiry, such as 30 days.
+
+Store it in your vault as the `admin` item, with `rotated` and `rotate_every` like any other key. keypin never
+publishes it, and `run` never injects it.
+
 ## Notes
 
 - **Cloudflare Workers:** `wrangler dev` passes environment variables to the Worker only for names in
   `secrets.required`, and a `.dev.vars` file overrides them. Delete `.dev.vars`, then `keypin run -- wrangler dev`.
 - **macOS only for now:** the Cloudflare destination reads wrangler's login from its macOS path.
-- **Files on your machine:** the project registry (`~/.config/keypin/registry.json`) and receipts
-  (`~/.local/state/keypin/state.json`). Both honor `XDG_CONFIG_HOME` and `XDG_STATE_HOME`.
+- **Files on your machine:** the project registry (`~/.config/keypin/registry.json`), receipts
+  (`~/.local/state/keypin/state.json`) and rotations (`~/.local/state/keypin/rotations.json`). They honor
+  `XDG_CONFIG_HOME` and `XDG_STATE_HOME`.
 
 ## Development
 

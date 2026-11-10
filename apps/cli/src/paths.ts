@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Registry } from "@keypin/core";
 import type { Deps } from "./deps";
 
@@ -17,4 +17,8 @@ function base(xdg: string | undefined, home: string, fallback: string): string {
 export function projectCount(registry: Registry, path: string): string {
   const count = registry.projects.length;
   return `${count} ${count === 1 ? "project" : "projects"} in ${path}`;
+}
+
+export function rotationsPath(deps: Pick<Deps, "env" | "home">): string {
+  return join(dirname(statePath(deps)), "rotations.json");
 }

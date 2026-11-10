@@ -403,3 +403,69 @@ describe("wrong kinds and values", () => {
     expect(errorsOf(`${VAULTS}[keys.a]\nenv = "A"\n\n[keys.b]\nowner = "o"\n`)).toHaveLength(4);
   });
 });
+
+describe("an issue section", () => {
+  const ACCOUNT = "e48c9afabc4ff0cda321d0cf69b8943f";
+  const mapWith = (issue: string) => `${VAULTS}
+[keys.site-deploy]
+env = "CLOUDFLARE_API_TOKEN"
+owner = "site"
+
+[keys.site-deploy.prod]
+vault = "personal"
+item = "site deploy token"
+
+[keys.site-deploy.prod.issue]
+${issue}
+`;
+
+  test("names the provider, the account and an admin item in the same vault", () => {
+    const result = parseMap(
+      mapWith(
+        `provider = "cloudflare-account-token"\naccount = "${ACCOUNT}"\nadmin = "shared cloudflare token admin"`,
+      ),
+      MAP_FILE,
+    );
+    if (!result.ok) throw new Error(result.errors.join("\n"));
+    expect(result.map.keys[0]?.environments.prod?.issue).toEqual({
+      provider: "cloudflare-account-token",
+      account: ACCOUNT,
+      admin: {
+        kind: "1password",
+        account: "my.1password.com",
+        vault: "Private",
+        item: "shared cloudflare token admin",
+      },
+    });
+  });
+
+  test("an entry without one has no issue", () => {
+    const result = parseMap(VALID_MAP, MAP_FILE);
+    if (!result.ok) throw new Error(result.errors.join("\n"));
+    expect(result.map.keys[0]?.environments.prod).not.toHaveProperty("issue");
+  });
+
+  test.each([
+    [`account = "${ACCOUNT}"\nadmin = "a"`, `missing field "provider"`],
+    [
+      `provider = "aws-iam-key"\naccount = "${ACCOUNT}"\nadmin = "a"`,
+      `field "provider" must be one of: cloudflare-account-token`,
+    ],
+    [
+      `provider = "cloudflare-account-token"\naccount = "personal"\nadmin = "a"`,
+      `field "account" must be a Cloudflare account ID (32 hex characters)`,
+    ],
+    [
+      `provider = "cloudflare-account-token"\naccount = "${ACCOUNT}"\nadmin = "site deploy token"`,
+      `field "admin" names the key's own item; the admin token needs its own item`,
+    ],
+    [
+      `provider = "cloudflare-account-token"\naccount = "${ACCOUNT}"\nadmin = "a"\npermissions = []`,
+      `unknown field "permissions"`,
+    ],
+  ])("%s is refused", (issue, message) => {
+    expect(errorsOf(mapWith(issue))).toEqual([
+      `${MAP_FILE}: key "site-deploy" prod: issue: ${message}`,
+    ]);
+  });
+});

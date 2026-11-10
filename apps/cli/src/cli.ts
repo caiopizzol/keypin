@@ -1,5 +1,6 @@
 import { init } from "./commands/init";
 import { publish } from "./commands/publish";
+import { rotate } from "./commands/rotate";
 import { run } from "./commands/run";
 import { status } from "./commands/status";
 import { unregister } from "./commands/unregister";
@@ -15,6 +16,9 @@ export const USAGE = `Usage:
   keypin run -- <command>  run a command with this project's dev keys in its environment
   keypin publish <key-id> [--env prod|dev] [--yes]
                            check accounts, plan, confirm, then write the key to every destination
+  keypin rotate <key-id> [--env prod|dev] [--yes]
+                           replace a token with a new one that has the same permissions, publish it,
+                           and revoke the old one on the next run
   keypin --version         print the version
 `;
 
@@ -24,6 +28,7 @@ const COMMANDS = new Map<string, (args: string[], deps: Deps) => Promise<number>
   ["status", status],
   ["run", run],
   ["publish", publish],
+  ["rotate", rotate],
 ]);
 
 export async function cli(argv: string[], deps: Deps): Promise<number> {

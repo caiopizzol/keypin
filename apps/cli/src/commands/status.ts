@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import {
   buildStatus,
   loadRegistry,
+  loadRotations,
   loadState,
   type MapResult,
   parseMap,
@@ -12,7 +13,7 @@ import {
   type VaultMetadata,
 } from "@keypin/core";
 import { type Deps, localDay, UsageError } from "../deps";
-import { registryPath, statePath } from "../paths";
+import { registryPath, rotationsPath, statePath } from "../paths";
 import { MAP_FILE } from "../project";
 import { messageOf } from "../errors";
 import { announce, distinctRefs, refKey } from "../vault";
@@ -27,6 +28,7 @@ export async function status(args: string[], deps: Deps): Promise<number> {
 
   const registry = await loadRegistry(deps.files, registryPath(deps));
   const state = await loadState(deps.files, statePath(deps));
+  const { rotations } = await loadRotations(deps.files, rotationsPath(deps));
   const maps = new Map<string, MapResult>();
   for (const project of registry.projects) {
     const file = join(project, MAP_FILE);
@@ -63,6 +65,7 @@ export async function status(args: string[], deps: Deps): Promise<number> {
     registry,
     maps,
     receipts: state.receipts,
+    rotations,
     metadata: (ref) => metadata.get(refKey(ref)) ?? null,
     today: localDay(deps.now()),
   });

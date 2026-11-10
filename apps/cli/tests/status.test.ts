@@ -177,3 +177,52 @@ describe("keypin status", () => {
     }
   });
 });
+
+describe("keypin status: rotations", () => {
+  test("an unfinished rotation is a notice that says how to continue", async () => {
+    const files = memoryFiles({
+      [REGISTRY]: registryWith("/work/web"),
+      "/work/web/keypin.toml": WEB_MAP,
+      "/home/me/.local/state/keypin/rotations.json": JSON.stringify({
+        version: 1,
+        rotations: [
+          {
+            id: "r1",
+            keyId: "web-session",
+            environment: "prod",
+            item: {
+              kind: "1password",
+              account: "my.1password.com",
+              vault: "Private",
+              item: "web prod session secret",
+            },
+            provider: "cloudflare-account-token",
+            account: "11111111111111111111111111111111",
+            stage: "published",
+            startedAt: "2026-11-10T12:00:00.000Z",
+            updatedAt: "2026-11-10T12:00:05.000Z",
+            old: {
+              id: "a".repeat(32),
+              name: "old",
+              expiresOn: null,
+              generation: "0123456789abcdef",
+            },
+            new: {
+              id: "b".repeat(32),
+              name: "new",
+              expiresOn: null,
+              generation: "fedcba9876543210",
+            },
+          },
+        ],
+      }),
+    });
+    const fake = fakeVault({ metadata: METADATA });
+    const { deps, stdout } = fakeDeps({ disk: files, backend: fake.vault });
+    await cli(["status"], deps);
+    expect(stdout.text).toContain(
+      `rotation-unfinished: web-session (prod): a rotation started 2026-11-10T12:00:00.000Z is at stage "published"; run keypin rotate web-session to continue`,
+    );
+    expect(stdout.text).toMatch(/Notices \(2\):/);
+  });
+});

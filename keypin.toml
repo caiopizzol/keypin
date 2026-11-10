@@ -1,0 +1,16 @@
+[vaults.personal]
+kind = "1password"
+account = "my.1password.com"
+vault = "App Secrets"
+
+[keys.site-deploy]
+env = "CLOUDFLARE_API_TOKEN"
+owner = "keypin"
+
+[keys.site-deploy.prod]
+vault = "personal"
+item = "keypin-dev prod cloudflare deploy token"
+
+[[keys.site-deploy.prod.publish]]
+to = "github-actions"
+repo = "caiopizzol/keypin"

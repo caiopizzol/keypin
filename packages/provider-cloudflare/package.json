@@ -1,0 +1,17 @@
+{
+  "name": "@keypin/provider-cloudflare",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@keypin/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6"
+  }
+}

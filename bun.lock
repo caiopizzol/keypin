@@ -53,6 +53,15 @@
         "@types/node": "26.6.6",
       },
     },
+    "packages/provider-cloudflare": {
+      "name": "@keypin/provider-cloudflare",
+      "dependencies": {
+        "@keypin/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "26.6.6",
+      },
+    },
     "packages/vault-1password": {
       "name": "@keypin/vault-1password",
       "dependencies": {
@@ -94,6 +103,8 @@
     "@keypin/destination-cloudflare": ["@keypin/destination-cloudflare@workspace:packages/destination-cloudflare"],
 
     "@keypin/destination-github": ["@keypin/destination-github@workspace:packages/destination-github"],
+
+    "@keypin/provider-cloudflare": ["@keypin/provider-cloudflare@workspace:packages/provider-cloudflare"],
 
     "@keypin/site": ["@keypin/site@workspace:apps/site"],
 

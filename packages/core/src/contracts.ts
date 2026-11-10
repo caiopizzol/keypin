@@ -68,6 +68,48 @@ export interface Destination {
   write(name: string, secret: Secret): Promise<Evidence>;
 }
 
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly Json[]
+  | { readonly [key: string]: Json };
+
+export interface TokenPolicy {
+  effect: string;
+  resources: { readonly [key: string]: Json };
+  permissionGroups: { id: string; name: string }[];
+}
+
+export interface ProviderToken {
+  id: string;
+  name: string;
+  status: string;
+  expiresOn: string | null;
+  lastUsedOn: string | null;
+  policies: TokenPolicy[];
+  condition: { readonly [key: string]: Json } | null;
+}
+
+export interface VerifiedToken {
+  id: string;
+  status: string;
+  expiresOn: string | null;
+}
+
+export interface TokenProvider {
+  describe(): string;
+  verify(secret: Secret): Promise<VerifiedToken>;
+  details(id: string): Promise<ProviderToken | null>;
+  issue(request: {
+    name: string;
+    like: ProviderToken;
+    expiresOn: string;
+  }): Promise<{ token: ProviderToken; value: Secret } | { refused: string }>;
+  revoke(id: string): Promise<"revoked" | "already gone">;
+}
+
 export interface Receipt {
   keyId: KeyId;
   environment: Environment;

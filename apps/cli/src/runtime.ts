@@ -1,9 +1,9 @@
 export const MIN_BUN = "1.4.4";
 
-export function runtimeProblem(bun: string | undefined): string | null {
+export function runtimeProblem(bun: string | undefined, script: string): string | null {
   if (bun === undefined) return `keypin runs on Bun ${MIN_BUN} or newer, not Node.`;
   if (olderThan(bun, MIN_BUN)) {
-    return `keypin needs Bun ${MIN_BUN} or newer, because older Bun can read a keypin.toml wrong, and this is Bun ${bun}. Run it with "bunx bun@${MIN_BUN} <path to keypin>/apps/cli/src/main.ts".`;
+    return `keypin needs Bun ${MIN_BUN} or newer, because older Bun can read a keypin.toml wrong, and this is Bun ${bun}. Upgrade Bun, or run it with "bunx bun@${MIN_BUN} ${script}".`;
   }
   return null;
 }

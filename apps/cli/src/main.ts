@@ -2,7 +2,10 @@
 import { installProblem } from "./install";
 import { runtimeProblem } from "./runtime";
 
-const problem = runtimeProblem(typeof Bun === "undefined" ? undefined : Bun.version);
+const problem = runtimeProblem(
+  typeof Bun === "undefined" ? undefined : Bun.version,
+  process.argv[1] ?? "keypin",
+);
 if (problem) {
   process.stderr.write(`keypin: ${problem}\n`);
   process.exit(1);

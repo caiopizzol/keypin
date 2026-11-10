@@ -5,6 +5,7 @@ import { status } from "./commands/status";
 import { unregister } from "./commands/unregister";
 import { type Deps, UsageError } from "./deps";
 import { errorCode, messageOf } from "./errors";
+import { version } from "../../../package.json";
 
 export const USAGE = `Usage:
   keypin init [folder]     register a project and write a keypin.toml template
@@ -14,6 +15,7 @@ export const USAGE = `Usage:
   keypin run -- <command>  run a command with this project's dev keys in its environment
   keypin publish <key-id> [--env prod|dev] [--yes]
                            check accounts, plan, confirm, then write the key to every destination
+  keypin --version         print the version
 `;
 
 const COMMANDS = new Map<string, (args: string[], deps: Deps) => Promise<number>>([
@@ -29,6 +31,10 @@ export async function cli(argv: string[], deps: Deps): Promise<number> {
   if (name === undefined || name === "help" || name === "--help" || name === "-h") {
     (name === undefined ? deps.stderr : deps.stdout).write(USAGE);
     return name === undefined ? 2 : 0;
+  }
+  if (name === "--version" || name === "-v") {
+    deps.stdout.write(`${version}\n`);
+    return 0;
   }
   const command = COMMANDS.get(name);
   if (!command) {

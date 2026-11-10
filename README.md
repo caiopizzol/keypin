@@ -24,12 +24,18 @@ values from 1Password only while a command runs, and writes them nowhere on disk
 
 ## Requirements
 
-- git, [Bun](https://bun.sh) and [Node](https://nodejs.org) 22.18+ (the installer runs on Node)
+- [Bun](https://bun.sh) 1.4.4 or newer. keypin refuses an older one, because Bun 1.3.12 misparses some TOML.
 - The [1Password](https://1password.com/downloads) desktop app
 
-keypin runs on Bun 1.4.4 or newer and refuses an older one, because Bun 1.3.12 misparses some TOML.
-
 ## Install
+
+```sh
+bun add -g keypin
+```
+
+### From source
+
+With git and [Node](https://nodejs.org) 22.18+ (the installer runs on Node):
 
 ```sh
 git clone https://github.com/caiopizzol/keypin.git ~/keypin
@@ -94,3 +100,6 @@ bun run typecheck  # tsc in every package
 ```
 
 Install with the command above, never a plain `bun install`: Bun 1.3 rewrites `bun.lock` in an older format.
+
+Releases: Release Please keeps a release PR open. On it, select **Approve workflows to run** so `check` runs, then
+merge it to tag, create the GitHub Release and publish to npm.

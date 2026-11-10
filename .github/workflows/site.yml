@@ -1,0 +1,43 @@
+name: site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/site/**"
+      - ".github/workflows/site.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: site-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_ACCOUNT_ID: e48c9afabc4ff0cda321d0cf69b8943f
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+      - run: bunx wrangler@4.160.0 deploy
+        working-directory: apps/site
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      - name: keypin.dev serves the page
+        run: |
+          curl -sf --retry 10 --retry-delay 15 --retry-all-errors https://keypin.dev/ -o page.html
+          grep -q "Every key, pinned" page.html
+      - name: www.keypin.dev redirects to keypin.dev
+        run: |
+          result=$(curl -s --retry 10 --retry-delay 15 --retry-all-errors -o /dev/null -w '%{http_code} %{redirect_url}' https://www.keypin.dev/)
+          echo "$result"
+          test "$result" = "301 https://keypin.dev/"

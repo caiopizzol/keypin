@@ -1,0 +1,16 @@
+{
+  "name": "keypin-site",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-11-10",
+  "workers_dev": false,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "routes": [
+    { "pattern": "keypin.dev", "custom_domain": true },
+    { "pattern": "www.keypin.dev", "custom_domain": true }
+  ]
+}

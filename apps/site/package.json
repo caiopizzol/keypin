@@ -1,0 +1,10 @@
+{
+  "name": "@keypin/site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bunx wrangler@4.160.0 dev",
+    "deploy": "bunx wrangler@4.160.0 deploy",
+    "typecheck": "tsc"
+  }
+}

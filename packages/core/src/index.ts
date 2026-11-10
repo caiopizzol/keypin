@@ -6,9 +6,14 @@ export {
   type DestinationCapabilities,
   type Environment,
   type Evidence,
+  type Json,
   type KeyId,
   type KeyRef,
+  type ProviderToken,
   type Receipt,
+  type TokenPolicy,
+  type TokenProvider,
+  type VerifiedToken,
   type VaultBackend,
   type VaultCapabilities,
   type VaultItem,
@@ -29,6 +34,7 @@ export {
 } from "./map";
 export { addDays, DUE_SOON_DAYS, isDay, periodDays } from "./rotation";
 export { type Files } from "./files";
+export { sameAccess } from "./tokens";
 export { isRecord } from "./record";
 export {
   emptyRegistry,

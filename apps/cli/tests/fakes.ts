@@ -8,7 +8,7 @@ import {
   type VaultBackend,
   type VaultMetadata,
 } from "@keypin/core";
-import type { Deps, Launch, Lock } from "../src/deps";
+import type { Deps, FolderEntry, Launch, Lock } from "../src/deps";
 
 export const SENTINEL = "sentinel-value-7f3a9c2e1d";
 
@@ -178,6 +178,14 @@ export function fakeDeps(setup: FakeSetup = {}) {
     home: HOME,
     files: disk.files,
     isFolder: async (path) => disk.folders.has(path),
+    listFolder: async (path) => listMemoryFolder(disk, path),
+    git: async () => null,
+    githubSecrets: async () => {
+      throw new Error("this test reads no GitHub secrets");
+    },
+    workerSecrets: async () => {
+      throw new Error("this test reads no Worker secrets");
+    },
     createFile: async (path, text) => {
       if (disk.links.has(path)) return "link";
       if (disk.contents.has(path)) return "exists";
@@ -206,6 +214,24 @@ export function fakeDeps(setup: FakeSetup = {}) {
     ...setup.deps,
   };
   return { deps, disk, stdout, stderr };
+}
+
+function listMemoryFolder(disk: ReturnType<typeof memoryFiles>, path: string): FolderEntry[] {
+  if (!disk.folders.has(path)) throw new Error(`ENOENT: no folder ${path}`);
+  const prefix = path === "/" ? "/" : `${path}/`;
+  const entries = new Map<string, FolderEntry["kind"]>();
+  for (const [paths, kind] of [
+    [[...disk.contents.keys()], "file"],
+    [[...disk.folders], "folder"],
+  ] as const) {
+    for (const full of paths) {
+      if (!full.startsWith(prefix) || full === path) continue;
+      const [name, ...rest] = full.slice(prefix.length).split("/");
+      if (!name) continue;
+      entries.set(name, rest.length ? "folder" : disk.links.has(full) ? "other" : kind);
+    }
+  }
+  return [...entries].map(([name, kind]) => ({ name, kind }));
 }
 
 export const BILLING_MAP = `

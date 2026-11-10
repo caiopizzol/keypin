@@ -19,129 +19,87 @@
   <img src="https://img.shields.io/badge/runtime-Bun-121311" alt="Bun">
 </p>
 
-Each project lists its keys in a `keypin.toml`: names, vault items and destinations, never values. keypin reads
-values from 1Password only while a command runs, and writes them nowhere on disk.
-
-## Requirements
-
-- [Bun](https://bun.sh) 1.4.4 or newer. keypin refuses an older one, because Bun 1.3.12 misparses some TOML.
-- The [1Password](https://1password.com/downloads) desktop app
+Each project lists its keys in a `keypin.toml`: names, vault items and destinations, never values. keypin runs your
+commands with dev keys, publishes keys to GitHub Actions and Cloudflare Workers, and rotates Cloudflare API tokens.
+It reads values from 1Password only while a command runs, and never writes them to disk.
 
 ## Install
+
+You need [Bun](https://bun.sh) 1.4.4 or newer and the [1Password](https://1password.com/downloads) desktop app.
+Publishing to Cloudflare works on macOS only for now.
 
 ```sh
 bun add -g keypin
 ```
 
-### From source
+In 1Password, open **Settings → Developer**. Under **Integrate with the 1Password SDKs**, select **Integrate with
+other apps**. 1Password then asks you to approve each keypin command.
 
-With git and [Node](https://nodejs.org) 22.18+ (the installer runs on Node):
+## Quick start
+
+Register a project. `keypin init` writes a commented `keypin.toml` for you to fill in:
 
 ```sh
-git clone https://github.com/caiopizzol/keypin.git ~/keypin
-cd ~/keypin
-bunx --package vite-plus@1.5.1 vp install
-alias keypin='bunx bun@1.4.4 ~/keypin/apps/cli/src/main.ts'
+cd ~/code/my-project
+keypin init
 ```
 
-Add the alias to your shell profile. Package scripts don't load aliases, so call
-`bunx bun@1.4.4 ~/keypin/apps/cli/src/main.ts` in full there.
+A key looks like this:
 
-> [!IMPORTANT]
-> Run the install command again after every `git pull`, or keypin can't find its own packages.
+```toml
+[vaults.personal]
+kind = "1password"
+account = "my.1password.com"
+vault = "Private"
 
-## Set up
+[keys.api-token]
+env = "API_TOKEN"
+owner = "my-project"
 
-1. **1Password:** in Settings → Developer, under "Integrate with the 1Password SDKs", select **Integrate with other
-   apps**. 1Password then asks you to approve each keypin command.
-2. **Each vault item** needs:
-   - the value in its `password` field;
-   - a Date field `rotated`: the day the value last changed;
-   - a Text field `rotate_every`: `<n>d`, `<n>w`, `<n>m` or `never` (or set it in `keypin.toml`).
-3. **Each project:**
+[keys.api-token.dev] # read by keypin run
+vault = "personal"
+item = "my-project dev api token"
 
-   ```sh
-   cd ~/code/my-project
-   keypin init     # registers the folder and writes a commented keypin.toml
-   $EDITOR keypin.toml
-   keypin status   # exit 0 means no problems
-   ```
+[keys.api-token.prod] # read by keypin publish
+vault = "personal"
+item = "my-project prod api token"
+
+[[keys.api-token.prod.publish]] # where publish writes it
+to = "github-actions"
+repo = "me/my-project"
+```
+
+In 1Password, each item holds the value in its `password` field, plus a `rotated` date and a `rotate_every` period
+such as `90d`. Now use it:
+
+```sh
+keypin status               # every key, when it's due, and any problem
+keypin run -- npm run dev   # run a command with the dev keys
+keypin publish api-token    # write the prod value to the GitHub secret
+```
 
 ## Commands
 
 ```sh
-keypin init [folder]        # register a project and write a keypin.toml template
-keypin unregister [folder]  # stop listing a project; its keypin.toml stays
-keypin status [--json]      # every key, its rotation dates and receipts, then problems
-keypin run -- <command>     # run a command with the project's dev keys in its environment
-keypin publish <key-id>     # check accounts, show the plan, then write the key to every destination
-keypin rotate <key-id>      # replace a token with a new one, publish it, then revoke the old one
+keypin init [folder]         # register a project and write a keypin.toml
+keypin unregister [folder]   # stop listing a project (its keypin.toml stays)
+keypin status [--json]       # every key, when it's due, and any problem
+keypin run -- <command>      # run a command with the project's dev keys
+keypin publish <key-id>      # check each destination's account, then write the key
+keypin rotate <key-id>       # replace a Cloudflare API token, then revoke the old one
 ```
 
-`publish` writes `prod` by default (`--env dev` for dev). It checks each destination is the account the map pins,
-skips destinations that already have this value, and asks you to type `yes` before a first write or an account
-change. `--yes` never gives that approval.
+`publish` and `rotate` show a plan and wait for you to type `yes`. `--yes` skips that only for routine updates. It
+never approves a first write, a changed account or vault item, or a revoke.
 
-Destinations: GitHub Actions secrets (with `gh`'s login) and Cloudflare Worker secrets (with wrangler's login).
+## Docs
 
-## Rotate
-
-`rotate` replaces a Cloudflare account API token with a new one that has the same permissions. It needs an `issue`
-section on the key's environment, at least one destination, and a `rotate_every` other than `never`:
-
-```toml
-[keys.site-deploy.prod.issue]
-provider = "cloudflare-account-token"
-account = "<your Cloudflare account ID>"
-admin = "shared cloudflare token admin" # an item in the same vault, read only by rotate
-```
-
-The first run:
-
-1. reads the current value and asks Cloudflare which token it is;
-2. reads that token's policies with the admin token, and shows the plan: both tokens, the policies it copies, the
-   item and every destination. Type `yes`, or pass `--yes` when no destination needs approval;
-3. makes a new token with the same policies, named after the old one plus today's date. It expires after the
-   key's `rotate_every` plus 14 days, so `status` shows it due well before it stops working;
-4. checks the new token is active and has the same policies, or deletes it and stops;
-5. stores it in the item with `rotated` set to today, and publishes it like `publish`.
-
-The old token stays active. Check that everything that uses the key works, then run `keypin rotate <key-id>`
-again: it checks every destination has the new value, shows when the old token was last used, and revokes it after
-you type `yes`. `--yes` never revokes.
-
-If a run stops, the next one continues or cleans up. `status` shows an unfinished rotation as a notice.
-
-### The admin token
-
-In the Cloudflare dashboard, go to **Manage account** → **Account API tokens** → **Create Token** → **Custom
-token**:
-
-- Permissions: **Account** → **Account API Tokens** → **Edit**, and nothing else;
-- the account the keys live in;
-- a short expiry, such as 30 days.
-
-Store it in your vault as the `admin` item, with `rotated` and `rotate_every` like any other key. keypin never
-publishes it, and `run` never injects it.
-
-## Notes
-
-- **Cloudflare Workers:** `wrangler dev` passes environment variables to the Worker only for names in
-  `secrets.required`, and a `.dev.vars` file overrides them. Delete `.dev.vars`, then `keypin run -- wrangler dev`.
-- **macOS only for now:** the Cloudflare destination reads wrangler's login from its macOS path.
-- **Files on your machine:** the project registry (`~/.config/keypin/registry.json`), receipts
-  (`~/.local/state/keypin/state.json`) and rotations (`~/.local/state/keypin/rotations.json`). They honor
-  `XDG_CONFIG_HOME` and `XDG_STATE_HOME`.
-
-## Development
-
-```sh
-bun run check      # format, lint and type-check
-bun run test       # tests
-bun run typecheck  # tsc in every package
-```
-
-Install with the command above, never a plain `bun install`: Bun 1.3 rewrites `bun.lock` in an older format.
-
-Releases: Release Please keeps a release PR open. On it, select **Approve workflows to run** so `check` runs, then
-merge it to tag, create the GitHub Release and publish to npm.
+- [Configuration](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md): every field in
+  `keypin.toml` and in the vault items.
+- [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md): destinations, account checks and
+  approvals.
+- [Rotation](https://github.com/caiopizzol/keypin/blob/main/docs/rotation.md): how `rotate` works, and the admin
+  token it needs.
+- [Notes](https://github.com/caiopizzol/keypin/blob/main/docs/notes.md): `wrangler dev`, and the files keypin keeps.
+- [Development](https://github.com/caiopizzol/keypin/blob/main/docs/development.md): install from source, checks and
+  releases.

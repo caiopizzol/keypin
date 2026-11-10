@@ -39,7 +39,8 @@ keypin rotate site-deploy
    or pass `--yes` when no destination needs approval.
 3. It creates the new token, named after the old one plus today's date. The new token expires `rotate_every` plus
    14 days from today, so `status` shows it due before it stops working.
-4. It checks the new token works and has the same permissions. If not, it deletes it and stops.
+4. It checks the new token works and has the same permissions. If not, it deletes the new token and stops. If that
+   delete fails, the next run offers to delete it again.
 5. It stores the new token in the vault item, with `rotated` set to today, and publishes it.
 
 The old token stays active.
@@ -56,4 +57,5 @@ keypin rotate site-deploy
 keypin checks that every destination has the new token, shows when the old one was last used, and deletes it after
 you type `yes` in a terminal. `--yes` never revokes.
 
-If a run stops partway, the next run continues or cleans up. `keypin status` shows an unfinished rotation.
+If a run stops partway, `keypin status` shows the unfinished rotation, and the next run picks it up. If keypin
+can't tell whether Cloudflare made the new token, it names the token for you to find and delete in the dashboard.

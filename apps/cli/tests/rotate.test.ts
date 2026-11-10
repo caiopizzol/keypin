@@ -17,6 +17,8 @@ import {
   fakeDestinations,
   type FakeDestinationOptions,
   memoryFiles,
+  REGISTRY,
+  registryWith,
   STATE,
 } from "./fakes";
 
@@ -722,37 +724,105 @@ describe("keypin rotate: review fixes", () => {
     expect(run.stderr.text).toContain("Plan:");
   });
 
-  test("a destination that left the map with the old generation blocks the revoke", async () => {
+  async function withRemoved(generation: string) {
     const disk = await diskWith(record({ stage: "published" }));
     const state = JSON.parse(disk.contents.get(STATE) ?? "{}");
     state.receipts = [
-      { ...(await receiptFor(NEW_VALUE, "2026-11-10T13:00:00.000Z")) },
+      await receiptFor(NEW_VALUE, "2026-11-10T13:00:00.000Z"),
       {
         ...(await receiptFor(OLD_VALUE)),
+        generation,
         destinationId: "github-actions:acme/old-site:CLOUDFLARE_API_TOKEN",
       },
     ];
     disk.contents.set(STATE, JSON.stringify(state));
-    const run = await setup({ terminal: ["yes"], disk });
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    return disk;
+  }
+
+  async function revokeRun(terminal: string[], disk: ReturnType<typeof memoryFiles>) {
+    const run = await setup({ terminal, disk });
+    run.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
+    return run;
+  }
+
+  test("a destination that left the map with the old token is shown, and the typed yes revokes", async () => {
+    const run = await revokeRun(["yes"], await withRemoved(OLD_GENERATION));
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(0);
     expect(run.stderr.text).toContain(
-      "github-actions:acme/old-site:CLOUDFLARE_API_TOKEN isn't in the map any more",
+      `github-actions:acme/old-site:CLOUDFLARE_API_TOKEN left the map and its receipt has the old token (generation ${OLD_GENERATION}); revoking breaks it unless that secret is gone`,
     );
-    expect(run.asked).toEqual([]);
-    expect(run.provider.tokens.has(OLD_ID)).toBe(true);
+    expect(run.asked).toEqual([`Type yes to revoke the old token ${OLD_ID}: `]);
+    expect(run.provider.tokens.has(OLD_ID)).toBe(false);
   });
 
-  test("follow-up commands keep --env dev", async () => {
+  test("after removing that secret, a retry can still finish, and no only keeps the old token", async () => {
+    const disk = await withRemoved(OLD_GENERATION);
+    const refused = await revokeRun(["no"], disk);
+    expect(await cli(["rotate", "site-deploy"], refused.deps)).toBe(2);
+    expect(refused.provider.tokens.has(OLD_ID)).toBe(true);
+    expect((await refused.rotations()).rotations[0]?.stage).toBe("published");
+    const retry = await revokeRun(["yes"], disk);
+    expect(await cli(["rotate", "site-deploy"], retry.deps)).toBe(0);
+    expect((await retry.rotations()).rotations[0]?.stage).toBe("revoked");
+  });
+
+  test("a removed destination with another value, such as another project's key, isn't shown", async () => {
+    const run = await revokeRun(["yes"], await withRemoved("0000000000000000"));
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(0);
+    expect(run.stderr.text).not.toContain("left the map");
+    expect(run.provider.tokens.has(OLD_ID)).toBe(false);
+  });
+
+  test("follow-up commands keep --env dev: the plan, the rerun hint, status, and the revoke", async () => {
     const map = MAP.replaceAll("keys.site-deploy.prod", "keys.site-deploy.dev");
-    const ok = await setup({
-      terminal: ["yes", "yes"],
-      map,
-      receipts: [{ ...(await receiptFor(OLD_VALUE)), environment: "dev" }],
+    const disk = memoryFiles({
+      "/work/billing/keypin.toml": map,
+      [REGISTRY]: registryWith("/work/billing"),
+      [STATE]: JSON.stringify({
+        version: 2,
+        receipts: [{ ...(await receiptFor(OLD_VALUE)), environment: "dev" }],
+        operations: [],
+      }),
     });
-    expect(await cli(["rotate", "site-deploy", "--env", "dev"], ok.deps)).toBe(0);
-    expect(ok.stderr.text).toContain(
+    const first = await setup({ terminal: ["yes"], disk });
+    expect(await cli(["rotate", "site-deploy", "--env", "dev"], first.deps)).toBe(0);
+    expect(first.stderr.text).toContain(
+      "then stop: the old token stays active until you run keypin rotate site-deploy --env dev again.",
+    );
+    expect(first.stderr.text).toContain(
       "Then run keypin rotate site-deploy --env dev again to revoke the old token.",
     );
-    expect(ok.stderr.text).not.toMatch(/keypin rotate site-deploy(?! --env dev)/);
+
+    const status = await setup({ disk });
+    await cli(["status"], status.deps);
+    expect(status.stdout.text).toContain(
+      `is at stage "published"; run keypin rotate site-deploy --env dev to continue`,
+    );
+
+    const hint = await setup({ disk });
+    expect(await cli(["rotate", "site-deploy", "--env", "dev"], hint.deps)).toBe(2);
+    expect(hint.stderr.text).toMatch(/&& \S+ \S+ rotate site-deploy --env dev\n/);
+
+    const revoke = await setup({ terminal: ["yes"], disk });
+    revoke.provider.tokens.set(NEW_ID, {
+      ...OLD_TOKEN,
+      id: NEW_ID,
+      name: "cicd-keypin 2026-11-10",
+      value: NEW_VALUE,
+    });
+    expect(await cli(["rotate", "site-deploy", "--env", "dev"], revoke.deps)).toBe(0);
+    expect(revoke.asked).toEqual([`Type yes to revoke the old token ${OLD_ID}: `]);
+    expect(revoke.stderr.text).toContain(
+      `Rotated site-deploy (dev): ${NEW_ID} replaced ${OLD_ID}.`,
+    );
+
+    for (const text of [
+      first.stderr.text,
+      status.stdout.text,
+      hint.stderr.text,
+      revoke.stderr.text,
+    ]) {
+      expect(text).not.toMatch(/keypin rotate site-deploy(?! --env dev)/);
+    }
   });
 });

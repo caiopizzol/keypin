@@ -395,24 +395,21 @@ async function revokeOld(run: Run, data: Rotations, rotation: Rotation): Promise
   for (const step of behind) {
     say(`  ${step.destinationId} doesn't have generation ${generation}: ${step.reason}`);
   }
-  for (const removed of plan.removed) {
-    say(
-      `  ${removed.destinationId} isn't in the map any more, and its last receipt has generation ${removed.lastReceipt.generation}`,
-    );
-  }
+  const retired = plan.removed.filter(
+    (removed) => removed.lastReceipt.generation === rotation.old.generation,
+  );
   if (behind.length) {
     say(
       `Stopped: run keypin publish ${key.id}${environment === "prod" ? "" : ` --env ${environment}`} first. Nothing was revoked.`,
     );
     return 1;
   }
-  if (plan.removed.some((removed) => removed.lastReceipt.generation !== generation)) {
-    say(
-      "Stopped: a destination that left the map may still use the old token. Remove the secret there, or put it back in the map and publish, then run this again. Nothing was revoked.",
-    );
-    return 1;
-  }
   say(`Every destination's receipt has generation ${generation}.`);
+  for (const removed of retired) {
+    say(
+      `  ${removed.destinationId} left the map and its receipt has the old token (generation ${removed.lastReceipt.generation}); revoking breaks it unless that secret is gone`,
+    );
+  }
   if (!deps.isTerminal) {
     say(
       "Stopped: revoking needs yes typed in a terminal, and --yes can't give it. Nothing was revoked.",

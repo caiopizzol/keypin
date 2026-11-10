@@ -18,6 +18,12 @@ export async function wranglerToken(path = WRANGLER_CONFIG): Promise<string> {
   return login.token;
 }
 
+export async function currentWranglerToken(path = WRANGLER_CONFIG): Promise<string> {
+  const login = await readLogin(path);
+  if (login.expired) throw new Error("the wrangler login has expired; run `wrangler whoami`");
+  return login.token;
+}
+
 async function readLogin(path: string): Promise<{ token: string; expired: boolean }> {
   let text: string;
   try {

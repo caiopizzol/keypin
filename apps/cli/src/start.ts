@@ -1,16 +1,21 @@
 import { homedir } from "node:os";
 import { createInterface } from "node:readline/promises";
 import type { Destination, IssueSpec, PublishTarget, Secret, VaultBackend } from "@keypin/core";
-import { WorkerSecretDestination } from "@keypin/destination-cloudflare";
-import { GitHubSecretDestination } from "@keypin/destination-github";
+import {
+  CloudflareReader,
+  currentWranglerToken,
+  WorkerSecretDestination,
+} from "@keypin/destination-cloudflare";
+import { ghToken, GitHubSecretDestination, listRepoSecrets } from "@keypin/destination-github";
 import { CloudflareAccountTokens } from "@keypin/provider-cloudflare";
 import { type Connect, desktopConnect, onePasswordBackend } from "@keypin/vault-1password";
 import { cli } from "./cli";
-import { createFile, diskFiles, diskLock, isFolder } from "./disk";
+import { createFile, diskFiles, diskLock, git, isFolder, listFolder } from "./disk";
 import { installProblem } from "./install";
 import { launch, onSignals } from "./launch";
 
 let vault: VaultBackend | undefined;
+let cloudflare: CloudflareReader | undefined;
 
 function destination(target: PublishTarget): Destination {
   switch (target.to) {
@@ -59,6 +64,13 @@ export function main(): Promise<number> {
     home: homedir(),
     files: diskFiles,
     isFolder,
+    listFolder,
+    git,
+    githubSecrets: (repo, login) => listRepoSecrets({ repo, token: () => ghToken(login) }),
+    workerSecrets: (account, worker) =>
+      (cloudflare ??= new CloudflareReader({
+        token: () => currentWranglerToken(),
+      })).listWorkerSecrets(account, worker),
     createFile,
     vault: () => (vault ??= onePasswordBackend(connect)),
     now: () => new Date(),

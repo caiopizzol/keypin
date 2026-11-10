@@ -4,6 +4,7 @@ import type {
   IssueSpec,
   PublishTarget,
   Secret,
+  StoreRead,
   TokenProvider,
   VaultBackend,
 } from "@keypin/core";
@@ -32,6 +33,11 @@ export type Lock = (
 
 export type CreateFile = (path: string, text: string) => Promise<"created" | "exists" | "link">;
 
+export interface FolderEntry {
+  name: string;
+  kind: "file" | "folder" | "other";
+}
+
 export interface Writer {
   write(text: string): void;
 }
@@ -43,6 +49,10 @@ export interface Deps {
   home: string;
   files: Files;
   isFolder(path: string): Promise<boolean>;
+  listFolder(path: string): Promise<FolderEntry[]>;
+  git(folder: string, args: readonly string[]): Promise<string | null>;
+  githubSecrets(repo: string, login: string): Promise<StoreRead>;
+  workerSecrets(account: string, worker: string): Promise<StoreRead>;
   createFile: CreateFile;
   vault(): VaultBackend;
   now(): Date;

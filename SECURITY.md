@@ -1,6 +1,6 @@
 # Security
 
-keypin is pre-release. Only the latest commit on `main` gets fixes.
+Only the latest release gets security fixes.
 
 ## Reporting a vulnerability
 

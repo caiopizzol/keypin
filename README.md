@@ -85,6 +85,7 @@ keypin publish api-token    # write the prod value to the GitHub secret
 keypin init [folder]         # register a project and write a keypin.toml
 keypin unregister [folder]   # stop listing a project (its keypin.toml stays)
 keypin status [--json]       # every key, when it's due, and any problem
+keypin discover [folder]     # every key name a project uses, where it's set, and a draft map
 keypin run -- <command>      # run a command with the project's dev keys
 keypin publish <key-id>      # check each destination's account, then write the key
 keypin rotate <key-id>       # replace a Cloudflare API token, then revoke the old one
@@ -97,6 +98,8 @@ never approves a first write, a changed account or vault item, or a revoke.
 
 - [Configuration](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md): every field in
   `keypin.toml` and in the vault items.
+- [Discover](https://github.com/caiopizzol/keypin/blob/main/docs/discover.md): what `discover` reads, the problems
+  it reports, and its draft map.
 - [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md): destinations, account checks and
   approvals.
 - [Rotation](https://github.com/caiopizzol/keypin/blob/main/docs/rotation.md): how `rotate` works, and the admin

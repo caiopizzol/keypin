@@ -95,3 +95,24 @@ export {
   type StatusRow,
 } from "./status";
 export const packageName = "@keypin/core";
+export {
+  buildDiscovery,
+  draftMap,
+  envFileKind,
+  envNames,
+  SKIPPED_FOLDERS,
+  WRANGLER_FILES,
+  workflowRefs,
+  wranglerWorkers,
+  type DiscoverInput,
+  type DiscoverProblem,
+  type Discovery,
+  type DraftVault,
+  type EnvFileKind,
+  type NameRow,
+  type Source,
+  type StoreRead,
+  type Unknown,
+  type WorkerDeclaration,
+  type WorkflowRefs,
+} from "./discover";

@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/status-pre--release-8A5300" alt="Pre-release">
+  <a href="https://www.npmjs.com/package/keypin"><img src="https://img.shields.io/npm/v/keypin?color=121311" alt="npm version"></a>
   <img src="https://img.shields.io/badge/license-MIT-121311" alt="MIT">
   <img src="https://img.shields.io/badge/runtime-Bun-121311" alt="Bun">
 </p>

@@ -121,17 +121,8 @@ nav ul a:hover {
   color: var(--ink);
   text-decoration: underline;
 }
-.pre {
-  margin-left: auto;
-  font: 500 11px/1 var(--mono);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--warn);
-  border: 1px solid var(--warn);
-  padding: 5px 7px;
-  white-space: nowrap;
-}
 .gh {
+  margin-left: auto;
   font: 500 13px/1 var(--mono);
   text-decoration: none;
   padding: 9px 14px;

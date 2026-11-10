@@ -1,0 +1,15 @@
+{
+  "name": "@keypin/vault-1password",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@1password/sdk": "0.5.0",
+    "@keypin/core": "workspace:*"
+  }
+}

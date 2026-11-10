@@ -1,0 +1,264 @@
+import sodium from "libsodium-wrappers";
+import { assert, beforeAll, describe, expect, test } from "vite-plus/test";
+import { isRecord, Secret } from "@keypin/core";
+import { type Fetch, GitHubSecretDestination, sealedBox } from "../src/index";
+
+const SENTINEL = "sentinel-value-7f3a9c";
+const TOKEN = "token-sentinel-41b2";
+const REPO = "acme/billing";
+
+type Reply = { status: number; body?: unknown; headers?: Record<string, string> };
+type Routes = Record<string, Reply | (() => Reply)>;
+
+let keyPair: { publicKey: Uint8Array; privateKey: Uint8Array };
+beforeAll(async () => {
+  await sodium.ready;
+  keyPair = sodium.crypto_box_keypair();
+});
+
+const publicKey = () => sodium.to_base64(keyPair.publicKey, sodium.base64_variants.ORIGINAL);
+
+function happyRoutes(): Routes {
+  return {
+    "GET /user": {
+      status: 200,
+      body: { login: "acme" },
+      headers: { "x-oauth-scopes": "gist, read:org, repo" },
+    },
+    [`GET /repos/${REPO}`]: {
+      status: 200,
+      body: { owner: { login: "acme" }, permissions: { admin: true } },
+    },
+    [`GET /repos/${REPO}/actions/secrets/public-key`]: {
+      status: 200,
+      body: { key_id: "kid-1", key: publicKey() },
+    },
+    [`PUT /repos/${REPO}/actions/secrets/API_KEY`]: { status: 201 },
+    [`GET /repos/${REPO}/actions/secrets/API_KEY`]: {
+      status: 200,
+      body: {
+        name: "API_KEY",
+        created_at: "2026-11-09T18:00:00Z",
+        updated_at: "2026-11-09T18:00:00Z",
+      },
+    },
+  };
+}
+
+function fakeFetch(routes: Routes) {
+  const requests: {
+    method: string;
+    path: string;
+    headers: Record<string, string>;
+    body: string;
+  }[] = [];
+  const fetch: Fetch = async (input, init) => {
+    const url = new URL(input);
+    const method = init.method;
+    requests.push({ method, path: url.pathname, headers: init.headers, body: init.body ?? "" });
+    const route = routes[`${method} ${url.pathname}`];
+    const reply =
+      typeof route === "function"
+        ? route()
+        : (route ?? { status: 404, body: { message: "Not Found" } });
+    const body = reply.body === undefined ? null : JSON.stringify(reply.body);
+    return new Response(body, { status: reply.status, headers: reply.headers });
+  };
+  return { fetch, requests };
+}
+
+function destination(routes: Routes, options: { account?: string } = {}) {
+  const fake = fakeFetch(routes);
+  const github = new GitHubSecretDestination({
+    repo: REPO,
+    token: async () => TOKEN,
+    fetch: fake.fetch,
+    ...options,
+  });
+  return { github, requests: fake.requests };
+}
+
+function expectNoSentinel(...seen: unknown[]) {
+  const text = JSON.stringify(
+    seen.map((s) => (s instanceof Error ? `${s.message} ${s.stack}` : s)),
+  );
+  expect(text).not.toContain(SENTINEL);
+  expect(text).not.toContain(TOKEN);
+}
+
+describe("sealed box", () => {
+  test("round-trips with a fixed key pair", async () => {
+    const encrypted = await sealedBox(SENTINEL, publicKey());
+    expect(encrypted).not.toContain(SENTINEL);
+    const ciphertext = sodium.from_base64(encrypted, sodium.base64_variants.ORIGINAL);
+    const plain = sodium.crypto_box_seal_open(
+      ciphertext,
+      keyPair.publicKey,
+      keyPair.privateKey,
+      "text",
+    );
+    expect(plain).toBe(SENTINEL);
+  });
+});
+
+describe("checkAccount", () => {
+  test("passes when the owner, publisher, admin and scope match", async () => {
+    const { github, requests } = destination(happyRoutes());
+    const check = await github.checkAccount();
+    expect(check).toEqual({
+      publisher: "acme",
+      destinationAccount: "acme",
+      expected: "acme",
+      ok: true,
+    });
+    expect(requests.map((r) => r.method)).toEqual(["GET", "GET"]);
+    expect(requests[0]?.headers.Authorization).toBe(`Bearer ${TOKEN}`);
+  });
+
+  test("a wrong owner fails, and write then refuses", async () => {
+    const routes = happyRoutes();
+    routes[`GET /repos/${REPO}`] = {
+      status: 200,
+      body: { owner: { login: "someone-else" }, permissions: { admin: true } },
+    };
+    const { github, requests } = destination(routes);
+    const check = await github.checkAccount();
+    expect(check.ok).toBe(false);
+    expect(check.destinationAccount).toBe("someone-else");
+    expect(check.reason).toContain("someone-else");
+    await expect(github.write("API_KEY", new Secret(SENTINEL))).rejects.toThrow(
+      /checkAccount hasn't passed/,
+    );
+    expect(requests.some((r) => r.method === "PUT")).toBe(false);
+  });
+
+  test("a token for another login fails", async () => {
+    const routes = happyRoutes();
+    routes["GET /user"] = {
+      status: 200,
+      body: { login: "acme-ops" },
+      headers: { "x-oauth-scopes": "repo" },
+    };
+    const check = await destination(routes).github.checkAccount();
+    expect(check).toMatchObject({ publisher: "acme-ops", expected: "acme", ok: false });
+  });
+
+  test("without admin, or without the repo scope, it fails", async () => {
+    const noAdmin = happyRoutes();
+    noAdmin[`GET /repos/${REPO}`] = {
+      status: 200,
+      body: { owner: { login: "acme" }, permissions: { admin: false } },
+    };
+    expect((await destination(noAdmin).github.checkAccount()).reason).toMatch(/admin/);
+
+    const noScope = happyRoutes();
+    noScope["GET /user"] = {
+      status: 200,
+      body: { login: "acme" },
+      headers: { "x-oauth-scopes": "gist" },
+    };
+    expect((await destination(noScope).github.checkAccount()).reason).toMatch(/repo scope/);
+  });
+
+  test("an invisible repo fails with no destination account", async () => {
+    const routes = happyRoutes();
+    delete routes[`GET /repos/${REPO}`];
+    const check = await destination(routes).github.checkAccount();
+    expect(check).toMatchObject({ destinationAccount: null, ok: false });
+  });
+
+  test("a check that fails after one that passed turns write off again", async () => {
+    let owner = "acme";
+    const routes = happyRoutes();
+    routes[`GET /repos/${REPO}`] = () => ({
+      status: 200,
+      body: { owner: { login: owner }, permissions: { admin: true } },
+    });
+    const { github } = destination(routes);
+    expect((await github.checkAccount()).ok).toBe(true);
+    owner = "someone-else";
+    expect((await github.checkAccount()).ok).toBe(false);
+    await expect(github.write("API_KEY", new Secret(SENTINEL))).rejects.toThrow(/checkAccount/);
+  });
+});
+
+describe("write", () => {
+  test("PUTs a sealed box with the key ID and returns updated_at", async () => {
+    const { github, requests } = destination(happyRoutes());
+    await github.checkAccount();
+    const evidence = await github.write("API_KEY", new Secret(SENTINEL));
+    expect(evidence).toEqual({
+      destination: `github ${REPO} (repo secret)`,
+      secret: "API_KEY",
+      created: true,
+      updatedAt: "2026-11-09T18:00:00Z",
+    });
+
+    const put = requests.find((r) => r.method === "PUT");
+    assert(put);
+    expect(put.body).not.toContain(SENTINEL);
+    const body: unknown = JSON.parse(put.body);
+    assert(isRecord(body) && typeof body.encrypted_value === "string");
+    expect(Object.keys(body).sort()).toEqual(["encrypted_value", "key_id"]);
+    expect(body.key_id).toBe("kid-1");
+    const ciphertext = sodium.from_base64(body.encrypted_value, sodium.base64_variants.ORIGINAL);
+    expect(
+      sodium.crypto_box_seal_open(ciphertext, keyPair.publicKey, keyPair.privateKey, "text"),
+    ).toBe(SENTINEL);
+    expectNoSentinel(evidence, github.describe());
+  });
+
+  test("rejects names GitHub doesn't allow", async () => {
+    const { github } = destination(happyRoutes());
+    await github.checkAccount();
+    await expect(github.write("GITHUB_TOKEN", new Secret(SENTINEL))).rejects.toThrow(
+      /valid GitHub secret name/,
+    );
+    await expect(github.write("1BAD", new Secret(SENTINEL))).rejects.toThrow(
+      /valid GitHub secret name/,
+    );
+  });
+});
+
+describe("no value or token in any output", () => {
+  test("a 500 on the PUT", async () => {
+    const routes = happyRoutes();
+    routes[`PUT /repos/${REPO}/actions/secrets/API_KEY`] = {
+      status: 500,
+      body: { message: `boom ${SENTINEL}` },
+    };
+    const { github } = destination(routes);
+    const check = await github.checkAccount();
+    const failure = github.write("API_KEY", new Secret(SENTINEL));
+    await expect(failure).rejects.toThrow(/HTTP 500/);
+    expectNoSentinel(await failure.catch((e: unknown) => e), check, github.describe());
+  });
+
+  test("a 500 on /user, a 500 on the public key, and a missing secret after the write", async () => {
+    const userDown = happyRoutes();
+    userDown["GET /user"] = { status: 500, body: { message: SENTINEL } };
+    const e1 = await destination(userDown)
+      .github.checkAccount()
+      .catch((e: unknown) => e);
+
+    const keyDown = happyRoutes();
+    keyDown[`GET /repos/${REPO}/actions/secrets/public-key`] = { status: 500 };
+    const d2 = destination(keyDown).github;
+    await d2.checkAccount();
+    const e2 = await d2.write("API_KEY", new Secret(SENTINEL)).catch((e: unknown) => e);
+
+    const gone = happyRoutes();
+    delete gone[`GET /repos/${REPO}/actions/secrets/API_KEY`];
+    const d3 = destination(gone).github;
+    await d3.checkAccount();
+    const e3 = await d3.write("API_KEY", new Secret(SENTINEL)).catch((e: unknown) => e);
+
+    for (const e of [e1, e2, e3]) expect(e).toBeInstanceOf(Error);
+    expectNoSentinel(e1, e2, e3);
+  });
+
+  test("the secret prints as [secret]", () => {
+    const secret = new Secret(SENTINEL);
+    expectNoSentinel(String(secret), JSON.stringify({ secret }));
+  });
+});

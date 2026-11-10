@@ -1,0 +1,49 @@
+{
+  "name": "keypin",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A map of every app key across your projects, published to the account it's pinned to. Values stay in your vault.",
+  "homepage": "https://github.com/caiopizzol/keypin#readme",
+  "bugs": {
+    "url": "https://github.com/caiopizzol/keypin/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/caiopizzol/keypin.git"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "tools/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "check": "vp check && ! git grep --untracked -nE '(oxlint|eslint)-(disable|enable)' -- '*.ts'",
+    "test": "bun --bun vp test",
+    "typecheck": "vp run -r typecheck",
+    "prepare": "vp config"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "overrides": {
+    "vite": "catalog:"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "bun",
+      "version": "1.4.4",
+      "onFail": "download"
+    }
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "catalog": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@1.5.1",
+    "vite-plus": "1.5.1"
+  }
+}

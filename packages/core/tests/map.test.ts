@@ -1,0 +1,405 @@
+import { describe, expect, test } from "vite-plus/test";
+import { parseMap } from "../src/index";
+import { MAP_FILE, VALID_MAP } from "./fixtures";
+
+const VAULTS = `
+[vaults.personal]
+kind = "1password"
+account = "my.1password.com"
+vault = "Private"
+`;
+
+function errorsOf(text: string): string[] {
+  const result = parseMap(text, MAP_FILE);
+  if (result.ok) throw new Error("expected the map to be rejected");
+  return result.errors;
+}
+
+describe("a valid map", () => {
+  test("the design's example parses into typed entries", () => {
+    const result = parseMap(VALID_MAP, MAP_FILE);
+    expect(result).toEqual({
+      ok: true,
+      map: {
+        file: MAP_FILE,
+        keys: [
+          {
+            id: "web-session",
+            env: "SESSION_SECRET",
+            owner: "web",
+            rotateEvery: "180d",
+            environments: {
+              dev: {
+                ref: {
+                  kind: "1password",
+                  account: "my.1password.com",
+                  vault: "Private",
+                  item: "web dev session secret",
+                },
+                publish: [],
+              },
+              prod: {
+                ref: {
+                  kind: "1password",
+                  account: "my.1password.com",
+                  vault: "Private",
+                  item: "web prod session secret",
+                },
+                publish: [
+                  {
+                    to: "cloudflare-worker",
+                    account: "11111111111111111111111111111111",
+                    worker: "web",
+                  },
+                  { to: "github-actions", repo: "acme/web", account: "acme" },
+                ],
+              },
+            },
+            consumers: [{ name: "support-bot", kind: "manual" }],
+          },
+        ],
+      },
+    });
+  });
+
+  test("tables instead of inline tables, an explicit GitHub account, and no rotate_every", () => {
+    const result = parseMap(
+      `${VAULTS}
+[keys.billing-stripe]
+env = "STRIPE_API_KEY"
+owner = "billing"
+
+[keys.billing-stripe.prod]
+vault = "personal"
+item = "billing stripe api key"
+
+[[keys.billing-stripe.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+account = "acme-ops"
+`,
+      MAP_FILE,
+    );
+    if (!result.ok) throw new Error(result.errors.join("\n"));
+    const [key] = result.map.keys;
+    expect(key?.rotateEvery).toBeNull();
+    expect(key?.environments.dev).toBeUndefined();
+    expect(key?.environments.prod?.publish).toEqual([
+      { to: "github-actions", repo: "acme/billing", account: "acme-ops" },
+    ]);
+  });
+
+  test("an empty map has no keys", () => {
+    expect(parseMap("", MAP_FILE)).toEqual({ ok: true, map: { file: MAP_FILE, keys: [] } });
+  });
+});
+
+describe("missing fields", () => {
+  const base = { env: '"SESSION_SECRET"', owner: '"web"' };
+  const key = (fields: Record<string, string>) =>
+    `${VAULTS}\n[keys.k]\n${Object.entries(fields)
+      .map(([name, value]) => `${name} = ${value}`)
+      .join("\n")}\n`;
+
+  test.each([
+    [
+      "env",
+      key({ owner: base.owner, prod: '{ vault = "personal", item = "i" }' }),
+      `key "k": missing field "env"`,
+    ],
+    [
+      "owner",
+      key({ env: base.env, prod: '{ vault = "personal", item = "i" }' }),
+      `key "k": missing field "owner"`,
+    ],
+    ["an environment", key(base), `key "k": needs at least one of "dev", "prod"`],
+    ["vault", key({ ...base, prod: '{ item = "i" }' }), `key "k" prod: missing field "vault"`],
+    [
+      "item",
+      key({ ...base, prod: '{ vault = "personal" }' }),
+      `key "k" prod: missing field "item"`,
+    ],
+    [
+      "worker",
+      key({
+        ...base,
+        prod: '{ vault = "personal", item = "i", publish = [{ to = "cloudflare-worker", account = "a" }] }',
+      }),
+      `key "k" prod: publish[0]: missing field "worker"`,
+    ],
+    [
+      "a Worker's account",
+      key({
+        ...base,
+        prod: '{ vault = "personal", item = "i", publish = [{ to = "cloudflare-worker", worker = "w" }] }',
+      }),
+      `key "k" prod: publish[0]: missing field "account"`,
+    ],
+    [
+      "repo",
+      key({
+        ...base,
+        prod: '{ vault = "personal", item = "i", publish = [{ to = "github-actions" }] }',
+      }),
+      `key "k" prod: publish[0]: missing field "repo"`,
+    ],
+    [
+      "to",
+      key({ ...base, prod: '{ vault = "personal", item = "i", publish = [{ repo = "a/b" }] }' }),
+      `key "k" prod: publish[0]: missing field "to"`,
+    ],
+    [
+      "a consumer's kind",
+      key({ ...base, dev: '{ vault = "personal", item = "i" }', consumers: '[{ name = "bot" }]' }),
+      `key "k" consumers[0]: missing field "kind"`,
+    ],
+  ])("%s", (_, text, message) => {
+    expect(errorsOf(text)).toContain(`${MAP_FILE}: ${message}`);
+  });
+
+  test("a vault's account", () => {
+    expect(errorsOf(`[vaults.op]\nkind = "1password"\nvault = "Private"\n`)).toEqual([
+      `${MAP_FILE}: vault "op": missing field "account"`,
+    ]);
+  });
+
+  test("an undeclared vault", () => {
+    expect(
+      errorsOf(`[keys.k]\nenv = "A"\nowner = "o"\ndev = { vault = "op", item = "i" }\n`),
+    ).toEqual([`${MAP_FILE}: key "k" dev: field "vault" names a vault that isn't under [vaults]`]);
+  });
+});
+
+describe("unknown fields are errors that name the file, the key and the field", () => {
+  test.each([
+    ["top level", `owner = "x"\n`, `unknown top-level field "owner"`],
+    [
+      "vault",
+      `[vaults.op]\nkind = "1password"\naccount = "a"\nvault = "v"\ntoken = "x"\n`,
+      `vault "op": unknown field "token"`,
+    ],
+    [
+      "key",
+      `${VAULTS}[keys.k]\nenv = "A"\nowner = "o"\nrotate = "90d"\ndev = { vault = "personal", item = "i" }\n`,
+      `key "k": unknown field "rotate"`,
+    ],
+    [
+      "environment name",
+      `${VAULTS}[keys.k]\nenv = "A"\nowner = "o"\ndev = { vault = "personal", item = "i" }\nstaging = { vault = "personal", item = "i" }\n`,
+      `key "k": unknown field "staging"`,
+    ],
+    [
+      "environment",
+      `${VAULTS}[keys.k]\nenv = "A"\nowner = "o"\ndev = { vault = "personal", item = "i", value = "x" }\n`,
+      `key "k" dev: unknown field "value"`,
+    ],
+    [
+      "Worker target",
+      `${VAULTS}[keys.k]\nenv = "A"\nowner = "o"\nprod = { vault = "personal", item = "i", publish = [{ to = "cloudflare-worker", account = "a", worker = "w", repo = "x/y" }] }\n`,
+      `key "k" prod: publish[0]: unknown field "repo" for cloudflare-worker`,
+    ],
+    [
+      "GitHub target",
+      `${VAULTS}[keys.k]\nenv = "A"\nowner = "o"\nprod = { vault = "personal", item = "i", publish = [{ to = "github-actions", repo = "x/y", environment = "production" }] }\n`,
+      `key "k" prod: publish[0]: unknown field "environment" for github-actions`,
+    ],
+    [
+      "consumer",
+      `${VAULTS}[keys.k]\nenv = "A"\nowner = "o"\ndev = { vault = "personal", item = "i" }\nconsumers = [{ name = "b", kind = "manual", url = "x" }]\n`,
+      `key "k" consumers[0]: unknown field "url"`,
+    ],
+  ])("%s", (_, text, message) => {
+    expect(errorsOf(text)).toEqual([`${MAP_FILE}: ${message}`]);
+  });
+});
+
+describe("wrong kinds and values", () => {
+  test.each([
+    [
+      "destination",
+      `{ to = "dotenv", path = ".env" }`,
+      `key "k" prod: publish[0]: field "to" must be one of: cloudflare-worker, github-actions`,
+    ],
+    [
+      "repo without an owner",
+      `{ to = "github-actions", repo = "billing" }`,
+      `key "k" prod: publish[0]: field "repo" must be "owner/name"`,
+    ],
+    [
+      "duplicate destination",
+      `{ to = "github-actions", repo = "a/b" }, { to = "github-actions", repo = "a/b", account = "c" }`,
+      `key "k" prod: publish[1]: the same destination as publish[0]`,
+    ],
+    [
+      "non-string field",
+      `{ to = "cloudflare-worker", account = 7, worker = "w" }`,
+      `key "k" prod: publish[0]: field "account" must be a non-empty string`,
+    ],
+  ])("%s", (_, targets, message) => {
+    const text = `${VAULTS}[keys.k]\nenv = "A"\nowner = "o"\nprod = { vault = "personal", item = "i", publish = [${targets}] }\n`;
+    expect(errorsOf(text)).toEqual([`${MAP_FILE}: ${message}`]);
+  });
+
+  test("an unknown vault kind", () => {
+    expect(errorsOf(`[vaults.ss]\nkind = "infisical"\naccount = "a"\nvault = "v"\n`)).toEqual([
+      `${MAP_FILE}: vault "ss": field "kind" must be one of: 1password`,
+    ]);
+  });
+
+  test("a bad rotate_every, env name and key ID", () => {
+    expect(
+      errorsOf(
+        `${VAULTS}[keys.K_1]\nenv = "MY-KEY"\nowner = "o"\nrotate_every = "soon"\ndev = { vault = "personal", item = "i" }\n`,
+      ),
+    ).toEqual([
+      `${MAP_FILE}: key "K_1": a key ID uses lowercase letters, digits and dashes`,
+      `${MAP_FILE}: key "K_1": field "env" must be a variable name: letters, digits and _, not starting with a digit`,
+      `${MAP_FILE}: key "K_1": field "rotate_every" must be <n>d, <n>w, <n>m or never`,
+    ]);
+  });
+
+  test("a GITHUB_ name can't go to github-actions, in any case", () => {
+    for (const env of ["GITHUB_TOKEN", "github_app_key"]) {
+      expect(
+        errorsOf(
+          `${VAULTS}[keys.k]\nenv = "${env}"\nowner = "o"\ndev = { vault = "personal", item = "i" }\nprod = { vault = "personal", item = "i", publish = [{ to = "cloudflare-worker", account = "a", worker = "w" }, { to = "github-actions", repo = "a/b" }] }\n`,
+        ),
+      ).toEqual([
+        `${MAP_FILE}: key "k" prod: publish[1]: github-actions can't take this key, because GitHub reserves secret names that start with GITHUB_; rename field "env"`,
+      ]);
+    }
+  });
+
+  test("a GITHUB_ name is fine anywhere else", () => {
+    const result = parseMap(
+      `${VAULTS}[keys.k]\nenv = "GITHUB_TOKEN"\nowner = "o"\ndev = { vault = "personal", item = "i" }\nprod = { vault = "personal", item = "i", publish = [{ to = "cloudflare-worker", account = "a", worker = "w" }] }\n`,
+      MAP_FILE,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("a duplicate names the first valid entry it repeats, by its place in the map", () => {
+    const worker = (name: string) =>
+      `{ to = "cloudflare-worker", account = "a", worker = "${name}" }`;
+    const prod = (targets: string[]) =>
+      `${VAULTS}[keys.k]\nenv = "A"\nowner = "o"\nprod = { vault = "personal", item = "i", publish = [${targets.join(", ")}] }\n`;
+    expect(errorsOf(prod([worker("x"), worker("x"), worker("y"), worker("y")]))).toEqual([
+      `${MAP_FILE}: key "k" prod: publish[1]: the same destination as publish[0]`,
+      `${MAP_FILE}: key "k" prod: publish[3]: the same destination as publish[2]`,
+    ]);
+    expect(errorsOf(prod(["{}", worker("x"), worker("x")]))).toEqual([
+      `${MAP_FILE}: key "k" prod: publish[0]: missing field "to"`,
+      `${MAP_FILE}: key "k" prod: publish[2]: the same destination as publish[1]`,
+    ]);
+  });
+
+  test("one destination secret can't belong to two keys, or to a key's dev and prod", () => {
+    const repo = `{ to = "github-actions", repo = "acme/billing" }`;
+    const twoKeys = `${VAULTS}[keys.token-a]\nenv = "API_TOKEN"\nowner = "o"\nprod = { vault = "personal", item = "a", publish = [${repo}] }\n[keys.token-b]\nenv = "api_token"\nowner = "o"\nprod = { vault = "personal", item = "b", publish = [${repo}] }\n`;
+    expect(errorsOf(twoKeys)).toEqual([
+      `${MAP_FILE}: key "token-b" prod publish[0]: writes the same destination secret as key "token-a" prod publish[0]`,
+    ]);
+    const devAndProd = `${VAULTS}[keys.deploy]\nenv = "DEPLOY_TOKEN"\nowner = "o"\ndev = { vault = "personal", item = "b", publish = [${repo}] }\nprod = { vault = "personal", item = "a", publish = [${repo}] }\n`;
+    expect(errorsOf(devAndProd)).toEqual([
+      `${MAP_FILE}: key "deploy" prod publish[0]: writes the same destination secret as key "deploy" dev publish[0]`,
+    ]);
+  });
+
+  test("a GitHub repo compares without case, like GitHub", () => {
+    const target = (repo: string) => `{ to = "github-actions", repo = "${repo}" }`;
+    expect(
+      errorsOf(
+        `${VAULTS}[keys.a]\nenv = "TOKEN"\nowner = "o"\nprod = { vault = "personal", item = "a", publish = [${target("acme/billing")}] }\n[keys.b]\nenv = "TOKEN"\nowner = "o"\nprod = { vault = "personal", item = "b", publish = [${target("Acme/Billing")}] }\n`,
+      ),
+    ).toEqual([
+      `${MAP_FILE}: key "b" prod publish[0]: writes the same destination secret as key "a" prod publish[0]`,
+    ]);
+  });
+
+  test("the same Worker and secret name in two Cloudflare accounts are two secrets", () => {
+    const worker = (account: string) =>
+      `{ to = "cloudflare-worker", account = "${account}", worker = "api" }`;
+    const result = parseMap(
+      `${VAULTS}[keys.k]\nenv = "TOKEN"\nowner = "o"\ndev = { vault = "personal", item = "d", publish = [${worker("aaaa")}] }\nprod = { vault = "personal", item = "p", publish = [${worker("bbbb")}] }\n`,
+      MAP_FILE,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("the same Worker secret name in two Workers, or another case of a Worker secret, is fine", () => {
+    const worker = (name: string) =>
+      `{ to = "cloudflare-worker", account = "a", worker = "${name}" }`;
+    const result = parseMap(
+      `${VAULTS}[keys.a]\nenv = "TOKEN"\nowner = "o"\nprod = { vault = "personal", item = "a", publish = [${worker("one")}] }\n[keys.b]\nenv = "TOKEN"\nowner = "o"\nprod = { vault = "personal", item = "b", publish = [${worker("two")}] }\n[keys.c]\nenv = "token"\nowner = "o"\nprod = { vault = "personal", item = "c", publish = [${worker("one")}] }\n`,
+      MAP_FILE,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("publish must be a list", () => {
+    expect(
+      errorsOf(
+        `${VAULTS}[keys.k]\nenv = "A"\nowner = "o"\nprod = { vault = "personal", item = "i", publish = { to = "github-actions", repo = "a/b" } }\n`,
+      ),
+    ).toEqual([`${MAP_FILE}: key "k" prod: field "publish" must be a list`]);
+  });
+
+  test("invalid TOML names the file", () => {
+    const [error] = errorsOf(`env = "A"\nenv = "B"\n`);
+    expect(error).toMatch(new RegExp(`^${MAP_FILE}: not valid TOML: `));
+  });
+
+  test("no error quotes the text it found, so a value pasted by mistake stays out of the output", () => {
+    const pasted = "sentinel-pasted-value-5555";
+    const target = (fields: string) =>
+      `${VAULTS}[keys.k]\nenv = "A"\nowner = "o"\nprod = { vault = "personal", item = "i", publish = [${fields}] }\n`;
+    const texts = [
+      `API_KEY=${pasted}\n`,
+      `k = ${pasted}\n`,
+      `k = { a = ${pasted} }\n`,
+      `k = [${pasted}]\n`,
+      `k = 1${pasted}\n`,
+      `k = "\\q${pasted}"\n`,
+      `k = 'it''s ${pasted}'\n`,
+      `k = \u00e9${pasted}\n`,
+      `k = "\u0001${pasted}"\n`,
+      `k = \u0002${pasted}\n`,
+      `${VAULTS}[keys.k]\nenv = "${pasted}"\nowner = "o"\ndev = { vault = "personal", item = "i" }\n`,
+      `${VAULTS}[keys.k]\nenv = "A"\nowner = "o"\nrotate_every = "${pasted}"\ndev = { vault = "personal", item = "i" }\n`,
+      `${VAULTS}[keys.k]\nenv = "A"\nowner = "o"\ndev = { vault = "${pasted}", item = "i" }\n`,
+      `[vaults.v]\nkind = "${pasted}"\naccount = "a"\nvault = "v"\n`,
+      target(`{ to = "${pasted}" }`),
+      target(`{ to = "github-actions", repo = "${pasted}" }`),
+      target(
+        `{ to = "cloudflare-worker", account = "a", worker = "${pasted}" }, { to = "cloudflare-worker", account = "b", worker = "${pasted}" }`,
+      ),
+    ];
+    for (const text of texts) {
+      const errors = errorsOf(text);
+      expect(errors.length).toBeGreaterThan(0);
+      expect(errors.join("\n")).not.toContain(pasted);
+      expect(errors.join("\n")).not.toContain("sentinel");
+      expect(errors.join("\n")).not.toMatch(/0x[0-9a-f]{2}/i);
+    }
+  });
+
+  test("a TOML error keeps what went wrong and drops the quoted text", () => {
+    expect(errorsOf(`API_KEY=sentinel-x\n`)).toEqual([
+      `${MAP_FILE}: not valid TOML: Strings must be quoted`,
+    ]);
+    expect(errorsOf(`[a]\nb = 1\n[a]\n`)).toEqual([
+      `${MAP_FILE}: not valid TOML: Cannot redefine table`,
+    ]);
+    expect(errorsOf(`k = \u00e9x\n`)).toEqual([`${MAP_FILE}: not valid TOML: Expected a value`]);
+    expect(errorsOf(`k = "\u0001x"\n`)).toEqual([
+      `${MAP_FILE}: not valid TOML: Control character must be escaped in a string`,
+    ]);
+    expect(errorsOf(`k = "a" b\n`)).toEqual([
+      `${MAP_FILE}: not valid TOML: Expected a newline or end of file after a key/value pair`,
+    ]);
+  });
+
+  test("every error is reported, not just the first", () => {
+    expect(errorsOf(`${VAULTS}[keys.a]\nenv = "A"\n\n[keys.b]\nowner = "o"\n`)).toHaveLength(4);
+  });
+});

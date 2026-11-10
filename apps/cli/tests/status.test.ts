@@ -1,0 +1,179 @@
+import { describe, expect, test } from "vite-plus/test";
+import { cli } from "../src/cli";
+import {
+  fakeDeps,
+  fakeVault,
+  memoryFiles,
+  BILLING_MAP,
+  parseJson,
+  REGISTRY,
+  registryWith,
+  WEB_MAP,
+  STATE,
+} from "./fakes";
+
+const METADATA = {
+  "web dev session secret": { rotated: "2026-11-09", rotateEvery: "365d" },
+  "web prod session secret": { rotated: "2026-11-09", rotateEvery: "180d" },
+  "billing stripe api key": { rotated: "2026-10-23", rotateEvery: "365d" },
+};
+
+function setup(options: { failing?: string[]; state?: string } = {}) {
+  const files = memoryFiles({
+    [REGISTRY]: registryWith("/work/billing", "/work/web"),
+    "/work/billing/keypin.toml": BILLING_MAP,
+    "/work/web/keypin.toml": WEB_MAP,
+    ...(options.state ? { [STATE]: options.state } : {}),
+  });
+  const fake = fakeVault({ metadata: METADATA, failing: options.failing });
+  return { ...fakeDeps({ disk: files, backend: fake.vault }), calls: fake.calls };
+}
+
+describe("keypin status", () => {
+  test("lists every key with its rotation dates and missing receipts", async () => {
+    const { deps, stdout, stderr, calls } = setup();
+    expect(await cli(["status"], deps)).toBe(1);
+    expect(stdout.text).toMatch(
+      /web-session\s+dev\s+SESSION_SECRET\s+web\s+web dev session secret\s+2026-11-09\s+365d\s+2027-11-09/,
+    );
+    expect(stdout.text).toMatch(/web-session\s+prod.+2026-11-09\s+180d\s+2027-05-08/);
+    expect(stdout.text).toMatch(/billing-stripe\s+prod.+2026-10-23\s+365d\s+2027-10-23/);
+    expect(stdout.text).toContain(
+      "-> cloudflare-worker:billing-worker:STRIPE_API_KEY (account 11111111111111111111111111111111): no receipt",
+    );
+    expect(stdout.text).toContain("Problems (3):");
+    expect(stdout.text.match(/missing-receipt/g)).toHaveLength(3);
+    expect(stdout.text).toContain("Notices (1):");
+    expect(stdout.text).toContain(
+      "authority-unknown: 2 keys (billing-stripe, web-session): what each grants is unknown",
+    );
+    expect(stdout.text.match(/authority-unknown/g)).toHaveLength(1);
+    expect(calls.toSorted()).toEqual([
+      "metadata billing stripe api key",
+      "metadata web dev session secret",
+      "metadata web prod session secret",
+    ]);
+    expect(stderr.text).toContain(`1Password account my.1password.com, vault "Private"`);
+    expect(stderr.text).toContain(`"web prod session secret"`);
+  });
+
+  test("shows a destination's last receipt", async () => {
+    const state = JSON.stringify({
+      version: 1,
+      operations: [],
+      receipts: [
+        {
+          keyId: "web-session",
+          environment: "prod",
+          destinationId: "cloudflare-worker:web:SESSION_SECRET",
+          generation: "0123456789abcdef",
+          account: {
+            pinned: "11111111111111111111111111111111",
+            publisher: "me@example.com",
+            destinationAccount: "11111111111111111111111111111111",
+          },
+          at: "2026-11-09T15:30:35Z",
+          evidence: { versionId: "v1" },
+        },
+      ],
+    });
+    const { deps, stdout } = setup({ state });
+    await cli(["status"], deps);
+    expect(stdout.text).toContain(
+      "-> cloudflare-worker:web:SESSION_SECRET (account 11111111111111111111111111111111): last published 2026-11-09T15:30:35Z by me@example.com, generation 0123456789abcdef",
+    );
+    expect(stdout.text.match(/missing-receipt/g)).toHaveLength(2);
+  });
+
+  test("a failing metadata read is rotation-unreadable, never nothing due", async () => {
+    const { deps, stdout, stderr } = setup({ failing: ["billing stripe api key"] });
+    expect(await cli(["status"], deps)).toBe(1);
+    expect(stdout.text).toMatch(/billing-stripe\s+prod.+\s-\s+-\s+unknown/);
+    expect(stdout.text.match(/rotation-unreadable/g)).toHaveLength(2);
+    expect(stderr.text).toContain(`"billing stripe api key" isn't readable`);
+  });
+
+  test("notices alone exit 0", async () => {
+    const files = memoryFiles({
+      [REGISTRY]: registryWith("/work/billing"),
+      "/work/billing/keypin.toml": BILLING_MAP.replace(/publish = \[[\s\S]*?\] \}/, "}"),
+    });
+    const { deps, stdout } = fakeDeps({
+      disk: files,
+      backend: fakeVault({ metadata: METADATA }).vault,
+    });
+    expect(await cli(["status"], deps)).toBe(0);
+    expect(stdout.text).not.toContain("Problems");
+    expect(stdout.text).toContain("Notices (1):");
+    expect(stdout.text).toContain("authority-unknown: 1 key (billing-stripe)");
+  });
+
+  test("--json prints the same rows and problems", async () => {
+    const { deps, stdout } = setup();
+    expect(await cli(["status", "--json"], deps)).toBe(1);
+    expect(parseJson(stdout.text)).toMatchObject({
+      today: "2026-11-09",
+      rows: [
+        { keyId: "billing-stripe", environment: "dev", due: "2027-10-23" },
+        { keyId: "billing-stripe", environment: "prod", due: "2027-10-23" },
+        { keyId: "web-session", environment: "dev", due: "2027-11-09" },
+        { keyId: "web-session", environment: "prod", due: "2027-05-08" },
+      ],
+    });
+    expect(stdout.text.match(/"kind": "missing-receipt"/g)).toHaveLength(3);
+    expect(stdout.text.match(/"kind": "authority-unknown"/g)).toHaveLength(4);
+  });
+
+  test("no registered projects", async () => {
+    const { deps, stdout, stderr } = fakeDeps();
+    expect(await cli(["status"], deps)).toBe(0);
+    expect(stdout.text).toContain("No projects registered");
+    expect(stderr.text).toBe("");
+    const json = fakeDeps();
+    expect(await cli(["status", "--json"], json.deps)).toBe(0);
+    expect(parseJson(json.stdout.text)).toEqual({ today: "2026-11-09", rows: [], problems: [] });
+  });
+
+  test("a registered folder without a map, or with a bad one, is a problem", async () => {
+    const files = memoryFiles({
+      [REGISTRY]: registryWith("/work/billing", "/work/web"),
+      "/work/web/keypin.toml": "[keys.x]\nenv = 1\n",
+    });
+    const { deps, stdout } = fakeDeps({ disk: files });
+    expect(await cli(["status"], deps)).toBe(1);
+    expect(stdout.text).toContain("no-map: /work/billing has no readable keypin.toml");
+    expect(stdout.text).toContain("bad-map:");
+  });
+
+  test("an unreadable keypin.toml is reported for its project, and the others still show", async () => {
+    for (const json of [false, true]) {
+      const disk = memoryFiles({
+        [REGISTRY]: registryWith("/work/billing", "/work/web"),
+        "/work/web/keypin.toml": WEB_MAP,
+      });
+      disk.files.read = async (path) => {
+        if (path === "/work/billing/keypin.toml") throw new Error("EACCES: permission denied");
+        return disk.contents.get(path) ?? null;
+      };
+      const { deps, stdout, stderr } = fakeDeps({
+        disk,
+        backend: fakeVault({ metadata: METADATA }).vault,
+      });
+      expect(await cli(json ? ["status", "--json"] : ["status"], deps)).toBe(1);
+      expect(stderr.text).toContain(
+        "couldn't read /work/billing/keypin.toml: EACCES: permission denied",
+      );
+      if (json) {
+        expect(parseJson(stdout.text)).toMatchObject({
+          rows: [{ keyId: "web-session" }, { keyId: "web-session" }],
+          problems: expect.arrayContaining([
+            expect.objectContaining({ kind: "no-map", project: "/work/billing" }),
+          ]),
+        });
+      } else {
+        expect(stdout.text).toMatch(/web-session\s+prod/);
+        expect(stdout.text).toContain("no-map: /work/billing has no readable keypin.toml");
+      }
+    }
+  });
+});

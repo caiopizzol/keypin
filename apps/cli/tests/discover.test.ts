@@ -1,5 +1,6 @@
 import { assert, describe, expect, test } from "vite-plus/test";
 import { isRecord, parseMap, type StoreRead } from "@keypin/core";
+import { CloudflareReader } from "@keypin/destination-cloudflare";
 import { cli } from "../src/cli";
 import { fakeDeps, leaks, memoryFiles, parseJson, SENTINEL } from "./fakes";
 
@@ -236,6 +237,90 @@ dev = { vault = "work", item = "billing dev stripe" }
     const parsed = parseMap(draft, "draft");
     assert(parsed.ok, JSON.stringify(parsed));
     expect(parsed.map.keys.every((k) => k.owner === "billing")).toBe(true);
+  });
+
+  test("Worker list entries with text or key material never reach the output", async () => {
+    const reader = new CloudflareReader({
+      token: async () => "token",
+      fetch: async (url) => {
+        const path = new URL(url).pathname;
+        const body = path.endsWith("/accounts")
+          ? { result: [{ id: ACCOUNT }], result_info: { total_pages: 1 } }
+          : path.endsWith("/secrets")
+            ? {
+                result: [
+                  { name: "STRIPE_KEY", type: "secret_text", text: SENTINEL },
+                  { name: "SIGNING", type: "secret_key", key_base64: SENTINEL, algorithm: {} },
+                ],
+              }
+            : { errors: [{ message: SENTINEL }] };
+        return new Response(JSON.stringify(body), { status: path.endsWith("/user") ? 500 : 200 });
+      },
+    });
+    const { deps, stdout, stderr } = setup();
+    deps.workerSecrets = (account, worker) => reader.listWorkerSecrets(account, worker);
+    expect(await cli(["discover"], deps)).toBe(0);
+    expect(stdout.text).toMatch(/SIGNING {2}\[cloud\]/);
+    expect(await cli(["discover", "--json"], deps)).toBe(0);
+    expect(leaks(stdout.text, stderr.text)).toBe(false);
+  });
+
+  test("an expired wrangler login is unknown, and discover doesn't refresh it", async () => {
+    const { deps, stdout } = setup({
+      worker: { ok: false, reason: "the wrangler login has expired; run `wrangler whoami`" },
+    });
+    expect(await cli(["discover"], deps)).toBe(0);
+    expect(stdout.text).toContain(
+      "Worker secrets of billing (wrangler.jsonc): the wrangler login has expired; run `wrangler whoami`",
+    );
+  });
+
+  test("no workflows folder means none; an unreadable one is unknown", async () => {
+    const none = setup();
+    none.disk.folders.delete(`${ROOT}/.github/workflows`);
+    none.disk.contents.delete(`${ROOT}/.github/workflows/deploy.yml`);
+    expect(await cli(["discover"], none.deps)).toBe(0);
+    expect(none.stdout.text).not.toContain("the secrets the workflows use");
+
+    const denied = setup();
+    const original = denied.deps;
+    const deps = {
+      ...original,
+      listFolder: async (path: string) => {
+        if (path.endsWith(".github/workflows"))
+          throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+        return original.listFolder(path);
+      },
+    };
+    expect(await cli(["discover", "web"], deps)).toBe(0);
+    expect(denied.stdout.text).toContain(
+      "the secrets the workflows use: ../.github/workflows couldn't be read: EACCES",
+    );
+  });
+
+  test("doesn't run git ls-files when there are no env files", async () => {
+    const { deps, disk, calls } = setup();
+    const envFiles = Array.from(disk.contents.keys()).filter((path) =>
+      /\/(\.env|\.dev\.vars)[^/]*$/.test(path),
+    );
+    for (const path of envFiles) disk.contents.delete(path);
+    expect(await cli(["discover"], deps)).toBe(0);
+    expect(calls.some((c) => c.startsWith("git ls-files"))).toBe(false);
+    const withFiles = setup();
+    expect(await cli(["discover"], withFiles.deps)).toBe(0);
+    expect(withFiles.calls.some((c) => c.startsWith("git ls-files"))).toBe(true);
+  });
+
+  test("an invalid keypin.toml falls back to the placeholder vault in the draft", async () => {
+    const { deps, stdout } = setup({
+      files: {
+        [`${ROOT}/keypin.toml`]: `[vaults."App Secrets"]\nkind = "1password"\naccount = "a"\nvault = "v"\n[keys.Bad_Id]\nenv = "X"\n`,
+      },
+    });
+    expect(await cli(["discover"], deps)).toBe(0);
+    const draft = stdout.text.slice(stdout.text.indexOf("# Draft from keypin discover"));
+    expect(draft).toContain("[vaults.personal]");
+    assert(parseMap(draft, "draft").ok);
   });
 
   test("a bad keypin.toml is unknown, and its text isn't echoed", async () => {

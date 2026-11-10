@@ -21,7 +21,7 @@ import {
   wranglerWorkers,
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
-import { messageOf } from "../errors";
+import { errorCode, messageOf } from "../errors";
 import { MAP_FILE } from "../project";
 
 interface Scan {
@@ -132,7 +132,7 @@ export async function discover(args: string[], deps: Deps): Promise<number> {
   const draft = draftMap(discovery.names, {
     owner,
     githubAccount: login,
-    vault: mapText === null ? null : firstVault(mapText),
+    vault: map && mapText !== null ? firstVault(mapText) : null,
     takenIds: map?.keys.map((k) => k.id) ?? [],
   });
   if (draft !== null) {
@@ -188,7 +188,8 @@ async function trackedFiles(
   folder: string,
   paths: string[],
 ): Promise<Set<string> | null> {
-  const out = await deps.git(folder, ["ls-files", "-z", "--", ...(paths.length ? paths : ["."])]);
+  if (!paths.length) return new Set();
+  const out = await deps.git(folder, ["ls-files", "-z", "--", ...paths]);
   if (out === null) return null;
   return new Set(out.split("\0").filter(Boolean));
 }
@@ -198,7 +199,14 @@ async function readWorkflows(deps: Deps, folder: string, top: string | null, unk
   let entries: Awaited<ReturnType<Deps["listFolder"]>>;
   try {
     entries = await deps.listFolder(dir);
-  } catch {
+  } catch (error) {
+    if (errorCode(error) !== "ENOENT") {
+      unknowns.push({
+        what: "the secrets the workflows use",
+        reason: `${relative(folder, dir)} couldn't be read: ${messageOf(error)}`,
+        cloud: false,
+      });
+    }
     return [];
   }
   const workflows: DiscoverInput["workflows"] = [];

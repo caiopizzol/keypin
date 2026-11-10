@@ -19,8 +19,8 @@ keypin discover [folder] [--json]   # the current folder by default
   `account_id`. discover doesn't guess an account.
 - **`keypin.toml`:** names it already maps are marked `mapped`.
 
-Each name is `local`, `cloud`, `local and cloud`, or `declared, not set`. `cloud unknown` means a cloud read wasn't
-possible.
+Each name is `local`, `cloud`, `local and cloud`, or `declared, not set`. `plain variable` means it's only under
+wrangler `vars`, which hold plain values, not secrets. `cloud unknown` means a cloud read wasn't possible.
 
 ## Problems
 

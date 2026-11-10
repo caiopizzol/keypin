@@ -10,9 +10,13 @@ type Routes = Record<string, { status: number; body?: unknown }>;
 function reader(routes: Routes, token: () => Promise<string> = async () => TOKEN) {
   const requests: string[] = [];
   const fetch: Fetch = async (url, init) => {
-    const path = new URL(url).pathname;
-    requests.push(`${init.method} ${path}`);
-    const reply = routes[path] ?? { status: 404, body: { success: false } };
+    const { pathname, search } = new URL(url);
+    requests.push(`${init.method} ${pathname}${search}`);
+    const reply = routes[`${pathname}${search}`] ??
+      routes[pathname] ?? {
+        status: 404,
+        body: { success: false },
+      };
     return new Response(JSON.stringify(reply.body ?? {}), { status: reply.status });
   };
   return { reader: new CloudflareReader({ token, fetch }), requests };
@@ -40,7 +44,7 @@ describe("CloudflareReader", () => {
     });
     await cf.listWorkerSecrets(ACCOUNT, "billing");
     expect(requests).toEqual([
-      "GET /client/v4/accounts",
+      "GET /client/v4/accounts?per_page=50&page=1",
       `GET /client/v4/accounts/${ACCOUNT}/workers/scripts/billing/secrets`,
       `GET /client/v4/accounts/${ACCOUNT}/workers/scripts/billing/secrets`,
     ]);
@@ -52,7 +56,53 @@ describe("CloudflareReader", () => {
       ok: false,
       reason: `the wrangler login reaches ${ACCOUNT}, not ${OTHER}`,
     });
-    expect(requests).toEqual(["GET /client/v4/accounts"]);
+    expect(requests).toEqual(["GET /client/v4/accounts?per_page=50&page=1"]);
+  });
+
+  test("pages through /accounts until it finds the account", async () => {
+    const { reader: cf, requests } = reader({
+      "/client/v4/accounts?per_page=50&page=1": {
+        status: 200,
+        body: { result: [{ id: OTHER }], result_info: { page: 1, total_pages: 2 } },
+      },
+      "/client/v4/accounts?per_page=50&page=2": {
+        status: 200,
+        body: { result: [{ id: ACCOUNT }], result_info: { page: 2, total_pages: 2 } },
+      },
+      [`/client/v4/accounts/${ACCOUNT}/workers/scripts/billing/secrets`]: {
+        status: 200,
+        body: { result: [] },
+      },
+    });
+    expect(await cf.listWorkerSecrets(ACCOUNT, "billing")).toEqual({ ok: true, secrets: [] });
+    expect(requests.slice(0, 2)).toEqual([
+      "GET /client/v4/accounts?per_page=50&page=1",
+      "GET /client/v4/accounts?per_page=50&page=2",
+    ]);
+  });
+
+  test("keeps only names when list entries carry text or key material", async () => {
+    const { reader: cf } = reader({
+      ...ACCOUNTS,
+      [`/client/v4/accounts/${ACCOUNT}/workers/scripts/billing/secrets`]: {
+        status: 200,
+        body: {
+          result: [
+            { name: "TEXT_KEY", type: "secret_text", text: TOKEN },
+            { name: "SIGNING_KEY", type: "secret_key", key_base64: TOKEN, algorithm: {} },
+          ],
+        },
+      },
+    });
+    const read = await cf.listWorkerSecrets(ACCOUNT, "billing");
+    expect(read).toEqual({
+      ok: true,
+      secrets: [
+        { name: "TEXT_KEY", updatedAt: null },
+        { name: "SIGNING_KEY", updatedAt: null },
+      ],
+    });
+    expect(JSON.stringify(read)).not.toContain(TOKEN);
   });
 
   test("a missing Worker, a refusal and no login are reasons, without the token", async () => {

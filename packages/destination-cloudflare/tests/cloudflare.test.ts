@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assert, describe, expect, test } from "vite-plus/test";
 import { Secret } from "@keypin/core";
-import { type Fetch, WorkerSecretDestination, wranglerToken } from "../src/index";
+import {
+  currentWranglerToken,
+  type Fetch,
+  WorkerSecretDestination,
+  wranglerToken,
+} from "../src/index";
 
 const SENTINEL = "sentinel-value-7f3a9c";
 const TOKEN = "token-sentinel-41b2";
@@ -226,6 +231,27 @@ describe("wranglerToken", () => {
       const failure = wranglerToken(path);
       await expect(failure).rejects.toThrow(/no oauth_token/);
       expectNoSentinel(await failure.catch((e: unknown) => e));
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+});
+
+describe("currentWranglerToken", () => {
+  test("refuses an expired login instead of refreshing it, without the token", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "keypin-wrangler-"));
+    try {
+      const path = join(dir, "default.toml");
+      const past = new Date(Date.now() - 3_600_000).toISOString();
+      await writeFile(path, `oauth_token = "${TOKEN}"\nexpiration_time = "${past}"\n`);
+      const failure = currentWranglerToken(path);
+      await expect(failure).rejects.toThrow(
+        "the wrangler login has expired; run `wrangler whoami`",
+      );
+      expectNoSentinel(await failure.catch((e: unknown) => e));
+      const future = new Date(Date.now() + 3_600_000).toISOString();
+      await writeFile(path, `oauth_token = "${TOKEN}"\nexpiration_time = "${future}"\n`);
+      expect(await currentWranglerToken(path)).toBe(TOKEN);
     } finally {
       await rm(dir, { recursive: true });
     }

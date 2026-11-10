@@ -43,7 +43,36 @@ describe("env files", () => {
       `API_KEY=${SENTINEL}`,
     ].join("\n");
     const names = envNames(text);
-    expect(names).toEqual(["API_KEY", "TOKEN", "SPACED", "PEM", "EMPTY", "lower_case"]);
+    expect(names).toEqual(["API_KEY", "TOKEN", "SPACED", "PEM", "EMPTY", "lower_case", "1BAD"]);
+    expect(JSON.stringify(names)).not.toContain(SENTINEL);
+  });
+
+  test("an escaped quote doesn't end a single-quoted or backtick value", () => {
+    expect(envNames(`A='it\\'s\nLEAK_${SENTINEL}=x\nend'\nB=1`)).toEqual(["A", "B"]);
+    expect(envNames("A=`x\\`\nLEAK2=y\n`\nB=1")).toEqual(["A", "B"]);
+  });
+
+  test("lines of a multi-line value that end in base64 padding aren't names", () => {
+    const text = [
+      `CERT="MIIBIjANBgkqhkiG9w0BAQEFAAOC`,
+      `QWxhZGRpbjpvcGVuIHNlc2FtZQ==`,
+      `U0VOVElORUxWQUxVRQ=`,
+      `"`,
+      "NEXT=1",
+    ].join("\n");
+    expect(envNames(text)).toEqual(["CERT", "NEXT"]);
+  });
+
+  test("keys dotenv accepts, dotted, dashed or with a colon, open multi-line values too", () => {
+    const text = [
+      `app.key="first line`,
+      `HIDDEN${SENTINEL}=value`,
+      `"`,
+      "my-key: plain",
+      "AFTER=1",
+    ].join("\n");
+    const names = envNames(text);
+    expect(names).toEqual(["app.key", "my-key", "AFTER"]);
     expect(JSON.stringify(names)).not.toContain(SENTINEL);
   });
 });
@@ -91,6 +120,19 @@ jobs:
       workflowRefs("jobs:\n  a:\n    steps:\n      - run: echo '${{ toJSON(secrets) }}'\n")
         ?.hidesUses,
     ).toBe(true);
+  });
+
+  test("strings inside an expression neither end it nor count as references", () => {
+    const refs = workflowRefs(`
+jobs:
+  a:
+    if: "'secrets.IN_IF' != secrets.REAL_IF"
+    steps:
+      - run: "\${{ format('{{\\"t\\":\\"{0}\\"}}', secrets.API_TOKEN) }}"
+      - run: "\${{ 'secrets.MISSING' }} \${{ 'it''s' }} \${{ secrets['QUOTED'] }}"
+`);
+    assert(refs);
+    expect(refs.secrets.toSorted()).toEqual(["API_TOKEN", "QUOTED", "REAL_IF"]);
   });
 
   test("returns null for a file that isn't YAML", () => {
@@ -321,6 +363,31 @@ describe("buildDiscovery", () => {
     });
   });
 
+  test("a mapped name that is only a var stays a plain variable", () => {
+    const parsed = parseMap(
+      `[vaults.p]\nkind = "1password"\naccount = "a"\nvault = "v"\n[keys.region]\nenv = "REGION"\nowner = "o"\ndev = { vault = "p", item = "i" }\n`,
+      "keypin.toml",
+    );
+    assert(parsed.ok);
+    const result = buildDiscovery(
+      input({
+        workers: [
+          {
+            config: "wrangler.toml",
+            env: null,
+            worker: "w",
+            account: null,
+            required: null,
+            vars: ["REGION"],
+            read: null,
+          },
+        ],
+        map: parsed.map,
+      }),
+    );
+    expect(result.names.find((n) => n.name === "REGION")?.where).toBe("variable");
+  });
+
   test("marks names the project's map already has", () => {
     const parsed = parseMap(
       `[vaults.personal]
@@ -429,6 +496,24 @@ describe("draftMap", () => {
       item: "billing prod stripe key",
     });
     expect(draft).not.toContain('account = "acme"');
+  });
+
+  test("quotes a vault alias that isn't a bare TOML key", () => {
+    for (const name of ["App Secrets", "team.prod"]) {
+      const draft = draftMap(discovery.names, {
+        owner: "billing",
+        githubAccount: null,
+        vault: { name, account: "my.1password.com", vault: "App Secrets" },
+        takenIds: [],
+      });
+      assert(draft !== null);
+      const parsed = parseMap(draft, "draft");
+      assert(parsed.ok, JSON.stringify(parsed));
+      const refs = parsed.map.keys.flatMap((k) =>
+        Object.values(k.environments).map((e) => e.ref.vault),
+      );
+      expect(new Set(refs)).toEqual(new Set(["App Secrets"]));
+    }
   });
 
   test("has nothing to draft when every set name is mapped", () => {

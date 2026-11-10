@@ -45,37 +45,15 @@ export const WRANGLER_FILES: readonly string[] = [
   "wrangler.jsonc",
 ];
 
-const ASSIGNMENT = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/;
+const DOTENV_LINE =
+  /^\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?$/gm;
 
 export function envNames(text: string): string[] {
   const names = new Set<string>();
-  let open: string | null = null;
-  for (const line of text.split(/\r?\n/)) {
-    if (open !== null) {
-      if (closes(line, open)) open = null;
-      continue;
-    }
-    const match = ASSIGNMENT.exec(line);
-    if (!match?.[1]) continue;
-    names.add(match[1]);
-    open = opensQuote(match[2] ?? "");
+  for (const match of text.replace(/\r\n?/g, "\n").matchAll(DOTENV_LINE)) {
+    if (match[1]) names.add(match[1]);
   }
   return [...names];
-}
-
-function opensQuote(rest: string): string | null {
-  const value = rest.trimStart();
-  const quote = value[0];
-  if (quote !== '"' && quote !== "'" && quote !== "`") return null;
-  return closes(value.slice(1), quote) ? null : quote;
-}
-
-function closes(text: string, quote: string): boolean {
-  for (let i = 0; i < text.length; i++) {
-    if (quote === '"' && text[i] === "\\") i++;
-    else if (text[i] === quote) return true;
-  }
-  return false;
 }
 
 export interface WorkflowRefs {
@@ -85,7 +63,6 @@ export interface WorkflowRefs {
   hidesUses: boolean;
 }
 
-const EXPRESSION = /\$\{\{([\s\S]*?)\}\}/g;
 const CONTEXT_REF =
   /(?<![\w.])(secrets|vars)\s*(?:\.\s*([A-Za-z_][A-Za-z0-9_]*)|\[\s*'([A-Za-z_][A-Za-z0-9_]*)'\s*\])/g;
 
@@ -112,8 +89,8 @@ export function workflowRefs(text: string): WorkflowRefs | null {
   };
   const visit = (value: unknown, key: string | null) => {
     if (typeof value === "string") {
-      if (key === "if" && !value.includes("${{")) scan(value);
-      for (const match of value.matchAll(EXPRESSION)) scan(match[1] ?? "");
+      if (key === "if" && !value.includes("${{")) scan(withoutStrings(value));
+      for (const expression of expressions(value)) scan(expression);
       if (key === "secrets" && value.trim() === "inherit") refs.hidesUses = true;
     } else if (Array.isArray(value)) {
       for (const item of value) visit(item, null);
@@ -134,6 +111,44 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     environments: [...refs.environments],
     hidesUses: refs.hidesUses,
   };
+}
+
+function expressions(text: string): string[] {
+  const found: string[] = [];
+  for (let start = text.indexOf("${{"); start !== -1; start = text.indexOf("${{", start)) {
+    let i = start + 3;
+    while (i < text.length && !text.startsWith("}}", i))
+      i = text[i] === "'" ? endOfString(text, i) : i + 1;
+    found.push(withoutStrings(text.slice(start + 3, i)));
+    start = i + 2;
+  }
+  return found;
+}
+
+function withoutStrings(expression: string): string {
+  let code = "";
+  for (let i = 0; i < expression.length;) {
+    if (expression[i] !== "'") {
+      code += expression[i];
+      i++;
+      continue;
+    }
+    const end = endOfString(expression, i);
+    const literal = expression.slice(i, end);
+    code += /(?:secrets|vars)\s*\[\s*$/.test(code) ? literal : "''";
+    i = end;
+  }
+  return code;
+}
+
+function endOfString(text: string, open: number): number {
+  let i = open + 1;
+  while (i < text.length) {
+    if (text[i] !== "'") i++;
+    else if (text[i + 1] === "'") i += 2;
+    else return i + 1;
+  }
+  return i;
 }
 
 export interface WorkerDeclaration {
@@ -393,7 +408,9 @@ export function buildDiscovery(input: DiscoverInput): Discovery {
     .map(([name, list]): NameRow => {
       const local = list.some((s) => LOCAL_KINDS.includes(s.kind));
       const cloud = list.some((s) => CLOUD_KINDS.includes(s.kind));
-      const variable = list.every((s) => VARIABLE_KINDS.includes(s.kind));
+      const configured = list.filter((s) => s.kind !== "map");
+      const variable =
+        configured.length > 0 && configured.every((s) => VARIABLE_KINDS.includes(s.kind));
       return {
         name,
         where:
@@ -507,7 +524,7 @@ export function draftMap(names: readonly NameRow[], options: DraftOptions): stri
       ? "# The vault is the one in this project's keypin.toml; copy only the [keys.*] tables."
       : "# Fill in the vault, then save this as keypin.toml.",
     "",
-    `[vaults.${vault.name}]`,
+    `[vaults.${/^[A-Za-z_][A-Za-z0-9_-]*$/.test(vault.name) ? vault.name : str(vault.name)}]`,
     'kind = "1password"',
     `account = ${str(vault.account)}`,
     `vault = ${str(vault.vault)}`,

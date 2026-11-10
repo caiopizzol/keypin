@@ -3,8 +3,8 @@ import { createInterface } from "node:readline/promises";
 import type { Destination, IssueSpec, PublishTarget, Secret, VaultBackend } from "@keypin/core";
 import {
   CloudflareReader,
+  currentWranglerToken,
   WorkerSecretDestination,
-  wranglerToken,
 } from "@keypin/destination-cloudflare";
 import { ghToken, GitHubSecretDestination, listRepoSecrets } from "@keypin/destination-github";
 import { CloudflareAccountTokens } from "@keypin/provider-cloudflare";
@@ -68,10 +68,9 @@ export function main(): Promise<number> {
     git,
     githubSecrets: (repo, login) => listRepoSecrets({ repo, token: () => ghToken(login) }),
     workerSecrets: (account, worker) =>
-      (cloudflare ??= new CloudflareReader({ token: () => wranglerToken() })).listWorkerSecrets(
-        account,
-        worker,
-      ),
+      (cloudflare ??= new CloudflareReader({
+        token: () => currentWranglerToken(),
+      })).listWorkerSecrets(account, worker),
     createFile,
     vault: () => (vault ??= onePasswordBackend(connect)),
     now: () => new Date(),

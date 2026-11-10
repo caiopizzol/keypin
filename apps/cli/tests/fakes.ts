@@ -217,7 +217,8 @@ export function fakeDeps(setup: FakeSetup = {}) {
 }
 
 function listMemoryFolder(disk: ReturnType<typeof memoryFiles>, path: string): FolderEntry[] {
-  if (!disk.folders.has(path)) throw new Error(`ENOENT: no folder ${path}`);
+  if (!disk.folders.has(path))
+    throw Object.assign(new Error(`ENOENT: no folder ${path}`), { code: "ENOENT" });
   const prefix = path === "/" ? "/" : `${path}/`;
   const entries = new Map<string, FolderEntry["kind"]>();
   for (const [paths, kind] of [

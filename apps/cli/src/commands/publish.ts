@@ -1,63 +1,38 @@
 import { parseArgs } from "node:util";
 import {
   approvalsFor,
-  type AccountCheck,
-  type Destination,
-  destinationId,
   type Environment,
   ENVIRONMENTS,
   type KeysMap,
-  finishOperation,
   generationOf,
   loadState,
   planPublish,
-  type PublishTarget,
-  recordReceipt,
   saveState,
   type Secret,
-  startOperation,
-  type State,
   unfinishedOperations,
 } from "@keypin/core";
-import { type Deps, type LockHolder, UsageError } from "../deps";
+import { type Deps, UsageError } from "../deps";
 import { messageOf } from "../errors";
-import { statePath } from "../paths";
 import { findMap } from "../project";
+import {
+  accountFacts,
+  checkAccounts,
+  describeTarget,
+  finishAll,
+  locked,
+  NEEDS_APPROVAL,
+  rerun,
+  writeAll,
+  writesFor,
+} from "../publishing";
 import { announce } from "../vault";
 
-export const NEEDS_APPROVAL = 2;
-
-interface Checked {
-  target: PublishTarget;
-  destination: Destination;
-  check: AccountCheck;
-}
+export { NEEDS_APPROVAL };
 
 export async function publish(args: string[], deps: Deps): Promise<number> {
   const request = parseRequest(args);
   const map = await findMap(deps.files, deps.cwd);
-  const path = statePath(deps);
-  const lockFile = `${path}.lock`;
-  const taken = await deps.lock(lockFile);
-  if (!taken.held) {
-    deps.stderr.write(`${lockedMessage(lockFile, taken.holder)}\n`);
-    return 1;
-  }
-  try {
-    return await publishLocked({ ...request, args }, map, path, deps);
-  } finally {
-    await taken.lock.release();
-  }
-}
-
-function lockedMessage(file: string, holder: LockHolder): string {
-  if (holder.pid === null) {
-    return `keypin: ${file} exists but names no process. If no publish is running, delete that file and try again.`;
-  }
-  if (holder.running === false) {
-    return `keypin: ${file} was left by process ${holder.pid}, which isn't running any more. Delete that file and try again.`;
-  }
-  return `keypin: another publish (process ${holder.pid}) holds ${file} and is still running. Wait for it to finish.`;
+  return locked(deps, (path) => publishLocked({ ...request, args }, map, path, deps));
 }
 
 function parseRequest(args: string[]) {
@@ -99,32 +74,15 @@ async function publishLocked(
     return 1;
   }
 
-  let state = await loadState(deps.files, path);
+  const state = await loadState(deps.files, path);
   for (const op of unfinishedOperations(state, keyId, environment)) {
     say(
       `An earlier publish (started ${op.startedAt}, generation ${op.generation}) didn't finish: wrote ${op.done.length} of ${op.planned.length} (${op.done.join(", ") || "none"}). This run plans again from the receipts.`,
     );
   }
 
-  say("\nAccount checks:");
-  const checked = new Map<string, Checked>();
-  let failed = false;
-  for (const target of entry.publish) {
-    const label = describeTarget(target, key.env);
-    try {
-      const destination = deps.destination(target);
-      const check = await destination.checkAccount();
-      checked.set(destinationId(target, key.env), { target, destination, check });
-      say(
-        `  ${check.ok ? "ok" : "FAILED"} ${label}: ${accountFacts(check)}${check.ok ? "" : `: ${check.reason ?? "no reason given"}`}`,
-      );
-      if (!check.ok) failed = true;
-    } catch (error) {
-      say(`  FAILED ${label}: ${messageOf(error)}`);
-      failed = true;
-    }
-  }
-  if (failed) {
+  const checked = await checkAccounts(key, entry, deps, say);
+  if (!checked) {
     say("Stopped: an account check failed. Nothing was read and nothing was written.");
     return 1;
   }
@@ -136,7 +94,7 @@ async function publishLocked(
     say(
       `Stopped before reading the value: this publish needs approval, and --yes can't give it. Nothing was read and nothing was written.`,
     );
-    say(rerun(deps, request.args));
+    say(rerun(deps, "publish", request.args));
     return NEEDS_APPROVAL;
   }
 
@@ -152,14 +110,12 @@ async function publishLocked(
   const plan = planPublish({ key, environment, receipts: state.receipts, generation });
 
   say(`\nPlan for generation ${generation}:`);
-  const writes: { destinationId: string; found: Checked }[] = [];
+  const writes = writesFor(plan.steps, checked);
   for (const step of plan.steps) {
     const found = checked.get(step.destinationId);
-    if (!found) throw new Error(`no account check for ${step.destinationId}`);
     say(`  ${step.action} ${describeTarget(step.target, key.env)}: ${step.reason}`);
-    say(`    ${accountFacts(found.check)}`);
+    if (found) say(`    ${accountFacts(found.check)}`);
     if (step.approval) say(`    needs approval: ${step.approval}`);
-    if (step.action === "write") writes.push({ destinationId: step.destinationId, found });
   }
   for (const removed of plan.removed) {
     say(
@@ -177,50 +133,22 @@ async function publishLocked(
 
   if (!(await confirmed(deps, plan.needsApproval, request))) return NEEDS_APPROVAL;
 
-  const id = crypto.randomUUID();
-  state = startOperation(state, {
-    id,
-    keyId,
+  const written = await writeAll({
+    key,
     environment,
+    entry,
+    secret,
     generation,
-    startedAt: deps.now().toISOString(),
-    planned: writes.map((w) => w.destinationId),
+    writes,
+    state,
+    path,
+    deps,
+    say,
   });
-  await saveState(deps.files, path, state);
-
-  for (const { destinationId: written, found } of writes) {
-    const label = describeTarget(found.target, key.env);
-    try {
-      const evidence = await found.destination.write(key.env, secret);
-      state = recordReceipt(
-        state,
-        {
-          keyId,
-          environment,
-          source: entry.ref,
-          destinationId: written,
-          generation,
-          account: {
-            pinned: found.target.account,
-            publisher: found.check.publisher,
-            destinationAccount: found.check.destinationAccount ?? found.target.account,
-          },
-          at: deps.now().toISOString(),
-          evidence,
-        },
-        id,
-      );
-      await saveState(deps.files, path, state);
-      say(`  wrote ${label}`);
-    } catch (error) {
-      say(`  FAILED ${label}: ${messageOf(error)}`);
-      say("Stopped. Finished writes keep their receipts; run keypin publish again to continue.");
-      return 1;
-    }
+  if (!written.ok) {
+    say("Stopped. Finished writes keep their receipts; run keypin publish again to continue.");
+    return 1;
   }
-
-  state = finishAll(state, keyId, environment);
-  await saveState(deps.files, path, state);
   say(`Published ${keyId} (${environment}) to ${writes.length} destination(s).`);
   return 0;
 }
@@ -245,30 +173,6 @@ async function confirmed(
       ? "Stopped: this plan needs approval, and --yes can't give it. Nothing was written."
       : "Stopped: no terminal to confirm on. Nothing was written. Add --yes, or confirm in a terminal.",
   );
-  say(rerun(deps, request.args));
+  say(rerun(deps, "publish", request.args));
   return false;
-}
-
-function rerun(deps: Deps, args: readonly string[]): string {
-  const command = [...deps.self, "publish", ...args].map(shellWord).join(" ");
-  return `To approve, run this in a terminal:\n  cd ${shellWord(deps.cwd)} && ${command}`;
-}
-
-function shellWord(word: string): string {
-  return /^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`;
-}
-
-function finishAll(state: State, keyId: string, environment: Environment): State {
-  return unfinishedOperations(state, keyId, environment).reduce(
-    (s, op) => finishOperation(s, op.id),
-    state,
-  );
-}
-
-function accountFacts(check: AccountCheck): string {
-  return `publisher ${check.publisher}, destination account ${check.destinationAccount ?? "unknown"}`;
-}
-
-function describeTarget(target: PublishTarget, secretName: string): string {
-  return `${destinationId(target, secretName)} (account ${target.account})`;
 }

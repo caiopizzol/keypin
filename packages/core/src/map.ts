@@ -10,9 +10,18 @@ export type PublishTarget =
 
 export const DESTINATION_KINDS = ["cloudflare-worker", "github-actions"] as const;
 
+export const PROVIDER_KINDS = ["cloudflare-account-token"] as const;
+
+export interface IssueSpec {
+  provider: (typeof PROVIDER_KINDS)[number];
+  account: string;
+  admin: KeyRef;
+}
+
 export interface EnvEntry {
   ref: KeyRef;
   publish: PublishTarget[];
+  issue?: IssueSpec;
 }
 
 export interface Consumer {
@@ -234,7 +243,9 @@ function validateEnv(
     failed = true;
     fail(message);
   };
-  unknownFields(raw, ["vault", "item", "publish"], (field) => err(`unknown field "${field}"`));
+  unknownFields(raw, ["vault", "item", "publish", "issue"], (field) =>
+    err(`unknown field "${field}"`),
+  );
   const vaultName = requiredString(raw, "vault", err);
   const item = requiredString(raw, "item", err);
   const vault = vaultName === undefined ? undefined : vaults.get(vaultName);
@@ -258,8 +269,44 @@ function validateEnv(
       });
     }
   }
+  const issue =
+    raw.issue === undefined || !vault || item === undefined
+      ? undefined
+      : validateIssue(raw.issue, vault, item, (m) => err(`issue: ${m}`));
   if (failed || !vault || item === undefined) return undefined;
-  return { ref: { ...vault, item }, publish };
+  return { ref: { ...vault, item }, publish, ...(issue ? { issue } : {}) };
+}
+
+const ACCOUNT_ID = /^[0-9a-f]{32}$/;
+
+function validateIssue(
+  raw: unknown,
+  vault: Omit<KeyRef, "item">,
+  item: string,
+  fail: (message: string) => void,
+): IssueSpec | undefined {
+  if (!isRecord(raw)) {
+    fail("must be a table");
+    return undefined;
+  }
+  let failed = false;
+  const err = (message: string) => {
+    failed = true;
+    fail(message);
+  };
+  unknownFields(raw, ["provider", "account", "admin"], (field) => err(`unknown field "${field}"`));
+  const provider = requiredString(raw, "provider", err);
+  const account = requiredString(raw, "account", err);
+  const admin = requiredString(raw, "admin", err);
+  const kind = PROVIDER_KINDS.find((known) => known === provider);
+  if (provider !== undefined && !kind)
+    err(`field "provider" must be one of: ${PROVIDER_KINDS.join(", ")}`);
+  if (account !== undefined && !ACCOUNT_ID.test(account))
+    err(`field "account" must be a Cloudflare account ID (32 hex characters)`);
+  if (admin !== undefined && admin === item)
+    err(`field "admin" names the key's own item; the admin token needs its own item`);
+  if (failed || !kind || account === undefined || admin === undefined) return undefined;
+  return { provider: kind, account, admin: { ...vault, item: admin } };
 }
 
 function validateTarget(raw: unknown, fail: (message: string) => void): PublishTarget | undefined {

@@ -3,6 +3,7 @@ import { ENVIRONMENTS } from "./contracts";
 import { destinationId, type MapResult, receiptSecretKey, secretKey } from "./map";
 import { latestPerSecret, sameRef } from "./plan";
 import type { Registry } from "./registry";
+import type { Rotation } from "./rotations";
 import { addDays, DUE_SOON_DAYS, isDay, periodDays } from "./rotation";
 import type { Generation } from "./secret";
 
@@ -16,7 +17,8 @@ export type ProblemKind =
   | "due-soon"
   | "authority-unknown"
   | "missing-receipt"
-  | "stale-receipt";
+  | "stale-receipt"
+  | "rotation-unfinished";
 
 export interface Problem {
   kind: ProblemKind;
@@ -55,6 +57,7 @@ export interface StatusInput {
   receipts: readonly Receipt[];
   metadata(ref: KeyRef): VaultMetadata | null;
   generation?(keyId: KeyId, environment: Environment): Generation | undefined;
+  rotations?: readonly Rotation[];
   today: string;
 }
 
@@ -62,6 +65,8 @@ export interface Status {
   rows: StatusRow[];
   problems: Problem[];
 }
+
+const NOTICES: readonly ProblemKind[] = ["due-soon", "authority-unknown", "rotation-unfinished"];
 
 export function buildStatus(input: StatusInput): Status {
   if (!isDay(input.today)) throw new Error(`today must be YYYY-MM-DD, got "${input.today}"`);
@@ -98,7 +103,7 @@ export function buildStatus(input: StatusInput): Status {
         const add = (kind: ProblemKind, message: string, extra: Partial<Problem> = {}) =>
           problems.push({
             kind,
-            severity: kind === "due-soon" || kind === "authority-unknown" ? "notice" : "problem",
+            severity: NOTICES.includes(kind) ? "notice" : "problem",
             ...where,
             ...extra,
             message,
@@ -147,6 +152,16 @@ export function buildStatus(input: StatusInput): Status {
             stale,
           };
         });
+
+        const rotation = input.rotations?.find(
+          (r) => r.keyId === key.id && r.environment === environment && r.stage !== "revoked",
+        );
+        if (rotation) {
+          add(
+            "rotation-unfinished",
+            `${label}: a rotation started ${rotation.startedAt} is at stage "${rotation.stage}"; run keypin rotate ${key.id} to continue`,
+          );
+        }
 
         rows.push({
           ...where,

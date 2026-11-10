@@ -27,6 +27,7 @@ export {
   validateMap,
   type Consumer,
   type EnvEntry,
+  type IssueSpec,
   type KeyEntry,
   type KeysMap,
   type MapResult,
@@ -71,6 +72,18 @@ export {
   type SkipReason,
   type WriteReason,
 } from "./plan";
+export {
+  dropRotation,
+  emptyRotations,
+  loadRotations,
+  putRotation,
+  saveRotations,
+  unfinishedRotation,
+  type Rotation,
+  type Rotations,
+  type RotationStage,
+  type TokenRecord,
+} from "./rotations";
 export {
   buildStatus,
   type DestinationRow,

@@ -1,4 +1,12 @@
-import type { Destination, Files, PublishTarget, VaultBackend } from "@keypin/core";
+import type {
+  Destination,
+  Files,
+  IssueSpec,
+  PublishTarget,
+  Secret,
+  TokenProvider,
+  VaultBackend,
+} from "@keypin/core";
 
 export interface Child {
   exited: Promise<number>;
@@ -43,6 +51,7 @@ export interface Deps {
   launch: Launch;
   onSignals: OnSignals;
   destination(target: PublishTarget): Destination;
+  provider(issue: IssueSpec, admin: Secret): TokenProvider;
   lock: Lock;
   isTerminal: boolean;
   ask(question: string): Promise<string>;

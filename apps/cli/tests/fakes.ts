@@ -195,6 +195,9 @@ export function fakeDeps(setup: FakeSetup = {}) {
     destination: () => {
       throw new Error("this test publishes nothing");
     },
+    provider: () => {
+      throw new Error("this test rotates nothing");
+    },
     lock: memoryLock(disk),
     isTerminal: false,
     ask: async () => {

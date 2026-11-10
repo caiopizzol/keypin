@@ -1,8 +1,9 @@
 import { homedir } from "node:os";
 import { createInterface } from "node:readline/promises";
-import type { Destination, PublishTarget, VaultBackend } from "@keypin/core";
+import type { Destination, IssueSpec, PublishTarget, Secret, VaultBackend } from "@keypin/core";
 import { WorkerSecretDestination } from "@keypin/destination-cloudflare";
 import { GitHubSecretDestination } from "@keypin/destination-github";
+import { CloudflareAccountTokens } from "@keypin/provider-cloudflare";
 import { type Connect, desktopConnect, onePasswordBackend } from "@keypin/vault-1password";
 import { cli } from "./cli";
 import { createFile, diskFiles, diskLock, isFolder } from "./disk";
@@ -20,6 +21,17 @@ function destination(target: PublishTarget): Destination {
     default: {
       const unknown: never = target;
       throw new Error(`unknown destination ${JSON.stringify(unknown)}`);
+    }
+  }
+}
+
+function provider(issue: IssueSpec, admin: Secret) {
+  switch (issue.provider) {
+    case "cloudflare-account-token":
+      return new CloudflareAccountTokens({ account: issue.account, admin });
+    default: {
+      const unknown: never = issue.provider;
+      throw new Error(`unknown provider ${JSON.stringify(unknown)}`);
     }
   }
 }
@@ -55,6 +67,7 @@ export function main(): Promise<number> {
     launch,
     onSignals,
     destination,
+    provider,
     lock: diskLock,
     isTerminal: Boolean(process.stdin.isTTY),
     ask,

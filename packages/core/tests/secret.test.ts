@@ -53,6 +53,16 @@ test("reveal returns the value", () => {
   expect(new Secret(SENTINEL).reveal()).toBe(SENTINEL);
 });
 
+test("a secret compares without handing out its value", () => {
+  const secret = new Secret(SENTINEL);
+  expect(secret.equals(new Secret(SENTINEL))).toBe(true);
+  expect(secret.equals(new Secret("other"))).toBe(false);
+  expect(secret.isEmpty()).toBe(false);
+  expect(new Secret("").isEmpty()).toBe(true);
+  expect(secret.includes("7f3a")).toBe(true);
+  expect(secret.includes("$")).toBe(false);
+});
+
 test("a generation is the first 16 hex characters of the value's SHA-256", async () => {
   expect(await generationOf(new Secret("abc"))).toBe("ba7816bf8f01cfea");
   expect(await generationOf(new Secret(SENTINEL))).not.toContain(SENTINEL);

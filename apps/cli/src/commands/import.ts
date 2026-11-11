@@ -77,7 +77,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
         reason: "not a variable name (letters, digits and _, not a digit first)",
         onlyInFile: true,
       });
-    else if (!value.reveal()) skips.push({ name, reason: "the value is empty", onlyInFile: false });
+    else if (value.isEmpty()) skips.push({ name, reason: "the value is empty", onlyInFile: false });
     else if (mapped?.environments[environment])
       skips.push({
         name,
@@ -90,7 +90,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
         reason: `mapped in ${target.file} without ${environment}; left as it is, so add its ${environment} reference by hand`,
         onlyInFile: true,
       });
-    else if (value.reveal().includes("$"))
+    else if (value.includes("$"))
       skips.push({
         name,
         reason: "the value has a $, which some loaders expand to another variable's value",
@@ -215,7 +215,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
 async function existingProblem(deps: Deps, entry: Import): Promise<string | null> {
   try {
     const value = await deps.vault().read(entry.ref);
-    return value.reveal() === entry.value.reveal() ? null : "with another value";
+    return value.equals(entry.value) ? null : "with another value";
   } catch (error) {
     return `and couldn't be read (${messageOf(error)})`;
   }

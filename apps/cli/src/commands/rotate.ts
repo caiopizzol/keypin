@@ -192,7 +192,7 @@ async function start(run: Run, data: Rotations): Promise<number> {
     say(`Stopped: ${messageOf(error)}. Nothing was changed.`);
     return 1;
   }
-  if (current.reveal() === admin.reveal()) {
+  if (current.equals(admin)) {
     say(
       `Stopped: ${formatReference(spec.admin)} holds the same value as ${formatReference(entry.ref)}. The admin token needs its own field, or rotating would overwrite it. Nothing was changed.`,
     );

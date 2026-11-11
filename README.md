@@ -36,6 +36,16 @@ bun add -g keypin
 In 1Password, open **Settings → Developer**. Under **Integrate with the 1Password SDKs**, select **Integrate with
 other apps**. 1Password then asks you to approve each keypin command.
 
+## Use with an agent
+
+The keypin skill tells a coding agent how to use keypin: keep values out of chat and files, and hand each approval
+back to you. It works with Claude Code, Codex, Cursor and other agents that read skills.
+
+```sh
+npx skills add caiopizzol/keypin       # this project
+npx skills add caiopizzol/keypin -g    # all your projects
+```
+
 ## Quick start
 
 Register a project. `keypin init` writes a commented `keypin.toml` for you to fill in:
@@ -93,16 +103,6 @@ keypin rotate <key-id>       # replace a Cloudflare API token, then revoke the o
 
 `publish` and `rotate` show a plan and wait for you to type `yes`. `--yes` skips that only for routine updates. It
 never approves a first write, a changed account or vault item, or a revoke. `keypin --help` lists the exit codes.
-
-## Use with an agent
-
-The keypin skill tells a coding agent how to use keypin: keep values out of chat and files, and hand each approval
-back to you. It works with Claude Code, Codex, Cursor and other agents that read skills.
-
-```sh
-npx skills add caiopizzol/keypin       # this project
-npx skills add caiopizzol/keypin -g    # all your projects
-```
 
 ## Docs
 

@@ -86,6 +86,9 @@ guards=(
   "apps/cli/src/commands/rotate.ts|  if (current?.status !== \"active\") {|RevokeStart: tok[rot.new] = active"
   "apps/cli/src/commands/rotate.ts|  if (others.length) {|RevokeStart: no other key's receipt has rot.old"
   "apps/cli/src/commands/rotate.ts|    if (owner) return [{ receipt, owner }];|RevokeStart: another map's listed destination counts as OtherDests"
+  "apps/cli/src/commands/rotate.ts|      return null;
+    }
+    list(result.map, project);|RevokeStart: an unreadable registered map stops, so OtherDests is never empty by accident"
   "apps/cli/src/commands/rotate.ts|  if (holds !== generation) {|RevokeStart: vault = rot.new"
   "apps/cli/src/commands/rotate.ts|    const holders = holdersOf(state.receipts, rotation.new.generation);|AbandonDelete: no receipt has rot.new"
   "apps/cli/src/commands/rotate.ts|  return latestPerSecret(receipts).filter((r) => r.generation === generation);|holdersOf reads each secret's latest receipt"
@@ -95,7 +98,7 @@ guards=(
   "apps/cli/src/publishing.ts|  const taken = await deps.lock(lockFile);|Unlocked"
   "packages/core/src/plan.ts|    if (receipt?.generation === generation) {|PublishWrite skips a receipt that has rot.new"
 )
-sync=21cbb7b7aa6f03c89af12a893f6ec0de946ae705
+sync=4166181d2ba0c169992b87f9f6fb73f0bd56657e
 covered=(apps/cli/src/commands/rotate.ts apps/cli/src/commands/publish.ts apps/cli/src/publishing.ts
   packages/core/src/rotations.ts packages/core/src/plan.ts packages/core/src/state.ts)
 repo="$(cd "$here/../.." && pwd)"

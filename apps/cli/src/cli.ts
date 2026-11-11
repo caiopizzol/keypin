@@ -29,7 +29,7 @@ Exit codes:
   1  failed, or status found a problem
   2  usage error
   3  stopped for approval: run the printed command in a terminal and type yes
-  keypin run exits with the command's own code.
+  keypin run exits 1 if it can't start the command, then with the command's own code.
 `;
 
 const COMMANDS = new Map<string, (args: string[], deps: Deps) => Promise<number>>([

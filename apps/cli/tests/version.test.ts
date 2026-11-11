@@ -19,7 +19,7 @@ describe("exit codes", () => {
   test("a usage error and a stop for approval have different codes, both in the help", async () => {
     const { deps } = fakeDeps();
     expect(await cli(["no-such-command"], deps)).toBe(2);
-    expect(NEEDS_APPROVAL).not.toBe(2);
+    expect(NEEDS_APPROVAL).toBe(3);
     expect(USAGE).toContain("  2  usage error\n");
     expect(USAGE).toContain(`  ${NEEDS_APPROVAL}  stopped for approval`);
   });

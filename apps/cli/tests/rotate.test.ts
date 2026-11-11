@@ -802,7 +802,7 @@ describe("keypin rotate: review fixes", () => {
 
     const hint = await setup({ disk });
     expect(await cli(["rotate", "site-deploy", "--env", "dev"], hint.deps)).toBe(2);
-    expect(hint.stderr.text).toMatch(/&& \S+ \S+ rotate site-deploy --env dev\n/);
+    expect(hint.stderr.text).toMatch(/&& \S+ --no-env-file \S+ rotate site-deploy --env dev\n/);
 
     const revoke = await setup({ terminal: ["yes"], disk });
     revoke.provider.tokens.set(NEW_ID, {

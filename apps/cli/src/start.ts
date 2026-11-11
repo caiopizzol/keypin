@@ -59,7 +59,7 @@ async function ask(question: string): Promise<string> {
 export function main(): Promise<number> {
   return cli(process.argv.slice(2), {
     cwd: process.cwd(),
-    self: process.argv.slice(0, 2),
+    self: [process.argv[0] ?? "bun", ...process.execArgv, process.argv[1] ?? "keypin"],
     env: process.env,
     home: homedir(),
     files: diskFiles,

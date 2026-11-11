@@ -1,9 +1,17 @@
 export const MIN_BUN = "1.4.4";
+export const NO_ENV_FILE = "--no-env-file";
 
-export function runtimeProblem(bun: string | undefined, script: string): string | null {
+export function runtimeProblem(
+  bun: string | undefined,
+  script: string,
+  execArgv: readonly string[],
+): string | null {
   if (bun === undefined) return `keypin runs on Bun ${MIN_BUN} or newer, not Node.`;
   if (olderThan(bun, MIN_BUN)) {
-    return `keypin needs Bun ${MIN_BUN} or newer, because older Bun can read a keypin.toml wrong, and this is Bun ${bun}. Upgrade Bun, or run it with "bunx bun@${MIN_BUN} ${script}".`;
+    return `keypin needs Bun ${MIN_BUN} or newer, because older Bun can read a keypin.toml wrong, and this is Bun ${bun}. Upgrade Bun, or run it with "bunx bun@${MIN_BUN} ${NO_ENV_FILE} ${script}".`;
+  }
+  if (!execArgv.includes(NO_ENV_FILE)) {
+    return `keypin needs Bun started with ${NO_ENV_FILE}, or Bun adds this folder's .env values to every command keypin runs. Run it as "keypin", or as "bun ${NO_ENV_FILE} ${script}".`;
   }
   return null;
 }

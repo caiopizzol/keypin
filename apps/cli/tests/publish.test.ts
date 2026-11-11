@@ -72,11 +72,11 @@ describe("keypin publish", () => {
     const fake = {
       ...run.deps,
       cwd: "/work/billing/src",
-      self: ["/opt/bun 1.4/bun", "/home/me/keypin/apps/cli/src/main.ts"],
+      self: ["/opt/bun 1.4/bun", "--no-env-file", "/home/me/keypin/apps/cli/src/main.ts"],
     };
     expect(await cli(["publish", "billing-stripe", "--env", "prod", "--yes"], fake)).toBe(2);
     expect(run.stderr.text).toContain(
-      `To approve, run this in a terminal:\n  cd /work/billing/src && '/opt/bun 1.4/bun' /home/me/keypin/apps/cli/src/main.ts publish billing-stripe --env prod --yes\n`,
+      `To approve, run this in a terminal:\n  cd /work/billing/src && '/opt/bun 1.4/bun' --no-env-file /home/me/keypin/apps/cli/src/main.ts publish billing-stripe --env prod --yes\n`,
     );
     expect(run.stderr.text).not.toMatch(/(^|\s)keypin publish/m);
     expect(run.calls).toEqual([]);

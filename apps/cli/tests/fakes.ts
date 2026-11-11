@@ -173,7 +173,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
   const backend = setup.backend ?? fakeVault().vault;
   const deps: Deps = {
     cwd: "/work/billing",
-    self: ["/opt/bun/bin/bun", "/home/me/keypin/apps/cli/src/main.ts"],
+    self: ["/opt/bun/bin/bun", "--no-env-file", "/home/me/keypin/apps/cli/src/main.ts"],
     env: {},
     home: HOME,
     files: disk.files,

@@ -1,10 +1,11 @@
-#!/usr/bin/env bun
+#!/usr/bin/env -S bun --no-env-file
 import { installProblem } from "./install";
 import { runtimeProblem } from "./runtime";
 
 const problem = runtimeProblem(
   typeof Bun === "undefined" ? undefined : Bun.version,
   process.argv[1] ?? "keypin",
+  process.execArgv,
 );
 if (problem) {
   process.stderr.write(`keypin: ${problem}\n`);

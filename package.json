@@ -18,7 +18,7 @@
   ],
   "type": "module",
   "scripts": {
-    "check": "vp check && ! git grep --untracked -nE '(oxlint|eslint)-(disable|enable)' -- '*.ts' && sh scripts/check-lockfile.sh",
+    "check": "vp check && ! git grep --untracked -nE '(oxlint|eslint)-(disable|enable)' -- '*.ts' && ! git grep --untracked -nE '(^|[^A-Za-z0-9_])Bun\\.|from \"bun\"' -- packages/core/src && sh scripts/check-lockfile.sh",
     "test": "bun --bun vp test",
     "typecheck": "vp run -r typecheck",
     "prepare": "vp config"

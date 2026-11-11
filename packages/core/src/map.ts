@@ -1,4 +1,4 @@
-import { TOML } from "bun";
+import { parse as parseToml, TomlError } from "smol-toml";
 import type { Environment, KeyId, KeyRef } from "./contracts";
 import { DEFAULT_ENVIRONMENTS } from "./contracts";
 import { isRecord } from "./record";
@@ -90,7 +90,7 @@ export function isVariableName(name: string): boolean {
 export function parseMap(text: string, file: string): MapResult {
   let data: unknown;
   try {
-    data = TOML.parse(text);
+    data = parseToml(text);
   } catch (error) {
     return {
       ok: false,
@@ -458,9 +458,12 @@ function validateTarget(raw: unknown, fail: (message: string) => void): PublishT
 }
 
 function tomlProblem(error: unknown): string {
-  const message = error instanceof Error ? error.message : "unknown parse error";
-  const problem = message.replace(/^TOML Parse error: /, "").split(/["']|\(0x/)[0] ?? "";
-  return problem.replace(/(\s+but)?\s+found\s*$/, "").replace(/[\s:]+$/, "");
+  if (!(error instanceof TomlError)) return "unknown parse error";
+  const first = error.message.replace(/^Invalid TOML document: /, "").split("\n")[0] ?? "";
+  const problem = (first.split(/["'`]/)[0] ?? "").replace(/[\s:]+$/, "");
+  const said =
+    problem === "invalid value" ? "expected a value, and strings must be quoted" : problem;
+  return `${said.charAt(0).toUpperCase()}${said.slice(1)}`;
 }
 
 function unknownFields(table: Table, known: readonly string[], report: (field: string) => void) {

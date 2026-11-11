@@ -1,5 +1,7 @@
 import { formatReference } from "./reference";
-import { TOML } from "bun";
+import { parse as parseJsonc, type ParseError } from "jsonc-parser";
+import { parse as parseToml } from "smol-toml";
+import { parse as parseYaml } from "yaml";
 import type { Environment } from "./contracts";
 import { DEFAULT_ENVIRONMENTS } from "./contracts";
 import { isVariableName, type KeysMap, publishEnvironment, runEnvironment } from "./map";
@@ -88,7 +90,7 @@ const CONTEXT_REF =
 export function workflowRefs(text: string): WorkflowRefs | null {
   let data: unknown;
   try {
-    data = Bun.YAML.parse(text);
+    data = parseYaml(text, { logLevel: "error" });
   } catch {
     return null;
   }
@@ -181,13 +183,19 @@ export interface WorkerDeclaration {
 
 const ACCOUNT_ID = /^[0-9a-f]{32}$/;
 
+function jsonc(text: string): unknown {
+  const errors: ParseError[] = [];
+  const data: unknown = parseJsonc(text, errors, { allowTrailingComma: true });
+  return errors.length ? undefined : data;
+}
+
 export function wranglerWorkers(
   text: string,
   config: string,
 ): { ok: true; workers: WorkerDeclaration[] } | { ok: false } {
   let data: unknown;
   try {
-    data = config.endsWith(".toml") ? TOML.parse(text) : Bun.JSONC.parse(text);
+    data = config.endsWith(".toml") ? parseToml(text) : jsonc(text);
   } catch {
     return { ok: false };
   }

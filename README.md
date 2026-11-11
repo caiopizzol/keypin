@@ -91,7 +91,8 @@ keypin import .env --vault Private --account my.1password.com
 ```
 
 It shows each item it will create and waits for you to type `yes`. It never overwrites an item, and it never changes
-the `.env` file: delete it yourself once the values are in 1Password, and `keypin run -- <command>` provides them.
+the `.env` file. It names any variable it left only in the file; move those, then delete the file yourself, and
+`keypin run -- <command>` provides the values.
 See [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md).
 
 ## Commands
@@ -110,9 +111,9 @@ keypin publish --all         # publish every key, with one plan and one approval
 keypin rotate <VARIABLE>     # replace a Cloudflare API token, then revoke the old one
 ```
 
-`import`, `publish` and `rotate` show a plan and wait for you to type `yes`. `--yes` skips that only for routine
-changes: `import`, which only creates new items, and routine `publish` updates. It never approves a first write, a
-changed account or vault item, or a revoke. `keypin --help` lists the exit codes.
+`import`, `publish` and `rotate` show a plan and wait for you to type `yes`. `--yes` approves `import`, which only
+creates new items. For `publish` and `rotate`, it skips that only for routine updates: it never approves a first
+write, a changed account or vault item, or a revoke. `keypin --help` lists the exit codes.
 
 ## Docs
 

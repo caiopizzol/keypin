@@ -96,6 +96,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
   }
 
   let imports = planned;
+  const stored: Import[] = [];
   if (planned.length) {
     if (await deps.isLink(target.file))
       throw new Error(`${target.file} is a symbolic link; keypin import doesn't follow one`);
@@ -109,14 +110,22 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
       `keypin: listing the items in vault ${request.vault} of 1Password account ${target.account}`,
     );
     const titles = new Set((await deps.vault().list(scope)).map((i) => i.title.toLowerCase()));
-    imports = planned.filter((entry) => !titles.has(entry.ref.item.toLowerCase()));
-    for (const entry of planned.filter((i) => !imports.includes(i)))
-      skips.push({
-        name: entry.name,
-        reason: `"${entry.ref.item}" already exists in vault ${request.vault}; keypin doesn't overwrite it`,
-        onlyInFile: true,
-        exists: true,
-      });
+    imports = [];
+    for (const entry of planned) {
+      if (!titles.has(entry.ref.item.toLowerCase())) {
+        imports.push(entry);
+        continue;
+      }
+      const problem = await existingProblem(deps, entry);
+      if (problem === null) stored.push(entry);
+      else
+        skips.push({
+          name: entry.name,
+          reason: `"${entry.ref.item}" already exists in vault ${request.vault} ${problem}; keypin doesn't overwrite it`,
+          onlyInFile: true,
+          exists: true,
+        });
+    }
   }
 
   const today = localDay(deps.now());
@@ -126,19 +135,21 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
       `  create "${ref.item}" (password, rotated ${today}), and map ${name} to ${formatReference(ref)}`,
     );
   if (!imports.length) say("  nothing to create");
+  for (const { name, ref } of stored)
+    say(`  map ${name} to ${formatReference(ref)}, an item that exists with the same value`);
   if (skips.length) {
     say("Skipped:");
     for (const skip of skips) say(`  ${skip.name}: ${skip.reason}`);
   }
   const existed = skips.some((skip) => skip.exists);
-  if (!imports.length) return existed ? 1 : 0;
+  if (!imports.length && !stored.length) return existed ? 1 : 0;
   say(
     target.map
-      ? `Map: add ${count(imports.length, "key")} at the end of ${target.file}`
+      ? `Map: add ${count(imports.length + stored.length, "key")} at the end of ${target.file}`
       : `Map: write ${target.file} and register ${deps.cwd}`,
   );
 
-  if (!(await confirmed(deps, request, imports.length))) return NEEDS_APPROVAL;
+  if (imports.length && !(await confirmed(deps, request, imports.length))) return NEEDS_APPROVAL;
 
   const created: Import[] = [];
   for (const entry of imports) {
@@ -154,17 +165,18 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
   const failed = imports.filter((entry) => !created.includes(entry)).map((i) => i.name);
   if (failed.length)
     say(`Stopped. Created ${names(created.map((i) => i.name))}; not created: ${names(failed)}.`);
-  if (!created.length) return 1;
+  const mapped = planned.filter((entry) => stored.includes(entry) || created.includes(entry));
+  if (!mapped.length) return 1;
 
   try {
-    await writeMap(deps, target, created, environment);
+    await writeMap(deps, target, mapped, environment);
   } catch (error) {
     say(`keypin: ${messageOf(error)}`);
-    say(`The items were created. Add these tables to ${target.file} by hand:`);
-    deps.stdout.write(keyTables(created, environment));
+    say(`The items are in 1Password. Add these tables to ${target.file} by hand:`);
+    deps.stdout.write(keyTables(mapped, environment));
     return 1;
   }
-  say(`keypin: mapped ${names(created.map((i) => i.name))} in ${target.file}`);
+  say(`keypin: mapped ${names(mapped.map((i) => i.name))} in ${target.file}`);
   if (!target.map) await registerProject(deps, deps.cwd);
 
   const left = [...skips.filter((skip) => skip.onlyInFile).map((skip) => skip.name), ...failed];
@@ -177,8 +189,19 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
       : "Delete it and stop loading it (for example, wrangler dev reads .dev.vars).",
   );
   if (failed.length)
-    say("Run keypin import again to create the rest; it skips the keys it mapped.");
+    say(
+      "Run keypin import again to create the rest. It maps an item it already stored, since that item holds the same value.",
+    );
   return failed.length || existed ? 1 : 0;
+}
+
+async function existingProblem(deps: Deps, entry: Import): Promise<string | null> {
+  try {
+    const value = await deps.vault().read(entry.ref);
+    return value.reveal() === entry.value.reveal() ? null : "with another value";
+  } catch (error) {
+    return `and couldn't be read (${messageOf(error)})`;
+  }
 }
 
 function names(list: readonly string[]): string {

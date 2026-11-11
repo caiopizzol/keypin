@@ -30,13 +30,18 @@ interface Setup {
   files?: Record<string, string>;
   items?: string[];
   failing?: string[];
+  values?: Record<string, string>;
   terminal?: boolean;
   answer?: string;
 }
 
 function setup(options: Setup = {}) {
   const disk = memoryFiles({ [ENV]: ENV_TEXT, ...options.files });
-  const fake = fakeVault({ items: options.items ?? [], failing: options.failing });
+  const fake = fakeVault({
+    items: options.items ?? [],
+    failing: options.failing,
+    values: options.values,
+  });
   const asked: string[] = [];
   const result = fakeDeps({
     disk,
@@ -140,11 +145,14 @@ describe("keypin import", () => {
   });
 
   test("doesn't overwrite an item that exists: reports it, imports the rest, exits 1", async () => {
-    const { deps, disk, fake, text } = setup({ items: ["Billing Dev Stripe Key"] });
+    const { deps, disk, fake, text } = setup({
+      items: ["Billing Dev Stripe Key"],
+      values: { "billing dev stripe key": "another value" },
+    });
     expect(await cli([...NEW, "--yes"], deps)).toBe(1);
     expect(fake.created.map((c) => c.ref.item)).toEqual(["billing dev webhook secret"]);
     expect(text()).toContain(
-      `STRIPE_KEY: "billing dev stripe key" already exists in vault App Secrets; keypin doesn't overwrite it`,
+      `STRIPE_KEY: "billing dev stripe key" already exists in vault App Secrets with another value; keypin doesn't overwrite it`,
     );
     const parsed = parseMap(disk.contents.get(MAP) ?? "", MAP);
     assert(parsed.ok);
@@ -211,15 +219,60 @@ describe("keypin import", () => {
     expect(parsed.map.keys.map((k) => k.name)).toEqual(["A_KEY"]);
     expect(leaks(text(), first)).toBe(false);
 
-    const again = fakeDeps({
-      disk,
-      backend: fakeVault({ items: ["billing dev a key"] }).vault,
-    });
+    const again = fakeDeps({ disk, backend: fakeVault({ items: ["billing dev a key"] }).vault });
     expect(await cli(["import", ".env", "--vault", "App Secrets", "--yes"], again.deps)).toBe(0);
     const second = parseMap(disk.contents.get(MAP) ?? "", MAP);
     assert(second.ok);
     expect(second.map.keys.map((k) => k.name)).toEqual(["A_KEY", "B_KEY", "C_KEY"]);
     expect(disk.contents.get(MAP)?.startsWith(first)).toBe(true);
+  });
+
+  test("an item stored before the map was written is mapped on the rerun, not created again", async () => {
+    const { deps, disk, fake, text } = setup({ files: { [MAP]: REAL_MAP } });
+    const write = fake.vault.write.bind(fake.vault);
+    fake.vault.write = async (ref, secret, options) => {
+      await write(ref, secret, options);
+      throw new Error("1Password: the connection closed");
+    };
+    expect(await cli(["import", ".env", "--vault", "App Secrets", "--yes"], deps)).toBe(1);
+    expect(fake.created.map((c) => c.ref.item)).toEqual(["billing dev webhook secret"]);
+    expect(disk.contents.get(MAP)).toBe(REAL_MAP);
+
+    fake.vault.write = write;
+    const again = fakeDeps({ disk, backend: fake.vault, deps: { isTerminal: false } });
+    expect(await cli(["import", ".env", "--vault", "App Secrets"], again.deps)).toBe(0);
+    expect(fake.created).toHaveLength(1);
+    expect(fake.calls.filter((c) => c.startsWith("write"))).toHaveLength(1);
+    const parsed = parseMap(disk.contents.get(MAP) ?? "", MAP);
+    assert(parsed.ok);
+    expect(parsed.map.keys.map((k) => k.name)).toEqual(["STRIPE_KEY", "WEBHOOK_SECRET"]);
+    const out = again.stdout.text + again.stderr.text;
+    expect(out).toContain(
+      "map WEBHOOK_SECRET to op://App Secrets/billing dev webhook secret/password, an item that exists with the same value",
+    );
+    expect(leaks(text(), out, disk.contents.get(MAP) ?? "")).toBe(false);
+  });
+
+  test("an existing item with another value, or one it can't read, is skipped and not read out", async () => {
+    const env = `A_KEY=${SENTINEL}-a\nB_KEY=${SENTINEL}-b\n`;
+    const disk = memoryFiles({ [ENV]: env });
+    const fake = fakeVault({
+      items: ["billing dev a key", "billing dev b key"],
+      values: { "billing dev a key": `${SENTINEL}-other` },
+      failing: ["billing dev b key"],
+    });
+    const { deps, stdout, stderr } = fakeDeps({ disk, backend: fake.vault });
+    expect(await cli([...NEW, "--yes"], deps)).toBe(1);
+    expect(fake.created).toEqual([]);
+    expect(disk.contents.has(MAP)).toBe(false);
+    const out = stdout.text + stderr.text;
+    expect(out).toContain(
+      `A_KEY: "billing dev a key" already exists in vault App Secrets with another value; keypin doesn't overwrite it`,
+    );
+    expect(out).toContain(
+      `B_KEY: "billing dev b key" already exists in vault App Secrets and couldn't be read`,
+    );
+    expect(leaks(out)).toBe(false);
   });
 
   test("refuses a keypin.toml that is a symbolic link before touching the vault", async () => {

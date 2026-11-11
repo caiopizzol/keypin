@@ -69,6 +69,8 @@ export function fakeVault(options: FakeVaultOptions = {}) {
     async read(ref) {
       calls.push(`read ${ref.item}`);
       fail(ref);
+      const stored = created.find((c) => c.ref.item.toLowerCase() === ref.item.toLowerCase());
+      if (stored) return stored.value;
       const value = options.values?.[ref.item];
       if (value === undefined) throw new Error(`no item "${ref.item}"`);
       return new Secret(value);

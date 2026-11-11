@@ -22,12 +22,15 @@ It skips, and lists by name:
 - a name that isn't a variable name, such as `app.key`;
 - an empty value;
 - a variable the map already has;
-- a variable whose item already exists in the vault. keypin never overwrites an item. It imports the rest, then
-  exits 1.
+- a variable whose item already exists in the vault with another value, or can't be read. keypin never overwrites
+  an item. It imports the rest, then exits 1.
+
+An item that already exists with the same value, such as one a run stored before it stopped, isn't created again:
+keypin maps it, and changes nothing in it.
 
 ## The map
 
-Each item it creates gets a key:
+Each item it creates or maps gets a key:
 
 ```toml
 [keys.STRIPE_KEY]
@@ -35,10 +38,10 @@ rotate_every = "90d"
 dev = "op://Private/billing dev stripe key/password"
 ```
 
-With no `keypin.toml`, or the untouched `keypin init` template, it writes a new map with the account, and registers
-the project. With a real map, it adds the new keys at the end, and leaves the rest of the file as it is. If the
-result wouldn't parse, it stops before creating anything. It doesn't write through a symbolic link, or over a map
-that changed while it ran.
+When it maps at least one key, with no `keypin.toml` or the untouched `keypin init` template, it writes a new map
+with the account, and registers the project. With a real map, it adds the new keys at the end, and leaves the rest
+of the file as it is. When every variable is skipped, it writes nothing. If the result wouldn't parse, it stops
+before creating anything. It doesn't write through a symbolic link, or over a map that changed while it ran.
 
 ## Approval
 
@@ -47,10 +50,12 @@ terminal, it stops, prints the command to run in one, and exits 3. `--yes` appro
 items.
 
 It creates the items one at a time. If one fails, it stops and maps only the items it created. Run it again to
-create the rest: it skips the keys it already mapped.
+create the rest: it skips the keys it already mapped, and maps an item it stored without mapping, because that item
+holds the same value. When there's nothing new to create, it maps those items without asking.
 
 ## Afterwards
 
-keypin never changes or deletes the env file, and it never prints a value. Once the values are in 1Password, delete
-the file and stop loading it. For example, `wrangler dev` reads `.dev.vars` (see [Notes](notes.md)). Then
-`keypin run -- <command>` provides the values.
+keypin never changes or deletes the env file, and it never prints a value. It names every variable still only in
+the file: one that isn't a variable name, shares an item with another, or whose item exists with another value. Move
+those, then delete the file and stop loading it. An empty value or a variable the map already has needs nothing. For
+example, `wrangler dev` reads `.dev.vars` (see [Notes](notes.md)). Then `keypin run -- <command>` provides the values.

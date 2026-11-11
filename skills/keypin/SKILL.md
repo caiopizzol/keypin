@@ -17,8 +17,8 @@ from 1Password only while a command runs.
 - Project with a `.env` or `.dev.vars`: suggest `keypin import <file> --vault <vault>` (plus `--account
   <sign-in address>` when there's no map). Ask the user which vault. keypin reads the file locally and creates new
   1Password items; never read, print or pass a value yourself. It needs the user's typed `yes`: run it without
-  `--yes`, and it exits 3 with the plan and the command for the user to run. It never changes the file; after it
-  succeeds, the user deletes the file.
+  `--yes`, and it exits 3 with the plan and the command for the user to run. It never changes the file; once it names no
+  variable as still only in the file, the user deletes the file.
 - A key is named after its variable: `keypin publish API_TOKEN`. If keypin says a map is from keypin 0.4,
   rewrite it in the current format (see Configuration) and show the user the diff.
 - Check a project: `keypin status --json` for due dates and receipts, and `keypin discover` for the names

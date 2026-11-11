@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import { generationOf, loadState, type Receipt, Secret } from "@keypin/core";
 import { GitHubSecretDestination } from "@keypin/destination-github";
+import { type FullItem, onePasswordBackend } from "@keypin/vault-1password";
 import { cli } from "../src/cli";
 import { NEEDS_APPROVAL } from "../src/publishing";
 import {
@@ -500,6 +501,58 @@ describe("a destination only takes a value without approval when it came from th
     expect(await cli(["publish", "deploy"], approved.deps)).toBe(0);
     const [saved] = (await loadState(disk.files, STATE)).receipts;
     expect(saved?.source).toMatchObject({ section: "live", field: "credential" });
+  });
+
+  test("a field name that is one field's ID and another's title publishes neither, in any case", async () => {
+    const stored: FullItem = {
+      id: "item-1",
+      title: "billing deploy token",
+      category: "Password",
+      vaultId: "vault-1",
+      fields: [
+        { id: "password", title: "old password", fieldType: "Concealed", value: ORDINARY },
+        { id: "custom-field", title: "Password", fieldType: "Concealed", value: ADMIN },
+      ],
+      sections: [],
+      notes: "",
+      tags: [],
+      websites: [],
+      version: 1,
+      files: [],
+      createdAt: new Date("2026-11-01T00:00:00Z"),
+      updatedAt: new Date("2026-11-09T12:00:00Z"),
+    };
+    const backend = onePasswordBackend(async () => ({
+      vaults: { list: async () => [{ id: "vault-1", title: "Private" }] },
+      items: {
+        list: async () => [{ id: stored.id, title: stored.title, tags: [], updatedAt: new Date() }],
+        get: async () => stored,
+        create: async () => stored,
+        put: async () => stored,
+      },
+    }));
+    const disk = memoryFiles({ "/work/billing/keypin.toml": deployMap("billing deploy token") });
+    for (const field of ["password", "Password"]) {
+      disk.contents.set(
+        "/work/billing/keypin.toml",
+        deployMap("billing deploy token").replace("/password", `/${field}`),
+      );
+      const destinations = fakeDestinations();
+      const run = fakeDeps({
+        disk,
+        backend,
+        deps: {
+          cwd: "/work/billing",
+          destination: destinations.build,
+          isTerminal: true,
+          ask: async () => "yes",
+        },
+      });
+      expect(await cli(["publish", "deploy"], run.deps)).toBe(1);
+      expect(run.stderr.text).toContain(`2 fields are named "${field}"`);
+      expect(destinations.log.filter((l) => l.startsWith("write"))).toEqual([]);
+    }
+    expect(disk.contents.get(STATE)).toBeUndefined();
   });
 
   test("two keys writing the same repo secret are rejected before anything is read", async () => {

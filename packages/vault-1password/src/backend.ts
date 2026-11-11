@@ -128,10 +128,11 @@ function where(ref: KeyRef): string {
 }
 
 function named<T extends { id: string; title: string }>(candidates: T[], name: string): T[] {
-  const byId = candidates.filter((candidate) => candidate.id === name);
-  return byId.length
-    ? byId
-    : candidates.filter((candidate) => candidate.title.toLowerCase() === name.toLowerCase());
+  const wanted = name.toLowerCase();
+  return candidates.filter(
+    (candidate) =>
+      candidate.id.toLowerCase() === wanted || candidate.title.toLowerCase() === wanted,
+  );
 }
 
 function valueField(item: FullItem, ref: KeyRef): Field {

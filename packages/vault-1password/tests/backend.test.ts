@@ -184,12 +184,31 @@ describe("names in a reference", () => {
     }
   });
 
-  test("a vault or item named by ID isn't confused with one titled that way", async () => {
+  test("a name that is one item's ID and another's title is refused, in any case", async () => {
     const { client } = fake([
       item("demo dev token", [field("password", "Concealed", VALUE)], "abc"),
-      item("abc", [field("password", "Concealed", "not-this")], "xyz"),
+      item("ABC", [field("password", "Concealed", "not-this")], "xyz"),
     ]);
-    expect((await backendFor(client).backend.read({ ...ref, item: "abc" })).reveal()).toBe(VALUE);
+    const { backend } = backendFor(client);
+    for (const name of ["abc", "Abc"]) {
+      await expect(backend.read({ ...ref, item: name })).rejects.toThrow("2 items have this name");
+    }
+  });
+
+  test("a field name that is one field's ID and another's title is refused, in any case", async () => {
+    const { client } = fake([
+      item("demo dev token", [
+        { id: "password", title: "old password", fieldType: "Concealed", value: "fake-old" },
+        { id: "custom-field", title: "Password", fieldType: "Concealed", value: VALUE },
+      ]),
+    ]);
+    const { backend } = backendFor(client);
+    for (const name of ["password", "Password"]) {
+      await expect(backend.read({ ...ref, field: name })).rejects.toThrow(
+        `2 fields are named "${name}"`,
+      );
+    }
+    expect((await backend.read({ ...ref, field: "CUSTOM-FIELD" })).reveal()).toBe(VALUE);
   });
 
   test("refuses the rotated field, which keypin writes the rotation day into", async () => {

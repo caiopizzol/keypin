@@ -14,13 +14,17 @@ export const USAGE = `Usage:
   keypin unregister [folder]
                            stop listing a project; its keypin.toml stays
   keypin status [--json]   every key in every registered project, with problems
-  keypin discover [folder] [--json]
-                           every key name a project uses, local and in the cloud, and a draft map
+  keypin discover [folder] [--json] [--write]
+                           every key name a project uses, local and in the cloud, and a draft map;
+                           --write saves the draft as keypin.toml (only when there's none, or the
+                           untouched init template) and registers the project
   keypin run [--env <name>] -- <command>
                            run a command with one environment's keys (default: the first, dev)
   keypin publish <VARIABLE> [--env <name>] [--yes]
                            check accounts, plan, confirm, then write the key to every destination
                            (default environment: the last, prod)
+  keypin publish --all [--env <name>] [--yes]
+                           the same for every key with destinations, with one plan and one approval
   keypin rotate <VARIABLE> [--env <name>] [--yes]
                            replace a token with a new one that has the same permissions, publish it,
                            and revoke the old one on the next run

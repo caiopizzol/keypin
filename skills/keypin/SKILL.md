@@ -9,10 +9,11 @@ keypin maps each project's keys in `keypin.toml` (variable names and 1Password r
 from 1Password only while a command runs.
 
 - Run `keypin --help` first. It lists the commands and exit codes. Use only what it lists.
-- New project: run `keypin discover` and show the draft map. Its `op://` references are placeholders;
-  ask the user for each field's secret reference (1Password: the field's menu, **Copy Secret Reference**).
-  The user creates vault items; you never write a value. `keypin init` registers the project but writes
-  only a commented template; fill it from the draft and the answers.
+- New project: run `keypin discover --write`. It saves the draft as `keypin.toml` and registers the project,
+  but only when there's no map yet, or it's still the `keypin init` template. Show the user the file. Its
+  `op://` references are placeholders; ask the user for each field's secret reference (1Password: the field's
+  menu, **Copy Secret Reference**) and replace them. The user creates vault items; you never write a value.
+  If a real map exists, `--write` exits 1: run `keypin discover` and copy the `[keys.*]` tables by hand.
 - A key is named after its variable: `keypin publish API_TOKEN`. If keypin says a map is from keypin 0.4,
   rewrite it in the current format (see Configuration) and show the user the diff.
 - Check a project: `keypin status --json` for due dates and receipts, and `keypin discover` for the names
@@ -22,7 +23,8 @@ from 1Password only while a command runs.
 - Run with dev keys: `keypin run -- <command>`.
 - 1Password asks the user to approve each command. If a command waits, tell the user to approve it.
 - `publish` and `rotate` need a typed `yes` in a terminal, which you don't have. Run them without `--yes`:
-  they stop, exit 3, and print the command for the user to run. Use `--yes` only when the user asks and
+  they stop, exit 3, and print the command for the user to run. For a first setup, run `keypin publish --all`:
+  it lists every approval, exits 3, and the user approves every key once with the printed command. Use `--yes` only when the user asks and
   the change is a routine update. Nothing else approves a first write, a changed account or item, or a revoke.
 - "Nothing to write" means keypin's receipt matches the value, not that it checked the destination.
 - `rotate` takes two runs. After the first, the user checks that the new token works; the second revokes

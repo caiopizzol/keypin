@@ -61,8 +61,9 @@ export async function checkAccounts(
   entry: EnvEntry,
   deps: Deps,
   say: Say,
+  heading = "Account checks",
 ): Promise<Map<string, Checked> | null> {
-  say("\nAccount checks:");
+  say(`\n${heading}:`);
   const checked = new Map<string, Checked>();
   let failed = false;
   for (const target of entry.publish) {

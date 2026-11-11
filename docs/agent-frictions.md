@@ -31,6 +31,12 @@ The same seven scenarios, run again against these fixes:
 
 ## Fixed since
 
+- **2. `init` and `discover` didn't connect.** `keypin discover --write` saves the draft as `keypin.toml` and
+  registers the project, when there's no `keypin.toml` or it's still the untouched `init` template. It refuses
+  to change a real map; copy the `[keys.*]` tables from the draft by hand.
+- **6. First setup meant one publish per key.** `keypin publish --all` publishes every key with destinations in
+  the environment, with one combined plan and one typed `yes`. Without a terminal it lists every approval and
+  stops with exit 3 before reading any value.
 - **8. `missing-receipt` was a problem even before the first publish.** A key and environment this project has
   never published is now one `never-published` notice that names the `keypin publish` command, and `status`
   exits 0. `missing-receipt` stays a problem when this project published the key before but a destination has no
@@ -57,14 +63,6 @@ user exactly what they will approve. Rotation's revoke step is being changed sep
 
 ## Getting started
 
-### 2. `init` and `discover` don't connect
-
-`init` writes a commented template, and `discover` prints a draft that isn't written. After `init`, the file
-exists but has no `[vaults.*]`, so the docs' advice to "copy only the `[keys.*]` tables" doesn't apply. Every
-setup agent pasted the draft by hand.
-
-Options: `keypin init --from-discover`, or let `discover --write` save the draft when no map exists.
-
 ### 3. An empty map looks healthy
 
 After `init`, `status --json` returns no rows and no problems, exactly as before `init`. Nothing says the project
@@ -83,11 +81,6 @@ There's no command to check that the map's vault items exist and have `password`
 `status` reads only the rotation fields, and only after the map is saved. Agents had to ask the user for every
 item name. A `keypin check` (map valid, items exist, fields present, logins reach accounts) would let an agent
 finish setup and say "valid" with evidence.
-
-### 6. First setup means one publish per key
-
-Each first write needs a typed `yes`, one command per key. Setting up three keys meant three commands for the
-user. `keypin publish --all` with one combined plan and one approval would cut that to one.
 
 ## Day to day
 

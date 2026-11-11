@@ -130,7 +130,6 @@ export async function discover(args: string[], deps: Deps): Promise<number> {
     project: basename(folder),
     githubAccount: login,
     map: map ? { account: map.account, vault: firstVault(map) } : null,
-    takenIds: map?.keys.map((k) => k.id) ?? [],
     environments: map?.environments ?? DEFAULT_ENVIRONMENTS,
   });
   if (draft !== null) {

@@ -9,7 +9,8 @@ import {
 import { latestPerSecret } from "./plan";
 import { sameRef } from "./reference";
 import type { Registry } from "./registry";
-import { type Rotation, rotateCommand, unfinishedRotation } from "./rotations";
+import { type Rotation, ROTATIONS_VERSION, rotateCommand, unfinishedRotation } from "./rotations";
+import { ownedBy } from "./state";
 import { addDays, DUE_SOON_DAYS, isDay, periodDays } from "./rotation";
 import type { Generation } from "./secret";
 
@@ -47,7 +48,6 @@ export interface StatusRow {
   project: string;
   keyId: KeyId;
   environment: Environment;
-  env: string;
   ref: KeyRef;
   rotated: string | null;
   rotateEvery: string | null;
@@ -103,8 +103,9 @@ export function buildStatus(input: StatusInput): Status {
       for (const environment of result.map.environments) {
         const entry = key.environments[environment];
         if (!entry) continue;
-        const where = { project, keyId: key.id, environment };
-        const label = `${key.id} (${environment})`;
+        const where = { project, keyId: key.name, environment };
+        const owner = { keyId: key.name, environment, mapFile: result.map.file };
+        const label = `${key.name} (${environment})`;
         const add = (kind: ProblemKind, message: string, extra: Partial<Problem> = {}) =>
           problems.push({
             kind,
@@ -124,14 +125,13 @@ export function buildStatus(input: StatusInput): Status {
           `${label}: what this key grants is unknown, because keypin didn't create it`,
         );
 
-        const current = input.generation?.(key.id, environment);
+        const current = input.generation?.(key.name, environment);
         const destinations = entry.publish.map((target): DestinationRow => {
-          const id = destinationId(target, key.env);
-          const last = latest.get(secretKey(target, key.env));
+          const id = destinationId(target, key.name);
+          const last = latest.get(secretKey(target, key.name));
           const ours =
             last &&
-            ((last.keyId === key.id && last.environment === environment) ||
-              (last.source !== null && sameRef(last.source, entry.ref)));
+            (ownedBy(last, owner) || (last.source !== null && sameRef(last.source, entry.ref)));
           const receipt = ours ? last : undefined;
           if (!receipt) {
             add("missing-receipt", `${label}: no receipt for ${id}, so what it holds is unknown`, {
@@ -159,21 +159,19 @@ export function buildStatus(input: StatusInput): Status {
         });
 
         const rotation = unfinishedRotation(
-          { version: 1, rotations: [...(input.rotations ?? [])] },
-          key.id,
-          environment,
+          { version: ROTATIONS_VERSION, rotations: [...(input.rotations ?? [])] },
+          owner,
           entry.ref,
         );
         if (rotation) {
           add(
             "rotation-unfinished",
-            `${label}: a rotation started ${rotation.startedAt} is at stage "${rotation.stage}"; run ${rotateCommand(key.id, environment, publishEnvironment(result.map))} to continue`,
+            `${label}: a rotation started ${rotation.startedAt} is at stage "${rotation.stage}"; run ${rotateCommand(key.name, environment, publishEnvironment(result.map))} to continue`,
           );
         }
 
         rows.push({
           ...where,
-          env: key.env,
           ref: entry.ref,
           rotated,
           rotateEvery,

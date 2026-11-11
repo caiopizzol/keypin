@@ -6,8 +6,7 @@ export const VALID_MAP = `
 [1password]
 account = "my.1password.com"
 
-[keys.web-session]          # stable key ID, independent of vault item names
-env = "SESSION_SECRET"
+[keys.SESSION_SECRET]
 rotate_every = "180d"
 dev  = "op://Private/web dev session secret/password"
 prod = { from = "op://Private/web prod session secret/password", publish = [
@@ -17,8 +16,7 @@ prod = { from = "op://Private/web prod session secret/password", publish = [
 `;
 
 export const KEY: KeyEntry = {
-  id: "billing-stripe",
-  env: "STRIPE_API_KEY",
+  name: "STRIPE_API_KEY",
   rotateEvery: "365d",
   environments: {
     prod: {
@@ -42,6 +40,8 @@ export const KEY: KeyEntry = {
   },
 };
 
+export const KEY_MAP = "/work/billing/keypin.toml";
+
 export const WORKER = "cloudflare-worker:billing-worker:STRIPE_API_KEY";
 export const GITHUB = "github-actions:acme/billing:STRIPE_API_KEY";
 
@@ -52,8 +52,9 @@ export function receipt(
 ): Receipt {
   const destinationAccount = destinationId === GITHUB ? "acme" : "11111111111111111111111111111111";
   return {
-    keyId: KEY.id,
+    keyId: KEY.name,
     environment: "prod",
+    mapFile: KEY_MAP,
     source: KEY.environments.prod?.ref ?? null,
     destinationId,
     generation,

@@ -41,7 +41,7 @@ describe("keypin init", () => {
     expect(parseMap(uncomment(TEMPLATE), "keypin.toml")).toEqual({
       ok: false,
       errors: [
-        `keypin.toml: key "example-api-key" prod: publish[0]: field "account" must be a Cloudflare account ID (32 hex characters)`,
+        `keypin.toml: key "EXAMPLE_API_KEY" prod: publish[0]: field "account" must be a Cloudflare account ID (32 hex characters)`,
       ],
     });
   });
@@ -52,8 +52,7 @@ describe("keypin init", () => {
     assert(parsed.ok, JSON.stringify(parsed));
     expect(parsed.map.keys).toEqual([
       {
-        id: "example-api-key",
-        env: "EXAMPLE_API_KEY",
+        name: "EXAMPLE_API_KEY",
         rotateEvery: "180d",
         environments: {
           dev: {
@@ -90,7 +89,7 @@ describe("keypin init", () => {
     const example = uncomment(TEMPLATE).split("\n");
     expect(example.filter((line) => /[[{]\s*$/.test(line))).toEqual([]);
     expect(
-      example.filter((line) => line.startsWith("[[keys.example-api-key.prod.publish]]")),
+      example.filter((line) => line.startsWith("[[keys.EXAMPLE_API_KEY.prod.publish]]")),
     ).toHaveLength(2);
   });
 

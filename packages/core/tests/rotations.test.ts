@@ -11,11 +11,14 @@ import {
 import { fakeFiles } from "./fixtures";
 
 const PATH = "/state/keypin/rotations.json";
+const SITE = "/work/site/keypin.toml";
+const OWNER = { keyId: "SITE_DEPLOY", environment: "prod", mapFile: SITE };
 
 const rotation = (overrides: Partial<Rotation> = {}): Rotation => ({
   id: "r1",
-  keyId: "site-deploy",
+  keyId: "SITE_DEPLOY",
   environment: "prod",
+  mapFile: SITE,
   item: {
     kind: "1password",
     account: "my.1password.com",
@@ -49,23 +52,31 @@ describe("rotations file", () => {
   test("an item saved before references named a field reads as the password field", async () => {
     const { section: _section, field: _field, ...before } = rotation().item;
     const disk = fakeFiles({
-      [PATH]: JSON.stringify({ version: 1, rotations: [{ ...rotation(), item: before }] }),
+      [PATH]: JSON.stringify({ version: 2, rotations: [{ ...rotation(), item: before }] }),
     });
     expect((await loadRotations(disk.files, PATH)).rotations[0]?.item).toEqual(rotation().item);
   });
 
+  test("a version 1 rotation loads with no project, so no project's rotate picks it up", async () => {
+    const { mapFile: _mapFile, ...old } = rotation();
+    const disk = fakeFiles({ [PATH]: JSON.stringify({ version: 1, rotations: [old] }) });
+    const data = await loadRotations(disk.files, PATH);
+    expect(data).toEqual({ version: 2, rotations: [{ ...old, mapFile: null }] });
+    expect(unfinishedRotation(data, OWNER, old.item)).toBeUndefined();
+  });
+
   test("refuses another version and a malformed rotation", async () => {
     const disk = fakeFiles({
-      [PATH]: JSON.stringify({ version: 2, rotations: [] }),
-      "/b.json": JSON.stringify({ version: 1, rotations: [{ ...rotation(), stage: "done" }] }),
+      [PATH]: JSON.stringify({ version: 3, rotations: [] }),
+      "/b.json": JSON.stringify({ version: 2, rotations: [{ ...rotation(), stage: "done" }] }),
     });
-    await expect(loadRotations(disk.files, PATH)).rejects.toThrow("schema version 2");
+    await expect(loadRotations(disk.files, PATH)).rejects.toThrow("schema version 3");
     await expect(loadRotations(disk.files, "/b.json")).rejects.toThrow(
       `"rotations" must be a list of rotations`,
     );
   });
 
-  test("the unfinished one is any stage but revoked, for that key, environment and item", () => {
+  test("the unfinished one is any stage but revoked, for that project, key, environment and item", () => {
     const done = rotation({ id: "r0", stage: "revoked" });
     const open = rotation({ id: "r1", stage: "stored" });
     const dev = rotation({ id: "r2", environment: "dev" });
@@ -80,10 +91,18 @@ describe("rotations file", () => {
     });
     const data = [done, open, dev, elsewhere].reduce(putRotation, emptyRotations());
     const item = rotation().item;
-    expect(unfinishedRotation(data, "site-deploy", "prod", item)?.id).toBe("r1");
+    expect(unfinishedRotation(data, OWNER, item)?.id).toBe("r1");
+    expect(unfinishedRotation(dropRotation(data, "r1"), OWNER, item)).toBeUndefined();
+  });
+
+  test("another project's rotation of the same variable, environment and item isn't this one's", () => {
+    const docs = rotation({ id: "r4", mapFile: "/work/docs/keypin.toml" });
+    const data = putRotation(emptyRotations(), docs);
+    expect(unfinishedRotation(data, OWNER, rotation().item)).toBeUndefined();
     expect(
-      unfinishedRotation(dropRotation(data, "r1"), "site-deploy", "prod", item),
-    ).toBeUndefined();
+      unfinishedRotation(data, { ...OWNER, mapFile: "/work/docs/keypin.toml" }, rotation().item)
+        ?.id,
+    ).toBe("r4");
   });
 
   test("put replaces by ID", () => {

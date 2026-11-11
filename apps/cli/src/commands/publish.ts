@@ -48,7 +48,8 @@ function parseRequest(args: string[]) {
     allowPositionals: true,
   });
   const [keyId, ...extra] = positionals;
-  if (keyId === undefined || extra.length) throw new UsageError("keypin publish takes one key ID");
+  if (keyId === undefined || extra.length)
+    throw new UsageError("keypin publish takes one key: the variable name");
   return { keyId, env: values.env, yes: values.yes };
 }
 
@@ -59,22 +60,23 @@ async function publishLocked(
   deps: Deps,
 ): Promise<number> {
   const { keyId, environment } = request;
-  const key = map.keys.find((k) => k.id === keyId);
+  const key = map.keys.find((k) => k.name === keyId);
   if (!key) throw new Error(`${map.file} has no key "${keyId}"`);
   const entry = key.environments[environment];
   if (!entry) throw new Error(`key "${keyId}" has no ${environment} entry in ${map.file}`);
 
   const say = (text: string) => deps.stderr.write(`${text}\n`);
-  say(`Publishing ${keyId} (${environment}) as ${key.env}, from ${formatReference(entry.ref)}`);
+  say(`Publishing ${keyId} (${environment}) from ${formatReference(entry.ref)}`);
   say(`  1Password account: ${entry.ref.account}`);
-  for (const target of entry.publish) say(`  to: ${describeTarget(target, key.env)}`);
+  for (const target of entry.publish) say(`  to: ${describeTarget(target, key.name)}`);
   if (!entry.publish.length) {
     say(`The map lists no destinations for ${keyId} (${environment}); nothing to publish.`);
     return 1;
   }
 
   const state = await loadState(deps.files, path);
-  for (const op of unfinishedOperations(state, keyId, environment)) {
+  const owner = { keyId, environment, mapFile: map.file };
+  for (const op of unfinishedOperations(state, owner)) {
     say(
       `An earlier publish (started ${op.startedAt}, generation ${op.generation}) didn't finish: wrote ${op.done.length} of ${op.planned.length} (${op.done.join(", ") || "none"}). This run plans again from the receipts.`,
     );
@@ -86,7 +88,12 @@ async function publishLocked(
     return 1;
   }
 
-  const approvals = approvalsFor({ key, environment, receipts: state.receipts });
+  const approvals = approvalsFor({
+    key,
+    environment,
+    mapFile: map.file,
+    receipts: state.receipts,
+  });
   if (approvals.length && !deps.isTerminal) {
     say("\nNeeds approval:");
     for (const approval of approvals) say(`  ${approval.approval}`);
@@ -106,13 +113,19 @@ async function publishLocked(
     return 1;
   }
   const generation = await generationOf(secret);
-  const plan = planPublish({ key, environment, receipts: state.receipts, generation });
+  const plan = planPublish({
+    key,
+    environment,
+    mapFile: map.file,
+    receipts: state.receipts,
+    generation,
+  });
 
   say(`\nPlan for generation ${generation}:`);
   const writes = writesFor(plan.steps, checked);
   for (const step of plan.steps) {
     const found = checked.get(step.destinationId);
-    say(`  ${step.action} ${describeTarget(step.target, key.env)}: ${step.reason}`);
+    say(`  ${step.action} ${describeTarget(step.target, key.name)}: ${step.reason}`);
     if (found) say(`    ${accountFacts(found.check)}`);
     if (step.approval) say(`    needs approval: ${step.approval}`);
   }
@@ -124,8 +137,8 @@ async function publishLocked(
 
   if (!writes.length) {
     say("Nothing to write: every destination already has this generation.");
-    if (unfinishedOperations(state, keyId, environment).length) {
-      await saveState(deps.files, path, finishAll(state, keyId, environment));
+    if (unfinishedOperations(state, owner).length) {
+      await saveState(deps.files, path, finishAll(state, owner));
     }
     return 0;
   }
@@ -135,6 +148,7 @@ async function publishLocked(
   const written = await writeAll({
     key,
     environment,
+    mapFile: map.file,
     entry,
     secret,
     generation,

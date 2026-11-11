@@ -19,14 +19,6 @@ export async function run(args: string[], deps: Deps): Promise<number> {
     const entry = key.environments[environment];
     return entry ? [{ key, ref: entry.ref }] : [];
   });
-  const twice = keys.filter(({ key }, i) => keys.findIndex((k) => k.key.env === key.env) !== i);
-  if (twice.length) {
-    const names = [...new Set(twice.map(({ key }) => key.env))];
-    deps.stderr.write(
-      `keypin: in ${environment}, more than one key sets ${names.join(", ")}, so the command didn't start\n`,
-    );
-    return 1;
-  }
 
   const found = new Map<string, Secret>();
   if (keys.length) {
@@ -39,9 +31,9 @@ export async function run(args: string[], deps: Deps): Promise<number> {
     const failures: string[] = [];
     for (const { key, ref } of keys) {
       try {
-        found.set(key.env, await vault.read(ref));
+        found.set(key.name, await vault.read(ref));
       } catch (error) {
-        failures.push(`${key.id} (${formatReference(ref)}): ${messageOf(error)}`);
+        failures.push(`${key.name} (${formatReference(ref)}): ${messageOf(error)}`);
       }
     }
     if (failures.length) {

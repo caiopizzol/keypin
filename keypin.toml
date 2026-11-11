@@ -1,18 +1,17 @@
 [1password]
 account = "my.1password.com"
 
-[keys.site-deploy]
-env = "CLOUDFLARE_API_TOKEN"
+[keys.CLOUDFLARE_API_TOKEN]
 rotate_every = "90d"
 
-[keys.site-deploy.prod]
+[keys.CLOUDFLARE_API_TOKEN.prod]
 from = "op://App Secrets/keypin-dev prod cloudflare deploy token/password"
 
-[[keys.site-deploy.prod.publish]]
+[[keys.CLOUDFLARE_API_TOKEN.prod.publish]]
 to = "github-actions"
 repo = "caiopizzol/keypin"
 
-[keys.site-deploy.prod.issue]
+[keys.CLOUDFLARE_API_TOKEN.prod.issue]
 provider = "cloudflare-account-token"
 account = "e48c9afabc4ff0cda321d0cf69b8943f"
 admin = "op://App Secrets/shared cloudflare token admin/password"

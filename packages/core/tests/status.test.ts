@@ -5,6 +5,7 @@ import {
   periodDays,
   type MapResult,
   type ProblemKind,
+  type Rotation as SavedRotation,
   type StatusInput,
   type VaultMetadata,
 } from "../src/index";
@@ -74,6 +75,62 @@ describe("receipts in status follow the destination, like publish", () => {
       { destinationId: GITHUB },
     ]);
   });
+
+  test("another project's receipt for the same variable and environment, from another item, doesn't count", () => {
+    const other = {
+      kind: "1password",
+      account: "a",
+      vault: "v",
+      item: "x",
+      section: null,
+      field: "password",
+    } as const;
+    const result = status(rotation, {
+      receipts: [
+        receipt(WORKER, "aaaaaaaaaaaaaaaa"),
+        receipt(GITHUB, "bbbbbbbbbbbbbbbb", { mapFile: "/work/web/keypin.toml", source: other }),
+      ],
+    });
+    expect(result.problems.filter((p) => p.kind === "missing-receipt")).toMatchObject([
+      { destinationId: GITHUB },
+    ]);
+  });
+});
+
+describe("unfinished rotations in status", () => {
+  const ref = KEY.environments.prod?.ref;
+  const saved = (mapFile: string | null): SavedRotation => ({
+    id: "r1",
+    keyId: KEY.name,
+    environment: "prod",
+    mapFile,
+    item: ref ?? {
+      kind: "1password",
+      account: "a",
+      vault: "v",
+      item: "i",
+      section: null,
+      field: "f",
+    },
+    provider: "cloudflare-account-token",
+    account: "11111111111111111111111111111111",
+    stage: "published",
+    startedAt: "2026-11-10T12:00:00.000Z",
+    updatedAt: "2026-11-10T12:00:05.000Z",
+    old: { id: "a".repeat(32), name: "old", expiresOn: null, generation: "0123456789abcdef" },
+    new: { id: "b".repeat(32), name: "new", expiresOn: null, generation: "fedcba9876543210" },
+  });
+  const rotation = { rotated: "2026-11-01", rotateEvery: "365d" };
+
+  test("this project's rotation is a notice", () => {
+    const result = status(rotation, { rotations: [saved(`${PROJECT}/keypin.toml`)] });
+    expect(kinds(result)).toContain("rotation-unfinished");
+  });
+
+  test("another project's rotation of the same variable, environment and item isn't shown here", () => {
+    const result = status(rotation, { rotations: [saved("/work/web/keypin.toml"), saved(null)] });
+    expect(kinds(result)).not.toContain("rotation-unfinished");
+  });
 });
 
 describe("rotation periods and dates", () => {
@@ -104,7 +161,7 @@ describe("status", () => {
     expect(result.rows).toEqual([
       expect.objectContaining({
         project: PROJECT,
-        keyId: KEY.id,
+        keyId: KEY.name,
         environment: "prod",
         rotated: "2026-11-09",
         due: "2027-11-09",
@@ -186,7 +243,7 @@ describe("status", () => {
     );
     expect(result.problems.find((p) => p.kind === "bad-rotation-period")).toMatchObject({
       severity: "problem",
-      message: `${KEY.id} (prod): keypin.toml has no rotate_every for this key; add one, such as "90d", or "never"`,
+      message: `${KEY.name} (prod): keypin.toml has no rotate_every for this key; add one, such as "90d", or "never"`,
     });
   });
 
@@ -210,7 +267,7 @@ describe("status", () => {
     expect(result.problems.filter((p) => p.kind === "stale-receipt")).toEqual([
       expect.objectContaining({
         destinationId: GITHUB,
-        message: `${KEY.id} (prod): ${GITHUB} last got generation bbbbbbbbbbbbbbbb, and the value is now aaaaaaaaaaaaaaaa`,
+        message: `${KEY.name} (prod): ${GITHUB} last got generation bbbbbbbbbbbbbbbb, and the value is now aaaaaaaaaaaaaaaa`,
       }),
     ]);
     expect(result.rows[0]?.destinations.map((d) => d.stale)).toEqual([false, true]);

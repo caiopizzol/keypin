@@ -114,6 +114,7 @@ export interface TokenProvider {
 export interface Receipt {
   keyId: KeyId;
   environment: Environment;
+  mapFile: string | null;
   source: KeyRef | null;
   destinationId: string;
   generation: Generation;

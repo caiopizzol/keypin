@@ -71,27 +71,11 @@ describe("keypin run", () => {
     expect(vault.calls).toEqual(["read web dev session secret"]);
   });
 
-  test("two keys setting one variable start nothing and read nothing", async () => {
-    const twice = `${WEB_MAP}\n[keys.web-session-2]\nenv = "SESSION_SECRET"\ndev = "op://Private/other/password"\n`;
-    const disk = memoryFiles({ "/work/web/keypin.toml": twice });
-    const vault = fakeVault({ values: { "web dev session secret": SENTINEL, other: SENTINEL } });
-    const launcher = fakeLauncher();
-    const { deps, stderr } = fakeDeps({
-      disk,
-      backend: vault.vault,
-      deps: { cwd: "/work/web", launch: launcher.launch, onSignals: launcher.onSignals },
-    });
-    expect(await cli(["run", "--", "true"], deps)).toBe(1);
-    expect(stderr.text).toContain("in dev, more than one key sets SESSION_SECRET");
-    expect(vault.calls).toEqual([]);
-    expect(launcher.launches).toHaveLength(0);
-  });
-
   test("a failed read starts nothing and names the key and item", async () => {
     const { deps, launcher, stderr } = setup({ failing: ["web dev session secret"] });
     expect(await cli(["run", "--", "true"], deps)).toBe(1);
     expect(launcher.launches).toHaveLength(0);
-    expect(stderr.text).toContain("web-session (op://Private/web dev session secret/password)");
+    expect(stderr.text).toContain("SESSION_SECRET (op://Private/web dev session secret/password)");
   });
 
   test("passes the child's exit code through", async () => {

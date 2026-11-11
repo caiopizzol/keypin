@@ -18,10 +18,10 @@ export const USAGE = `Usage:
                            every key name a project uses, local and in the cloud, and a draft map
   keypin run [--env <name>] -- <command>
                            run a command with one environment's keys (default: the first, dev)
-  keypin publish <key-id> [--env <name>] [--yes]
+  keypin publish <VARIABLE> [--env <name>] [--yes]
                            check accounts, plan, confirm, then write the key to every destination
                            (default environment: the last, prod)
-  keypin rotate <key-id> [--env <name>] [--yes]
+  keypin rotate <VARIABLE> [--env <name>] [--yes]
                            replace a token with a new one that has the same permissions, publish it,
                            and revoke the old one on the next run
   keypin --version         print the version

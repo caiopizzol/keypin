@@ -26,8 +26,7 @@ export interface EnvEntry {
 }
 
 export interface KeyEntry {
-  id: KeyId;
-  env: string;
+  name: KeyId;
   rotateEvery: string | null;
   environments: Partial<Record<Environment, EnvEntry>>;
 }
@@ -99,12 +98,12 @@ export function parseMap(text: string, file: string): MapResult {
 
 type Table = Record<string, unknown>;
 
-const KEY_ID = /^[a-z0-9][a-z0-9-]*$/;
 const ENVIRONMENT_NAME = /^[a-z][a-z0-9-]*$/;
-const KEY_FIELDS: readonly string[] = ["env", "rotate_every"];
-const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const KEY_FIELDS: readonly string[] = ["rotate_every"];
+const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 const REMOVED_KEY_FIELDS: readonly string[] = ["owner", "consumers"];
+const OLD_FORMAT = "see docs/configuration.md for the current format";
 
 export function validateMap(data: unknown, file: string): MapResult {
   const errors: string[] = [];
@@ -115,7 +114,7 @@ export function validateMap(data: unknown, file: string): MapResult {
     fail(
       "",
       field === "vaults"
-        ? `[vaults] is replaced by [1password] with your account, and op:// references in each key`
+        ? `[vaults] is from keypin 0.4; use [1password] and op:// references (${OLD_FORMAT})`
         : `unknown top-level field "${field}"`,
     ),
   );
@@ -126,12 +125,13 @@ export function validateMap(data: unknown, file: string): MapResult {
   const rawKeys = data.keys ?? {};
   if (!isRecord(rawKeys)) fail("", `"keys" must be a table`);
   else {
-    for (const [id, raw] of Object.entries(rawKeys)) {
+    Object.entries(rawKeys).forEach(([id, raw], index) => {
+      const label = VARIABLE_NAME.test(id) ? `key "${id}"` : `keys[${index}]`;
       const entry = validateKey(id, raw, account, environments, (where, message) =>
-        fail(`key "${id}"${where}: `, message),
+        fail(`${label}${where}: `, message),
       );
       if (entry) keys.push(entry);
-    }
+    });
   }
 
   sharedDestinations(keys, environments, (where, message) => fail(where, message));
@@ -165,8 +165,6 @@ function validateEnvironments(
       fail(
         `environment "${name}": a name starts with a lowercase letter and uses only lowercase letters, digits and dashes`,
       );
-    } else if (KEY_FIELDS.includes(name)) {
-      fail(`environment "${name}": that name is a key field`);
     } else if (names.includes(name)) {
       fail(`environment "${name}" is listed twice`);
     } else names.push(name);
@@ -183,8 +181,8 @@ function sharedDestinations(
   for (const key of keys) {
     for (const environment of environments) {
       key.environments[environment]?.publish.forEach((target, i) => {
-        const where = `key "${key.id}" ${environment} publish[${i}]`;
-        const secret = secretKey(target, key.env);
+        const where = `key "${key.name}" ${environment} publish[${i}]`;
+        const secret = secretKey(target, key.name);
         const owner = owners.get(secret);
         if (owner === undefined) owners.set(secret, where);
         else fail(`${where}: `, `writes the same destination secret as ${owner}`);
@@ -205,7 +203,11 @@ function validateKey(
     failures++;
     fail(where, message);
   };
-  if (!KEY_ID.test(id)) err("", "a key ID uses lowercase letters, digits and dashes");
+  if (!VARIABLE_NAME.test(id))
+    err(
+      "",
+      "the table name is the variable your program reads: letters, digits and _, not starting with a digit",
+    );
   if (!isRecord(raw)) {
     err("", "must be a table");
     return undefined;
@@ -213,17 +215,13 @@ function validateKey(
   unknownFields(raw, [...KEY_FIELDS, ...environmentNames], (field) =>
     err(
       "",
-      REMOVED_KEY_FIELDS.includes(field)
-        ? `field "${field}" is no longer used; delete it`
-        : `unknown field "${field}"; environments are ${environmentNames.map((n) => `"${n}"`).join(", ")}`,
+      field === "env"
+        ? `field "env" is from keypin 0.4; name the table after the variable, such as [keys.API_TOKEN] (${OLD_FORMAT})`
+        : REMOVED_KEY_FIELDS.includes(field)
+          ? `field "${field}" is no longer used; delete it`
+          : `unknown field "${field}"; environments are ${environmentNames.map((n) => `"${n}"`).join(", ")}`,
     ),
   );
-  const env = requiredString(raw, "env", (m) => err("", m));
-  if (env !== undefined && !ENV_NAME.test(env))
-    err(
-      "",
-      `field "env" must be a variable name: letters, digits and _, not starting with a digit`,
-    );
   const rotateEvery = optionalString(raw, "rotate_every", (m) => err("", m));
   if (rotateEvery !== undefined && periodDays(rotateEvery) === undefined) {
     err("", `field "rotate_every" must be <n>d, <n>w, <n>m or never`);
@@ -237,10 +235,10 @@ function validateKey(
   }
   for (const [name, entry] of Object.entries(environments)) {
     const index = entry.publish.findIndex((target) => target.to === "github-actions");
-    if (env !== undefined && index !== -1 && /^GITHUB_/i.test(env)) {
+    if (index !== -1 && /^GITHUB_/i.test(id)) {
       err(
         ` ${name}`,
-        `publish[${index}]: github-actions can't take this key, because GitHub reserves secret names that start with GITHUB_; rename field "env"`,
+        `publish[${index}]: github-actions can't take this key, because GitHub reserves secret names that start with GITHUB_`,
       );
     }
   }
@@ -248,8 +246,8 @@ function validateKey(
     err("", `needs at least one of ${environmentNames.map((n) => `"${n}"`).join(", ")}`);
   }
 
-  if (failures || env === undefined) return undefined;
-  return { id, env, rotateEvery: rotateEvery ?? null, environments };
+  if (failures) return undefined;
+  return { name: id, rotateEvery: rotateEvery ?? null, environments };
 }
 
 function validateEnv(
@@ -270,7 +268,7 @@ function validateEnv(
   unknownFields(raw, ["from", "publish", "issue"], (field) =>
     err(
       field === "vault" || field === "item"
-        ? `"vault" and "item" are replaced by from = "op://<vault>/<item>/<field>"`
+        ? `"vault" and "item" are from keypin 0.4; use from = "op://<vault>/<item>/<field>" (${OLD_FORMAT})`
         : `unknown field "${field}"`,
     ),
   );

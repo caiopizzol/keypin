@@ -4,8 +4,9 @@ import { sameRef, storedRefWithPasswordDefault } from "./reference";
 import { type Files, readVersionedJson, writeJsonAtomic } from "./files";
 import { isRecord } from "./record";
 import type { Generation } from "./secret";
+import { type KeyOwner, ownedBy } from "./state";
 
-export const ROTATIONS_VERSION = 1;
+export const ROTATIONS_VERSION = 2;
 
 export const ROTATION_STAGES = ["issuing", "issued", "stored", "published", "revoked"] as const;
 export type RotationStage = (typeof ROTATION_STAGES)[number];
@@ -21,6 +22,7 @@ export interface Rotation {
   id: string;
   keyId: KeyId;
   environment: Environment;
+  mapFile: string | null;
   item: KeyRef;
   provider: string;
   account: string;
@@ -39,11 +41,17 @@ export interface Rotations {
 export const emptyRotations = (): Rotations => ({ version: ROTATIONS_VERSION, rotations: [] });
 
 export async function loadRotations(files: Files, path: string): Promise<Rotations> {
-  const data = await readVersionedJson(files, path, [ROTATIONS_VERSION], "rotations file");
+  const data = await readVersionedJson(files, path, [1, ROTATIONS_VERSION], "rotations file");
   if (!data) return emptyRotations();
   const rotations = Array.isArray(data.rotations)
     ? data.rotations.map((r: unknown) =>
-        isRecord(r) ? { ...r, item: storedRefWithPasswordDefault(r.item) ?? r.item } : r,
+        isRecord(r)
+          ? {
+              ...r,
+              mapFile: data.version === ROTATIONS_VERSION ? r.mapFile : null,
+              item: storedRefWithPasswordDefault(r.item) ?? r.item,
+            }
+          : r,
       )
     : data.rotations;
   if (!Array.isArray(rotations) || !rotations.every(isRotation)) {
@@ -58,16 +66,11 @@ export async function saveRotations(files: Files, path: string, data: Rotations)
 
 export function unfinishedRotation(
   data: Rotations,
-  keyId: KeyId,
-  environment: Environment,
+  owner: KeyOwner,
   item: KeyRef,
 ): Rotation | undefined {
   return data.rotations.find(
-    (r) =>
-      r.keyId === keyId &&
-      r.environment === environment &&
-      sameRef(r.item, item) &&
-      r.stage !== "revoked",
+    (r) => ownedBy(r, owner) && sameRef(r.item, item) && r.stage !== "revoked",
   );
 }
 
@@ -101,6 +104,7 @@ function isRotation(r: unknown): r is Rotation {
   return (
     isRecord(r) &&
     [r.id, r.keyId, r.environment, r.provider, r.account, r.startedAt, r.updatedAt].every(isText) &&
+    isTextOrNull(r.mapFile) &&
     ROTATION_STAGES.some((stage) => stage === r.stage) &&
     storedRefWithPasswordDefault(r.item) !== null &&
     isTokenRecord(r.old) &&

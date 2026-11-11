@@ -34,10 +34,10 @@ describe("keypin status", () => {
     const { deps, stdout, stderr, calls } = setup();
     expect(await cli(["status"], deps)).toBe(1);
     expect(stdout.text).toMatch(
-      /web-session\s+dev\s+SESSION_SECRET\s+op:\/\/Private\/web dev session secret\/password\s+2026-11-09\s+180d\s+2027-05-08/,
+      /SESSION_SECRET\s+dev\s+op:\/\/Private\/web dev session secret\/password\s+2026-11-09\s+180d\s+2027-05-08/,
     );
-    expect(stdout.text).toMatch(/web-session\s+prod.+2026-11-09\s+180d\s+2027-05-08/);
-    expect(stdout.text).toMatch(/billing-stripe\s+prod.+2026-10-23\s+365d\s+2027-10-23/);
+    expect(stdout.text).toMatch(/SESSION_SECRET\s+prod.+2026-11-09\s+180d\s+2027-05-08/);
+    expect(stdout.text).toMatch(/STRIPE_API_KEY\s+prod.+2026-10-23\s+365d\s+2027-10-23/);
     expect(stdout.text).toContain(
       "-> cloudflare-worker:billing-worker:STRIPE_API_KEY (account 11111111111111111111111111111111): no receipt",
     );
@@ -45,7 +45,7 @@ describe("keypin status", () => {
     expect(stdout.text.match(/missing-receipt/g)).toHaveLength(3);
     expect(stdout.text).toContain("Notices (1):");
     expect(stdout.text).toContain(
-      "authority-unknown: 2 keys (billing-stripe, web-session): what each grants is unknown",
+      "authority-unknown: 2 keys (STRIPE_API_KEY, SESSION_SECRET): what each grants is unknown",
     );
     expect(stdout.text.match(/authority-unknown/g)).toHaveLength(1);
     expect(calls.toSorted()).toEqual([
@@ -59,25 +59,35 @@ describe("keypin status", () => {
     expect(stderr.text).toContain("op://Private/web prod session secret/password");
   });
 
+  const sessionReceipt = {
+    keyId: "SESSION_SECRET",
+    environment: "prod",
+    destinationId: "cloudflare-worker:web:SESSION_SECRET",
+    generation: "0123456789abcdef",
+    account: {
+      pinned: "11111111111111111111111111111111",
+      publisher: "me@example.com",
+      destinationAccount: "11111111111111111111111111111111",
+    },
+    at: "2026-11-09T15:30:35Z",
+    evidence: { versionId: "v1" },
+  };
+
+  test("a receipt from state version 1, which records neither item nor project, is missing until the next publish", async () => {
+    const state = JSON.stringify({ version: 1, operations: [], receipts: [sessionReceipt] });
+    const { deps, stdout } = setup({ state });
+    await cli(["status"], deps);
+    expect(stdout.text).toContain(
+      "-> cloudflare-worker:web:SESSION_SECRET (account 11111111111111111111111111111111): no receipt",
+    );
+    expect(stdout.text.match(/missing-receipt/g)).toHaveLength(3);
+  });
+
   test("shows a destination's last receipt", async () => {
     const state = JSON.stringify({
-      version: 1,
+      version: 3,
       operations: [],
-      receipts: [
-        {
-          keyId: "web-session",
-          environment: "prod",
-          destinationId: "cloudflare-worker:web:SESSION_SECRET",
-          generation: "0123456789abcdef",
-          account: {
-            pinned: "11111111111111111111111111111111",
-            publisher: "me@example.com",
-            destinationAccount: "11111111111111111111111111111111",
-          },
-          at: "2026-11-09T15:30:35Z",
-          evidence: { versionId: "v1" },
-        },
-      ],
+      receipts: [{ ...sessionReceipt, mapFile: "/work/web/keypin.toml", source: null }],
     });
     const { deps, stdout } = setup({ state });
     await cli(["status"], deps);
@@ -90,7 +100,7 @@ describe("keypin status", () => {
   test("a failing metadata read is rotation-unreadable, never nothing due", async () => {
     const { deps, stdout, stderr } = setup({ failing: ["billing stripe api key"] });
     expect(await cli(["status"], deps)).toBe(1);
-    expect(stdout.text).toMatch(/billing-stripe\s+prod.+\s-\s+365d\s+unknown/);
+    expect(stdout.text).toMatch(/STRIPE_API_KEY\s+prod.+\s-\s+365d\s+unknown/);
     expect(stdout.text.match(/rotation-unreadable/g)).toHaveLength(2);
     expect(stderr.text).toContain(`"billing stripe api key" isn't readable`);
   });
@@ -107,7 +117,7 @@ describe("keypin status", () => {
     expect(await cli(["status"], deps)).toBe(0);
     expect(stdout.text).not.toContain("Problems");
     expect(stdout.text).toContain("Notices (1):");
-    expect(stdout.text).toContain("authority-unknown: 1 key (billing-stripe)");
+    expect(stdout.text).toContain("authority-unknown: 1 key (STRIPE_API_KEY)");
   });
 
   test("--json prints the same rows and problems", async () => {
@@ -116,10 +126,10 @@ describe("keypin status", () => {
     expect(parseJson(stdout.text)).toMatchObject({
       today: "2026-11-09",
       rows: [
-        { keyId: "billing-stripe", environment: "dev", due: "2027-10-23" },
-        { keyId: "billing-stripe", environment: "prod", due: "2027-10-23" },
-        { keyId: "web-session", environment: "dev", due: "2027-05-08" },
-        { keyId: "web-session", environment: "prod", due: "2027-05-08" },
+        { keyId: "STRIPE_API_KEY", environment: "dev", due: "2027-10-23" },
+        { keyId: "STRIPE_API_KEY", environment: "prod", due: "2027-10-23" },
+        { keyId: "SESSION_SECRET", environment: "dev", due: "2027-05-08" },
+        { keyId: "SESSION_SECRET", environment: "prod", due: "2027-05-08" },
       ],
     });
     expect(stdout.text.match(/"kind": "missing-receipt"/g)).toHaveLength(3);
@@ -167,13 +177,13 @@ describe("keypin status", () => {
       );
       if (json) {
         expect(parseJson(stdout.text)).toMatchObject({
-          rows: [{ keyId: "web-session" }, { keyId: "web-session" }],
+          rows: [{ keyId: "SESSION_SECRET" }, { keyId: "SESSION_SECRET" }],
           problems: expect.arrayContaining([
             expect.objectContaining({ kind: "no-map", project: "/work/billing" }),
           ]),
         });
       } else {
-        expect(stdout.text).toMatch(/web-session\s+prod/);
+        expect(stdout.text).toMatch(/SESSION_SECRET\s+prod/);
         expect(stdout.text).toContain("no-map: /work/billing has no readable keypin.toml");
       }
     }
@@ -186,12 +196,13 @@ describe("keypin status: rotations", () => {
       [REGISTRY]: registryWith("/work/web"),
       "/work/web/keypin.toml": WEB_MAP,
       "/home/me/.local/state/keypin/rotations.json": JSON.stringify({
-        version: 1,
+        version: 2,
         rotations: [
           {
             id: "r1",
-            keyId: "web-session",
+            keyId: "SESSION_SECRET",
             environment: "prod",
+            mapFile: "/work/web/keypin.toml",
             item: {
               kind: "1password",
               account: "my.1password.com",
@@ -225,7 +236,7 @@ describe("keypin status: rotations", () => {
     const { deps, stdout } = fakeDeps({ disk: files, backend: fake.vault });
     await cli(["status"], deps);
     expect(stdout.text).toContain(
-      `rotation-unfinished: web-session (prod): a rotation started 2026-11-10T12:00:00.000Z is at stage "published"; run keypin rotate web-session to continue`,
+      `rotation-unfinished: SESSION_SECRET (prod): a rotation started 2026-11-10T12:00:00.000Z is at stage "published"; run keypin rotate SESSION_SECRET to continue`,
     );
     expect(stdout.text).toMatch(/Notices \(2\):/);
   });

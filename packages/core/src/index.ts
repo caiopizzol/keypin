@@ -54,7 +54,9 @@ export {
 export {
   emptyState,
   finishOperation,
+  type KeyOwner,
   loadState,
+  ownedBy,
   receiptsFor,
   recordReceipt,
   saveState,

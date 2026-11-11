@@ -94,7 +94,7 @@ guards=(
   "apps/cli/src/commands/rotate.ts|  return latestPerSecret(receipts).filter((r) => r.generation === generation);|holdersOf reads each secret's latest receipt"
   "apps/cli/src/commands/rotate.ts|    if (holds === rotation.new.generation) {|AbandonToStored: vault = rot.new"
   "apps/cli/src/commands/rotate.ts|    if (holds !== rotation.old.generation) {|AbandonDelete: vault = rot.old"
-  "apps/cli/src/publishing.ts|      const evidence = await found.destination.write(key.env, secret);|PublishWrite, then PublishReceipt"
+  "apps/cli/src/publishing.ts|      const evidence = await found.destination.write(key.name, secret);|PublishWrite, then PublishReceipt"
   "apps/cli/src/publishing.ts|  const taken = await deps.lock(lockFile);|Unlocked"
   "packages/core/src/plan.ts|    if (receipt?.generation === generation) {|PublishWrite skips a receipt that has rot.new"
 )

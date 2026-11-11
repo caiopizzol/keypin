@@ -3,6 +3,9 @@
 Each project has a `keypin.toml` at its root. It holds names and places, never values. keypin rejects any field it
 doesn't know, so a typo shows up as an error.
 
+A `keypin.toml` from keypin 0.4 (with `[vaults]`, `env`, `vault` and `item`) doesn't parse any more. Rewrite it in
+the format below.
+
 ## 1Password account
 
 ```toml
@@ -16,8 +19,7 @@ it.
 ## Keys
 
 ```toml
-[keys.api-token] # the key ID: lowercase letters, digits and dashes
-env = "API_TOKEN" # the variable your program reads
+[keys.API_TOKEN] # the variable your program reads
 rotate_every = "180d" # <n>d, <n>w, <n>m or never
 ```
 
@@ -28,7 +30,7 @@ fields share a name. Copy it from 1Password: open the item, select the field's m
 ```toml
 dev = "op://Private/my-project dev api token/credential" # what keypin run reads
 
-[keys.api-token.prod] # what keypin publish reads by default
+[keys.API_TOKEN.prod] # what keypin publish reads by default
 from = "op://Private/my-project prod api token/credential"
 ```
 
@@ -47,25 +49,23 @@ environments = ["dev", "staging", "prod"]
 Every name a key uses must be listed, so a typo such as `stagng` is an error. A name starts with a lowercase letter
 and uses only lowercase letters, digits and dashes.
 
-If two keys in the same environment set the same `env`, `keypin run` refuses to start the command.
-
 ## Destinations
 
 Under an environment, list every place `publish` writes the key:
 
 ```toml
-[[keys.api-token.prod.publish]]
+[[keys.API_TOKEN.prod.publish]]
 to = "github-actions"
 repo = "owner/repo"
 account = "owner" # optional: the GitHub login that writes; defaults to the repo's owner
 
-[[keys.api-token.prod.publish]]
+[[keys.API_TOKEN.prod.publish]]
 to = "cloudflare-worker"
 account = "<Cloudflare account ID>" # 32 hex characters
 worker = "my-worker"
 ```
 
-GitHub reserves secret names that start with `GITHUB_`, so a key with such an `env` can't publish to GitHub Actions.
+GitHub reserves secret names that start with `GITHUB_`, so a key with such a name can't publish to GitHub Actions.
 
 To let `rotate` replace the key, add an `issue` section. See [Rotation](rotation.md).
 

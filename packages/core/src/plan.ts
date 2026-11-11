@@ -8,6 +8,7 @@ import {
 } from "./map";
 import { formatReference, sameRef } from "./reference";
 import type { Generation } from "./secret";
+import { type KeyOwner, ownedBy } from "./state";
 
 export type ApprovalReason = "no receipt" | "new destination" | "account changed" | "item changed";
 export type WriteReason = ApprovalReason | "different generation";
@@ -51,8 +52,15 @@ export interface PublishPlan {
 export interface PlanInput {
   key: KeyEntry;
   environment: Environment;
+  mapFile: string;
   receipts: readonly Receipt[];
 }
+
+const ownerOf = ({ key, environment, mapFile }: PlanInput): KeyOwner => ({
+  keyId: key.name,
+  environment,
+  mapFile,
+});
 
 export function approvalsFor(input: PlanInput): (Approval & { destinationId: string })[] {
   return judge(input).flatMap(({ id, approval }) =>
@@ -84,9 +92,9 @@ export function planPublish(input: PlanInput & { generation: Generation }): Publ
     };
   });
 
-  const listed = new Set(steps.flatMap((s) => [secretKey(s.target, key.env), s.destinationId]));
+  const listed = new Set(steps.flatMap((s) => [secretKey(s.target, key.name), s.destinationId]));
   const removed = latestPerSecret(input.receipts)
-    .filter((r) => r.keyId === key.id && r.environment === environment)
+    .filter((r) => ownedBy(r, ownerOf(input)))
     .filter((r) => !listed.has(receiptSecretKey(r)) && !listed.has(r.destinationId))
     .map((r) => ({
       destinationId: r.destinationId,
@@ -98,7 +106,7 @@ export function planPublish(input: PlanInput & { generation: Generation }): Publ
     }));
 
   return {
-    keyId: key.id,
+    keyId: key.name,
     environment,
     generation,
     steps,
@@ -110,16 +118,17 @@ export function planPublish(input: PlanInput & { generation: Generation }): Publ
 function judge(input: PlanInput) {
   const { key, environment } = input;
   const entry = key.environments[environment];
-  if (!entry) throw new Error(`key "${key.id}" has no ${environment} entry in the map`);
+  if (!entry) throw new Error(`key "${key.name}" has no ${environment} entry in the map`);
   const newest = latestPerSecret(input.receipts);
   const latest = new Map(newest.map((r) => [receiptSecretKey(r), r]));
-  const ours = newest.filter((r) => r.keyId === key.id && r.environment === environment);
-  const published = input.receipts.some((r) => r.keyId === key.id && r.environment === environment);
+  const owner = ownerOf(input);
+  const ours = newest.filter((r) => ownedBy(r, owner));
+  const published = input.receipts.some((r) => ownedBy(r, owner));
 
   return entry.publish.map((target) => {
-    const id = destinationId(target, key.env);
+    const id = destinationId(target, key.name);
     const receipt =
-      latest.get(secretKey(target, key.env)) ?? ours.find((r) => r.destinationId === id);
+      latest.get(secretKey(target, key.name)) ?? ours.find((r) => r.destinationId === id);
     const needs = (reason: ApprovalReason, approval: string) => ({
       id,
       target,

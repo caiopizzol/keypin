@@ -13,11 +13,13 @@ import {
   generationOf,
   type IssueSpec,
   type KeyEntry,
+  type KeyOwner,
   type KeysMap,
   latestPerSecret,
   loadRegistry,
   loadRotations,
   loadState,
+  ownedBy,
   parseMap,
   periodDays,
   planPublish,
@@ -81,11 +83,12 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
     allowPositionals: true,
   });
   const [keyId, ...extra] = positionals;
-  if (keyId === undefined || extra.length) throw new UsageError("keypin rotate takes one key ID");
+  if (keyId === undefined || extra.length)
+    throw new UsageError("keypin rotate takes one key: the variable name");
 
   const map = await findMap(deps.files, deps.cwd);
   const environment = pickEnvironment(map, values.env, publishEnvironment(map));
-  const key = map.keys.find((k) => k.id === keyId);
+  const key = map.keys.find((k) => k.name === keyId);
   if (!key) throw new Error(`${map.file} has no key "${keyId}"`);
   const entry = key.environments[environment];
   if (!entry) throw new Error(`key "${keyId}" has no ${environment} entry in ${map.file}`);
@@ -112,10 +115,10 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
       say,
     };
     const data = await loadRotations(deps.files, run.rotationsPath);
-    const open = unfinishedRotation(data, key.id, environment, entry.ref);
+    const open = unfinishedRotation(data, keyOwner(run), entry.ref);
     if (!open) return start(run, data);
     say(
-      `An unfinished rotation of ${key.id} (${environment}), started ${open.startedAt}, is at stage "${open.stage}".`,
+      `An unfinished rotation of ${key.name} (${environment}), started ${open.startedAt}, is at stage "${open.stage}".`,
     );
     if (open.provider !== issue.provider || open.account !== issue.account) {
       say(
@@ -139,15 +142,15 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
 
 async function start(run: Run, data: Rotations): Promise<number> {
   const { key, entry, issue, environment, deps, say } = run;
-  say(`Rotating ${key.id} (${environment}) as ${key.env}, from ${formatReference(entry.ref)}`);
+  say(`Rotating ${key.name} (${environment}) from ${formatReference(entry.ref)}`);
   say(`  1Password account: ${entry.ref.account}`);
   say(
     `  new token: ${issue.provider} in account ${issue.account}, made with the admin token in ${formatReference(issue.admin)}`,
   );
-  for (const target of entry.publish) say(`  to: ${describeTarget(target, key.env)}`);
+  for (const target of entry.publish) say(`  to: ${describeTarget(target, key.name)}`);
   if (!entry.publish.length) {
     say(
-      `Stopped: the map lists no destinations for ${key.id} (${environment}), so nothing would get the new token. Nothing was changed.`,
+      `Stopped: the map lists no destinations for ${key.name} (${environment}), so nothing would get the new token. Nothing was changed.`,
     );
     return 1;
   }
@@ -166,7 +169,7 @@ async function start(run: Run, data: Rotations): Promise<number> {
     say("Stopped: an account check failed. Nothing was read and nothing was changed.");
     return 1;
   }
-  const approvals = approvalsFor({ key, environment, receipts: state.receipts });
+  const approvals = approvalsFor({ ...planFor(run), receipts: state.receipts });
   if (!deps.isTerminal && (approvals.length || !run.yes)) {
     for (const approval of approvals) say(`  needs approval: ${approval.approval}`);
     say(
@@ -225,8 +228,8 @@ async function start(run: Run, data: Rotations): Promise<number> {
   for (const line of describeAccess(old)) say(`    ${line}`);
   say(`  store in: ${formatReference(entry.ref)}, with rotated ${today}`);
   for (const target of entry.publish) {
-    const found = checked.get(destinationId(target, key.env));
-    say(`  publish to: ${describeTarget(target, key.env)}`);
+    const found = checked.get(destinationId(target, key.name));
+    say(`  publish to: ${describeTarget(target, key.name)}`);
     if (found) say(`    ${accountFacts(found.check)}`);
   }
   for (const approval of approvals) say(`    needs approval: ${approval.approval}`);
@@ -237,8 +240,9 @@ async function start(run: Run, data: Rotations): Promise<number> {
   const now = deps.now().toISOString();
   let rotation: Rotation = {
     id: crypto.randomUUID(),
-    keyId: key.id,
+    keyId: key.name,
     environment,
+    mapFile: run.map.file,
     item: entry.ref,
     provider: issue.provider,
     account: issue.account,
@@ -253,7 +257,7 @@ async function start(run: Run, data: Rotations): Promise<number> {
     },
     new: { id: null, name, expiresOn, generation: null },
   };
-  data = putRotation(withoutFinished(data, key.id, environment), rotation);
+  data = putRotation(withoutFinished(data, keyOwner(run)), rotation);
   await saveRotations(deps.files, run.rotationsPath, data);
 
   const made = await provider.issue({ name, like: old, expiresOn });
@@ -324,7 +328,7 @@ async function publishNew(
       return 1;
     }
     checked = found;
-    if (!deps.isTerminal && approvalsFor({ key, environment, receipts: state.receipts }).length) {
+    if (!deps.isTerminal && approvalsFor({ ...planFor(run), receipts: state.receipts }).length) {
       say("Stopped before reading the value: publishing needs approval, and --yes can't give it.");
       say(rerun(deps, "rotate", run.args));
       return NEEDS_APPROVAL;
@@ -352,10 +356,10 @@ async function publishNew(
   }
 
   const generation = rotation.new.generation ?? (await generationOf(value));
-  const plan = planPublish({ key, environment, receipts: state.receipts, generation });
+  const plan = planPublish({ ...planFor(run), receipts: state.receipts, generation });
   say(`\nPublishing generation ${generation}:`);
   for (const step of plan.steps) {
-    say(`  ${step.action} ${describeTarget(step.target, key.env)}: ${step.reason}`);
+    say(`  ${step.action} ${describeTarget(step.target, key.name)}: ${step.reason}`);
     if (step.approval) say(`    needs approval: ${step.approval}`);
   }
   const writes = writesFor(plan.steps, checked);
@@ -365,6 +369,7 @@ async function publishNew(
   const written = await writeAll({
     key,
     environment,
+    mapFile: run.map.file,
     entry,
     secret: value,
     generation,
@@ -389,7 +394,7 @@ async function publishNew(
 
   say(`\nPublished. The old token ${rotation.old.id} "${rotation.old.name}" is still active.`);
   say("Next, check that every consumer works with the new value:");
-  for (const target of entry.publish) say(`  ${describeTarget(target, key.env)}`);
+  for (const target of entry.publish) say(`  ${describeTarget(target, key.name)}`);
   say(`Then run ${again(run)} again to revoke the old token.`);
   return 0;
 }
@@ -401,7 +406,7 @@ async function revokeOld(run: Run, data: Rotations, rotation: Rotation): Promise
     throw new Error(`rotation ${rotation.id} has no new generation or token IDs`);
   }
   const state = await loadState(deps.files, run.statePath);
-  const plan = planPublish({ key, environment, receipts: state.receipts, generation });
+  const plan = planPublish({ ...planFor(run), receipts: state.receipts, generation });
   const behind = plan.steps.filter((step) => step.action === "write");
   for (const step of behind) {
     say(`  ${step.destinationId} doesn't have generation ${generation}: ${step.reason}`);
@@ -411,11 +416,11 @@ async function revokeOld(run: Run, data: Rotations, rotation: Rotation): Promise
   );
   if (behind.length) {
     say(
-      `Stopped: run keypin publish ${key.id}${envFlag(environment, publishEnvironment(run.map))} first. Nothing was revoked.`,
+      `Stopped: run keypin publish ${key.name}${envFlag(environment, publishEnvironment(run.map))} first. Nothing was revoked.`,
     );
     return 1;
   }
-  say(`Every destination of ${key.id} (${environment}) has generation ${generation}.`);
+  say(`Every destination of ${key.name} (${environment}) has generation ${generation}.`);
   for (const removed of retired) {
     say(
       `  ${removed.destinationId} left the map and its receipt has the old token (generation ${removed.lastReceipt.generation}); revoking breaks it unless that secret is gone`,
@@ -482,7 +487,7 @@ async function finish(run: Run, data: Rotations, rotation: Rotation): Promise<nu
   const done: Rotation = { ...rotation, stage: "revoked", updatedAt: run.deps.now().toISOString() };
   await saveRotations(run.deps.files, run.rotationsPath, putRotation(data, done));
   run.say(
-    `Rotated ${run.key.id} (${run.environment}): ${rotation.new.id} replaced ${rotation.old.id}.`,
+    `Rotated ${run.key.name} (${run.environment}): ${rotation.new.id} replaced ${rotation.old.id}.`,
   );
   return 0;
 }
@@ -603,10 +608,8 @@ function describeHolder(receipt: Receipt): string {
   return `${receipt.destinationId} (${receipt.keyId}, ${receipt.environment})`;
 }
 
-interface Owner {
+interface Owner extends KeyOwner {
   project: string | null;
-  keyId: string;
-  environment: string;
   publishDefault: Environment;
 }
 
@@ -623,10 +626,16 @@ async function listedOwners(run: Run): Promise<Map<string, Owner[]> | null> {
     for (const k of map.keys) {
       for (const [name, entry] of Object.entries(k.environments)) {
         for (const target of entry?.publish ?? []) {
-          const secret = secretKey(target, k.env);
+          const secret = secretKey(target, k.name);
           owners.set(secret, [
             ...(owners.get(secret) ?? []),
-            { project, keyId: k.id, environment: name, publishDefault: publishEnvironment(map) },
+            {
+              project,
+              keyId: k.name,
+              environment: name,
+              mapFile: map.file,
+              publishDefault: publishEnvironment(map),
+            },
           ]);
         }
       }
@@ -653,6 +662,7 @@ async function listedOwners(run: Run): Promise<Map<string, Owner[]> | null> {
 function ownerOf(receipt: Receipt, owners: Map<string, Owner[]>): Owner | undefined {
   const found = owners.get(receiptSecretKey(receipt)) ?? [];
   return (
+    found.find((o) => ownedBy(receipt, o)) ??
     found.find((o) => o.keyId === receipt.keyId && o.environment === receipt.environment) ??
     found[0]
   );
@@ -681,7 +691,7 @@ async function otherHolders(
 }
 
 function again(run: Run): string {
-  return rotateCommand(run.key.id, run.environment, publishEnvironment(run.map));
+  return rotateCommand(run.key.name, run.environment, publishEnvironment(run.map));
 }
 
 async function checkNew(
@@ -719,13 +729,19 @@ async function confirmed(run: Run, needsApproval: boolean, what: string): Promis
   return false;
 }
 
-function withoutFinished(data: Rotations, keyId: string, environment: Environment): Rotations {
+function withoutFinished(data: Rotations, owner: KeyOwner): Rotations {
   return {
     ...data,
-    rotations: data.rotations.filter(
-      (r) => !(r.keyId === keyId && r.environment === environment && r.stage === "revoked"),
-    ),
+    rotations: data.rotations.filter((r) => !(ownedBy(r, owner) && r.stage === "revoked")),
   };
+}
+
+function keyOwner(run: Run): KeyOwner {
+  return { keyId: run.key.name, environment: run.environment, mapFile: run.map.file };
+}
+
+function planFor(run: Run) {
+  return { key: run.key, environment: run.environment, mapFile: run.map.file };
 }
 
 const DATED = /^(.*) (\d{4}-\d{2}-\d{2})(?: #(\d+))?$/;

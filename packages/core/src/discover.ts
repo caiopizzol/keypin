@@ -403,7 +403,7 @@ export function buildDiscovery(input: DiscoverInput): Discovery {
   }
 
   for (const key of input.map?.keys ?? []) {
-    add(key.env, { kind: "map", path: input.map?.file ?? "keypin.toml", keyId: key.id });
+    add(key.name, { kind: "map", path: input.map?.file ?? "keypin.toml", keyId: key.name });
   }
 
   const cloudUnknown = unknowns.some((u) => u.cloud);
@@ -449,13 +449,11 @@ export interface DraftOptions {
   project: string;
   githubAccount: string | null;
   map: { account: string | null; vault: string | null } | null;
-  takenIds: readonly string[];
   environments: readonly Environment[];
 }
 
 export function draftMap(names: readonly NameRow[], options: DraftOptions): string | null {
   const lines: string[] = [];
-  const taken = new Set(options.takenIds);
   const runName = runEnvironment(options);
   const publishName = publishEnvironment(options);
   const vault = options.map?.vault ?? "<your vault>";
@@ -502,16 +500,16 @@ export function draftMap(names: readonly NameRow[], options: DraftOptions): stri
     if (!local && !publish.length) continue;
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(row.name)) continue;
 
-    const id = freeId(keyIdFor(row.name), taken);
-    const what = row.name.toLowerCase().replaceAll("_", " ").trim();
-    lines.push("", `[keys.${id}]`, `env = ${str(row.name)}`, `rotate_every = "90d"`);
+    const name = row.name;
+    const what = name.toLowerCase().replaceAll("_", " ").trim();
+    lines.push("", `[keys.${name}]`, `rotate_every = "90d"`);
     if (local && !(publish.length && runName === publishName)) {
       lines.push(`${runName} = ${from(runName, what)}`);
     }
     if (publish.length) {
-      lines.push("", `[keys.${id}.${publishName}]`, `from = ${from(publishName, what)}`);
+      lines.push("", `[keys.${name}.${publishName}]`, `from = ${from(publishName, what)}`);
       for (const target of publish) {
-        lines.push("", `[[keys.${id}.${publishName}.publish]]`, ...target);
+        lines.push("", `[[keys.${name}.${publishName}.publish]]`, ...target);
       }
     }
   }
@@ -532,23 +530,6 @@ export function draftMap(names: readonly NameRow[], options: DraftOptions): stri
     `account = ${str(account)}`,
   ];
   return `${[...header, ...lines].join("\n")}\n`;
-}
-
-function keyIdFor(name: string): string {
-  return (
-    name
-      .toLowerCase()
-      .replaceAll("_", "-")
-      .replace(/^-+|-+$/g, "")
-      .replace(/-{2,}/g, "-") || "key"
-  );
-}
-
-function freeId(base: string, taken: Set<string>): string {
-  let id = base;
-  for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
-  taken.add(id);
-  return id;
 }
 
 function str(value: string): string {

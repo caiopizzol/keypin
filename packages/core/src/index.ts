@@ -3,11 +3,9 @@ export {
   DEFAULT_ENVIRONMENTS,
   type AccountCheck,
   type Destination,
-  type DestinationCapabilities,
   type Environment,
   type Evidence,
   type Json,
-  type KeyId,
   type KeyRef,
   type ProviderToken,
   type Receipt,
@@ -15,13 +13,11 @@ export {
   type TokenProvider,
   type VerifiedToken,
   type VaultBackend,
-  type VaultCapabilities,
   type VaultItem,
   type VaultMetadata,
   type VaultScope,
 } from "./contracts";
 export {
-  DESTINATION_KINDS,
   destinationId,
   envFlag,
   isVariableName,
@@ -30,7 +26,6 @@ export {
   runEnvironment,
   receiptSecretKey,
   secretKey,
-  validateMap,
   type EnvEntry,
   type RotateSpec,
   type KeyEntry,
@@ -39,19 +34,11 @@ export {
   type PublishTarget,
 } from "./map";
 export { addDays, DUE_SOON_DAYS, isDay, periodDays } from "./rotation";
-export { formatReference, parseReference, sameRef, type Reference } from "./reference";
+export { formatReference } from "./reference";
 export { type Files } from "./files";
 export { sameAccess } from "./tokens";
 export { isRecord } from "./record";
-export {
-  emptyRegistry,
-  loadRegistry,
-  register,
-  REGISTRY_VERSION,
-  unregister,
-  type Registry,
-  type SharedKey,
-} from "./registry";
+export { loadRegistry, register, unregister, type Registry } from "./registry";
 export {
   emptyState,
   finishOperation,
@@ -62,24 +49,10 @@ export {
   recordReceipt,
   saveState,
   startOperation,
-  STATE_VERSION,
   unfinishedOperations,
-  type Operation,
   type State,
 } from "./state";
-export {
-  approvalsFor,
-  latestPerSecret,
-  planPublish,
-  type Approval,
-  type ApprovalReason,
-  type PlanInput,
-  type PlanStep,
-  type PublishPlan,
-  type RemovedDestination,
-  type SkipReason,
-  type WriteReason,
-} from "./plan";
+export { approvalsFor, latestPerSecret, planPublish, type PlanStep } from "./plan";
 export {
   dropRotation,
   emptyRotations,
@@ -90,19 +63,14 @@ export {
   unfinishedRotation,
   type Rotation,
   type Rotations,
-  type RotationStage,
-  type TokenRecord,
 } from "./rotations";
 export {
   buildStatus,
-  type DestinationRow,
-  type Problem,
   type ProblemKind,
   type Status,
   type StatusInput,
   type StatusRow,
 } from "./status";
-export const packageName = "@keypin/core";
 export {
   buildDiscovery,
   draftItemName,
@@ -115,13 +83,9 @@ export {
   workflowRefs,
   wranglerWorkers,
   type DiscoverInput,
-  type DiscoverProblem,
   type Discovery,
-  type EnvFileKind,
   type NameRow,
   type Source,
   type StoreRead,
   type Unknown,
-  type WorkerDeclaration,
-  type WorkflowRefs,
 } from "./discover";

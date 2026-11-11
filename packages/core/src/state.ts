@@ -5,7 +5,7 @@ import { isRecord } from "./record";
 import { storedRefWithPasswordDefault } from "./reference";
 import type { Generation } from "./secret";
 
-export const STATE_VERSION = 3;
+const STATE_VERSION = 3;
 
 export interface Operation {
   id: string;

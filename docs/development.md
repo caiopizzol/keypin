@@ -16,7 +16,8 @@ Add the alias to your shell profile. Package scripts don't load aliases, so call
 `bunx bun@1.4.4 --no-env-file ~/keypin/apps/cli/src/main.ts` in full there.
 
 Run the install command again after every `git pull`, or keypin can't find its own packages. Never run a plain
-`bun install`: Bun 1.3 rewrites `bun.lock` in an older format.
+`bun install`: Bun 1.3 can't read `bun.lock`, so it resolves every package again and saves the lockfile in an older
+format. `bun run check` fails on that format and prints the fix.
 
 ## Checks
 

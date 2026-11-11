@@ -30,9 +30,9 @@ function setup(options: { failing?: string[]; state?: string } = {}) {
 }
 
 describe("keypin status", () => {
-  test("lists every key with its rotation dates and missing receipts", async () => {
+  test("a fresh map lists every key, says what to publish, and exits 0", async () => {
     const { deps, stdout, stderr, calls } = setup();
-    expect(await cli(["status"], deps)).toBe(1);
+    expect(await cli(["status"], deps)).toBe(0);
     expect(stdout.text).toMatch(
       /SESSION_SECRET\s+dev\s+op:\/\/Private\/web dev session secret\/password\s+2026-11-09\s+180d\s+2027-05-08/,
     );
@@ -41,13 +41,15 @@ describe("keypin status", () => {
     expect(stdout.text).toContain(
       "-> cloudflare-worker:billing-worker:STRIPE_API_KEY (account 11111111111111111111111111111111): no receipt",
     );
-    expect(stdout.text).toContain("Problems (3):");
-    expect(stdout.text.match(/missing-receipt/g)).toHaveLength(3);
-    expect(stdout.text).toContain("Notices (1):");
+    expect(stdout.text).not.toContain("Problems");
+    expect(stdout.text).toContain("Notices (2):");
     expect(stdout.text).toContain(
-      "authority-unknown: 2 keys (STRIPE_API_KEY, SESSION_SECRET): what each grants is unknown",
+      "never-published: STRIPE_API_KEY (prod): not published yet to cloudflare-worker:billing-worker:STRIPE_API_KEY, github-actions:acme/billing:STRIPE_API_KEY; run keypin publish STRIPE_API_KEY",
     );
-    expect(stdout.text.match(/authority-unknown/g)).toHaveLength(1);
+    expect(stdout.text).toContain(
+      "never-published: SESSION_SECRET (prod): not published yet to cloudflare-worker:web:SESSION_SECRET; run keypin publish SESSION_SECRET",
+    );
+    expect(stdout.text).not.toContain("authority");
     expect(calls.toSorted()).toEqual([
       "metadata billing stripe api key",
       "metadata web dev session secret",
@@ -76,11 +78,15 @@ describe("keypin status", () => {
   test("a receipt from state version 1, which records neither item nor project, is missing until the next publish", async () => {
     const state = JSON.stringify({ version: 1, operations: [], receipts: [sessionReceipt] });
     const { deps, stdout } = setup({ state });
-    await cli(["status"], deps);
+    expect(await cli(["status"], deps)).toBe(1);
     expect(stdout.text).toContain(
       "-> cloudflare-worker:web:SESSION_SECRET (account 11111111111111111111111111111111): no receipt",
     );
-    expect(stdout.text.match(/missing-receipt/g)).toHaveLength(3);
+    expect(stdout.text).toContain(
+      "missing-receipt: SESSION_SECRET (prod): cloudflare-worker:web:SESSION_SECRET's last receipt isn't from this project or this key's item",
+    );
+    expect(stdout.text.match(/missing-receipt/g)).toHaveLength(1);
+    expect(stdout.text.match(/never-published/g)).toHaveLength(1);
   });
 
   test("shows a destination's last receipt", async () => {
@@ -94,7 +100,33 @@ describe("keypin status", () => {
     expect(stdout.text).toContain(
       "-> cloudflare-worker:web:SESSION_SECRET (account 11111111111111111111111111111111): last published 2026-11-09T15:30:35Z by me@example.com, generation 0123456789abcdef",
     );
-    expect(stdout.text.match(/missing-receipt/g)).toHaveLength(2);
+    expect(stdout.text).not.toContain("missing-receipt");
+    expect(stdout.text.match(/never-published/g)).toHaveLength(1);
+  });
+
+  test("a destination added after the key was published is a problem", async () => {
+    const files = memoryFiles({
+      [REGISTRY]: registryWith("/work/web"),
+      "/work/web/keypin.toml": WEB_MAP.replace(
+        'worker = "web" },',
+        'worker = "web" },\n  { to = "github-actions", repo = "acme/web" },',
+      ),
+      [STATE]: JSON.stringify({
+        version: 3,
+        operations: [],
+        receipts: [{ ...sessionReceipt, mapFile: "/work/web/keypin.toml", source: null }],
+      }),
+    });
+    const { deps, stdout } = fakeDeps({
+      disk: files,
+      backend: fakeVault({ metadata: METADATA }).vault,
+    });
+    expect(await cli(["status"], deps)).toBe(1);
+    expect(stdout.text).toContain("Problems (1):");
+    expect(stdout.text).toContain(
+      "missing-receipt: SESSION_SECRET (prod): no receipt for github-actions:acme/web:SESSION_SECRET, though this project published this key before, so what it holds is unknown; keypin publish SESSION_SECRET writes it again",
+    );
+    expect(stdout.text).not.toContain("never-published");
   });
 
   test("a failing metadata read is rotation-unreadable, never nothing due", async () => {
@@ -105,7 +137,7 @@ describe("keypin status", () => {
     expect(stderr.text).toContain(`"billing stripe api key" isn't readable`);
   });
 
-  test("notices alone exit 0", async () => {
+  test("a key with no destinations has nothing to report", async () => {
     const files = memoryFiles({
       [REGISTRY]: registryWith("/work/billing"),
       "/work/billing/keypin.toml": BILLING_MAP.replace(/publish = \[[\s\S]*?\] \}/, "}"),
@@ -116,13 +148,12 @@ describe("keypin status", () => {
     });
     expect(await cli(["status"], deps)).toBe(0);
     expect(stdout.text).not.toContain("Problems");
-    expect(stdout.text).toContain("Notices (1):");
-    expect(stdout.text).toContain("authority-unknown: 1 key (STRIPE_API_KEY)");
+    expect(stdout.text).not.toContain("Notices");
   });
 
   test("--json prints the same rows and problems", async () => {
     const { deps, stdout } = setup();
-    expect(await cli(["status", "--json"], deps)).toBe(1);
+    expect(await cli(["status", "--json"], deps)).toBe(0);
     expect(parseJson(stdout.text)).toMatchObject({
       today: "2026-11-09",
       rows: [
@@ -132,8 +163,13 @@ describe("keypin status", () => {
         { keyId: "SESSION_SECRET", environment: "prod", due: "2027-05-08" },
       ],
     });
-    expect(stdout.text.match(/"kind": "missing-receipt"/g)).toHaveLength(3);
-    expect(stdout.text.match(/"kind": "authority-unknown"/g)).toHaveLength(4);
+    expect(parseJson(stdout.text)).toMatchObject({
+      problems: [
+        { kind: "never-published", severity: "notice", keyId: "STRIPE_API_KEY" },
+        { kind: "never-published", severity: "notice", keyId: "SESSION_SECRET" },
+      ],
+    });
+    expect(stdout.text).not.toContain("authority");
   });
 
   test("no registered projects", async () => {
@@ -239,5 +275,6 @@ describe("keypin status: rotations", () => {
       `rotation-unfinished: SESSION_SECRET (prod): a rotation started 2026-11-10T12:00:00.000Z is at stage "published"; run keypin rotate SESSION_SECRET to continue`,
     );
     expect(stdout.text).toMatch(/Notices \(2\):/);
+    expect(stdout.text).toContain("never-published: SESSION_SECRET (prod)");
   });
 });

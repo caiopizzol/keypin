@@ -1,6 +1,7 @@
 import type { Environment, KeyId, KeyRef, Receipt, VaultMetadata } from "./contracts";
 import {
   destinationId,
+  envFlag,
   type MapResult,
   publishEnvironment,
   receiptSecretKey,
@@ -22,7 +23,7 @@ export type ProblemKind =
   | "bad-rotation-period"
   | "overdue"
   | "due-soon"
-  | "authority-unknown"
+  | "never-published"
   | "missing-receipt"
   | "stale-receipt"
   | "rotation-unfinished";
@@ -52,7 +53,6 @@ export interface StatusRow {
   rotated: string | null;
   rotateEvery: string | null;
   due: string | null;
-  authority: "unknown";
   destinations: DestinationRow[];
 }
 
@@ -71,7 +71,7 @@ export interface Status {
   problems: Problem[];
 }
 
-const NOTICES: readonly ProblemKind[] = ["due-soon", "authority-unknown", "rotation-unfinished"];
+const NOTICES: readonly ProblemKind[] = ["due-soon", "never-published", "rotation-unfinished"];
 
 export function buildStatus(input: StatusInput): Status {
   if (!isDay(input.today)) throw new Error(`today must be YYYY-MM-DD, got "${input.today}"`);
@@ -120,12 +120,10 @@ export function buildStatus(input: StatusInput): Status {
         const rotated = metadata?.rotated ?? null;
         const due = rotationDue({ label, metadata, rotated, rotateEvery, today: input.today, add });
 
-        add(
-          "authority-unknown",
-          `${label}: what this key grants is unknown, because keypin didn't create it`,
-        );
-
         const current = input.generation?.(key.name, environment);
+        const published = input.receipts.some((r) => ownedBy(r, owner));
+        const unpublished: string[] = [];
+        const publish = `keypin publish ${key.name}${envFlag(environment, publishEnvironment(result.map))}`;
         const destinations = entry.publish.map((target): DestinationRow => {
           const id = destinationId(target, key.name);
           const last = latest.get(secretKey(target, key.name));
@@ -134,9 +132,21 @@ export function buildStatus(input: StatusInput): Status {
             (ownedBy(last, owner) || (last.source !== null && sameRef(last.source, entry.ref)));
           const receipt = ours ? last : undefined;
           if (!receipt) {
-            add("missing-receipt", `${label}: no receipt for ${id}, so what it holds is unknown`, {
-              destinationId: id,
-            });
+            if (last) {
+              add(
+                "missing-receipt",
+                `${label}: ${id}'s last receipt isn't from this project or this key's item, so what it holds is unknown`,
+                { destinationId: id },
+              );
+            } else if (published) {
+              add(
+                "missing-receipt",
+                `${label}: no receipt for ${id}, though this project published this key before, so what it holds is unknown; ${publish} writes it again`,
+                { destinationId: id },
+              );
+            } else {
+              unpublished.push(id);
+            }
             return { destinationId: id, account: target.account, receipt: null, stale: null };
           }
           const stale = current === undefined ? null : receipt.generation !== current;
@@ -144,9 +154,7 @@ export function buildStatus(input: StatusInput): Status {
             add(
               "stale-receipt",
               `${label}: ${id} last got generation ${receipt.generation}, and the value is now ${current}`,
-              {
-                destinationId: id,
-              },
+              { destinationId: id },
             );
           }
           const { generation, at } = receipt;
@@ -157,6 +165,13 @@ export function buildStatus(input: StatusInput): Status {
             stale,
           };
         });
+
+        if (unpublished.length) {
+          add(
+            "never-published",
+            `${label}: not published yet to ${unpublished.join(", ")}; run ${publish}`,
+          );
+        }
 
         const rotation = unfinishedRotation(
           { version: ROTATIONS_VERSION, rotations: [...(input.rotations ?? [])] },
@@ -176,7 +191,6 @@ export function buildStatus(input: StatusInput): Status {
           rotated,
           rotateEvery,
           due,
-          authority: "unknown",
           destinations,
         });
       }

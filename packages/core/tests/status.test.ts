@@ -154,10 +154,9 @@ describe("rotation periods and dates", () => {
 });
 
 describe("status", () => {
-  test("nothing due: only the authority notice, never a problem", () => {
+  test("nothing due and every destination published: nothing to report", () => {
     const result = status({ rotated: "2026-11-09", rotateEvery: "365d" });
-    expect(kinds(result)).toEqual(["authority-unknown"]);
-    expect(result.problems.every((p) => p.severity === "notice")).toBe(true);
+    expect(result.problems).toEqual([]);
     expect(result.rows).toEqual([
       expect.objectContaining({
         project: PROJECT,
@@ -165,7 +164,6 @@ describe("status", () => {
         environment: "prod",
         rotated: "2026-11-09",
         due: "2027-11-09",
-        authority: "unknown",
         destinations: [
           expect.objectContaining({ destinationId: WORKER, stale: null }),
           expect.objectContaining({ destinationId: GITHUB, stale: null }),
@@ -219,11 +217,9 @@ describe("status", () => {
   });
 
   test("due in 15 days is not due soon, and never is never due", () => {
-    expect(kinds(status({ rotated: "2026-08-26", rotateEvery: "90d" }))).toEqual([
-      "authority-unknown",
-    ]);
+    expect(kinds(status({ rotated: "2026-08-26", rotateEvery: "90d" }))).toEqual([]);
     const never = status({ rotated: "2020-01-01", rotateEvery: "never" });
-    expect(kinds(never)).toEqual(["authority-unknown"]);
+    expect(kinds(never)).toEqual([]);
     expect(never.rows[0]?.due).toBeNull();
   });
 
@@ -247,15 +243,79 @@ describe("status", () => {
     });
   });
 
-  test("a destination with no receipt", () => {
+  test("a key never published is one notice that names the publish command", () => {
+    const result = status({ rotated: "2026-11-09", rotateEvery: "365d" }, { receipts: [] });
+    expect(result.problems).toEqual([
+      expect.objectContaining({
+        kind: "never-published",
+        severity: "notice",
+        environment: "prod",
+        message: `${KEY.name} (prod): not published yet to ${WORKER}, ${GITHUB}; run keypin publish ${KEY.name}`,
+      }),
+    ]);
+    expect(result.rows[0]?.destinations.map((d) => d.receipt)).toEqual([null, null]);
+  });
+
+  test("a never-published environment that isn't the default names --env", () => {
+    const map: MapResult = {
+      ok: true,
+      map: {
+        file: `${PROJECT}/keypin.toml`,
+        account: "my.1password.com",
+        environments: ["dev", "prod", "staging"],
+        keys: [KEY],
+      },
+    };
+    const result = status(
+      { rotated: "2026-11-09", rotateEvery: "365d" },
+      { receipts: [], maps: new Map([[PROJECT, map]]) },
+    );
+    expect(result.problems.map((p) => p.message)).toEqual([
+      `${KEY.name} (prod): not published yet to ${WORKER}, ${GITHUB}; run keypin publish ${KEY.name} --env prod`,
+    ]);
+  });
+
+  test("a destination missing a receipt when the key was published elsewhere is a problem", () => {
     const result = status(
       { rotated: "2026-11-09", rotateEvery: "365d" },
       { receipts: [receipt(WORKER, "aaaaaaaaaaaaaaaa")] },
     );
-    expect(result.problems.filter((p) => p.kind === "missing-receipt")).toEqual([
-      expect.objectContaining({ destinationId: GITHUB, severity: "problem" }),
+    expect(result.problems).toEqual([
+      expect.objectContaining({
+        kind: "missing-receipt",
+        severity: "problem",
+        destinationId: GITHUB,
+        message: `${KEY.name} (prod): no receipt for ${GITHUB}, though this project published this key before, so what it holds is unknown; keypin publish ${KEY.name} writes it again`,
+      }),
     ]);
     expect(result.rows[0]?.destinations[1]?.receipt).toBeNull();
+  });
+
+  test("another project's receipt from another item at the destination is a problem, not never published", () => {
+    const other = {
+      kind: "1password",
+      account: "a",
+      vault: "v",
+      item: "x",
+      section: null,
+      field: "password",
+    } as const;
+    const result = status(
+      { rotated: "2026-11-09", rotateEvery: "365d" },
+      {
+        receipts: [
+          receipt(WORKER, "bbbbbbbbbbbbbbbb", { mapFile: "/work/web/keypin.toml", source: other }),
+        ],
+      },
+    );
+    expect(result.problems.map((p) => [p.kind, p.severity, p.destinationId])).toEqual([
+      ["missing-receipt", "problem", WORKER],
+      ["never-published", "notice", undefined],
+    ]);
+    expect(result.problems[0]?.message).toBe(
+      `${KEY.name} (prod): ${WORKER}'s last receipt isn't from this project or this key's item, so what it holds is unknown`,
+    );
+    expect(result.problems[1]?.message).toContain(`not published yet to ${GITHUB};`);
   });
 
   test("a stale receipt, when the caller knows the current generation", () => {

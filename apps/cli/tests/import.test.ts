@@ -298,8 +298,54 @@ describe("keypin import", () => {
     expect(await cli(["import", ".env", "--vault", "V", "--yes"], deps)).toBe(1);
     expect(disk.contents.get(MAP)).toBe(`${REAL_MAP}# edited\n`);
     expect(stderr.text).toContain("changed while import ran");
+    expect(stderr.text).toContain(`Add this at the end of ${MAP} by hand:`);
     expect(stdout.text).toContain("[keys.WEBHOOK_SECRET]");
+    expect(stdout.text).not.toContain("[1password]");
+    const pasted = parseMap(`${REAL_MAP}# edited\n${stdout.text}`, MAP);
+    assert(pasted.ok, JSON.stringify(pasted));
     expect(leaks(stdout.text, stderr.text)).toBe(false);
+  });
+
+  test("with no map, if one appears while it runs, prints a whole map with the account to save", async () => {
+    const { deps, disk, fake, stdout, stderr } = setup();
+    const write = fake.vault.write.bind(fake.vault);
+    fake.vault.write = async (ref, secret, options) => {
+      await write(ref, secret, options);
+      disk.contents.set(MAP, "# someone else's\n");
+    };
+    expect(await cli([...NEW, "--yes"], deps)).toBe(1);
+    expect(disk.contents.get(MAP)).toBe("# someone else's\n");
+    expect(stderr.text).toContain(`Save this as ${MAP} by hand:`);
+    const pasted = parseMap(stdout.text, MAP);
+    assert(pasted.ok, JSON.stringify(pasted));
+    expect(pasted.map.account).toBe(ACCOUNT);
+    expect(pasted.map.keys.map((k) => k.name)).toEqual(["STRIPE_KEY", "WEBHOOK_SECRET"]);
+    expect(leaks(stdout.text, stderr.text)).toBe(false);
+  });
+
+  test("a key mapped only in another environment stays in the file, and the file isn't called done", async () => {
+    const map = `${REAL_MAP.replace('dev = "op://App Secrets/billing dev stripe/password"', '[keys.STRIPE_KEY.prod]\nfrom = "op://App Secrets/billing prod stripe/password"')}`;
+    const { deps, disk, fake, text } = setup({ files: { [MAP]: map } });
+    expect(await cli(["import", ".env", "--vault", "App Secrets", "--yes"], deps)).toBe(0);
+    expect(fake.created.map((c) => c.ref.item)).toEqual(["billing dev webhook secret"]);
+    expect(disk.contents.get(MAP)?.startsWith(map)).toBe(true);
+    expect(text()).toContain(
+      `STRIPE_KEY: mapped in ${MAP} without dev; left as it is, so add its dev reference by hand`,
+    );
+    expect(text()).toContain("STRIPE_KEY, app.key are still only in that file");
+    expect(text()).not.toContain("Delete it and stop loading it");
+    expect(leaks(text(), disk.contents.get(MAP) ?? "")).toBe(false);
+  });
+
+  test("a value with a $ is left in the file, since loaders differ on expanding it", async () => {
+    const env = `BASE=${SENTINEL}\nTOKEN=hello$BASE\nESCAPED="hello\\$BASE"\n`;
+    const { deps, fake, text } = setup({ files: { [ENV]: env } });
+    expect(await cli([...NEW, "--yes"], deps)).toBe(0);
+    expect(fake.created.map((c) => c.ref.item)).toEqual(["billing dev base"]);
+    expect(text()).toContain("TOKEN: the value has a $");
+    expect(text()).toContain("ESCAPED: the value has a $");
+    expect(text()).toContain("TOKEN, ESCAPED are still only in that file");
+    expect(leaks(text())).toBe(false);
   });
 
   test("a map an appended table would break stops before the vault, and changes nothing", async () => {

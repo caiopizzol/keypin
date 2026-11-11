@@ -70,6 +70,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
   for (const [name, value] of values) {
     const item = draftItemName(project, environment, name);
     const sameItem = items.get(item.toLowerCase());
+    const mapped = target.map?.keys.find((key) => key.name === name);
     if (!isVariableName(name))
       skips.push({
         name,
@@ -77,11 +78,23 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
         onlyInFile: true,
       });
     else if (!value.reveal()) skips.push({ name, reason: "the value is empty", onlyInFile: false });
-    else if (target.map?.keys.some((key) => key.name === name))
+    else if (mapped?.environments[environment])
       skips.push({
         name,
         reason: `already mapped in ${target.file}; left as it is`,
         onlyInFile: false,
+      });
+    else if (mapped)
+      skips.push({
+        name,
+        reason: `mapped in ${target.file} without ${environment}; left as it is, so add its ${environment} reference by hand`,
+        onlyInFile: true,
+      });
+    else if (value.reveal().includes("$"))
+      skips.push({
+        name,
+        reason: "the value has a $, which some loaders expand to another variable's value",
+        onlyInFile: true,
       });
     else if (sameItem !== undefined)
       skips.push({
@@ -172,8 +185,12 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
     await writeMap(deps, target, mapped, environment);
   } catch (error) {
     say(`keypin: ${messageOf(error)}`);
-    say(`The items are in 1Password. Add these tables to ${target.file} by hand:`);
-    deps.stdout.write(keyTables(mapped, environment));
+    say(
+      target.map
+        ? `The items are in 1Password. Add this at the end of ${target.file} by hand:`
+        : `The items are in 1Password. Save this as ${target.file} by hand:`,
+    );
+    deps.stdout.write(mapAddition(target, mapped, environment));
     return 1;
   }
   say(`keypin: mapped ${names(mapped.map((i) => i.name))} in ${target.file}`);
@@ -268,12 +285,21 @@ function keyTables(imports: readonly Import[], environment: string): string {
     .join("");
 }
 
-function mapText(target: Target, imports: readonly Import[], environment: string): string {
+function mapBase(target: Target): string {
+  if (!target.map || target.found === null) return "";
+  return target.found.endsWith("\n") || !target.found ? target.found : `${target.found}\n`;
+}
+
+function mapAddition(target: Target, imports: readonly Import[], environment: string): string {
   const account = `[1password]\naccount = ${str(target.account)}\n`;
-  if (!target.map || target.found === null)
-    return `# Written by keypin import. The values are in 1Password; this file holds only references.\n\n${account}${keyTables(imports, environment)}`;
-  const base = target.found.endsWith("\n") || !target.found ? target.found : `${target.found}\n`;
-  return `${base}${target.map.account ? "" : `\n${account}`}${keyTables(imports, environment)}`;
+  const tables = keyTables(imports, environment);
+  if (!target.map)
+    return `# Written by keypin import. The values are in 1Password; this file holds only references.\n\n${account}${tables}`;
+  return `${target.map.account ? "" : `\n${account}`}${tables}`;
+}
+
+function mapText(target: Target, imports: readonly Import[], environment: string): string {
+  return `${mapBase(target)}${mapAddition(target, imports, environment)}`;
 }
 
 async function writeMap(

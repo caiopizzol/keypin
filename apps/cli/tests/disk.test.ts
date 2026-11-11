@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, assert, beforeEach, describe, expect, test } from "vite-plus/test";
 import { emptyState, register, saveState } from "@keypin/core";
-import { createFile, diskFiles, diskLock } from "../src/disk";
+import { createFile, diskFiles, diskLock, replaceFile } from "../src/disk";
 
 const HOLDER = fileURLToPath(new URL("lock-holder.ts", import.meta.url));
 
@@ -137,5 +137,30 @@ describe("createFile", () => {
     await writeFile(outside, "theirs");
     expect(await createFile(join(folder, "keypin.toml"), "template")).toBe("link");
     expect(await readFile(outside, "utf8")).toBe("theirs");
+  });
+});
+
+describe("replaceFile", () => {
+  test("replaces a file only while it holds the expected text, and keeps its mode", async () => {
+    const path = join(folder, "keypin.toml");
+    await writeFile(path, "template", { mode: 0o644 });
+    expect(await replaceFile(path, "other", "draft")).toBe("changed");
+    expect(await readFile(path, "utf8")).toBe("template");
+    expect(await replaceFile(path, "template", "the draft")).toBe("replaced");
+    expect(await readFile(path, "utf8")).toBe("the draft");
+    expect((await stat(path)).mode & 0o777).toBe(0o644);
+  });
+
+  test("reports a symbolic link and writes nothing through it", async () => {
+    const outside = join(folder, "outside");
+    await writeFile(outside, "template");
+    await symlink(outside, join(folder, "keypin.toml"));
+    expect(await replaceFile(join(folder, "keypin.toml"), "template", "draft")).toBe("link");
+    expect(await readFile(outside, "utf8")).toBe("template");
+  });
+
+  test("a missing file is changed, not created", async () => {
+    expect(await replaceFile(join(folder, "keypin.toml"), "template", "draft")).toBe("changed");
+    expect(await readdir(folder)).toEqual([]);
   });
 });

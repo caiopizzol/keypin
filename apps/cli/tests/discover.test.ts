@@ -1,8 +1,9 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { isRecord, parseMap, type StoreRead } from "@keypin/core";
+import { isRecord, loadRegistry, parseMap, type StoreRead } from "@keypin/core";
 import { CloudflareReader } from "@keypin/destination-cloudflare";
 import { cli } from "../src/cli";
-import { fakeDeps, leaks, memoryFiles, parseJson, SENTINEL } from "./fakes";
+import { TEMPLATE } from "../src/commands/init";
+import { fakeDeps, leaks, memoryFiles, parseJson, REGISTRY, SENTINEL } from "./fakes";
 
 const ACCOUNT = "11111111111111111111111111111111";
 const ROOT = "/work/billing";
@@ -358,5 +359,95 @@ account = "my.1password.com"
     const extra = setup();
     expect(await cli(["discover", "a", "b"], extra.deps)).toBe(2);
     expect(extra.stderr.text).toContain("at most one folder");
+  });
+});
+
+describe("keypin discover --write", () => {
+  const MAP = `${ROOT}/keypin.toml`;
+  const REAL_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.STRIPE_KEY]
+dev = "op://App Secrets/billing dev stripe/password"
+`;
+
+  test("with no keypin.toml, writes the draft, registers the project, and says the references are placeholders", async () => {
+    const { deps, disk, stdout, stderr } = setup();
+    expect(await cli(["discover", "--write"], deps)).toBe(0);
+    const written = disk.contents.get(MAP);
+    assert(written !== undefined);
+    const parsed = parseMap(written, MAP);
+    assert(parsed.ok, JSON.stringify(parsed));
+    expect(parsed.map.keys.map((k) => k.name).toSorted()).toEqual([
+      "CLOUDFLARE_API_TOKEN",
+      "LOCAL_ONLY",
+      "OLD_TOKEN",
+      "STRIPE_KEY",
+      "VITE_KEY",
+    ]);
+    expect(written).toContain("# Written by keypin discover.");
+    expect(written).not.toContain("nothing was written");
+    expect(stdout.text).toContain(`written to ${MAP}:`);
+    expect(stderr.text).toContain(`keypin: wrote the draft to ${MAP}.`);
+    expect(stderr.text).toContain("op:// references are placeholders");
+    expect(stderr.text).toContain(`keypin: ${ROOT} is registered (1 project in ${REGISTRY})`);
+    expect((await loadRegistry(disk.files, REGISTRY)).projects).toEqual([ROOT]);
+    expect(leaks(stdout.text, stderr.text, written, disk.contents.get(REGISTRY) ?? "")).toBe(false);
+  });
+
+  test("writes over the untouched keypin init template", async () => {
+    const { deps, disk } = setup({ files: { [MAP]: TEMPLATE } });
+    expect(await cli(["discover", "--write"], deps)).toBe(0);
+    const written = disk.contents.get(MAP);
+    assert(written !== undefined && written !== TEMPLATE);
+    assert(parseMap(written, MAP).ok);
+    expect((await loadRegistry(disk.files, REGISTRY)).projects).toEqual([ROOT]);
+  });
+
+  test("refuses a real map: exit 1, the map unchanged, nothing registered", async () => {
+    for (const text of [REAL_MAP, `${TEMPLATE}\n# edited\n`]) {
+      const { deps, disk, stderr, stdout } = setup({ files: { [MAP]: text } });
+      expect(await cli(["discover", "--write"], deps)).toBe(1);
+      expect(disk.contents.get(MAP)).toBe(text);
+      expect(disk.contents.has(REGISTRY)).toBe(false);
+      expect(stderr.text).toContain("already has a map");
+      expect(stderr.text).toContain("copy the [keys.*] tables from its draft by hand");
+      expect(stdout.text).toBe("");
+    }
+  });
+
+  test("refuses a keypin.toml that is a symbolic link, writes nothing through it, and registers nothing", async () => {
+    const missing = setup();
+    missing.disk.links.add(MAP);
+    expect(await cli(["discover", "--write"], missing.deps)).toBe(1);
+    expect(missing.stderr.text).toContain(`${MAP} is a symbolic link`);
+    expect(missing.disk.contents.has(MAP)).toBe(false);
+    expect(missing.disk.contents.has(REGISTRY)).toBe(false);
+
+    const template = setup({ files: { [MAP]: TEMPLATE } });
+    template.disk.links.add(MAP);
+    expect(await cli(["discover", "--write"], template.deps)).toBe(1);
+    expect(template.stderr.text).toContain(`${MAP} is a symbolic link`);
+    expect(template.disk.contents.get(MAP)).toBe(TEMPLATE);
+    expect(template.disk.contents.has(REGISTRY)).toBe(false);
+  });
+
+  test("with nothing to draft, writes nothing and registers nothing", async () => {
+    const { deps, disk, stderr } = setup({
+      files: Object.fromEntries(Object.keys(FILES).map((path) => [path, ""])),
+      github: { ok: true, secrets: [] },
+      worker: { ok: true, secrets: [] },
+    });
+    expect(await cli(["discover", "--write"], deps)).toBe(1);
+    expect(stderr.text).toContain("there's no draft; nothing was written");
+    expect(disk.contents.has(MAP)).toBe(false);
+    expect(disk.contents.has(REGISTRY)).toBe(false);
+  });
+
+  test("without --write, discover still writes nothing and registers nothing", async () => {
+    const { deps, disk } = setup();
+    expect(await cli(["discover"], deps)).toBe(0);
+    expect(disk.contents.has(MAP)).toBe(false);
+    expect(disk.contents.has(REGISTRY)).toBe(false);
   });
 });

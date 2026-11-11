@@ -47,8 +47,12 @@ export async function init(args: string[], deps: Deps): Promise<number> {
       : `keypin: ${file} exists; left it as it is\n`,
   );
 
+  await registerProject(deps, folder);
+  return 0;
+}
+
+export async function registerProject(deps: Deps, folder: string): Promise<void> {
   const path = registryPath(deps);
   const registry = await register(deps.files, path, folder);
   deps.stderr.write(`keypin: ${folder} is registered (${projectCount(registry, path)})\n`);
-  return 0;
 }

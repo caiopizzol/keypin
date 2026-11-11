@@ -33,6 +33,12 @@ export type Lock = (
 
 export type CreateFile = (path: string, text: string) => Promise<"created" | "exists" | "link">;
 
+export type ReplaceFile = (
+  path: string,
+  expected: string,
+  text: string,
+) => Promise<"replaced" | "changed" | "link">;
+
 export interface FolderEntry {
   name: string;
   kind: "file" | "folder" | "other";
@@ -54,6 +60,7 @@ export interface Deps {
   githubSecrets(repo: string, login: string): Promise<StoreRead>;
   workerSecrets(account: string, worker: string): Promise<StoreRead>;
   createFile: CreateFile;
+  replaceFile: ReplaceFile;
   vault(): VaultBackend;
   now(): Date;
   stdout: Writer;

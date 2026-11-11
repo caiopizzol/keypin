@@ -5,6 +5,7 @@
 
 ```sh
 keypin discover [folder] [--json]   # the current folder by default
+keypin discover [folder] --write    # also save the draft as keypin.toml and register the project
 ```
 
 ## What it reads
@@ -38,3 +39,13 @@ When a read isn't possible, discover says what and why. Unknown never means none
 The draft adds a `dev` entry for each unmapped name set locally, and a `prod` entry with every repo and Worker where
 it was found. The `op://` references are placeholders: replace each with the field's secret reference from 1Password. If the
 project has a `keypin.toml`, copy only the `[keys.*]` tables into it.
+
+## Writing the draft
+
+`--write` saves the draft as the folder's `keypin.toml` and registers the project, as `keypin init` does. It
+writes only when there's no `keypin.toml`, or when it's still the untouched `keypin init` template. It never
+changes a real map: it exits 1, and you copy the `[keys.*]` tables from the draft by hand. It doesn't write
+through a symbolic link, and it writes nothing when there's no draft.
+
+The file it writes still has placeholder `op://` references. Replace each before you run `keypin run` or
+`keypin publish`.

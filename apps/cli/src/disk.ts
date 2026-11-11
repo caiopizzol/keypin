@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { chmod, lstat, mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Files } from "@keypin/core";
-import type { CreateFile, FolderEntry, HeldLock, Lock } from "./deps";
+import type { CreateFile, FolderEntry, HeldLock, Lock, ReplaceFile } from "./deps";
 import { errorCode } from "./errors";
 import { onSignals } from "./launch";
 
@@ -51,6 +51,26 @@ export const createFile: CreateFile = async (path, text) => {
     if (errorCode(error) !== "EEXIST") throw error;
     const now = await kindOf(path);
     return now === "missing" ? "exists" : now;
+  }
+};
+
+export const replaceFile: ReplaceFile = async (path, expected, text) => {
+  if ((await kindOf(path)) === "link") return "link";
+  let handle: Awaited<ReturnType<typeof open>>;
+  try {
+    handle = await open(path, constants.O_RDWR | constants.O_NOFOLLOW);
+  } catch (error) {
+    if (errorCode(error) === "ELOOP") return "link";
+    if (errorCode(error) === "ENOENT") return "changed";
+    throw error;
+  }
+  try {
+    if ((await handle.readFile("utf8")) !== expected) return "changed";
+    await handle.truncate(0);
+    await handle.write(text, 0);
+    return "replaced";
+  } finally {
+    await handle.close();
   }
 };
 

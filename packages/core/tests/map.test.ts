@@ -619,6 +619,7 @@ repo = "acme/api"
       MAP_FILE,
     );
     assert(result.ok, JSON.stringify(result));
+    expect(result.map.keys.map((key) => key.name)).toEqual(["A", "B", "C"]);
     for (const key of result.map.keys) {
       expect(key.environments.prod?.publish).toEqual([
         { to: "github-actions", repo: "acme/api", account: "acme" },

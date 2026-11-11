@@ -81,8 +81,8 @@ publish = [
 ]
 ```
 
-A target takes the same fields as a destination. Its name uses lowercase letters, digits and dashes, and some key
-must publish to it, so a typo shows up as an error.
+A target takes the same fields as a destination. Its name starts with a lowercase letter and uses only lowercase
+letters, digits and dashes. Some key must publish to it, so a typo shows up as an error.
 
 GitHub reserves secret names that start with `GITHUB_`, so a key with such a name can't publish to GitHub Actions.
 

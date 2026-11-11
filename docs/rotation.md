@@ -54,8 +54,13 @@ command again:
 keypin rotate site-deploy
 ```
 
-keypin checks that every destination has the new token, shows when the old one was last used, and deletes it after
-you type `yes` in a terminal. `--yes` never revokes.
+keypin checks that every destination of the key has the new token, and that the vault item still holds it. If another
+key or project published the old token from its own receipt, keypin stops and gives the `keypin publish` command to run
+for each one. A destination that no registered map lists any more is only shown. keypin then shows when the old token
+was last used, and deletes it after you type `yes` in a terminal. `--yes` never revokes.
+
+keypin knows what a destination holds only from its receipts. It can't see a secret you set by hand, or a write whose
+run stopped before its receipt was saved.
 
 If a run stops partway, `keypin status` shows the unfinished rotation, and the next run picks it up. If keypin
 can't tell whether Cloudflare made the new token, it names the token for you to find and delete in the dashboard.

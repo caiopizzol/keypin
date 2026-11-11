@@ -26,14 +26,13 @@ Read TLC's paths with the pstack `/statechart` skill when it's available.
 
 ## Open findings
 
-`check.sh` expects these breaks at the sync commit:
+`check.sh` expects this break:
 
-- `SharedItem`: two keys read one vault item. Rotating one revokes the old token while the other key's destinations still hold it, because `revokeOld()` checks only the rotated key's receipts.
-- `OutsideEdit`: someone restores an earlier version of the item between runs. `revokeOld()` never reads the item, and `abandon()` deletes the new token without checking receipts, so a destination or the item can end up with a revoked token.
+- `LostReceipt`: a run stops after a destination write but before its receipt is saved, and then someone restores the item. `abandon()` sees no receipt with the new token, so it deletes a token that destination holds. Destinations can't be read back, so no receipt check can close this.
 
 ## Scope
 
-Bounds: 2 new tokens, up to 3 destinations, one other key. Not modeled: approvals, removing a destination, tokens that expire or are revoked outside keypin, and token contents.
+Bounds: 2 new tokens, up to 3 destinations, one other key in the same `state.json`. Not modeled: approvals, removing a destination, secrets set by hand outside keypin (no receipt), tokens that expire or are revoked outside keypin, and token contents.
 
 ## Sync
 

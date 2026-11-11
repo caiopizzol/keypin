@@ -44,22 +44,29 @@ expected=(
   "Rotate VaultWorks holds"
   "Rotate NoForgottenToken holds"
   "SharedItem TypeOK holds"
-  "SharedItem DestinationsWork breaks"
+  "SharedItem DestinationsWork holds"
   "SharedItem VaultWorks holds"
   "SharedItem NoForgottenToken holds"
   "OutsideEdit TypeOK holds"
-  "OutsideEdit DestinationsWork breaks"
-  "OutsideEdit VaultWorks breaks"
-  "OutsideEdit NoForgottenToken breaks"
+  "OutsideEdit DestinationsWork holds"
+  "OutsideEdit VaultWorks holds"
+  "OutsideEdit NoForgottenToken holds"
+  "LostReceipt TypeOK holds"
+  "LostReceipt DestinationsWork breaks"
+  "LostReceipt VaultWorks holds"
+  "LostReceipt NoForgottenToken holds"
 )
 
 # Each mutant removes one guard of the code from the line of Rotate.tla tagged
-# "\* mutant: <name>", and must break the rule that guard protects in Rotate.cfg.
-# name | what replaces the tagged line | rule it must break
+# "\* mutant: <name>", and must break the rule that guard protects in that config.
+# name | what replaces the tagged line | config | rule it must break
 mutants=(
-  "revoke-skips-receipts|  /\\ TRUE|DestinationsWork"
-  "abandon-skips-item-read|  /\\ TRUE|VaultWorks"
-  "issue-before-record|  /\\ rot' = rot|NoForgottenToken"
+  "revoke-skips-receipts|  /\\ TRUE|Rotate|DestinationsWork"
+  "revoke-skips-other-keys|  /\\ TRUE|SharedItem|DestinationsWork"
+  "revoke-skips-item-read|  /\\ TRUE|OutsideEdit|VaultWorks"
+  "abandon-skips-item-read|  /\\ TRUE|Rotate|VaultWorks"
+  "abandon-skips-receipts|  /\\ TRUE|OutsideEdit|DestinationsWork"
+  "issue-before-record|  /\\ rot' = rot|Rotate|NoForgottenToken"
 )
 
 # The model is written by hand, so TLC can't see the TypeScript. Each guard
@@ -77,6 +84,11 @@ guards=(
   "apps/cli/src/commands/rotate.ts|  const behind = plan.steps.filter((step) => step.action === \"write\");|RevokeStart: every receipt has rot.new"
   "apps/cli/src/commands/rotate.ts|  if (behind.length) {|RevokeStart: every receipt has rot.new"
   "apps/cli/src/commands/rotate.ts|  if (current?.status !== \"active\") {|RevokeStart: tok[rot.new] = active"
+  "apps/cli/src/commands/rotate.ts|  if (others.length) {|RevokeStart: no other key's receipt has rot.old"
+  "apps/cli/src/commands/rotate.ts|    if (owner) return [{ receipt, owner }];|RevokeStart: another map's listed destination counts as OtherDests"
+  "apps/cli/src/commands/rotate.ts|  if (holds !== generation) {|RevokeStart: vault = rot.new"
+  "apps/cli/src/commands/rotate.ts|    const holders = holdersOf(state.receipts, rotation.new.generation);|AbandonDelete: no receipt has rot.new"
+  "apps/cli/src/commands/rotate.ts|  return latestPerSecret(receipts).filter((r) => r.generation === generation);|holdersOf reads each secret's latest receipt"
   "apps/cli/src/commands/rotate.ts|    if (holds === rotation.new.generation) {|AbandonToStored: vault = rot.new"
   "apps/cli/src/commands/rotate.ts|    if (holds !== rotation.old.generation) {|AbandonDelete: vault = rot.old"
   "apps/cli/src/publishing.ts|      const evidence = await found.destination.write(key.env, secret);|PublishWrite, then PublishReceipt"
@@ -151,7 +163,7 @@ done
 [ $# -gt 0 ] && exit $failed
 
 for mutant in "${mutants[@]}"; do
-  IFS='|' read -r name replace rule <<<"$mutant"
+  IFS='|' read -r name replace cfg rule <<<"$mutant"
   label="mutant-$name"
   if [ "$(grep -c "\\\\\\* mutant: $name\$" "$here/Rotate.tla")" != 1 ]; then
     echo "FAIL  $label: no line of Rotate.tla is tagged \"\\* mutant: $name\" exactly once"
@@ -161,8 +173,7 @@ for mutant in "${mutants[@]}"; do
   mkdir -p "$work/$name"
   NAME="$name" REPLACE="$replace" perl -pe \
     's/^.*\\\* mutant: \Q$ENV{NAME}\E$/$ENV{REPLACE}/' "$here/Rotate.tla" >"$work/$name/Rotate.tla"
-  cp "$here/Rotate.cfg" "$work/$name/Rotate.cfg"
-  report "$label" "$(run "$work/$name" Rotate "$rule" "$label")" breaks
+  report "$label" "$(run "$work/$name" "$cfg" "$rule" "$label")" breaks
 done
 
 exit $failed

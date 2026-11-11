@@ -453,7 +453,7 @@ describe("keypin rotate: the next run", () => {
     const run = await next(disk, ["yes"]);
     expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(0);
     expect(run.stderr.text).toContain(
-      `Every destination's receipt has generation ${NEW_GENERATION}.`,
+      `Every destination of site-deploy (prod) has generation ${NEW_GENERATION}.`,
     );
     expect(run.stderr.text).toContain(`Old token: ${OLD_ID} "cicd-keypin", active`);
     expect(run.stderr.text).toContain("last used: 2026-11-10T14:54:43Z");
@@ -461,7 +461,7 @@ describe("keypin rotate: the next run", () => {
     expect(run.provider.log).toContain(`revoke ${OLD_ID.slice(0, 4)}`);
     expect(run.provider.tokens.has(OLD_ID)).toBe(false);
     expect((await run.rotations()).rotations[0]?.stage).toBe("revoked");
-    expect(run.vault.calls).toEqual([`read ${ADMIN_ITEM}`]);
+    expect(run.vault.calls).toEqual([`read ${ITEM}`, `read ${ADMIN_ITEM}`]);
     expect(run.leaked()).toBe(false);
   });
 
@@ -742,6 +742,7 @@ describe("keypin rotate: review fixes", () => {
   async function revokeRun(terminal: string[], disk: ReturnType<typeof memoryFiles>) {
     const run = await setup({ terminal, disk });
     run.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
+    run.vault.values.set(ITEM, NEW_VALUE);
     return run;
   }
 
@@ -810,6 +811,7 @@ describe("keypin rotate: review fixes", () => {
       name: "cicd-keypin 2026-11-10",
       value: NEW_VALUE,
     });
+    revoke.vault.values.set(ITEM, NEW_VALUE);
     expect(await cli(["rotate", "site-deploy", "--env", "dev"], revoke.deps)).toBe(0);
     expect(revoke.asked).toEqual([`Type yes to revoke the old token ${OLD_ID}: `]);
     expect(revoke.stderr.text).toContain(
@@ -824,5 +826,217 @@ describe("keypin rotate: review fixes", () => {
     ]) {
       expect(text).not.toMatch(/keypin rotate site-deploy(?! --env dev)/);
     }
+  });
+});
+
+describe("keypin rotate: other holders of the vault item", () => {
+  const DOCS = "github-actions:acme/docs:CLOUDFLARE_API_TOKEN";
+  const docsMap = (keyId = "docs-deploy") => `
+[vaults.personal]
+kind = "1password"
+account = "my.1password.com"
+vault = "App Secrets"
+
+[keys.${keyId}]
+env = "CLOUDFLARE_API_TOKEN"
+owner = "docs"
+
+[keys.${keyId}.prod]
+vault = "personal"
+item = "${ITEM}"
+
+[[keys.${keyId}.prod.publish]]
+to = "github-actions"
+repo = "acme/docs"
+`;
+
+  async function publishedWith(extra: Receipt[], files: Record<string, string> = {}) {
+    const disk = memoryFiles({
+      "/work/billing/keypin.toml": MAP,
+      [STATE]: JSON.stringify({
+        version: 2,
+        receipts: [await receiptFor(OLD_VALUE), ...extra],
+        operations: [],
+      }),
+      ...files,
+    });
+    const first = await setup({ terminal: ["yes"], disk });
+    expect(await cli(["rotate", "site-deploy"], first.deps)).toBe(0);
+    return disk;
+  }
+
+  async function secondRun(disk: ReturnType<typeof memoryFiles>, itemValue = NEW_VALUE) {
+    const run = await setup({ terminal: ["yes"], disk });
+    run.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
+    run.vault.values.set(ITEM, itemValue);
+    return run;
+  }
+
+  const docsReceipt = async (value: string, overrides: Partial<Receipt> = {}) => ({
+    ...(await receiptFor(value)),
+    keyId: "docs-deploy",
+    destinationId: DOCS,
+    ...overrides,
+  });
+
+  const issuedRotation = {
+    id: "r1",
+    keyId: "site-deploy",
+    environment: "prod",
+    item: { kind: "1password", account: "my.1password.com", vault: "App Secrets", item: ITEM },
+    provider: "cloudflare-account-token",
+    account: ACCOUNT,
+    stage: "issued",
+    startedAt: "2026-11-10T12:00:00.000Z",
+    updatedAt: "2026-11-10T12:00:01.000Z",
+    old: { id: OLD_ID, name: "cicd-keypin", expiresOn: null, generation: OLD_GENERATION },
+    new: {
+      id: NEW_ID,
+      name: "cicd-keypin 2026-11-10",
+      expiresOn: null,
+      generation: NEW_GENERATION,
+    },
+  };
+
+  const registered = (keyId?: string) => ({
+    [REGISTRY]: registryWith("/work/billing", "/work/docs"),
+    "/work/docs/keypin.toml": docsMap(keyId),
+  });
+
+  test("a registered project's key with the old token blocks the revoke and names its publish", async () => {
+    const disk = await publishedWith([await docsReceipt(OLD_VALUE)], registered());
+    const run = await secondRun(disk);
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain(
+      `${DOCS} (docs-deploy, prod): cd /work/docs && keypin publish docs-deploy`,
+    );
+    expect(run.asked).toEqual([]);
+    expect(run.provider.tokens.has(OLD_ID)).toBe(true);
+    expect((await run.rotations()).rotations[0]?.stage).toBe("published");
+  });
+
+  test("another project's key with the same ID and environment blocks it too", async () => {
+    const same = await docsReceipt(OLD_VALUE, { keyId: "site-deploy" });
+    const disk = await publishedWith([same], registered("site-deploy"));
+    const run = await secondRun(disk);
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain(`cd /work/docs && keypin publish site-deploy`);
+    expect(run.provider.tokens.has(OLD_ID)).toBe(true);
+  });
+
+  test("the same key's dev entry with the old token blocks it, with --env dev", async () => {
+    const map = `${MAP}
+[keys.site-deploy.dev]
+vault = "personal"
+item = "${ITEM}"
+
+[[keys.site-deploy.dev.publish]]
+to = "github-actions"
+repo = "acme/docs"
+`;
+    const dev = await docsReceipt(OLD_VALUE, { keyId: "site-deploy", environment: "dev" });
+    const disk = await publishedWith([dev], { "/work/billing/keypin.toml": map });
+    const run = await secondRun(disk);
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain(
+      `${DOCS} (site-deploy, dev): keypin publish site-deploy --env dev`,
+    );
+    expect(run.provider.tokens.has(OLD_ID)).toBe(true);
+  });
+
+  test("a destination moved to a renamed key gets the current key's publish", async () => {
+    const disk = await publishedWith([await docsReceipt(OLD_VALUE)], registered("docs-renamed"));
+    const run = await secondRun(disk);
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain(
+      `${DOCS} (docs-deploy, prod): cd /work/docs && keypin publish docs-renamed`,
+    );
+    expect(run.provider.tokens.has(OLD_ID)).toBe(true);
+  });
+
+  test("abandon names another project's publish for a holder there", async () => {
+    const disk = memoryFiles({
+      "/work/billing/keypin.toml": MAP,
+      ...registered(),
+      [STATE]: JSON.stringify({
+        version: 2,
+        receipts: [await receiptFor(OLD_VALUE), await docsReceipt(NEW_VALUE)],
+        operations: [],
+      }),
+      [ROTATIONS]: JSON.stringify({ version: 1, rotations: [issuedRotation] }),
+    });
+    const run = await setup({ terminal: ["yes"], disk });
+    run.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain(
+      `${DOCS} (docs-deploy, prod): cd /work/docs && keypin publish docs-deploy`,
+    );
+    expect(run.provider.tokens.has(NEW_ID)).toBe(true);
+  });
+
+  test("a legacy receipt with no source still blocks", async () => {
+    const disk = await publishedWith(
+      [await docsReceipt(OLD_VALUE, { source: null })],
+      registered(),
+    );
+    const run = await secondRun(disk);
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(run.provider.tokens.has(OLD_ID)).toBe(true);
+  });
+
+  test("a receipt that no registered map lists is shown, and the typed yes revokes", async () => {
+    const run = await secondRun(await publishedWith([await docsReceipt(OLD_VALUE)]));
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(0);
+    expect(run.stderr.text).toContain(
+      `${DOCS} (docs-deploy, prod) has the old token, and no registered map lists it any more`,
+    );
+    expect(run.asked).toEqual([`Type yes to revoke the old token ${OLD_ID}: `]);
+    expect(run.provider.tokens.has(OLD_ID)).toBe(false);
+  });
+
+  test("a registered map that can't be read stops the revoke", async () => {
+    const disk = await publishedWith([], {
+      [REGISTRY]: registryWith("/work/billing", "/work/gone"),
+    });
+    const run = await secondRun(disk);
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain("/work/gone/keypin.toml is missing");
+    expect(run.provider.tokens.has(OLD_ID)).toBe(true);
+  });
+
+  test("another key whose receipt already has the new token doesn't block it", async () => {
+    const disk = await publishedWith([await docsReceipt(NEW_VALUE)], registered());
+    const run = await secondRun(disk);
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(0);
+    expect(run.provider.tokens.has(OLD_ID)).toBe(false);
+  });
+
+  test("an item that no longer holds the new token blocks the revoke", async () => {
+    const run = await secondRun(await publishedWith([]), OLD_VALUE);
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain(
+      `item "${ITEM}" holds generation ${OLD_GENERATION}, not the new ${NEW_GENERATION}`,
+    );
+    expect(run.asked).toEqual([]);
+    expect(run.provider.tokens.has(OLD_ID)).toBe(true);
+  });
+
+  test("abandoning keeps a new token that a destination already holds", async () => {
+    const disk = memoryFiles({
+      "/work/billing/keypin.toml": MAP,
+      [STATE]: JSON.stringify({
+        version: 2,
+        receipts: [await receiptFor(NEW_VALUE)],
+        operations: [],
+      }),
+      [ROTATIONS]: JSON.stringify({ version: 1, rotations: [issuedRotation] }),
+    });
+    const run = await setup({ terminal: ["yes"], disk });
+    run.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain(`${GITHUB} (site-deploy, prod): keypin publish site-deploy`);
+    expect(run.asked).toEqual([]);
+    expect(run.provider.tokens.has(NEW_ID)).toBe(true);
+    expect((await run.rotations()).rotations[0]?.stage).toBe("issued");
   });
 });

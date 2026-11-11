@@ -13,10 +13,12 @@ import {
   unregister,
   type Receipt,
 } from "../src/index";
-import { fakeFiles, GITHUB, KEY, receipt, WORKER } from "./fixtures";
+import { fakeFiles, GITHUB, KEY, KEY_MAP, receipt, WORKER } from "./fixtures";
 
 const STATE = "/state/keypin/state.json";
 const REGISTRY = "/config/keypin/registry.json";
+const OWNER = { keyId: KEY.name, environment: "prod", mapFile: KEY_MAP };
+const WEB_MAP = "/work/web/keypin.toml";
 
 describe("state", () => {
   test("a missing file is an empty state", async () => {
@@ -52,7 +54,7 @@ describe("state", () => {
     const { section: _section, field: _field, ...before } = saved.source;
     const fake = fakeFiles({
       [STATE]: JSON.stringify({
-        version: 2,
+        version: 3,
         receipts: [{ ...saved, source: before }],
         operations: [],
       }),
@@ -62,27 +64,51 @@ describe("state", () => {
 
   test("another schema version gives a clear error", async () => {
     const fake = fakeFiles({
-      [STATE]: JSON.stringify({ version: 3, receipts: [], operations: [] }),
+      [STATE]: JSON.stringify({ version: 4, receipts: [], operations: [] }),
     });
     await expect(loadState(fake.files, STATE)).rejects.toThrow(
-      `${STATE}: the state file has schema version 3, and this keypin reads version 1 or 2`,
+      `${STATE}: the state file has schema version 4, and this keypin reads version 1 or 2 or 3`,
     );
   });
 
-  test("a version 1 file loads, with receipts that don't record their item, and saves as version 2", async () => {
+  test("a version 1 file loads, with receipts that record neither item nor project, and saves as version 3", async () => {
     const old = withoutSource(receipt(WORKER, "aaaaaaaaaaaaaaaa"));
     const fake = fakeFiles({
       [STATE]: JSON.stringify({ version: 1, receipts: [old], operations: [] }),
     });
     const state = await loadState(fake.files, STATE);
     expect(state).toEqual({
-      version: 2,
-      receipts: [{ ...old, source: null }],
+      version: 3,
+      receipts: [{ ...old, mapFile: null, source: null }],
       operations: [],
     });
     await saveState(fake.files, STATE, state);
     expect(await loadState(fake.files, STATE)).toEqual(state);
-    expect(fake.contents.get(STATE)).toContain('"version": 2');
+    expect(fake.contents.get(STATE)).toContain('"version": 3');
+  });
+
+  test("a version 2 file loads with no project on its receipts and operations, so none is any project's own", async () => {
+    const { mapFile: _mapFile, ...old } = receipt(WORKER, "aaaaaaaaaaaaaaaa");
+    const operation = {
+      id: "op-1",
+      keyId: KEY.name,
+      environment: "prod",
+      generation: "aaaaaaaaaaaaaaaa",
+      startedAt: "2026-11-09T15:30:00Z",
+      planned: [WORKER],
+      done: [],
+    };
+    const fake = fakeFiles({
+      [STATE]: JSON.stringify({ version: 2, receipts: [old], operations: [operation] }),
+    });
+    const state = await loadState(fake.files, STATE);
+    expect(state).toEqual({
+      version: 3,
+      receipts: [{ ...old, mapFile: null }],
+      operations: [{ ...operation, mapFile: null }],
+    });
+    expect(receiptsFor(state, OWNER)).toEqual([]);
+    expect(unfinishedOperations(state, OWNER)).toEqual([]);
   });
 
   test("one receipt per destination secret: a write from another key replaces the last one", () => {
@@ -118,6 +144,14 @@ describe("state", () => {
     await expect(loadState(fakeFiles({ [STATE]: bad }).files, STATE)).rejects.toThrow(
       '"receipts" must be a list',
     );
+    const unnamed = JSON.stringify({
+      version: 3,
+      receipts: [{ ...receipt(WORKER, "aaaaaaaaaaaaaaaa"), mapFile: 7 }],
+      operations: [],
+    });
+    await expect(loadState(fakeFiles({ [STATE]: unnamed }).files, STATE)).rejects.toThrow(
+      '"receipts" must be a list',
+    );
   });
 
   test("an operation tracks done destinations, and a newer receipt replaces the older one", () => {
@@ -125,20 +159,37 @@ describe("state", () => {
       id: "op-1",
       keyId: KEY.name,
       environment: "prod",
+      mapFile: KEY_MAP,
       generation: "aaaaaaaaaaaaaaaa",
       startedAt: "2026-11-09T15:30:00Z",
       planned: [WORKER, GITHUB],
     });
     state = recordReceipt(state, receipt(WORKER, "bbbbbbbbbbbbbbbb"));
     state = recordReceipt(state, receipt(WORKER, "aaaaaaaaaaaaaaaa"), "op-1");
-    expect(receiptsFor(state, KEY.name, "prod")).toEqual([receipt(WORKER, "aaaaaaaaaaaaaaaa")]);
-    expect(unfinishedOperations(state, KEY.name, "prod")).toEqual([
+    expect(receiptsFor(state, OWNER)).toEqual([receipt(WORKER, "aaaaaaaaaaaaaaaa")]);
+    expect(unfinishedOperations(state, OWNER)).toEqual([
       expect.objectContaining({ id: "op-1", planned: [WORKER, GITHUB], done: [WORKER] }),
     ]);
-    const [operation] = unfinishedOperations(state, KEY.name, "prod");
+    const [operation] = unfinishedOperations(state, OWNER);
     assert(operation);
     expect(() => startOperation(state, operation)).toThrow("operation op-1 already exists");
-    expect(unfinishedOperations(finishOperation(state, "op-1"), KEY.name, "prod")).toEqual([]);
+    expect(unfinishedOperations(finishOperation(state, "op-1"), OWNER)).toEqual([]);
+  });
+
+  test("another project's receipts and operations for the same variable and environment aren't this one's", () => {
+    const web = { ...OWNER, mapFile: WEB_MAP };
+    let state = startOperation(emptyState(), {
+      id: "op-web",
+      ...web,
+      generation: "aaaaaaaaaaaaaaaa",
+      startedAt: "2026-11-09T15:30:00Z",
+      planned: [WORKER],
+    });
+    state = recordReceipt(state, receipt(GITHUB, "aaaaaaaaaaaaaaaa", { mapFile: WEB_MAP }));
+    expect(receiptsFor(state, OWNER)).toEqual([]);
+    expect(unfinishedOperations(state, OWNER)).toEqual([]);
+    expect(receiptsFor(state, web)).toHaveLength(1);
+    expect(unfinishedOperations(state, web).map((o) => o.id)).toEqual(["op-web"]);
   });
 });
 
@@ -178,7 +229,7 @@ describe("registry", () => {
   });
 });
 
-function withoutSource(receipt: Receipt): Omit<Receipt, "source"> {
+function withoutSource(receipt: Receipt): Omit<Receipt, "source" | "mapFile"> {
   const { keyId, environment, destinationId, generation, account, at, evidence } = receipt;
   return { keyId, environment, destinationId, generation, account, at, evidence };
 }

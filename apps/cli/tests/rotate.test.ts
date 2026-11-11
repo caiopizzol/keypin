@@ -36,6 +36,7 @@ const ADMIN_ITEM = "shared cloudflare token admin";
 const GITHUB = "github-actions:acme/site:CLOUDFLARE_API_TOKEN";
 const SOURCE = `op://App Secrets/${ITEM}/password`;
 const ADMIN_SOURCE = `op://App Secrets/${ADMIN_ITEM}/password`;
+const BILLING_MAP = "/work/billing/keypin.toml";
 
 const MAP = `
 [1password]
@@ -170,6 +171,7 @@ async function receiptFor(value: string, at = "2026-11-10T14:52:03.000Z"): Promi
   return {
     keyId: "CLOUDFLARE_API_TOKEN",
     environment: "prod",
+    mapFile: BILLING_MAP,
     source: {
       kind: "1password",
       account: "my.1password.com",
@@ -203,7 +205,7 @@ async function setup(
     options.disk ??
     memoryFiles({
       "/work/billing/keypin.toml": options.map ?? MAP,
-      ...(receipts ? { [STATE]: JSON.stringify({ version: 2, receipts, operations: [] }) } : {}),
+      ...(receipts ? { [STATE]: JSON.stringify({ version: 3, receipts, operations: [] }) } : {}),
     });
   const provider = fakeProvider(options.provider);
   const vault = writableVault(options.vault);
@@ -408,7 +410,7 @@ describe("keypin rotate: the first run", () => {
     const disk = memoryFiles({
       "/work/billing/keypin.toml": MAP,
       [STATE]: JSON.stringify({
-        version: 2,
+        version: 3,
         receipts: [await receiptFor(OLD_VALUE)],
         operations: [],
       }),
@@ -439,7 +441,7 @@ describe("keypin rotate: the next run", () => {
     const disk = memoryFiles({
       "/work/billing/keypin.toml": MAP,
       [STATE]: JSON.stringify({
-        version: 2,
+        version: 3,
         receipts: [await receiptFor(OLD_VALUE)],
         operations: [],
       }),
@@ -537,7 +539,7 @@ describe("keypin rotate: a reference to a field in a section", () => {
     const disk = memoryFiles({
       "/work/billing/keypin.toml": map,
       [STATE]: JSON.stringify({
-        version: 2,
+        version: 3,
         receipts: [await receiptFor(OLD_VALUE)],
         operations: [],
       }),
@@ -570,14 +572,17 @@ describe("keypin rotate: a reference to a field in a section", () => {
   });
 });
 
-describe("keypin rotate: the state file stays readable by keypin 0.1.0", () => {
-  test("state.json keeps version 2 with only receipts and operations", async () => {
+describe("keypin rotate: the files it saves name their project", () => {
+  test("state.json is version 3, so keypin 0.4 and older refuse it instead of mixing projects up", async () => {
     const run = await setup({ terminal: ["yes"] });
     expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(0);
     const state = JSON.parse(run.disk.contents.get(STATE) ?? "{}");
     expect(Object.keys(state).toSorted()).toEqual(["operations", "receipts", "version"]);
-    expect(state.version).toBe(2);
-    expect(run.disk.contents.has(ROTATIONS)).toBe(true);
+    expect(state.version).toBe(3);
+    expect(state.receipts.map((r: Receipt) => r.mapFile)).toEqual([BILLING_MAP]);
+    const rotations = JSON.parse(run.disk.contents.get(ROTATIONS) ?? "{}");
+    expect(rotations.version).toBe(2);
+    expect(rotations.rotations.map((r: { mapFile: string }) => r.mapFile)).toEqual([BILLING_MAP]);
   });
 });
 
@@ -597,17 +602,18 @@ describe("keypin rotate: a run that stopped after storing", () => {
     const disk = memoryFiles({
       "/work/billing/keypin.toml": MAP,
       [STATE]: JSON.stringify({
-        version: 2,
+        version: 3,
         receipts: [await receiptFor(OLD_VALUE)],
         operations: [],
       }),
       [ROTATIONS]: JSON.stringify({
-        version: 1,
+        version: 2,
         rotations: [
           {
             id: "r1",
             keyId: "CLOUDFLARE_API_TOKEN",
             environment: "prod",
+            mapFile: BILLING_MAP,
             item: {
               kind: "1password",
               account: "my.1password.com",
@@ -648,17 +654,18 @@ describe("keypin rotate: a run that stopped after storing", () => {
     const disk = memoryFiles({
       "/work/billing/keypin.toml": MAP,
       [STATE]: JSON.stringify({
-        version: 2,
+        version: 3,
         receipts: [await receiptFor(OLD_VALUE)],
         operations: [],
       }),
       [ROTATIONS]: JSON.stringify({
-        version: 1,
+        version: 2,
         rotations: [
           {
             id: "r1",
             keyId: "CLOUDFLARE_API_TOKEN",
             environment: "prod",
+            mapFile: BILLING_MAP,
             item: {
               kind: "1password",
               account: "my.1password.com",
@@ -698,6 +705,7 @@ describe("keypin rotate: review fixes", () => {
     id: "r1",
     keyId: "CLOUDFLARE_API_TOKEN",
     environment: "prod",
+    mapFile: BILLING_MAP,
     item: {
       kind: "1password",
       account: "my.1password.com",
@@ -724,11 +732,11 @@ describe("keypin rotate: review fixes", () => {
     memoryFiles({
       "/work/billing/keypin.toml": map,
       [STATE]: JSON.stringify({
-        version: 2,
+        version: 3,
         receipts: [await receiptFor(OLD_VALUE)],
         operations: [],
       }),
-      [ROTATIONS]: JSON.stringify({ version: 1, rotations: [rotation] }),
+      [ROTATIONS]: JSON.stringify({ version: 2, rotations: [rotation] }),
     });
 
   test("a key with no destinations is refused before anything is read", async () => {
@@ -848,7 +856,7 @@ describe("keypin rotate: review fixes", () => {
       "/work/billing/keypin.toml": map,
       [REGISTRY]: registryWith("/work/billing"),
       [STATE]: JSON.stringify({
-        version: 2,
+        version: 3,
         receipts: [{ ...(await receiptFor(OLD_VALUE)), environment: "dev" }],
         operations: [],
       }),
@@ -921,7 +929,7 @@ repo = "acme/docs"
     const disk = memoryFiles({
       "/work/billing/keypin.toml": MAP,
       [STATE]: JSON.stringify({
-        version: 2,
+        version: 3,
         receipts: [await receiptFor(OLD_VALUE), ...extra],
         operations: [],
       }),
@@ -942,6 +950,7 @@ repo = "acme/docs"
   const docsReceipt = async (value: string, overrides: Partial<Receipt> = {}) => ({
     ...(await receiptFor(value)),
     keyId: "CLOUDFLARE_API_TOKEN",
+    mapFile: "/work/docs/keypin.toml",
     destinationId: DOCS,
     ...overrides,
   });
@@ -950,6 +959,7 @@ repo = "acme/docs"
     id: "r1",
     keyId: "CLOUDFLARE_API_TOKEN",
     environment: "prod",
+    mapFile: BILLING_MAP,
     item: {
       kind: "1password",
       account: "my.1password.com",
@@ -1022,8 +1032,9 @@ repo = "acme/docs"
     const run = await secondRun(disk);
     expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(0);
     expect(run.stderr.text).toContain(
-      `${DOCS} left the map and its receipt has the old token (generation ${OLD_GENERATION}); revoking breaks it unless that secret is gone`,
+      `${DOCS} (CLOUDFLARE_API_TOKEN, prod) has the old token, and no registered map lists it any more; revoking breaks it unless that secret is gone`,
     );
+    expect(run.stderr.text).not.toContain("left the map");
   });
 
   test("abandon names another project's publish for a holder there", async () => {
@@ -1031,11 +1042,11 @@ repo = "acme/docs"
       "/work/billing/keypin.toml": MAP,
       ...registered(),
       [STATE]: JSON.stringify({
-        version: 2,
+        version: 3,
         receipts: [await receiptFor(OLD_VALUE), await docsReceipt(NEW_VALUE)],
         operations: [],
       }),
-      [ROTATIONS]: JSON.stringify({ version: 1, rotations: [issuedRotation] }),
+      [ROTATIONS]: JSON.stringify({ version: 2, rotations: [issuedRotation] }),
     });
     const run = await setup({ terminal: ["yes"], disk });
     run.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
@@ -1060,7 +1071,7 @@ repo = "acme/docs"
     const run = await secondRun(await publishedWith([await docsReceipt(OLD_VALUE)]));
     expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(0);
     expect(run.stderr.text).toContain(
-      `${DOCS} left the map and its receipt has the old token (generation ${OLD_GENERATION}); revoking breaks it unless that secret is gone`,
+      `${DOCS} (CLOUDFLARE_API_TOKEN, prod) has the old token, and no registered map lists it any more; revoking breaks it unless that secret is gone`,
     );
     expect(run.asked).toEqual([`Type yes to revoke the old token ${OLD_ID}: `]);
     expect(run.provider.tokens.has(OLD_ID)).toBe(false);
@@ -1097,11 +1108,11 @@ repo = "acme/docs"
     const disk = memoryFiles({
       "/work/billing/keypin.toml": MAP,
       [STATE]: JSON.stringify({
-        version: 2,
+        version: 3,
         receipts: [await receiptFor(NEW_VALUE)],
         operations: [],
       }),
-      [ROTATIONS]: JSON.stringify({ version: 1, rotations: [issuedRotation] }),
+      [ROTATIONS]: JSON.stringify({ version: 2, rotations: [issuedRotation] }),
     });
     const run = await setup({ terminal: ["yes"], disk });
     run.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });

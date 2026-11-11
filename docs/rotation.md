@@ -62,5 +62,6 @@ was last used, and deletes it after you type `yes` in a terminal. `--yes` never 
 keypin knows what a destination holds only from its receipts. It can't see a secret you set by hand, or a write whose
 run stopped before its receipt was saved.
 
-If a run stops partway, `keypin status` shows the unfinished rotation, and the next run picks it up. If keypin
-can't tell whether Cloudflare made the new token, it names the token for you to find and delete in the dashboard.
+If a run stops partway, `keypin status` shows the unfinished rotation, and the next run in that project picks it up.
+If keypin can't tell whether Cloudflare made the new token, it names the token for you to find and delete in the
+dashboard.

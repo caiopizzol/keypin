@@ -75,7 +75,8 @@ async function publishLocked(
   }
 
   const state = await loadState(deps.files, path);
-  for (const op of unfinishedOperations(state, keyId, environment)) {
+  const owner = { keyId, environment, mapFile: map.file };
+  for (const op of unfinishedOperations(state, owner)) {
     say(
       `An earlier publish (started ${op.startedAt}, generation ${op.generation}) didn't finish: wrote ${op.done.length} of ${op.planned.length} (${op.done.join(", ") || "none"}). This run plans again from the receipts.`,
     );
@@ -87,7 +88,12 @@ async function publishLocked(
     return 1;
   }
 
-  const approvals = approvalsFor({ key, environment, receipts: state.receipts });
+  const approvals = approvalsFor({
+    key,
+    environment,
+    mapFile: map.file,
+    receipts: state.receipts,
+  });
   if (approvals.length && !deps.isTerminal) {
     say("\nNeeds approval:");
     for (const approval of approvals) say(`  ${approval.approval}`);
@@ -107,7 +113,13 @@ async function publishLocked(
     return 1;
   }
   const generation = await generationOf(secret);
-  const plan = planPublish({ key, environment, receipts: state.receipts, generation });
+  const plan = planPublish({
+    key,
+    environment,
+    mapFile: map.file,
+    receipts: state.receipts,
+    generation,
+  });
 
   say(`\nPlan for generation ${generation}:`);
   const writes = writesFor(plan.steps, checked);
@@ -125,8 +137,8 @@ async function publishLocked(
 
   if (!writes.length) {
     say("Nothing to write: every destination already has this generation.");
-    if (unfinishedOperations(state, keyId, environment).length) {
-      await saveState(deps.files, path, finishAll(state, keyId, environment));
+    if (unfinishedOperations(state, owner).length) {
+      await saveState(deps.files, path, finishAll(state, owner));
     }
     return 0;
   }
@@ -136,6 +148,7 @@ async function publishLocked(
   const written = await writeAll({
     key,
     environment,
+    mapFile: map.file,
     entry,
     secret,
     generation,

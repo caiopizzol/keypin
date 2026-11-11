@@ -59,25 +59,35 @@ describe("keypin status", () => {
     expect(stderr.text).toContain("op://Private/web prod session secret/password");
   });
 
+  const sessionReceipt = {
+    keyId: "SESSION_SECRET",
+    environment: "prod",
+    destinationId: "cloudflare-worker:web:SESSION_SECRET",
+    generation: "0123456789abcdef",
+    account: {
+      pinned: "11111111111111111111111111111111",
+      publisher: "me@example.com",
+      destinationAccount: "11111111111111111111111111111111",
+    },
+    at: "2026-11-09T15:30:35Z",
+    evidence: { versionId: "v1" },
+  };
+
+  test("a receipt from state version 1, which records neither item nor project, is missing until the next publish", async () => {
+    const state = JSON.stringify({ version: 1, operations: [], receipts: [sessionReceipt] });
+    const { deps, stdout } = setup({ state });
+    await cli(["status"], deps);
+    expect(stdout.text).toContain(
+      "-> cloudflare-worker:web:SESSION_SECRET (account 11111111111111111111111111111111): no receipt",
+    );
+    expect(stdout.text.match(/missing-receipt/g)).toHaveLength(3);
+  });
+
   test("shows a destination's last receipt", async () => {
     const state = JSON.stringify({
-      version: 1,
+      version: 3,
       operations: [],
-      receipts: [
-        {
-          keyId: "SESSION_SECRET",
-          environment: "prod",
-          destinationId: "cloudflare-worker:web:SESSION_SECRET",
-          generation: "0123456789abcdef",
-          account: {
-            pinned: "11111111111111111111111111111111",
-            publisher: "me@example.com",
-            destinationAccount: "11111111111111111111111111111111",
-          },
-          at: "2026-11-09T15:30:35Z",
-          evidence: { versionId: "v1" },
-        },
-      ],
+      receipts: [{ ...sessionReceipt, mapFile: "/work/web/keypin.toml", source: null }],
     });
     const { deps, stdout } = setup({ state });
     await cli(["status"], deps);
@@ -186,12 +196,13 @@ describe("keypin status: rotations", () => {
       [REGISTRY]: registryWith("/work/web"),
       "/work/web/keypin.toml": WEB_MAP,
       "/home/me/.local/state/keypin/rotations.json": JSON.stringify({
-        version: 1,
+        version: 2,
         rotations: [
           {
             id: "r1",
             keyId: "SESSION_SECRET",
             environment: "prod",
+            mapFile: "/work/web/keypin.toml",
             item: {
               kind: "1password",
               account: "my.1password.com",

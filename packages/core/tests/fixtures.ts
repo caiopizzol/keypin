@@ -40,6 +40,8 @@ export const KEY: KeyEntry = {
   },
 };
 
+export const KEY_MAP = "/work/billing/keypin.toml";
+
 export const WORKER = "cloudflare-worker:billing-worker:STRIPE_API_KEY";
 export const GITHUB = "github-actions:acme/billing:STRIPE_API_KEY";
 
@@ -52,6 +54,7 @@ export function receipt(
   return {
     keyId: KEY.name,
     environment: "prod",
+    mapFile: KEY_MAP,
     source: KEY.environments.prod?.ref ?? null,
     destinationId,
     generation,

@@ -1,6 +1,6 @@
 import { expect, test } from "vite-plus/test";
 import { approvalsFor, planPublish } from "../src/index";
-import { GITHUB, KEY, receipt, WORKER } from "./fixtures";
+import { GITHUB, KEY, KEY_MAP, receipt, WORKER } from "./fixtures";
 
 const NEW = "aaaaaaaaaaaaaaaa";
 const OLD = "bbbbbbbbbbbbbbbb";
@@ -14,7 +14,13 @@ const summary = (plan: ReturnType<typeof planPublish>) =>
   }));
 
 test("first publish writes every destination, and each needs approval", () => {
-  const plan = planPublish({ key: KEY, environment: "prod", receipts: [], generation: NEW });
+  const plan = planPublish({
+    key: KEY,
+    environment: "prod",
+    mapFile: KEY_MAP,
+    receipts: [],
+    generation: NEW,
+  });
   expect(summary(plan)).toEqual([
     {
       action: "write",
@@ -37,6 +43,7 @@ test("resuming after one destination skips it and writes the rest", () => {
   const plan = planPublish({
     key: KEY,
     environment: "prod",
+    mapFile: KEY_MAP,
     receipts: [receipt(WORKER, NEW)],
     generation: NEW,
   });
@@ -60,6 +67,7 @@ test("the same generation everywhere leaves nothing to do", () => {
   const plan = planPublish({
     key: KEY,
     environment: "prod",
+    mapFile: KEY_MAP,
     receipts: [receipt(WORKER, NEW), receipt(GITHUB, NEW)],
     generation: NEW,
   });
@@ -71,6 +79,7 @@ test("a new generation rewrites known destinations without approval", () => {
   const plan = planPublish({
     key: KEY,
     environment: "prod",
+    mapFile: KEY_MAP,
     receipts: [receipt(WORKER, OLD), receipt(GITHUB, OLD)],
     generation: NEW,
   });
@@ -92,6 +101,7 @@ test("a destination whose account changed needs approval, even with the same gen
   const plan = planPublish({
     key: KEY,
     environment: "prod",
+    mapFile: KEY_MAP,
     receipts: [moved, receipt(GITHUB, NEW)],
     generation: NEW,
   });
@@ -110,7 +120,13 @@ test("a destination removed from the map is reported, not deleted", () => {
     account: { pinned: "acme", publisher: "acme", destinationAccount: "acme" },
   });
   const receipts = [receipt(WORKER, NEW), receipt(GITHUB, NEW), gone];
-  const plan = planPublish({ key: KEY, environment: "prod", receipts, generation: NEW });
+  const plan = planPublish({
+    key: KEY,
+    environment: "prod",
+    mapFile: KEY_MAP,
+    receipts,
+    generation: NEW,
+  });
   expect(plan.removed).toEqual([
     {
       destinationId: "github-actions:acme/old-billing:STRIPE_API_KEY",
@@ -124,6 +140,38 @@ test("a destination removed from the map is reported, not deleted", () => {
   expect(plan.steps.map((s) => s.destinationId)).toEqual([WORKER, GITHUB]);
 });
 
+test("another project's destinations for the same variable and environment aren't removed from this one", () => {
+  const web = receipt("github-actions:acme/web:STRIPE_API_KEY", OLD, {
+    mapFile: "/work/web/keypin.toml",
+  });
+  const receipts = [receipt(WORKER, NEW), receipt(GITHUB, NEW), web];
+  const plan = planPublish({
+    key: KEY,
+    environment: "prod",
+    mapFile: KEY_MAP,
+    receipts,
+    generation: NEW,
+  });
+  expect(plan.removed).toEqual([]);
+});
+
+test("a receipt with no project, from state version 2 or older, isn't this key's own, but still matches its destination by item", () => {
+  const old = (id: string) => receipt(id, NEW, { mapFile: null });
+  const gone = old("github-actions:acme/old-billing:STRIPE_API_KEY");
+  const plan = planPublish({
+    key: KEY,
+    environment: "prod",
+    mapFile: KEY_MAP,
+    receipts: [old(WORKER), old(GITHUB), gone],
+    generation: NEW,
+  });
+  expect(plan.removed).toEqual([]);
+  expect(summary(plan).map((s) => [s.action, s.reason])).toEqual([
+    ["skip", "receipt already has this generation"],
+    ["skip", "receipt already has this generation"],
+  ]);
+});
+
 test("the newest receipt per destination decides, whichever key wrote it", () => {
   const receipts = [
     receipt(WORKER, NEW, { at: "2026-11-09T10:00:00Z" }),
@@ -131,7 +179,13 @@ test("the newest receipt per destination decides, whichever key wrote it", () =>
     receipt(GITHUB, OLD, { keyId: "another-key", at: "2026-11-09T10:00:00Z" }),
     receipt(GITHUB, NEW, { at: "2026-11-09T12:00:00Z" }),
   ];
-  const plan = planPublish({ key: KEY, environment: "prod", receipts, generation: NEW });
+  const plan = planPublish({
+    key: KEY,
+    environment: "prod",
+    mapFile: KEY_MAP,
+    receipts,
+    generation: NEW,
+  });
   expect(summary(plan).map((s) => s.reason)).toEqual([
     "different generation",
     "receipt already has this generation",
@@ -152,6 +206,7 @@ test("a destination last published from another item needs approval, even with t
     const plan = planPublish({
       key: KEY,
       environment: "prod",
+      mapFile: KEY_MAP,
       receipts: [receipt(WORKER, NEW, { source: OTHER_ITEM }), receipt(GITHUB, NEW)],
       generation,
     });
@@ -169,6 +224,7 @@ test("a receipt that another project or key left, from another item, needs appro
   const plan = planPublish({
     key: KEY,
     environment: "prod",
+    mapFile: KEY_MAP,
     receipts: [
       receipt(WORKER, OLD, { keyId: "deploy", source: OTHER_ITEM }),
       receipt(GITHUB, OLD, { environment: "dev", source: OTHER_ITEM }),
@@ -182,6 +238,7 @@ test("a receipt that doesn't record its item, from state version 1, needs approv
   const plan = planPublish({
     key: KEY,
     environment: "prod",
+    mapFile: KEY_MAP,
     receipts: [receipt(WORKER, NEW, { source: null }), receipt(GITHUB, NEW)],
     generation: NEW,
   });
@@ -202,6 +259,7 @@ test("a receipt for the same GitHub secret spelled in another case is the same d
   const plan = planPublish({
     key: KEY,
     environment: "prod",
+    mapFile: KEY_MAP,
     receipts: [receipt(WORKER, NEW), receipt(GITHUB, OLD, { at: "2026-11-09T10:00:00Z" }), aliased],
     generation: NEW,
   });
@@ -218,6 +276,7 @@ test("a Worker receipt from another Cloudflare account is another secret", () =>
   const plan = planPublish({
     key: KEY,
     environment: "prod",
+    mapFile: KEY_MAP,
     receipts: [receipt(WORKER, NEW), receipt(GITHUB, NEW), elsewhere],
     generation: NEW,
   });
@@ -225,19 +284,19 @@ test("a Worker receipt from another Cloudflare account is another secret", () =>
 });
 
 test("approvals are known from the receipts alone, before any value is read", () => {
-  expect(approvalsFor({ key: KEY, environment: "prod", receipts: [] })).toEqual([
+  expect(approvalsFor({ key: KEY, environment: "prod", mapFile: KEY_MAP, receipts: [] })).toEqual([
     { destinationId: WORKER, reason: "no receipt", approval: expect.any(String) },
     { destinationId: GITHUB, reason: "no receipt", approval: expect.any(String) },
   ]);
   const receipts = [receipt(WORKER, OLD), receipt(GITHUB, OLD, { source: OTHER_ITEM })];
-  expect(approvalsFor({ key: KEY, environment: "prod", receipts })).toEqual([
+  expect(approvalsFor({ key: KEY, environment: "prod", mapFile: KEY_MAP, receipts })).toEqual([
     { destinationId: GITHUB, reason: "item changed", approval: expect.any(String) },
   ]);
 });
 
 test("an environment the key doesn't have is an error", () => {
   expect(() =>
-    planPublish({ key: KEY, environment: "dev", receipts: [], generation: NEW }),
+    planPublish({ key: KEY, environment: "dev", mapFile: KEY_MAP, receipts: [], generation: NEW }),
   ).toThrow('key "STRIPE_API_KEY" has no dev entry in the map');
 });
 
@@ -246,6 +305,7 @@ test("a renamed variable is a new key: every write needs approval, and nothing i
   const plan = planPublish({
     key: renamed,
     environment: "prod",
+    mapFile: KEY_MAP,
     receipts: [receipt(WORKER, NEW), receipt(GITHUB, NEW)],
     generation: NEW,
   });
@@ -277,6 +337,7 @@ test("an organization repo published by another login compares the pin, not the 
   const plan = planPublish({
     key,
     environment: "prod",
+    mapFile: KEY_MAP,
     receipts: [
       receipt("github-actions:acme/billing:STRIPE_API_KEY", NEW, {
         account: { pinned: "alice", publisher: "alice", destinationAccount: "acme" },

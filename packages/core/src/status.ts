@@ -9,7 +9,8 @@ import {
 import { latestPerSecret } from "./plan";
 import { sameRef } from "./reference";
 import type { Registry } from "./registry";
-import { type Rotation, rotateCommand, unfinishedRotation } from "./rotations";
+import { type Rotation, ROTATIONS_VERSION, rotateCommand, unfinishedRotation } from "./rotations";
+import { ownedBy } from "./state";
 import { addDays, DUE_SOON_DAYS, isDay, periodDays } from "./rotation";
 import type { Generation } from "./secret";
 
@@ -103,6 +104,7 @@ export function buildStatus(input: StatusInput): Status {
         const entry = key.environments[environment];
         if (!entry) continue;
         const where = { project, keyId: key.name, environment };
+        const owner = { keyId: key.name, environment, mapFile: result.map.file };
         const label = `${key.name} (${environment})`;
         const add = (kind: ProblemKind, message: string, extra: Partial<Problem> = {}) =>
           problems.push({
@@ -129,8 +131,7 @@ export function buildStatus(input: StatusInput): Status {
           const last = latest.get(secretKey(target, key.name));
           const ours =
             last &&
-            ((last.keyId === key.name && last.environment === environment) ||
-              (last.source !== null && sameRef(last.source, entry.ref)));
+            (ownedBy(last, owner) || (last.source !== null && sameRef(last.source, entry.ref)));
           const receipt = ours ? last : undefined;
           if (!receipt) {
             add("missing-receipt", `${label}: no receipt for ${id}, so what it holds is unknown`, {
@@ -158,9 +159,8 @@ export function buildStatus(input: StatusInput): Status {
         });
 
         const rotation = unfinishedRotation(
-          { version: 1, rotations: [...(input.rotations ?? [])] },
-          key.name,
-          environment,
+          { version: ROTATIONS_VERSION, rotations: [...(input.rotations ?? [])] },
+          owner,
           entry.ref,
         );
         if (rotation) {

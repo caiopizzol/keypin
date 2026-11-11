@@ -638,7 +638,67 @@ describe("a destination only takes a value without approval when it came from th
   });
 });
 
-function withoutSource(receipt: Receipt): Omit<Receipt, "source"> {
+function withoutSource(receipt: Receipt): Omit<Receipt, "source" | "mapFile"> {
   const { keyId, environment, destinationId, generation, account, at, evidence } = receipt;
   return { keyId, environment, destinationId, generation, account, at, evidence };
 }
+
+describe("two projects that map the same variable and environment", () => {
+  const VAULTS = `[1password]\naccount = "my.1password.com"\n`;
+  const projectMap = (project: string) =>
+    `${VAULTS}\n[keys.API_TOKEN]\nprod = { from = "op://Private/${project} api token/password", publish = [\n  { to = "github-actions", repo = "acme/${project}" },\n  { to = "github-actions", repo = "acme/${project}-ops" },\n] }\n`;
+
+  function publisher(
+    disk: ReturnType<typeof memoryFiles>,
+    project: string,
+    options: FakeDestinationOptions = {},
+  ) {
+    const destinations = fakeDestinations(options);
+    const fake = fakeDeps({
+      disk,
+      backend: fakeVault({
+        values: { "billing api token": `${SENTINEL}-billing`, "web api token": `${SENTINEL}-web` },
+      }).vault,
+      deps: {
+        cwd: `/work/${project}`,
+        destination: destinations.build,
+        isTerminal: true,
+        ask: async () => "yes",
+      },
+    });
+    return { ...fake, log: destinations.log };
+  }
+
+  test("keep their own unfinished operations and removed destinations apart", async () => {
+    const disk = memoryFiles({
+      "/work/billing/keypin.toml": projectMap("billing"),
+      "/work/web/keypin.toml": projectMap("web"),
+    });
+    const billing = publisher(disk, "billing", { failWrite: ["github-actions:acme/billing-ops"] });
+    expect(await cli(["publish", "API_TOKEN"], billing.deps)).toBe(1);
+    const [left] = (await loadState(disk.files, STATE)).operations;
+    expect(left).toMatchObject({
+      mapFile: "/work/billing/keypin.toml",
+      done: ["github-actions:acme/billing:API_TOKEN"],
+    });
+
+    const web = publisher(disk, "web");
+    expect(await cli(["publish", "API_TOKEN"], web.deps)).toBe(0);
+    expect(web.stderr.text).not.toContain("didn't finish");
+    expect(web.stderr.text).not.toContain("not in the map any more");
+    const state = await loadState(disk.files, STATE);
+    expect(state.operations.map((o) => o.id)).toEqual([left?.id]);
+    expect(state.receipts.map((r) => [r.destinationId, r.mapFile])).toEqual([
+      ["github-actions:acme/billing:API_TOKEN", "/work/billing/keypin.toml"],
+      ["github-actions:acme/web:API_TOKEN", "/work/web/keypin.toml"],
+      ["github-actions:acme/web-ops:API_TOKEN", "/work/web/keypin.toml"],
+    ]);
+
+    const again = publisher(disk, "billing");
+    expect(await cli(["publish", "API_TOKEN"], again.deps)).toBe(0);
+    expect(again.stderr.text).toContain("An earlier publish");
+    expect(again.stderr.text).toContain("wrote 1 of 2 (github-actions:acme/billing:API_TOKEN)");
+    expect(again.stderr.text).not.toContain("not in the map any more");
+    expect((await loadState(disk.files, STATE)).operations).toEqual([]);
+  });
+});

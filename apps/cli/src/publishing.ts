@@ -7,6 +7,7 @@ import {
   finishOperation,
   type Generation,
   type KeyEntry,
+  type KeyOwner,
   type PlanStep,
   type PublishTarget,
   recordReceipt,
@@ -99,6 +100,7 @@ export function writesFor(steps: readonly PlanStep[], checked: Map<string, Check
 export async function writeAll(input: {
   key: KeyEntry;
   environment: Environment;
+  mapFile: string;
   entry: EnvEntry;
   secret: Secret;
   generation: Generation;
@@ -108,12 +110,13 @@ export async function writeAll(input: {
   deps: Deps;
   say: Say;
 }): Promise<{ ok: boolean; state: State }> {
-  const { key, environment, entry, secret, generation, writes, path, deps, say } = input;
+  const { key, environment, mapFile, entry, secret, generation, writes, path, deps, say } = input;
   const id = crypto.randomUUID();
   let state = startOperation(input.state, {
     id,
     keyId: key.name,
     environment,
+    mapFile,
     generation,
     startedAt: deps.now().toISOString(),
     planned: writes.map((w) => w.destinationId),
@@ -129,6 +132,7 @@ export async function writeAll(input: {
         {
           keyId: key.name,
           environment,
+          mapFile,
           source: entry.ref,
           destinationId: written,
           generation,
@@ -150,16 +154,13 @@ export async function writeAll(input: {
     }
   }
 
-  state = finishAll(state, key.name, environment);
+  state = finishAll(state, { keyId: key.name, environment, mapFile });
   await saveState(deps.files, path, state);
   return { ok: true, state };
 }
 
-export function finishAll(state: State, keyId: string, environment: Environment): State {
-  return unfinishedOperations(state, keyId, environment).reduce(
-    (s, op) => finishOperation(s, op.id),
-    state,
-  );
+export function finishAll(state: State, owner: KeyOwner): State {
+  return unfinishedOperations(state, owner).reduce((s, op) => finishOperation(s, op.id), state);
 }
 
 export function rerun(deps: Deps, command: string, args: readonly string[]): string {

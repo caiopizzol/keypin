@@ -5,12 +5,13 @@ import { isRecord } from "./record";
 import { storedRefWithPasswordDefault } from "./reference";
 import type { Generation } from "./secret";
 
-export const STATE_VERSION = 2;
+export const STATE_VERSION = 3;
 
 export interface Operation {
   id: string;
   keyId: KeyId;
   environment: Environment;
+  mapFile: string | null;
   generation: Generation;
   startedAt: string;
   planned: string[];
@@ -26,14 +27,24 @@ export interface State {
 export const emptyState = (): State => ({ version: STATE_VERSION, receipts: [], operations: [] });
 
 export async function loadState(files: Files, path: string): Promise<State> {
-  const data = await readVersionedJson(files, path, [1, STATE_VERSION], "state file");
+  const data = await readVersionedJson(files, path, [1, 2, STATE_VERSION], "state file");
   if (!data) return emptyState();
-  const { operations } = data;
+  const mapFile = (r: Record<string, unknown>) =>
+    data.version === STATE_VERSION ? r.mapFile : null;
   const receipts = Array.isArray(data.receipts)
     ? data.receipts.map((r: unknown) =>
-        isRecord(r) ? { ...r, source: data.version === 1 ? null : storedSource(r.source) } : r,
+        isRecord(r)
+          ? {
+              ...r,
+              mapFile: mapFile(r),
+              source: data.version === 1 ? null : storedSource(r.source),
+            }
+          : r,
       )
     : data.receipts;
+  const operations = Array.isArray(data.operations)
+    ? data.operations.map((o: unknown) => (isRecord(o) ? { ...o, mapFile: mapFile(o) } : o))
+    : data.operations;
   if (!Array.isArray(receipts) || !receipts.every(isReceipt)) {
     throw new Error(`${path}: the state file's "receipts" must be a list of receipts`);
   }
@@ -47,8 +58,25 @@ export async function saveState(files: Files, path: string, state: State): Promi
   await writeJsonAtomic(files, path, state);
 }
 
-export function receiptsFor(state: State, keyId: KeyId, environment: Environment): Receipt[] {
-  return state.receipts.filter((r) => r.keyId === keyId && r.environment === environment);
+export interface KeyOwner {
+  keyId: KeyId;
+  environment: Environment;
+  mapFile: string;
+}
+
+export function ownedBy(
+  entry: { keyId: KeyId; environment: Environment; mapFile: string | null },
+  owner: KeyOwner,
+): boolean {
+  return (
+    entry.mapFile === owner.mapFile &&
+    entry.keyId === owner.keyId &&
+    entry.environment === owner.environment
+  );
+}
+
+export function receiptsFor(state: State, owner: KeyOwner): Receipt[] {
+  return state.receipts.filter((r) => ownedBy(r, owner));
 }
 
 export function startOperation(state: State, operation: Omit<Operation, "done">): State {
@@ -71,20 +99,18 @@ export function finishOperation(state: State, operationId: string): State {
   return { ...state, operations: state.operations.filter((o) => o.id !== operationId) };
 }
 
-export function unfinishedOperations(
-  state: State,
-  keyId: KeyId,
-  environment: Environment,
-): Operation[] {
-  return state.operations.filter((o) => o.keyId === keyId && o.environment === environment);
+export function unfinishedOperations(state: State, owner: KeyOwner): Operation[] {
+  return state.operations.filter((o) => ownedBy(o, owner));
 }
 
 const isText = (value: unknown) => typeof value === "string";
+const isTextOrNull = (value: unknown) => value === null || typeof value === "string";
 
 function isReceipt(r: unknown): r is Receipt {
   return (
     isRecord(r) &&
     [r.keyId, r.environment, r.destinationId, r.generation, r.at].every(isText) &&
+    isTextOrNull(r.mapFile) &&
     isRecord(r.account) &&
     isText(r.account.pinned) &&
     isText(r.account.publisher) &&
@@ -103,6 +129,7 @@ function isOperation(o: unknown): o is Operation {
   return (
     isRecord(o) &&
     [o.id, o.keyId, o.environment, o.generation, o.startedAt].every(isText) &&
+    isTextOrNull(o.mapFile) &&
     Array.isArray(o.planned) &&
     o.planned.every(isText) &&
     Array.isArray(o.done) &&

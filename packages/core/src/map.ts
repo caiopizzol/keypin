@@ -28,7 +28,7 @@ export interface KeyEntry {
   id: KeyId;
   env: string;
   rotateEvery: string | null;
-  environments: Record<Environment, EnvEntry>;
+  environments: Partial<Record<Environment, EnvEntry>>;
 }
 
 export interface KeysMap {
@@ -39,11 +39,11 @@ export interface KeysMap {
 
 export type MapResult = { ok: true; map: KeysMap } | { ok: false; errors: string[] };
 
-export function runEnvironment(map: KeysMap): Environment {
+export function runEnvironment(map: Pick<KeysMap, "environments">): Environment {
   return map.environments[0] ?? "dev";
 }
 
-export function publishEnvironment(map: KeysMap): Environment {
+export function publishEnvironment(map: Pick<KeysMap, "environments">): Environment {
   return map.environments.at(-1) ?? "prod";
 }
 
@@ -167,7 +167,9 @@ function validateEnvironments(
   const names: string[] = [];
   for (const name of raw) {
     if (!ENVIRONMENT_NAME.test(name)) {
-      fail(`environment "${name}": a name uses lowercase letters, digits and dashes`);
+      fail(
+        `environment "${name}": a name starts with a lowercase letter and uses only lowercase letters, digits and dashes`,
+      );
     } else if (KEY_FIELDS.includes(name)) {
       fail(`environment "${name}": that name is a key field`);
     } else if (names.includes(name)) {

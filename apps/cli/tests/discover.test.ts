@@ -236,10 +236,29 @@ dev = { vault = "work", item = "billing dev stripe" }
     const parsed = parseMap(draft, "draft");
     assert(parsed.ok, JSON.stringify(parsed));
     const items = parsed.map.keys.flatMap((k) =>
-      Object.values(k.environments).map((e) => e.ref.item),
+      Object.values(k.environments).flatMap((e) => (e ? [e.ref.item] : [])),
     );
     expect(items.length).toBeGreaterThan(0);
     expect(items.every((item) => item.startsWith("billing "))).toBe(true);
+  });
+
+  test("drafts use the map's declared environments, so its key tables copy into that map", async () => {
+    const map = `environments = ["local", "production"]
+
+[vaults.work]
+kind = "1password"
+account = "my.1password.com"
+vault = "App Secrets"
+`;
+    const { deps, stdout } = setup({ files: { [`${ROOT}/keypin.toml`]: map } });
+    expect(await cli(["discover"], deps)).toBe(0);
+    const draft = stdout.text.slice(stdout.text.indexOf("# Draft from keypin discover"));
+    expect(draft).not.toMatch(/\.(dev|prod)\]/);
+    const tables = draft.slice(draft.indexOf("\n[keys."));
+    const parsed = parseMap(`${map}${tables}`, "keypin.toml");
+    assert(parsed.ok, JSON.stringify(parsed));
+    const names = parsed.map.keys.flatMap((k) => Object.keys(k.environments));
+    expect(new Set(names)).toEqual(new Set(["local", "production"]));
   });
 
   test("Worker list entries with text or key material never reach the output", async () => {

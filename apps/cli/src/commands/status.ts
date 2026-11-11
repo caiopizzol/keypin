@@ -43,7 +43,9 @@ export async function status(args: string[], deps: Deps): Promise<number> {
   const refs = distinctRefs(
     [...maps.values()].flatMap((result) =>
       result.ok
-        ? result.map.keys.flatMap((key) => Object.values(key.environments).map((e) => e.ref))
+        ? result.map.keys.flatMap((key) =>
+            Object.values(key.environments).flatMap((e) => (e ? [e.ref] : [])),
+          )
         : [],
     ),
   );

@@ -615,7 +615,7 @@ async function listedOwners(run: Run): Promise<Map<string, Owner[]> | null> {
   const list = (map: KeysMap, project: string | null) => {
     for (const k of map.keys) {
       for (const [name, entry] of Object.entries(k.environments)) {
-        for (const target of entry.publish) {
+        for (const target of entry?.publish ?? []) {
           const secret = secretKey(target, k.env);
           owners.set(secret, [
             ...(owners.get(secret) ?? []),

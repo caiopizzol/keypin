@@ -1,5 +1,7 @@
 import { TOML } from "bun";
-import type { KeysMap } from "./map";
+import type { Environment } from "./contracts";
+import { DEFAULT_ENVIRONMENTS } from "./contracts";
+import { type KeysMap, publishEnvironment, runEnvironment } from "./map";
 import { isRecord } from "./record";
 
 export type EnvFileKind = "set" | "expected";
@@ -453,11 +455,14 @@ export interface DraftOptions {
   githubAccount: string | null;
   vault: DraftVault | null;
   takenIds: readonly string[];
+  environments: readonly Environment[];
 }
 
 export function draftMap(names: readonly NameRow[], options: DraftOptions): string | null {
   const lines: string[] = [];
   const taken = new Set(options.takenIds);
+  const runName = runEnvironment(options);
+  const publishName = publishEnvironment(options);
   const vault = options.vault ?? {
     name: "personal",
     account: "<your 1Password account>",
@@ -499,22 +504,24 @@ export function draftMap(names: readonly NameRow[], options: DraftOptions): stri
     const id = freeId(keyIdFor(row.name), taken);
     const what = row.name.toLowerCase().replaceAll("_", " ").trim();
     lines.push("", `[keys.${id}]`, `env = ${str(row.name)}`);
-    if (local) {
+    if (local && !(publish.length && runName === publishName)) {
       lines.push(
         "",
-        `[keys.${id}.dev]`,
+        `[keys.${id}.${runName}]`,
         `vault = ${str(vault.name)}`,
-        `item = ${str(`${options.project} dev ${what}`)}`,
+        `item = ${str(`${options.project} ${runName} ${what}`)}`,
       );
     }
     if (publish.length) {
       lines.push(
         "",
-        `[keys.${id}.prod]`,
+        `[keys.${id}.${publishName}]`,
         `vault = ${str(vault.name)}`,
-        `item = ${str(`${options.project} prod ${what}`)}`,
+        `item = ${str(`${options.project} ${publishName} ${what}`)}`,
       );
-      for (const target of publish) lines.push("", `[[keys.${id}.prod.publish]]`, ...target);
+      for (const target of publish) {
+        lines.push("", `[[keys.${id}.${publishName}.publish]]`, ...target);
+      }
     }
   }
   if (!lines.length) return null;
@@ -523,6 +530,9 @@ export function draftMap(names: readonly NameRow[], options: DraftOptions): stri
     options.vault
       ? "# The vault is the one in this project's keypin.toml; copy only the [keys.*] tables."
       : "# Fill in the vault, then save this as keypin.toml.",
+    ...(options.environments.join() === DEFAULT_ENVIRONMENTS.join()
+      ? []
+      : ["", `environments = [${options.environments.map(str).join(", ")}]`]),
     "",
     `[vaults.${/^[A-Za-z_][A-Za-z0-9_-]*$/.test(vault.name) ? vault.name : str(vault.name)}]`,
     `account = ${str(vault.account)}`,

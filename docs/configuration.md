@@ -42,8 +42,8 @@ is what `publish` and `rotate` use by default. `--env <name>` picks another.
 environments = ["dev", "staging", "prod"]
 ```
 
-Every name a key uses must be listed, so a typo such as `stagng` is an error. Names use lowercase letters, digits
-and dashes.
+Every name a key uses must be listed, so a typo such as `stagng` is an error. A name starts with a lowercase letter
+and uses only lowercase letters, digits and dashes.
 
 If two keys in the same environment set the same `env`, `keypin run` refuses to start the command.
 

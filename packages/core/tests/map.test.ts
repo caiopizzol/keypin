@@ -132,7 +132,7 @@ account = "acme-ops"
     ],
     [
       `environments = ["Prod"]`,
-      `environment "Prod": a name uses lowercase letters, digits and dashes`,
+      `environment "Prod": a name starts with a lowercase letter and uses only lowercase letters, digits and dashes`,
     ],
     [`environments = ["env"]`, `environment "env": that name is a key field`],
     [`environments = ["dev", "dev"]`, `environment "dev" is listed twice`],

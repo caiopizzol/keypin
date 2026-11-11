@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { TOML } from "bun";
 import {
   buildDiscovery,
+  DEFAULT_ENVIRONMENTS,
   type DiscoverInput,
   type Discovery,
   draftMap,
@@ -133,6 +134,7 @@ export async function discover(args: string[], deps: Deps): Promise<number> {
     githubAccount: login,
     vault: map && mapText !== null ? firstVault(mapText) : null,
     takenIds: map?.keys.map((k) => k.id) ?? [],
+    environments: map?.environments ?? DEFAULT_ENVIRONMENTS,
   });
   if (draft !== null) {
     const check = parseMap(draft, "draft");

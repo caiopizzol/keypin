@@ -25,10 +25,11 @@ export const USAGE = `Usage:
                            overwrites an item, so --yes is enough to approve it. The file stays.
   keypin run [--env <name>] -- <command>
                            run a command with one environment's keys (default: the first, dev)
-  keypin publish <VARIABLE> [--env <name>] [--yes]
+  keypin publish <VARIABLE> [--env <name>] [--yes | --plan]
                            check accounts, plan, confirm, then write the key to every destination
-                           (default environment: the last, prod)
-  keypin publish --all [--env <name>] [--yes]
+                           (default environment: the last, prod); --plan reads the value, prints
+                           the plan and the command to approve it, and writes nothing
+  keypin publish --all [--env <name>] [--yes | --plan]
                            the same for every key with destinations, with one plan and one approval
   keypin rotate <VARIABLE> [--env <name>] [--yes]
                            replace a token with a new one that has the same permissions, publish it,
@@ -39,7 +40,8 @@ Exit codes:
   0  done
   1  failed, or status found a problem
   2  usage error
-  3  stopped for approval: run the printed command in a terminal and type yes
+  3  stopped for approval: run the printed command in a terminal and type yes;
+     --plan exits 3 when there's something to approve, 0 when there's nothing to write
   keypin run exits 1 if it can't start the command, then with the command's own code.
 `;
 

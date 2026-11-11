@@ -6,6 +6,7 @@
 keypin publish API_TOKEN             # the prod entry
 keypin publish API_TOKEN --env dev   # the dev entry
 keypin publish --all                 # every key with prod destinations, with one approval
+keypin publish API_TOKEN --plan      # show the plan, write nothing
 ```
 
 ## Destinations
@@ -23,7 +24,27 @@ keypin publish --all                 # every key with prod destinations, with on
 3. **Approval:** you type `yes`. The first write to a destination, a changed account, and a changed vault item
    always need a typed `yes` in a terminal. `--yes` can approve only ordinary updates. Without a terminal,
    `publish` and `rotate` stop, print the command to run in one, and exit 3, unless `--yes` covers every step.
+   When a step needs approval, they stop before reading the value, so the plan isn't shown; use `--plan` to
+   see it.
 4. **Receipts:** each write that keypin confirms gets a receipt. A rerun skips those destinations and writes the rest.
+
+## See the plan first
+
+`--plan` runs the account checks and the plan step, then stops. It works without a terminal, so an agent can
+show you the plan before you approve it. It prints:
+
+- each login's account check;
+- the generation read from the vault item, which shows the item exists and is readable;
+- what it would write where, and which destinations it skips because their receipt has this generation;
+- each step that needs a typed `yes`, and whether `--yes` could approve the plan;
+- the command that writes it.
+
+It never writes to a destination, the vault or keypin's state, and never prints the value. It exits 3 when
+there's something to approve and 0 when there's nothing to write.
+
+It reads the value, so 1Password asks you to approve the command, as it does for a publish. Without `--plan`,
+a publish that needs approval stops before reading anything, so you approve the 1Password read only once, in
+the terminal run. `--plan` costs one more 1Password approval, in exchange for a plan you can check first.
 
 keypin doesn't delete a secret from a destination you remove from the map. It lists that destination in the plan
 instead.
@@ -35,7 +56,8 @@ map order. It takes the same steps as one key, once for all of them:
 
 1. It checks every account first. If any check fails, it stops before reading anything.
 2. Without a terminal, if any step needs approval, it lists every approval and stops before reading any value,
-   with exit 3 and the command to run in a terminal.
+   with exit 3 and the command to run in a terminal. `--all --plan` reads every value and prints the whole plan
+   instead.
 3. It reads each value and prints one plan for all the keys, then asks for one `yes`. `--yes` works only when no
    step of any key needs approval.
 4. It writes key by key, with a receipt for each write. If a write fails, it stops, keeps the receipts so far,

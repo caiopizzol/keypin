@@ -214,6 +214,56 @@ describe("keypin publish", () => {
     expect(next.log.some((l) => l.startsWith("write"))).toBe(false);
   });
 
+  test("--plan without a terminal reads the value, shows the full plan, and writes nothing", async () => {
+    const run = setup();
+    const before = new Map(run.disk.contents);
+    expect(await cli(["publish", "STRIPE_API_KEY", "--plan"], run.deps)).toBe(NEEDS_APPROVAL);
+    expect(run.calls).toEqual(["read billing stripe api key"]);
+    expect(run.log).toEqual([`check ${WORKER_PLACE}`, `check ${GITHUB_PLACE}`]);
+    expect(run.disk.contents).toEqual(before);
+    const text = run.stderr.text;
+    const generation = await generationOf(new Secret(SENTINEL));
+    expect(text).toContain(`  ok ${WORKER} (account 11111111111111111111111111111111)`);
+    expect(text).toContain(`Plan for generation ${generation}:`);
+    expect(text).toContain(`  write ${GITHUB} (account acme): no receipt`);
+    expect(text).toContain(`    needs approval: first write to ${GITHUB} (account acme)`);
+    expect(text).toContain("This plan needs yes typed in a terminal; --yes can't approve it.");
+    expect(text).toContain(
+      "To approve, run this in a terminal:\n  cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts publish STRIPE_API_KEY\n",
+    );
+    expect(leaks(...run.everything())).toBe(false);
+  });
+
+  test("--plan labels a routine update, and neither --yes nor a terminal makes it write", async () => {
+    const first = setup({ terminal: "yes" });
+    await cli(["publish", "STRIPE_API_KEY"], first.deps);
+    const saved = first.disk.contents.get(STATE);
+    const next = setup({ disk: first.disk, value: `${SENTINEL}-next`, terminal: "yes" });
+    expect(await cli(["publish", "STRIPE_API_KEY", "--plan", "--yes"], next.deps)).toBe(
+      NEEDS_APPROVAL,
+    );
+    expect(next.asked).toEqual([]);
+    expect(next.log.some((l) => l.startsWith("write"))).toBe(false);
+    expect(next.disk.contents.get(STATE)).toBe(saved);
+    expect(next.stderr.text).toContain("different generation");
+    expect(next.stderr.text).toContain("This plan is routine: --yes can approve it.");
+    expect(next.stderr.text).toContain("main.ts publish STRIPE_API_KEY --yes\n");
+    expect(leaks(...next.everything())).toBe(false);
+  });
+
+  test("--plan stops at a failed account check, and has nothing to approve when up to date", async () => {
+    const failed = setup({ badAccount: [GITHUB_PLACE] });
+    expect(await cli(["publish", "STRIPE_API_KEY", "--plan"], failed.deps)).toBe(1);
+    expect(failed.calls).toEqual([]);
+
+    const first = setup({ terminal: "yes" });
+    await cli(["publish", "STRIPE_API_KEY"], first.deps);
+    const again = setup({ disk: first.disk });
+    expect(await cli(["publish", "STRIPE_API_KEY", "--plan"], again.deps)).toBe(0);
+    expect(again.stderr.text).toContain("Nothing to write");
+    expect(again.stderr.text).not.toContain("To approve");
+  });
+
   test("a destination removed from the map is reported, never deleted", async () => {
     const first = setup({ terminal: "yes" });
     await cli(["publish", "STRIPE_API_KEY"], first.deps);
@@ -817,6 +867,20 @@ describe("keypin publish --all", () => {
       `To approve, run this in a terminal:\n  cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts publish --all --env prod\n`,
     );
     expect(run.disk.contents.has(STATE)).toBe(false);
+  });
+
+  test("--plan shows every key's plan and approvals without a terminal, and writes nothing", async () => {
+    const run = setupAll();
+    const before = new Map(run.disk.contents);
+    expect(await cli(["publish", "--all", "--plan"], run.deps)).toBe(NEEDS_APPROVAL);
+    expect(run.calls).toEqual(["read billing stripe api key", "read billing other key"]);
+    expect(run.writes()).toEqual([]);
+    expect(run.disk.contents).toEqual(before);
+    expect(run.stderr.text).toContain("Plan for STRIPE_API_KEY, generation");
+    expect(run.stderr.text).toContain("Plan for OTHER_KEY, generation");
+    expect(run.stderr.text).toContain(`    needs approval: first write to ${OTHER} (account acme)`);
+    expect(run.stderr.text).toContain("main.ts publish --all\n");
+    expect(leaks(...run.everything())).toBe(false);
   });
 
   test("--yes is refused when any key's step needs approval, and accepted when none does", async () => {

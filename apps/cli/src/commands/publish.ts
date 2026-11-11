@@ -27,6 +27,7 @@ import {
   finishAll,
   locked,
   NEEDS_APPROVAL,
+  planOnly,
   rerun,
   type Say,
   type Write,
@@ -39,6 +40,7 @@ interface Request {
   keyId: string | null;
   environment: Environment;
   yes: boolean;
+  plan: boolean;
   args: string[];
 }
 
@@ -59,10 +61,10 @@ interface Planned extends Checks {
 }
 
 export async function publish(args: string[], deps: Deps): Promise<number> {
-  const { keyId, env, yes } = parseRequest(args);
+  const { keyId, env, yes, plan } = parseRequest(args);
   const map = await findMap(deps.files, deps.cwd);
   const environment = pickEnvironment(map, env, publishEnvironment(map));
-  const request = { keyId, environment, yes, args };
+  const request = { keyId, environment, yes, plan, args };
   return locked(deps, (path) => publishLocked(request, map, path, deps));
 }
 
@@ -73,6 +75,7 @@ function parseRequest(args: string[]) {
       env: { type: "string" },
       yes: { type: "boolean", default: false },
       all: { type: "boolean", default: false },
+      plan: { type: "boolean", default: false },
     },
     allowPositionals: true,
   });
@@ -80,11 +83,11 @@ function parseRequest(args: string[]) {
   if (values.all) {
     if (positionals.length)
       throw new UsageError("keypin publish takes a variable name or --all, not both");
-    return { keyId: null, env: values.env, yes: values.yes };
+    return { keyId: null, env: values.env, yes: values.yes, plan: values.plan };
   }
   if (keyId === undefined || extra.length)
     throw new UsageError("keypin publish takes one key: the variable name, or --all");
-  return { keyId, env: values.env, yes: values.yes };
+  return { keyId, env: values.env, yes: values.yes, plan: values.plan };
 }
 
 function jobsFor(request: Request, map: KeysMap, say: Say): Job[] {
@@ -159,7 +162,7 @@ async function publishLocked(
   const approvals = jobs.flatMap(({ key, owner }) =>
     approvalsFor({ key, environment, mapFile: owner.mapFile, receipts: state.receipts }),
   );
-  if (approvals.length && !deps.isTerminal) {
+  if (approvals.length && !deps.isTerminal && !request.plan) {
     say("\nNeeds approval:");
     for (const approval of approvals) say(`  ${approval.approval}`);
     say(
@@ -219,7 +222,7 @@ async function publishLocked(
   const finished = planned
     .filter((job) => !job.writes.length && unfinishedOperations(state, job.owner).length)
     .reduce((s, job) => finishAll(s, job.owner), state);
-  if (finished !== state) {
+  if (finished !== state && !request.plan) {
     state = finished;
     await saveState(deps.files, path, state);
   }
@@ -229,6 +232,7 @@ async function publishLocked(
     say("Nothing to write: every destination already has this generation.");
     return 0;
   }
+  if (request.plan) return planOnly(deps, "publish", request.args, needsApproval);
 
   if (!(await confirmed(deps, needsApproval, request))) return NEEDS_APPROVAL;
 

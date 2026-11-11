@@ -108,6 +108,7 @@ keypin import <env-file> --vault <vault>
 keypin run -- <command>      # run a command with the project's dev keys (--env for another)
 keypin publish <VARIABLE>    # check each destination's account, then write the key
 keypin publish --all         # publish every key, with one plan and one approval
+keypin publish --all --plan  # show that plan without a terminal, and write nothing
 keypin rotate <VARIABLE>     # replace a Cloudflare API token, then revoke the old one
 ```
 

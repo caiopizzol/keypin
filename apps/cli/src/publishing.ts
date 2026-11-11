@@ -165,8 +165,26 @@ export function finishAll(state: State, owner: KeyOwner): State {
 }
 
 export function rerun(deps: Deps, command: string, args: readonly string[]): string {
-  const words = [...deps.self, command, ...args].map(shellWord).join(" ");
+  const approve = args.filter((arg) => arg !== "--plan");
+  const words = [...deps.self, command, ...approve].map(shellWord).join(" ");
   return `To approve, run this in a terminal:\n  cd ${shellWord(deps.cwd)} && ${words}`;
+}
+
+export function planOnly(
+  deps: Deps,
+  command: string,
+  args: readonly string[],
+  needsApproval: boolean,
+): number {
+  const say = (text: string) => deps.stderr.write(`${text}\n`);
+  say(
+    needsApproval
+      ? "\nThis plan needs yes typed in a terminal; --yes can't approve it."
+      : "\nThis plan is routine: --yes can approve it.",
+  );
+  say("Nothing was written: --plan only shows the plan.");
+  say(rerun(deps, command, args));
+  return NEEDS_APPROVAL;
 }
 
 export function shellWord(word: string): string {

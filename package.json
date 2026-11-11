@@ -1,6 +1,6 @@
 {
   "name": "keypin",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "description": "A map of every app key across your projects, published to the account it's pinned to. Values stay in your vault.",
   "homepage": "https://github.com/caiopizzol/keypin#readme",

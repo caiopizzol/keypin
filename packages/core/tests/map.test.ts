@@ -111,6 +111,16 @@ account = "acme-ops"
     ]);
   });
 
+  test("an environment named like an object property is read only from the key", () => {
+    const result = parseMap(
+      `environments = ["constructor", "prod"]\n${VAULTS}[keys.k]\nenv = "A"\nprod = { vault = "personal", item = "p" }\n`,
+      MAP_FILE,
+    );
+    assert(result.ok, JSON.stringify(result));
+    expect(Object.keys(result.map.keys[0]?.environments ?? {})).toEqual(["prod"]);
+    expect(result.map.keys[0]?.environments.constructor).toBeUndefined();
+  });
+
   test.each([
     [
       `environments = []`,

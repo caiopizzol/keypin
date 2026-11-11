@@ -232,9 +232,9 @@ function validateKey(
     err("", `field "rotate_every" must be <n>d, <n>w, <n>m or never`);
   }
 
-  const environments: Record<Environment, EnvEntry> = {};
-  for (const name of environmentNames) {
-    if (raw[name] === undefined) continue;
+  const environments: Record<Environment, EnvEntry> = Object.create(null);
+  const declared = environmentNames.filter((name) => Object.hasOwn(raw, name));
+  for (const name of declared) {
     const entry = validateEnv(raw[name], vaults, (m) => err(` ${name}`, m));
     if (entry) environments[name] = entry;
   }
@@ -247,7 +247,7 @@ function validateKey(
       );
     }
   }
-  if (!environmentNames.some((name) => raw[name] !== undefined)) {
+  if (!declared.length) {
     err("", `needs at least one of ${environmentNames.map((n) => `"${n}"`).join(", ")}`);
   }
 

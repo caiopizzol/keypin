@@ -189,6 +189,12 @@ async function start(run: Run, data: Rotations): Promise<number> {
     say(`Stopped: ${messageOf(error)}. Nothing was changed.`);
     return 1;
   }
+  if (current.reveal() === admin.reveal()) {
+    say(
+      `Stopped: ${formatReference(issue.admin)} holds the same value as ${formatReference(entry.ref)}. The admin token needs its own field, or rotating would overwrite it. Nothing was changed.`,
+    );
+    return 1;
+  }
 
   const provider = deps.provider(issue, admin);
   const found = await provider.verify(current);

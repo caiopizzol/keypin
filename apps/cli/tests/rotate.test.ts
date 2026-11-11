@@ -355,6 +355,20 @@ describe("keypin rotate: the first run", () => {
     expect(run.stderr.text).toContain("has no [keys.site-deploy.prod.issue] section");
   });
 
+  test("an admin reference that reaches the key's own value, such as by item ID, stops before anything is made", async () => {
+    const run = await setup({ terminal: ["yes"] });
+    run.vault.values.set(ADMIN_SOURCE, OLD_VALUE);
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain(
+      `Stopped: ${ADMIN_SOURCE} holds the same value as ${SOURCE}. The admin token needs its own field`,
+    );
+    expect(run.provider.log).toEqual([]);
+    expect(run.provider.admins).toEqual([]);
+    expect((await run.rotations()).rotations).toEqual([]);
+    expect(run.vault.values.get(SOURCE)).toBe(OLD_VALUE);
+    expect(run.leaked()).toBe(false);
+  });
+
   test("a refused create leaves nothing behind", async () => {
     const run = await setup({ terminal: ["yes"], provider: { refuse: true } });
     expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);

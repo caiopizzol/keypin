@@ -25,8 +25,8 @@ The key also needs at least one destination and a `rotate_every` other than `nev
 - the account your keys live in;
 - a short expiry, such as 30 days.
 
-Store it in 1Password, with a `rotated` date like any other key, and point `admin` at it. Only `rotate`
-reads it. keypin never publishes it, and `run` never passes it on.
+Store it in its own 1Password item, with a `rotated` date like any other key, and point `admin` at it. `rotate`
+stops if `admin` names the key's own item, or reads the key's own value. Only `rotate` reads it. keypin never publishes it, and `run` never passes it on.
 
 ## First run: replace
 

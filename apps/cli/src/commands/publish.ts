@@ -66,7 +66,7 @@ async function publishLocked(
   if (!entry) throw new Error(`key "${keyId}" has no ${environment} entry in ${map.file}`);
 
   const say = (text: string) => deps.stderr.write(`${text}\n`);
-  say(`Publishing ${keyId} (${environment}) as ${key.name}, from ${formatReference(entry.ref)}`);
+  say(`Publishing ${keyId} (${environment}) from ${formatReference(entry.ref)}`);
   say(`  1Password account: ${entry.ref.account}`);
   for (const target of entry.publish) say(`  to: ${describeTarget(target, key.name)}`);
   if (!entry.publish.length) {

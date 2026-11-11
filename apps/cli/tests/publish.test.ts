@@ -99,7 +99,7 @@ describe("keypin publish", () => {
     await cli(["publish", "STRIPE_API_KEY"], run.deps);
     const beforeRead = run.stderr.text.split("keypin: reading")[0] ?? "";
     expect(beforeRead).toContain(
-      `Publishing STRIPE_API_KEY (prod) as STRIPE_API_KEY, from op://Private/billing stripe api key/password`,
+      `Publishing STRIPE_API_KEY (prod) from op://Private/billing stripe api key/password`,
     );
     expect(beforeRead).toContain(`to: ${WORKER} (account 11111111111111111111111111111111)`);
     expect(beforeRead).toContain(`to: ${GITHUB} (account acme)`);

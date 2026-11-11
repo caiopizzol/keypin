@@ -140,7 +140,7 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
 
 async function start(run: Run, data: Rotations): Promise<number> {
   const { key, entry, issue, environment, deps, say } = run;
-  say(`Rotating ${key.name} (${environment}) as ${key.name}, from ${formatReference(entry.ref)}`);
+  say(`Rotating ${key.name} (${environment}) from ${formatReference(entry.ref)}`);
   say(`  1Password account: ${entry.ref.account}`);
   say(
     `  new token: ${issue.provider} in account ${issue.account}, made with the admin token in ${formatReference(issue.admin)}`,

@@ -450,6 +450,7 @@ export interface DraftOptions {
   githubAccount: string | null;
   map: { account: string | null; vault: string | null } | null;
   environments: readonly Environment[];
+  written?: boolean;
 }
 
 export function draftMap(names: readonly NameRow[], options: DraftOptions): string | null {
@@ -516,12 +517,16 @@ export function draftMap(names: readonly NameRow[], options: DraftOptions): stri
   if (!lines.length) return null;
   const account = options.map?.account ?? "<your 1Password account>";
   const header = [
-    "# Draft from keypin discover; nothing was written. The op:// references are placeholders.",
-    !options.map?.account
-      ? "# Fill in your account and vault, then save this as keypin.toml."
-      : options.map.vault === null
-        ? "# Fill in the vault, then copy only the [keys.*] tables into this project's keypin.toml."
-        : "# The vault is the one this project's keypin.toml uses; copy only the [keys.*] tables.",
+    options.written
+      ? "# Written by keypin discover. Each op:// reference is a placeholder: replace it with the field's secret reference."
+      : "# Draft from keypin discover; nothing was written. The op:// references are placeholders.",
+    options.written
+      ? `# ${options.map?.account ? "Fill in the vault" : "Fill in your 1Password account and vault"}, then check each destination.`
+      : !options.map?.account
+        ? "# Fill in your account and vault, then save this as keypin.toml."
+        : options.map.vault === null
+          ? "# Fill in the vault, then copy only the [keys.*] tables into this project's keypin.toml."
+          : "# The vault is the one this project's keypin.toml uses; copy only the [keys.*] tables.",
     ...(options.environments.join() === DEFAULT_ENVIRONMENTS.join()
       ? []
       : ["", `environments = [${options.environments.map(str).join(", ")}]`]),

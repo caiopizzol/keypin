@@ -1,10 +1,22 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, assert, beforeEach, describe, expect, test } from "vite-plus/test";
 import { emptyState, register, saveState } from "@keypin/core";
-import { createFile, diskFiles, diskLock } from "../src/disk";
+import { createFile, diskFiles, diskLock, replaceFile, replaceFileWith } from "../src/disk";
 
 const HOLDER = fileURLToPath(new URL("lock-holder.ts", import.meta.url));
 
@@ -139,3 +151,83 @@ describe("createFile", () => {
     expect(await readFile(outside, "utf8")).toBe("theirs");
   });
 });
+
+describe("replaceFile", () => {
+  test("replaces a file only while it holds the expected text, and keeps its mode", async () => {
+    const path = join(folder, "keypin.toml");
+    await writeFile(path, "template");
+    await chmod(path, 0o640);
+    expect(await replaceFile(path, "other", "draft")).toBe("changed");
+    expect(await readFile(path, "utf8")).toBe("template");
+    expect(await replaceFile(path, "template", "the draft")).toBe("replaced");
+    expect(await readFile(path, "utf8")).toBe("the draft");
+    expect((await stat(path)).mode & 0o777).toBe(0o640);
+    expect(await readdir(folder)).toEqual(["keypin.toml"]);
+  });
+
+  test("puts a complete new file in place, so a reader never sees it half written", async () => {
+    const path = join(folder, "keypin.toml");
+    await writeFile(path, "template");
+    const before = (await stat(path)).ino;
+    expect(await replaceFile(path, "template", "the draft")).toBe("replaced");
+    expect((await stat(path)).ino).not.toBe(before);
+  });
+
+  test("keeps a map an editor saves before the final check, and leaves no temporary file", async () => {
+    const path = join(folder, "keypin.toml");
+    await writeFile(path, "template");
+    const replace = replaceFileWith(() => editorSaves(path, "the editor's map"));
+    expect(await replace(path, "template", "the draft")).toBe("changed");
+    expect(await readFile(path, "utf8")).toBe("the editor's map");
+    expect(await readdir(folder)).toEqual(["keypin.toml"]);
+  });
+
+  test("refuses a new file saved in place of the template, even with the same text", async () => {
+    const path = join(folder, "keypin.toml");
+    await writeFile(path, "template");
+    const replace = replaceFileWith(() => editorSaves(path, "template"));
+    expect(await replace(path, "template", "the draft")).toBe("changed");
+    expect(await readFile(path, "utf8")).toBe("template");
+    expect(await readdir(folder)).toEqual(["keypin.toml"]);
+  });
+
+  test("refuses a symbolic link or a deleted file found at the final check", async () => {
+    const path = join(folder, "keypin.toml");
+    const outside = join(folder, "outside");
+    await writeFile(outside, "template");
+    await writeFile(path, "template");
+    const linked = replaceFileWith(async () => {
+      await rm(path);
+      await symlink(outside, path);
+    });
+    expect(await linked(path, "template", "the draft")).toBe("link");
+    expect((await lstat(path)).isSymbolicLink()).toBe(true);
+    expect(await readFile(outside, "utf8")).toBe("template");
+    expect((await readdir(folder)).toSorted()).toEqual(["keypin.toml", "outside"]);
+
+    await rm(path);
+    await writeFile(path, "template");
+    const deleted = replaceFileWith(() => rm(path));
+    expect(await deleted(path, "template", "the draft")).toBe("changed");
+    expect(await readdir(folder)).toEqual(["outside"]);
+  });
+
+  test("reports a symbolic link and writes nothing through it", async () => {
+    const outside = join(folder, "outside");
+    await writeFile(outside, "template");
+    await symlink(outside, join(folder, "keypin.toml"));
+    expect(await replaceFile(join(folder, "keypin.toml"), "template", "draft")).toBe("link");
+    expect(await readFile(outside, "utf8")).toBe("template");
+  });
+
+  test("a missing file is changed, not created", async () => {
+    expect(await replaceFile(join(folder, "keypin.toml"), "template", "draft")).toBe("changed");
+    expect(await readdir(folder)).toEqual([]);
+  });
+});
+
+async function editorSaves(path: string, text: string): Promise<void> {
+  const saved = `${path}.editor`;
+  await writeFile(saved, text);
+  await rename(saved, path);
+}

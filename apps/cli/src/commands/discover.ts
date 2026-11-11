@@ -21,6 +21,7 @@ import {
 import { type Deps, UsageError } from "../deps";
 import { errorCode, messageOf } from "../errors";
 import { MAP_FILE } from "../project";
+import { registerProject, TEMPLATE } from "./init";
 
 interface Scan {
   envFiles: string[];
@@ -31,12 +32,23 @@ interface Scan {
 export async function discover(args: string[], deps: Deps): Promise<number> {
   const { values, positionals } = parseArgs({
     args,
-    options: { json: { type: "boolean", default: false } },
+    options: {
+      json: { type: "boolean", default: false },
+      write: { type: "boolean", default: false },
+    },
     allowPositionals: true,
   });
   if (positionals.length > 1) throw new UsageError("keypin discover takes at most one folder");
   const folder = resolve(deps.cwd, positionals[0] ?? ".");
   if (!(await deps.isFolder(folder))) throw new Error(`${folder} isn't a folder`);
+  const mapFile = join(folder, MAP_FILE);
+  const mapText = await deps.files.read(mapFile);
+  if (values.write && mapText !== null && mapText !== TEMPLATE) {
+    deps.stderr.write(
+      `keypin discover: ${mapFile} already has a map, and --write doesn't change one. Run keypin discover without --write and copy the [keys.*] tables from its draft by hand.\n`,
+    );
+    return 1;
+  }
 
   const unknowns: Unknown[] = [];
   const scan = await walk(deps, folder);
@@ -112,7 +124,6 @@ export async function discover(args: string[], deps: Deps): Promise<number> {
     };
   }
 
-  const mapText = await deps.files.read(join(folder, MAP_FILE));
   let map: KeysMap | null = null;
   if (mapText !== null) {
     const parsed = parseMap(mapText, MAP_FILE);
@@ -131,11 +142,20 @@ export async function discover(args: string[], deps: Deps): Promise<number> {
     githubAccount: login,
     map: map ? { account: map.account, vault: firstVault(map) } : null,
     environments: map?.environments ?? DEFAULT_ENVIRONMENTS,
+    written: values.write,
   });
   if (draft !== null) {
     const check = parseMap(draft, "draft");
     if (!check.ok) throw new Error(`the draft doesn't parse: ${check.errors.join("; ")}`);
   }
+  if (values.write && draft === null) {
+    deps.stderr.write(
+      `keypin discover: found no unmapped name set locally or in the cloud, so there's no draft; nothing was written. Run keypin init for a template.\n`,
+    );
+    return 1;
+  }
+  const written =
+    values.write && draft !== null ? await writeDraft(deps, mapFile, mapText, draft) : null;
 
   const report = {
     folder,
@@ -149,11 +169,35 @@ export async function discover(args: string[], deps: Deps): Promise<number> {
     nestedRepositories: scan.nested,
     ...discovery,
     draft,
+    written,
   };
   deps.stdout.write(
     values.json ? `${JSON.stringify(report, null, 2)}\n` : render(report, discovery),
   );
+  if (written !== null) {
+    deps.stderr.write(
+      `keypin: wrote the draft to ${written}. Its op:// references are placeholders: replace each with the field's secret reference from 1Password before you run or publish.\n`,
+    );
+    await registerProject(deps, folder);
+  }
   return 0;
+}
+
+async function writeDraft(
+  deps: Deps,
+  file: string,
+  found: string | null,
+  draft: string,
+): Promise<string> {
+  const result =
+    found === null
+      ? await deps.createFile(file, draft)
+      : await deps.replaceFile(file, TEMPLATE, draft);
+  if (result === "link")
+    throw new Error(`${file} is a symbolic link; keypin discover doesn't follow one`);
+  if (result === "exists" || result === "changed")
+    throw new Error(`${file} changed while discover ran; nothing was written. Run it again.`);
+  return file;
 }
 
 async function walk(deps: Deps, root: string): Promise<Scan> {
@@ -295,6 +339,7 @@ function render(
     files: { env: { path: string }[]; wrangler: string[]; workflows: string[] };
     nestedRepositories: string[];
     draft: string | null;
+    written: string | null;
   },
   discovery: Discovery,
 ): string {
@@ -355,6 +400,12 @@ function render(
   lines.push("");
   if (report.draft === null)
     lines.push("No draft: every name set locally or in the cloud is already mapped.");
+  else if (report.written !== null)
+    lines.push(
+      `Draft keypin.toml for the unmapped names, written to ${report.written}:`,
+      "",
+      report.draft,
+    );
   else lines.push("Draft keypin.toml for the unmapped names (not written):", "", report.draft);
   return `${lines.join("\n").trimEnd()}\n`;
 }

@@ -702,3 +702,210 @@ describe("two projects that map the same variable and environment", () => {
     expect((await loadState(disk.files, STATE)).operations).toEqual([]);
   });
 });
+
+const ALL_MAP = `${BILLING_MAP}
+[keys.OTHER_KEY]
+prod = { from = "op://Private/billing other key/password", publish = [
+  { to = "github-actions", repo = "acme/other" },
+] }
+
+[keys.DEV_ONLY]
+dev = "op://Private/billing dev only/password"
+`;
+
+const OTHER_PLACE = "github-actions:acme/other";
+const OTHER = `${OTHER_PLACE}:OTHER_KEY`;
+
+function setupAll(
+  options: FakeDestinationOptions & {
+    terminal?: string;
+    disk?: ReturnType<typeof memoryFiles>;
+    suffix?: string;
+  } = {},
+) {
+  const disk = options.disk ?? memoryFiles({ "/work/billing/keypin.toml": ALL_MAP });
+  const suffix = options.suffix ?? "";
+  const vault = fakeVault({
+    values: {
+      "billing stripe api key": `${SENTINEL}${suffix}`,
+      "billing other key": `${SENTINEL}-other${suffix}`,
+    },
+  });
+  const destinations = fakeDestinations(options);
+  const asked: string[] = [];
+  const fake = fakeDeps({
+    disk,
+    backend: vault.vault,
+    deps: {
+      destination: destinations.build,
+      isTerminal: options.terminal !== undefined,
+      ask: async (question) => {
+        asked.push(question);
+        return options.terminal ?? "";
+      },
+    },
+  });
+  const state = () => loadState(disk.files, STATE);
+  const everything = () => [fake.stdout.text, fake.stderr.text, ...disk.contents.values()];
+  const writes = () => destinations.log.filter((l) => l.startsWith("write"));
+  return {
+    ...fake,
+    disk,
+    calls: vault.calls,
+    log: destinations.log,
+    asked,
+    state,
+    everything,
+    writes,
+  };
+}
+
+describe("keypin publish --all", () => {
+  test("several keys get one combined plan and one approval, in map order", async () => {
+    const run = setupAll({ terminal: "yes" });
+    expect(await cli(["publish", "--all"], run.deps)).toBe(0);
+    expect(run.asked).toEqual(["Type yes to write (this plan needs approval): "]);
+    expect(run.calls).toEqual(["read billing stripe api key", "read billing other key"]);
+    expect(run.writes()).toEqual([
+      `write ${WORKER_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
+      `write ${GITHUB_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
+      `write ${OTHER_PLACE} OTHER_KEY (${SENTINEL.length + 6} chars)`,
+    ]);
+    const text = run.stderr.text;
+    const firstWrite = text.indexOf("Published STRIPE_API_KEY");
+    expect(text.indexOf("Plan for STRIPE_API_KEY, generation")).toBeLessThan(
+      text.indexOf("Plan for OTHER_KEY, generation"),
+    );
+    expect(text.indexOf("Plan for OTHER_KEY, generation")).toBeLessThan(firstWrite);
+    expect(text).toContain("Not published, no prod destinations: DEV_ONLY");
+    expect(text).toContain("Published OTHER_KEY (prod) to 1 destination(s).");
+    const state = await run.state();
+    expect(state.receipts.map((r) => [r.keyId, r.destinationId])).toEqual([
+      ["STRIPE_API_KEY", WORKER],
+      ["STRIPE_API_KEY", GITHUB],
+      ["OTHER_KEY", OTHER],
+    ]);
+    expect(state.operations).toEqual([]);
+    expect(leaks(...run.everything())).toBe(false);
+  });
+
+  test("a failed account check for any key stops before reading anything", async () => {
+    const run = setupAll({ terminal: "yes", badAccount: [OTHER_PLACE] });
+    expect(await cli(["publish", "--all"], run.deps)).toBe(1);
+    expect(run.log).toEqual([
+      `check ${WORKER_PLACE}`,
+      `check ${GITHUB_PLACE}`,
+      `check ${OTHER_PLACE}`,
+    ]);
+    expect(run.calls).toEqual([]);
+    expect(run.asked).toEqual([]);
+    expect(run.stderr.text).toContain(`FAILED ${OTHER} (account acme)`);
+    expect(run.stderr.text).toContain("Nothing was read and nothing was written");
+    expect(run.disk.contents.has(STATE)).toBe(false);
+  });
+
+  test("without a terminal, it lists every approval and the rerun command, and reads nothing, exit 3", async () => {
+    const run = setupAll();
+    expect(await cli(["publish", "--all", "--env", "prod"], run.deps)).toBe(NEEDS_APPROVAL);
+    expect(run.calls).toEqual([]);
+    expect(run.stderr.text).not.toContain("keypin: reading");
+    expect(run.stderr.text).toContain(
+      `Needs approval:\n  first write to ${WORKER} (account 11111111111111111111111111111111)\n  first write to ${GITHUB} (account acme)\n  first write to ${OTHER} (account acme)\n`,
+    );
+    expect(run.stderr.text).toContain("Stopped before reading any value");
+    expect(run.stderr.text).toContain(
+      `To approve, run this in a terminal:\n  cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts publish --all --env prod\n`,
+    );
+    expect(run.disk.contents.has(STATE)).toBe(false);
+  });
+
+  test("--yes is refused when any key's step needs approval, and accepted when none does", async () => {
+    const first = setupAll({ terminal: "yes" });
+    await cli(["publish", "--all"], first.deps);
+    first.disk.contents.set(
+      "/work/billing/keypin.toml",
+      ALL_MAP.replace(
+        'repo = "acme/other" }',
+        'repo = "acme/other" }, { to = "github-actions", repo = "acme/more" }',
+      ),
+    );
+    const refused = setupAll({ disk: first.disk, suffix: "-next" });
+    expect(await cli(["publish", "--all", "--yes"], refused.deps)).toBe(NEEDS_APPROVAL);
+    expect(refused.calls).toEqual([]);
+    expect(refused.stderr.text).toContain("--yes can't give it");
+    expect(refused.stderr.text).toContain("first write to github-actions:acme/more:OTHER_KEY");
+
+    const asked = setupAll({ disk: first.disk, suffix: "-next", terminal: "no" });
+    expect(await cli(["publish", "--all", "--yes"], asked.deps)).toBe(NEEDS_APPROVAL);
+    expect(asked.asked).toEqual(["Type yes to write (this plan needs approval): "]);
+    expect(asked.writes()).toEqual([]);
+
+    first.disk.contents.set("/work/billing/keypin.toml", ALL_MAP);
+    const routine = setupAll({ disk: first.disk, suffix: "-next" });
+    expect(await cli(["publish", "--all", "--yes"], routine.deps)).toBe(0);
+    expect(routine.asked).toEqual([]);
+    expect(routine.writes()).toHaveLength(3);
+    expect(routine.stderr.text).not.toContain("needs approval");
+    expect(leaks(...routine.everything())).toBe(false);
+  });
+
+  test("a failed write stops, keeps the receipts so far, and names the keys left", async () => {
+    const run = setupAll({ terminal: "yes", failWrite: [GITHUB_PLACE] });
+    expect(await cli(["publish", "--all"], run.deps)).toBe(1);
+    expect(run.writes()).toEqual([
+      `write ${WORKER_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
+    ]);
+    expect(run.stderr.text).toContain("Not finished: STRIPE_API_KEY, OTHER_KEY.");
+    expect(run.stderr.text).toContain("Finished writes keep their receipts");
+    const state = await run.state();
+    expect(state.receipts.map((r) => r.destinationId)).toEqual([WORKER]);
+    expect(state.operations).toMatchObject([{ keyId: "STRIPE_API_KEY", done: [WORKER] }]);
+
+    const again = setupAll({ terminal: "yes", disk: run.disk });
+    expect(await cli(["publish", "--all"], again.deps)).toBe(0);
+    expect(again.writes()).toEqual([
+      `write ${GITHUB_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
+      `write ${OTHER_PLACE} OTHER_KEY (${SENTINEL.length + 6} chars)`,
+    ]);
+    const after = await again.state();
+    expect(after.receipts.map((r) => r.destinationId)).toEqual([WORKER, GITHUB, OTHER]);
+    expect(after.operations).toEqual([]);
+    expect(leaks(...again.everything())).toBe(false);
+  });
+
+  test("a failure in a later key keeps every earlier key's receipts", async () => {
+    const run = setupAll({ terminal: "yes", failWrite: [OTHER_PLACE] });
+    expect(await cli(["publish", "--all"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain("Published STRIPE_API_KEY (prod) to 2 destination(s).");
+    expect(run.stderr.text).toContain("Not finished: OTHER_KEY.");
+    const state = await run.state();
+    expect(state.receipts.map((r) => r.destinationId)).toEqual([WORKER, GITHUB]);
+  });
+
+  test("a variable and --all together are a usage error", async () => {
+    const run = setupAll({ terminal: "yes" });
+    expect(await cli(["publish", "STRIPE_API_KEY", "--all"], run.deps)).toBe(2);
+    expect(run.stderr.text).toContain("a variable name or --all, not both");
+    expect(run.log).toEqual([]);
+    expect(run.calls).toEqual([]);
+  });
+
+  test("an environment with no destinations anywhere publishes nothing", async () => {
+    const run = setupAll({ terminal: "yes" });
+    expect(await cli(["publish", "--all", "--env", "dev"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain("No key in /work/billing/keypin.toml has dev destinations");
+    expect(run.log).toEqual([]);
+    expect(run.calls).toEqual([]);
+  });
+
+  test("when every key is up to date, nothing is written and nothing is asked", async () => {
+    const first = setupAll({ terminal: "yes" });
+    await cli(["publish", "--all"], first.deps);
+    const saved = first.disk.contents.get(STATE);
+    const again = setupAll({ disk: first.disk });
+    expect(await cli(["publish", "--all"], again.deps)).toBe(0);
+    expect(again.writes()).toEqual([]);
+    expect(again.stderr.text).toContain("Nothing to write");
+    expect(again.disk.contents.get(STATE)).toBe(saved);
+  });
+});

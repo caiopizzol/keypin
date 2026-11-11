@@ -192,6 +192,12 @@ export function fakeDeps(setup: FakeSetup = {}) {
       disk.contents.set(path, text);
       return "created";
     },
+    replaceFile: async (path, expected, text) => {
+      if (disk.links.has(path)) return "link";
+      if (disk.contents.get(path) !== expected) return "changed";
+      disk.contents.set(path, text);
+      return "replaced";
+    },
     vault: () => backend,
     now: () => new Date(2026, 10, 9, 12, 0, 0),
     stdout: stdout.writer,

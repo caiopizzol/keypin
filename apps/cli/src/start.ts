@@ -10,7 +10,16 @@ import { ghToken, GitHubSecretDestination, listRepoSecrets } from "@keypin/desti
 import { CloudflareAccountTokens } from "@keypin/provider-cloudflare";
 import { type Connect, desktopConnect, onePasswordBackend } from "@keypin/vault-1password";
 import { cli } from "./cli";
-import { createFile, diskFiles, diskLock, git, isFolder, listFolder, replaceFile } from "./disk";
+import {
+  createFile,
+  diskFiles,
+  diskLock,
+  git,
+  isFolder,
+  isLink,
+  listFolder,
+  replaceFile,
+} from "./disk";
 import { installProblem } from "./install";
 import { launch, onSignals } from "./launch";
 import { selfCommand } from "./runtime";
@@ -74,6 +83,7 @@ export function main(): Promise<number> {
       })).listWorkerSecrets(account, worker),
     createFile,
     replaceFile,
+    isLink,
     vault: () => (vault ??= onePasswordBackend(connect)),
     now: () => new Date(),
     stdout: process.stdout,

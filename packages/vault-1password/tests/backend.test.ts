@@ -262,6 +262,20 @@ describe("write", () => {
     ]);
   });
 
+  test("with newItem, refuses an item that exists, before changing it", async () => {
+    const { client, calls } = fake([
+      item("Demo Dev Token", [field("password", "Concealed", "keep-this")]),
+    ]);
+    await expect(
+      backendFor(client).backend.write(ref, new Secret(VALUE), { newItem: true }),
+    ).rejects.toThrow("the item already exists; keypin doesn't overwrite it");
+    expect(calls).toEqual({ create: [], put: [], get: 0 });
+
+    const empty = fake();
+    await backendFor(empty.client).backend.write(ref, new Secret(VALUE), { newItem: true });
+    expect(empty.calls.create).toHaveLength(1);
+  });
+
   test("updates the password field when the item exists and leaves other fields alone", async () => {
     const existing = item("demo dev token", [
       field("password", "Concealed", "old-value"),

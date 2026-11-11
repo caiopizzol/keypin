@@ -14,6 +14,11 @@ from 1Password only while a command runs.
   `op://` references are placeholders; ask the user for each field's secret reference (1Password: the field's
   menu, **Copy Secret Reference**) and replace them. The user creates vault items; you never write a value.
   If a real map exists, `--write` exits 1: run `keypin discover` and copy the `[keys.*]` tables by hand.
+- Project with a `.env` or `.dev.vars`: suggest `keypin import <file> --vault <vault>` (plus `--account
+  <sign-in address>` when there's no map). Ask the user which vault. keypin reads the file locally and creates new
+  1Password items; never read, print or pass a value yourself. It needs the user's typed `yes`: run it without
+  `--yes`, and it exits 3 with the plan and the command for the user to run. It never changes the file; once it names no
+  variable as still only in the file, the user deletes the file.
 - A key is named after its variable: `keypin publish API_TOKEN`. If keypin says a map is from keypin 0.4,
   rewrite it in the current format (see Configuration) and show the user the diff.
 - Check a project: `keypin status --json` for due dates and receipts, and `keypin discover` for the names
@@ -36,6 +41,7 @@ from 1Password only while a command runs.
 Fields and details:
 
 - [Configuration](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md)
+- [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md)
 - [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md)
 - [Rotation](https://github.com/caiopizzol/keypin/blob/main/docs/rotation.md)
 - [Notes](https://github.com/caiopizzol/keypin/blob/main/docs/notes.md): `wrangler dev`

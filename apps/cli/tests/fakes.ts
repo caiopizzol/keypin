@@ -47,10 +47,19 @@ export interface FakeVaultOptions {
   values?: Record<string, string>;
   metadata?: Record<string, VaultMetadata>;
   failing?: string[];
+  items?: string[];
+}
+
+export interface CreatedItem {
+  ref: KeyRef;
+  value: Secret;
+  rotated: string | undefined;
 }
 
 export function fakeVault(options: FakeVaultOptions = {}) {
   const calls: string[] = [];
+  const created: CreatedItem[] = [];
+  const titles = () => [...(options.items ?? []), ...created.map((c) => c.ref.item)];
   const fail = (ref: KeyRef) => {
     if (options.failing?.includes(ref.item))
       throw new Error(`1Password: "${ref.item}" isn't readable`);
@@ -60,15 +69,25 @@ export function fakeVault(options: FakeVaultOptions = {}) {
     async read(ref) {
       calls.push(`read ${ref.item}`);
       fail(ref);
+      const stored = created.find((c) => c.ref.item.toLowerCase() === ref.item.toLowerCase());
+      if (stored) return stored.value;
       const value = options.values?.[ref.item];
       if (value === undefined) throw new Error(`no item "${ref.item}"`);
       return new Secret(value);
     },
-    async write(_ref: KeyRef, _secret: Secret) {
-      throw new Error("the fake vault doesn't write");
+    async write(ref, secret, writeOptions = {}) {
+      if (!options.items) throw new Error("the fake vault doesn't write");
+      calls.push(`write ${ref.item}`);
+      fail(ref);
+      if (!writeOptions.newItem) throw new Error("the fake vault only creates items");
+      if (titles().some((title) => title.toLowerCase() === ref.item.toLowerCase()))
+        throw new Error(`"${ref.item}" already exists`);
+      created.push({ ref, value: secret, rotated: writeOptions.rotated });
     },
-    async list() {
-      throw new Error("the fake vault doesn't list");
+    async list(scope) {
+      if (!options.items) throw new Error("the fake vault doesn't list");
+      calls.push(`list ${scope.account} ${scope.vault}`);
+      return titles().map((title) => ({ id: title, title, tags: [], updatedAt: "" }));
     },
     async metadata(ref) {
       calls.push(`metadata ${ref.item}`);
@@ -76,7 +95,7 @@ export function fakeVault(options: FakeVaultOptions = {}) {
       return options.metadata?.[ref.item] ?? { rotated: null };
     },
   };
-  return { vault, calls };
+  return { vault, calls, created };
 }
 
 export function output() {
@@ -198,6 +217,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
       disk.contents.set(path, text);
       return "replaced";
     },
+    isLink: async (path) => disk.links.has(path),
     vault: () => backend,
     now: () => new Date(2026, 10, 9, 12, 0, 0),
     stdout: stdout.writer,

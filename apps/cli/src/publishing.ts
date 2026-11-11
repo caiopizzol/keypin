@@ -65,11 +65,11 @@ export async function checkAccounts(
   const checked = new Map<string, Checked>();
   let failed = false;
   for (const target of entry.publish) {
-    const label = describeTarget(target, key.env);
+    const label = describeTarget(target, key.name);
     try {
       const destination = deps.destination(target);
       const check = await destination.checkAccount();
-      checked.set(destinationId(target, key.env), { target, destination, check });
+      checked.set(destinationId(target, key.name), { target, destination, check });
       say(
         `  ${check.ok ? "ok" : "FAILED"} ${label}: ${accountFacts(check)}${check.ok ? "" : `: ${check.reason ?? "no reason given"}`}`,
       );
@@ -112,7 +112,7 @@ export async function writeAll(input: {
   const id = crypto.randomUUID();
   let state = startOperation(input.state, {
     id,
-    keyId: key.id,
+    keyId: key.name,
     environment,
     generation,
     startedAt: deps.now().toISOString(),
@@ -121,13 +121,13 @@ export async function writeAll(input: {
   await saveState(deps.files, path, state);
 
   for (const { destinationId: written, found } of writes) {
-    const label = describeTarget(found.target, key.env);
+    const label = describeTarget(found.target, key.name);
     try {
-      const evidence = await found.destination.write(key.env, secret);
+      const evidence = await found.destination.write(key.name, secret);
       state = recordReceipt(
         state,
         {
-          keyId: key.id,
+          keyId: key.name,
           environment,
           source: entry.ref,
           destinationId: written,
@@ -150,7 +150,7 @@ export async function writeAll(input: {
     }
   }
 
-  state = finishAll(state, key.id, environment);
+  state = finishAll(state, key.name, environment);
   await saveState(deps.files, path, state);
   return { ok: true, state };
 }

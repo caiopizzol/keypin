@@ -366,7 +366,7 @@ describe("buildDiscovery", () => {
 
   test("a mapped name that is only a var stays a plain variable", () => {
     const parsed = parseMap(
-      `[1password]\naccount = "a"\n[keys.region]\nenv = "REGION"\ndev = "op://v/i/password"\n`,
+      `[1password]\naccount = "a"\n[keys.REGION]\ndev = "op://v/i/password"\n`,
       "keypin.toml",
     );
     assert(parsed.ok);
@@ -394,8 +394,7 @@ describe("buildDiscovery", () => {
       `[1password]
 account = "my.1password.com"
 
-[keys.billing-stripe]
-env = "STRIPE_KEY"
+[keys.STRIPE_KEY]
 dev = "op://App Secrets/billing dev stripe key/password"
 `,
       "keypin.toml",
@@ -408,7 +407,7 @@ dev = "op://App Secrets/billing dev stripe key/password"
       }),
     );
     expect(result.names).toMatchObject([
-      { name: "STRIPE_KEY", where: "local", mapped: ["billing-stripe"] },
+      { name: "STRIPE_KEY", where: "local", mapped: ["STRIPE_KEY"] },
     ]);
   });
 });
@@ -457,16 +456,14 @@ describe("draftMap", () => {
       project: "billing",
       githubAccount: "me",
       map: null,
-      takenIds: ["stripe-key"],
       environments: DEFAULT_ENVIRONMENTS,
     });
     assert(draft !== null);
     expect(draft).toContain("# Fill in your account and vault");
     const parsed = parseMap(draft, "draft");
     assert(parsed.ok, JSON.stringify(parsed));
-    const keys = Object.fromEntries(parsed.map.keys.map((k) => [k.env, k]));
+    const keys = Object.fromEntries(parsed.map.keys.map((k) => [k.name, k]));
     expect(Object.keys(keys).toSorted()).toEqual(["DEPLOY_TOKEN", "LOCAL_ONLY", "STRIPE_KEY"]);
-    expect(keys.STRIPE_KEY?.id).toBe("stripe-key-2");
     expect(keys.STRIPE_KEY?.environments.dev?.ref.item).toBe("billing dev stripe key");
     expect(keys.STRIPE_KEY?.environments.prod?.publish).toEqual([
       { to: "github-actions", repo: "acme/billing", account: "me" },
@@ -481,14 +478,13 @@ describe("draftMap", () => {
       project: "billing",
       githubAccount: "acme",
       map: { account: "my.1password.com", vault: "App Secrets" },
-      takenIds: [],
       environments: DEFAULT_ENVIRONMENTS,
     });
     assert(draft !== null);
     expect(draft).toContain("copy only the [keys.*] tables");
     const parsed = parseMap(draft, "draft");
     assert(parsed.ok, JSON.stringify(parsed));
-    const stripe = parsed.map.keys.find((k) => k.env === "STRIPE_KEY");
+    const stripe = parsed.map.keys.find((k) => k.name === "STRIPE_KEY");
     expect(stripe?.environments.prod?.ref).toEqual({
       kind: "1password",
       account: "my.1password.com",
@@ -506,7 +502,6 @@ describe("draftMap", () => {
         project: "billing",
         githubAccount: null,
         map: { account: "my.1password.com", vault },
-        takenIds: [],
         environments: DEFAULT_ENVIRONMENTS,
       });
       assert(draft !== null);
@@ -524,7 +519,6 @@ describe("draftMap", () => {
       project: "billing",
       githubAccount: null,
       map: { account: "my.1password.com", vault: null },
-      takenIds: [],
       environments: DEFAULT_ENVIRONMENTS,
     });
     assert(draft !== null);
@@ -538,7 +532,6 @@ describe("draftMap", () => {
       project: "app#2?/x",
       githubAccount: null,
       map: null,
-      takenIds: [],
       environments: DEFAULT_ENVIRONMENTS,
     });
     assert(draft !== null);
@@ -558,7 +551,6 @@ describe("draftMap", () => {
         project: "o",
         githubAccount: null,
         map: null,
-        takenIds: [],
         environments: DEFAULT_ENVIRONMENTS,
       }),
     ).toBeNull();

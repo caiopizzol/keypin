@@ -48,7 +48,8 @@ function parseRequest(args: string[]) {
     allowPositionals: true,
   });
   const [keyId, ...extra] = positionals;
-  if (keyId === undefined || extra.length) throw new UsageError("keypin publish takes one key ID");
+  if (keyId === undefined || extra.length)
+    throw new UsageError("keypin publish takes one key: the variable name");
   return { keyId, env: values.env, yes: values.yes };
 }
 
@@ -59,15 +60,15 @@ async function publishLocked(
   deps: Deps,
 ): Promise<number> {
   const { keyId, environment } = request;
-  const key = map.keys.find((k) => k.id === keyId);
+  const key = map.keys.find((k) => k.name === keyId);
   if (!key) throw new Error(`${map.file} has no key "${keyId}"`);
   const entry = key.environments[environment];
   if (!entry) throw new Error(`key "${keyId}" has no ${environment} entry in ${map.file}`);
 
   const say = (text: string) => deps.stderr.write(`${text}\n`);
-  say(`Publishing ${keyId} (${environment}) as ${key.env}, from ${formatReference(entry.ref)}`);
+  say(`Publishing ${keyId} (${environment}) as ${key.name}, from ${formatReference(entry.ref)}`);
   say(`  1Password account: ${entry.ref.account}`);
-  for (const target of entry.publish) say(`  to: ${describeTarget(target, key.env)}`);
+  for (const target of entry.publish) say(`  to: ${describeTarget(target, key.name)}`);
   if (!entry.publish.length) {
     say(`The map lists no destinations for ${keyId} (${environment}); nothing to publish.`);
     return 1;
@@ -112,7 +113,7 @@ async function publishLocked(
   const writes = writesFor(plan.steps, checked);
   for (const step of plan.steps) {
     const found = checked.get(step.destinationId);
-    say(`  ${step.action} ${describeTarget(step.target, key.env)}: ${step.reason}`);
+    say(`  ${step.action} ${describeTarget(step.target, key.name)}: ${step.reason}`);
     if (found) say(`    ${accountFacts(found.check)}`);
     if (step.approval) say(`    needs approval: ${step.approval}`);
   }

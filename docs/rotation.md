@@ -1,6 +1,6 @@
 # Rotation
 
-`keypin rotate <key-id>` replaces a Cloudflare account API token with a new one that has the same permissions. It
+`keypin rotate <VARIABLE>` replaces a Cloudflare account API token with a new one that has the same permissions. It
 works in two runs, so you can check that everything still works before the old token is revoked.
 
 ## Set up
@@ -8,7 +8,7 @@ works in two runs, so you can check that everything still works before the old t
 Add an `issue` section to the key's environment:
 
 ```toml
-[keys.site-deploy.prod.issue]
+[keys.CLOUDFLARE_API_TOKEN.prod.issue]
 provider = "cloudflare-account-token"
 account = "<Cloudflare account ID>"
 admin = "op://Private/shared cloudflare token admin/credential"
@@ -31,7 +31,7 @@ stops if `admin` names the key's own item, or reads the key's own value. Only `r
 ## First run: replace
 
 ```sh
-keypin rotate site-deploy
+keypin rotate CLOUDFLARE_API_TOKEN
 ```
 
 1. keypin finds the current token from its value, so a token made in the dashboard works too.
@@ -51,7 +51,7 @@ Check that everything using the key works with the new token, for example by run
 command again:
 
 ```sh
-keypin rotate site-deploy
+keypin rotate CLOUDFLARE_API_TOKEN
 ```
 
 keypin checks that every destination of the key has the new token, and that the vault item still holds it. If another

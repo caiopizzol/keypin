@@ -238,11 +238,11 @@ test("approvals are known from the receipts alone, before any value is read", ()
 test("an environment the key doesn't have is an error", () => {
   expect(() =>
     planPublish({ key: KEY, environment: "dev", receipts: [], generation: NEW }),
-  ).toThrow('key "billing-stripe" has no dev entry in the map');
+  ).toThrow('key "STRIPE_API_KEY" has no dev entry in the map');
 });
 
-test("a renamed secret is a new destination, and the old name is reported, not deleted", () => {
-  const renamed = { ...KEY, env: "STRIPE_KEY" };
+test("a renamed variable is a new key: every write needs approval, and nothing is deleted", () => {
+  const renamed = { ...KEY, name: "STRIPE_KEY" };
   const plan = planPublish({
     key: renamed,
     environment: "prod",
@@ -250,11 +250,11 @@ test("a renamed secret is a new destination, and the old name is reported, not d
     generation: NEW,
   });
   expect(summary(plan).map((s) => [s.action, s.destinationId, s.reason])).toEqual([
-    ["write", "cloudflare-worker:billing-worker:STRIPE_KEY", "new destination"],
-    ["write", "github-actions:acme/billing:STRIPE_KEY", "new destination"],
+    ["write", "cloudflare-worker:billing-worker:STRIPE_KEY", "no receipt"],
+    ["write", "github-actions:acme/billing:STRIPE_KEY", "no receipt"],
   ]);
   expect(plan.needsApproval).toBe(true);
-  expect(plan.removed.map((r) => r.destinationId)).toEqual([WORKER, GITHUB]);
+  expect(plan.removed).toEqual([]);
 });
 
 test("an organization repo published by another login compares the pin, not the owner", () => {

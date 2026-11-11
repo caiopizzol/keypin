@@ -71,24 +71,24 @@
         </div>
         <pre class="term"><span class="p">$ </span><span class="b">keypin status</span>
 <span class="d">keypin: reading rotated dates (no values) from 1Password account my.1password.com: op://App Secrets/api dev api token/credential, op://App Secrets/api prod api token/credential, op://App Secrets/web prod session secret/credential</span>
-<span class="d">KEY             ENV   VARIABLE        FROM                                                 ROTATED     EVERY  DUE</span>
+<span class="d">KEY             ENV   FROM                                                 ROTATED     EVERY  DUE</span>
 <span class="b"># /Users/dev/code/api</span>
-<span class="b">api-token</span>       dev   API_TOKEN       op://App Secrets/api dev api token/credential        2026-08-01  180d   2027-01-28
-<span class="b">api-token</span>       prod  API_TOKEN       op://App Secrets/api prod api token/credential       2026-05-20  180d   <span class="y">2026-11-16</span>
+<span class="b">API_TOKEN</span>       dev   op://App Secrets/api dev api token/credential        2026-08-01  180d   2027-01-28
+<span class="b">API_TOKEN</span>       prod  op://App Secrets/api prod api token/credential       2026-05-20  180d   <span class="y">2026-11-16</span>
 <span class="d">    -> </span>github-actions:acme/api:API_TOKEN<span class="d"> (account acme): </span><span class="r">no receipt</span>
 <span class="d">    -> </span>cloudflare-worker:api-edge:API_TOKEN<span class="d"> (account 3b1f0c9a7d2e4f6a8b5c1d0e9f7a6b4c): </span><span class="r">no receipt</span>
 <span class="b"># /Users/dev/code/web</span>
-<span class="b">session-secret</span>  prod  SESSION_SECRET  op://App Secrets/web prod session secret/credential  2026-08-02  90d    <span class="r">2026-10-31</span>
+<span class="b">SESSION_SECRET</span>  prod  op://App Secrets/web prod session secret/credential  2026-08-02  90d    <span class="r">2026-10-31</span>
 <span class="d">    -> </span>cloudflare-worker:web:SESSION_SECRET<span class="d"> (account 3b1f0c9a7d2e4f6a8b5c1d0e9f7a6b4c): </span><span class="g">last published 2026-08-02T10:14:51.330Z by dev@acme.example, generation a5e3c8f1d7092b64</span>
 
 <span class="r b">Problems (3):</span>
-  <span class="r">missing-receipt</span>: api-token (prod): no receipt for github-actions:acme/api:API_TOKEN, so what it holds is unknown
-  <span class="r">missing-receipt</span>: api-token (prod): no receipt for cloudflare-worker:api-edge:API_TOKEN, so what it holds is unknown
-  <span class="r">overdue</span>: session-secret (prod): was due 2026-10-31 (rotated 2026-08-02, every 90d)
+  <span class="r">missing-receipt</span>: API_TOKEN (prod): no receipt for github-actions:acme/api:API_TOKEN, so what it holds is unknown
+  <span class="r">missing-receipt</span>: API_TOKEN (prod): no receipt for cloudflare-worker:api-edge:API_TOKEN, so what it holds is unknown
+  <span class="r">overdue</span>: SESSION_SECRET (prod): was due 2026-10-31 (rotated 2026-08-02, every 90d)
 
 <span class="y b">Notices (2):</span>
-  <span class="y">due-soon</span>: api-token (prod): is due 2026-11-16 (rotated 2026-05-20, every 180d)
-  <span class="y">authority-unknown</span>: 2 keys (api-token, session-secret): what each grants is unknown, because keypin didn't create it</pre>
+  <span class="y">due-soon</span>: API_TOKEN (prod): is due 2026-11-16 (rotated 2026-05-20, every 180d)
+  <span class="y">authority-unknown</span>: 2 keys (API_TOKEN, SESSION_SECRET): what each grants is unknown, because keypin didn't create it</pre>
       </figure>
 
       <section id="how">
@@ -108,14 +108,13 @@
 [1password]
 account = "my.1password.com"
 
-[keys.api-token]
-env = "API_TOKEN"
+[keys.API_TOKEN]
 rotate_every = "180d"
 
-[keys.api-token.prod]
+[keys.API_TOKEN.prod]
 from = "op://App Secrets/api prod api token/credential"
 
-[[keys.api-token.prod.publish]]
+[[keys.API_TOKEN.prod.publish]]
 to = "github-actions"
 repo = "acme/api"</pre>
           </div>
@@ -174,7 +173,7 @@ repo = "acme/api"</pre>
           <dd>Every key, its rotation dates and receipts, then problems. Exit 0 means none.</dd>
           <dt><code>keypin run -- &lt;command&gt;</code></dt>
           <dd>Run a command with the project's dev keys in its environment.</dd>
-          <dt><code>keypin publish &lt;key-id&gt;</code></dt>
+          <dt><code>keypin publish &lt;VARIABLE&gt;</code></dt>
           <dd>
             Check accounts, show the plan, then write the key to every destination: GitHub Actions
             secrets and Cloudflare Worker secrets. A first write or an account change waits for you

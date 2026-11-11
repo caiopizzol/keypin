@@ -126,7 +126,7 @@ describe("keypin discover", () => {
     const draft = text.slice(text.indexOf("# Draft from keypin discover"));
     const parsed = parseMap(draft, "draft");
     assert(parsed.ok, JSON.stringify(parsed));
-    expect(parsed.map.keys.map((k) => k.env).toSorted()).toEqual([
+    expect(parsed.map.keys.map((k) => k.name).toSorted()).toEqual([
       "CLOUDFLARE_API_TOKEN",
       "LOCAL_ONLY",
       "OLD_TOKEN",
@@ -220,8 +220,7 @@ describe("keypin discover", () => {
         [`${ROOT}/keypin.toml`]: `[1password]
 account = "my.1password.com"
 
-[keys.stripe-key]
-env = "STRIPE_KEY"
+[keys.STRIPE_KEY]
 dev = "op://App Secrets/billing dev stripe/password"
 `,
       },
@@ -333,7 +332,7 @@ account = "my.1password.com"
   test("an invalid keypin.toml falls back to the placeholder vault in the draft", async () => {
     const { deps, stdout } = setup({
       files: {
-        [`${ROOT}/keypin.toml`]: `[1password]\naccount = "a"\n[keys.Bad_Id]\nenv = "X"\n`,
+        [`${ROOT}/keypin.toml`]: `[1password]\naccount = "a"\n[keys.X]\n`,
       },
     });
     expect(await cli(["discover"], deps)).toBe(0);

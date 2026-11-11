@@ -104,7 +104,7 @@ describe("status", () => {
     expect(result.rows).toEqual([
       expect.objectContaining({
         project: PROJECT,
-        keyId: KEY.id,
+        keyId: KEY.name,
         environment: "prod",
         rotated: "2026-11-09",
         due: "2027-11-09",
@@ -186,7 +186,7 @@ describe("status", () => {
     );
     expect(result.problems.find((p) => p.kind === "bad-rotation-period")).toMatchObject({
       severity: "problem",
-      message: `${KEY.id} (prod): keypin.toml has no rotate_every for this key; add one, such as "90d", or "never"`,
+      message: `${KEY.name} (prod): keypin.toml has no rotate_every for this key; add one, such as "90d", or "never"`,
     });
   });
 
@@ -210,7 +210,7 @@ describe("status", () => {
     expect(result.problems.filter((p) => p.kind === "stale-receipt")).toEqual([
       expect.objectContaining({
         destinationId: GITHUB,
-        message: `${KEY.id} (prod): ${GITHUB} last got generation bbbbbbbbbbbbbbbb, and the value is now aaaaaaaaaaaaaaaa`,
+        message: `${KEY.name} (prod): ${GITHUB} last got generation bbbbbbbbbbbbbbbb, and the value is now aaaaaaaaaaaaaaaa`,
       }),
     ]);
     expect(result.rows[0]?.destinations.map((d) => d.stale)).toEqual([false, true]);

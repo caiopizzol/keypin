@@ -1,10 +1,10 @@
 # Publishing
 
-`keypin publish <key-id>` reads a key from your vault and writes it to every destination listed for it.
+`keypin publish <VARIABLE>` reads a key from your vault and writes it to every destination listed for it.
 
 ```sh
-keypin publish api-token             # the prod entry
-keypin publish api-token --env dev   # the dev entry
+keypin publish API_TOKEN             # the prod entry
+keypin publish API_TOKEN --env dev   # the dev entry
 ```
 
 ## Destinations

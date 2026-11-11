@@ -123,7 +123,7 @@ describe("state", () => {
   test("an operation tracks done destinations, and a newer receipt replaces the older one", () => {
     let state = startOperation(emptyState(), {
       id: "op-1",
-      keyId: KEY.id,
+      keyId: KEY.name,
       environment: "prod",
       generation: "aaaaaaaaaaaaaaaa",
       startedAt: "2026-11-09T15:30:00Z",
@@ -131,14 +131,14 @@ describe("state", () => {
     });
     state = recordReceipt(state, receipt(WORKER, "bbbbbbbbbbbbbbbb"));
     state = recordReceipt(state, receipt(WORKER, "aaaaaaaaaaaaaaaa"), "op-1");
-    expect(receiptsFor(state, KEY.id, "prod")).toEqual([receipt(WORKER, "aaaaaaaaaaaaaaaa")]);
-    expect(unfinishedOperations(state, KEY.id, "prod")).toEqual([
+    expect(receiptsFor(state, KEY.name, "prod")).toEqual([receipt(WORKER, "aaaaaaaaaaaaaaaa")]);
+    expect(unfinishedOperations(state, KEY.name, "prod")).toEqual([
       expect.objectContaining({ id: "op-1", planned: [WORKER, GITHUB], done: [WORKER] }),
     ]);
-    const [operation] = unfinishedOperations(state, KEY.id, "prod");
+    const [operation] = unfinishedOperations(state, KEY.name, "prod");
     assert(operation);
     expect(() => startOperation(state, operation)).toThrow("operation op-1 already exists");
-    expect(unfinishedOperations(finishOperation(state, "op-1"), KEY.id, "prod")).toEqual([]);
+    expect(unfinishedOperations(finishOperation(state, "op-1"), KEY.name, "prod")).toEqual([]);
   });
 });
 

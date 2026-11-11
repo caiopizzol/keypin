@@ -41,18 +41,17 @@ const MAP = `
 [1password]
 account = "my.1password.com"
 
-[keys.site-deploy]
-env = "CLOUDFLARE_API_TOKEN"
+[keys.CLOUDFLARE_API_TOKEN]
 rotate_every = "90d"
 
-[keys.site-deploy.prod]
+[keys.CLOUDFLARE_API_TOKEN.prod]
 from = "${SOURCE}"
 
-[[keys.site-deploy.prod.publish]]
+[[keys.CLOUDFLARE_API_TOKEN.prod.publish]]
 to = "github-actions"
 repo = "acme/site"
 
-[keys.site-deploy.prod.issue]
+[keys.CLOUDFLARE_API_TOKEN.prod.issue]
 provider = "cloudflare-account-token"
 account = "${ACCOUNT}"
 admin = "${ADMIN_SOURCE}"
@@ -169,7 +168,7 @@ function writableVault(options: { failWrite?: boolean; source?: string } = {}) {
 
 async function receiptFor(value: string, at = "2026-11-10T14:52:03.000Z"): Promise<Receipt> {
   return {
-    keyId: "site-deploy",
+    keyId: "CLOUDFLARE_API_TOKEN",
     environment: "prod",
     source: {
       kind: "1password",
@@ -240,7 +239,7 @@ const OLD_GENERATION = await generationOf(new Secret(OLD_VALUE));
 describe("keypin rotate: the first run", () => {
   test("issues, checks, stores and publishes the new token, and leaves the old one active", async () => {
     const run = await setup({ terminal: ["yes"] });
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(0);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(0);
 
     expect(run.provider.log).toEqual([
       "verify",
@@ -264,7 +263,7 @@ describe("keypin rotate: the first run", () => {
     expect((await run.rotations()).rotations).toEqual([
       expect.objectContaining({
         stage: "published",
-        keyId: "site-deploy",
+        keyId: "CLOUDFLARE_API_TOKEN",
         old: {
           id: OLD_ID,
           name: "cicd-keypin",
@@ -295,14 +294,14 @@ describe("keypin rotate: the first run", () => {
     expect(run.stderr.text).toContain(`publish to: ${GITHUB} (account acme)`);
     expect(run.stderr.text).toContain(`The old token ${OLD_ID} "cicd-keypin" is still active.`);
     expect(run.stderr.text).toContain(
-      "Then run keypin rotate site-deploy again to revoke the old token.",
+      "Then run keypin rotate CLOUDFLARE_API_TOKEN again to revoke the old token.",
     );
     expect(run.leaked()).toBe(false);
   });
 
   test("without a rotate_every in the map it stops before reading or making anything", async () => {
     const run = await setup({ terminal: ["yes"], map: MAP.replace(`rotate_every = "90d"\n`, "") });
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain("keypin.toml has no rotate_every for this key");
     expect(run.vault.calls).toEqual([]);
     expect(run.provider.log).toEqual([]);
@@ -310,29 +309,29 @@ describe("keypin rotate: the first run", () => {
 
   test("--yes runs without a terminal when publishing needs no approval", async () => {
     const run = await setup({});
-    expect(await cli(["rotate", "site-deploy", "--yes"], run.deps)).toBe(0);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN", "--yes"], run.deps)).toBe(0);
     expect((await run.rotations()).rotations[0]?.stage).toBe("published");
   });
 
   test("without a terminal or --yes it stops before reading anything", async () => {
     const run = await setup({});
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(NEEDS_APPROVAL);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(NEEDS_APPROVAL);
     expect(run.vault.calls).toEqual([]);
     expect(run.provider.log).toEqual([]);
-    expect(run.stderr.text).toContain("rotate site-deploy");
+    expect(run.stderr.text).toContain("rotate CLOUDFLARE_API_TOKEN");
     expect(run.disk.contents.has(ROTATIONS)).toBe(false);
   });
 
   test("--yes can't approve a first write to a destination", async () => {
     const run = await setup({ receipts: null });
-    expect(await cli(["rotate", "site-deploy", "--yes"], run.deps)).toBe(NEEDS_APPROVAL);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN", "--yes"], run.deps)).toBe(NEEDS_APPROVAL);
     expect(run.stderr.text).toContain(`needs approval: first write to ${GITHUB}`);
     expect(run.vault.calls).toEqual([]);
   });
 
   test("answering anything but yes changes nothing", async () => {
     const run = await setup({ terminal: ["no"] });
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(NEEDS_APPROVAL);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(NEEDS_APPROVAL);
     expect(run.provider.log).not.toContainEqual(expect.stringMatching(/^issue/));
     expect(run.disk.contents.has(ROTATIONS)).toBe(false);
   });
@@ -342,23 +341,23 @@ describe("keypin rotate: the first run", () => {
       terminal: ["yes"],
       destinations: { badAccount: ["github-actions:acme/site"] },
     });
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
     expect(run.vault.calls).toEqual([]);
   });
 
   test("a key without an issue section is refused", async () => {
     const run = await setup({
       terminal: ["yes"],
-      map: MAP.replace(/\[keys\.site-deploy\.prod\.issue\][^]*$/, ""),
+      map: MAP.replace(/\[keys\.CLOUDFLARE_API_TOKEN\.prod\.issue\][^]*$/, ""),
     });
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
-    expect(run.stderr.text).toContain("has no [keys.site-deploy.prod.issue] section");
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain("has no [keys.CLOUDFLARE_API_TOKEN.prod.issue] section");
   });
 
   test("an admin reference that reaches the key's own value, such as by item ID, stops before anything is made", async () => {
     const run = await setup({ terminal: ["yes"] });
     run.vault.values.set(ADMIN_SOURCE, OLD_VALUE);
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
       `Stopped: ${ADMIN_SOURCE} holds the same value as ${SOURCE}. The admin token needs its own field`,
     );
@@ -371,7 +370,7 @@ describe("keypin rotate: the first run", () => {
 
   test("a refused create leaves nothing behind", async () => {
     const run = await setup({ terminal: ["yes"], provider: { refuse: true } });
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain("No token was made");
     expect((await run.rotations()).rotations).toEqual([]);
     expect(run.vault.values.get(SOURCE)).toBe(OLD_VALUE);
@@ -384,7 +383,7 @@ describe("keypin rotate: the first run", () => {
     "a new token that fails its check is deleted, and nothing else changes (%o)",
     async (provider, reason) => {
       const run = await setup({ terminal: ["yes"], provider });
-      expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+      expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
       expect(run.stderr.text).toContain(reason);
       expect(run.provider.log).toContain(`revoke ${NEW_ID.slice(0, 4)}`);
       expect(run.provider.tokens.has(NEW_ID)).toBe(false);
@@ -401,7 +400,7 @@ describe("keypin rotate: the first run", () => {
       terminal: ["yes"],
       provider: { otherPolicies: true, revokeFails: true },
     });
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
     expect((await run.rotations()).rotations[0]?.stage).toBe("issued");
   });
 
@@ -415,7 +414,7 @@ describe("keypin rotate: the first run", () => {
       }),
     });
     const first = await setup({ terminal: ["yes"], vault: { failWrite: true }, disk });
-    expect(await cli(["rotate", "site-deploy"], first.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], first.deps)).toBe(1);
     expect(first.stderr.text).toContain("1Password is locked");
     expect((await first.rotations()).rotations[0]?.stage).toBe("issued");
     expect(first.destinations.log).toEqual(["check github-actions:acme/site"]);
@@ -427,7 +426,7 @@ describe("keypin rotate: the first run", () => {
       name: "cicd-keypin 2026-11-10",
       value: NEW_VALUE,
     });
-    expect(await cli(["rotate", "site-deploy"], second.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], second.deps)).toBe(1);
     expect(second.asked).toEqual([`Type yes to delete the new token ${NEW_ID}: `]);
     expect(second.provider.log).toContain(`revoke ${NEW_ID.slice(0, 4)}`);
     expect(second.provider.tokens.has(OLD_ID)).toBe(true);
@@ -446,7 +445,7 @@ describe("keypin rotate: the next run", () => {
       }),
     });
     const first = await setup({ terminal: ["yes"], disk });
-    expect(await cli(["rotate", "site-deploy"], first.deps)).toBe(0);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], first.deps)).toBe(0);
     return disk;
   }
 
@@ -466,9 +465,9 @@ describe("keypin rotate: the next run", () => {
   test("shows the old token with last_used_on, and revokes it after a typed yes", async () => {
     const disk = await published();
     const run = await next(disk, ["yes"]);
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(0);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(0);
     expect(run.stderr.text).toContain(
-      `Every destination of site-deploy (prod) has generation ${NEW_GENERATION}.`,
+      `Every destination of CLOUDFLARE_API_TOKEN (prod) has generation ${NEW_GENERATION}.`,
     );
     expect(run.stderr.text).toContain(`Old token: ${OLD_ID} "cicd-keypin", active`);
     expect(run.stderr.text).toContain("last used: 2026-11-10T14:54:43Z");
@@ -483,7 +482,7 @@ describe("keypin rotate: the next run", () => {
   test("--yes can't revoke, and without a terminal nothing is read", async () => {
     const disk = await published();
     const run = await next(disk);
-    expect(await cli(["rotate", "site-deploy", "--yes"], run.deps)).toBe(NEEDS_APPROVAL);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN", "--yes"], run.deps)).toBe(NEEDS_APPROVAL);
     expect(run.stderr.text).toContain(
       "revoking needs yes typed in a terminal, and --yes can't give it",
     );
@@ -494,7 +493,7 @@ describe("keypin rotate: the next run", () => {
   test("anything but yes keeps the old token", async () => {
     const disk = await published();
     const run = await next(disk, ["y"]);
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(NEEDS_APPROVAL);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(NEEDS_APPROVAL);
     expect(run.provider.tokens.has(OLD_ID)).toBe(true);
     expect((await run.rotations()).rotations[0]?.stage).toBe("published");
   });
@@ -505,7 +504,7 @@ describe("keypin rotate: the next run", () => {
     state.receipts = [await receiptFor(OLD_VALUE, "2026-11-10T20:00:00.000Z")];
     disk.contents.set(STATE, JSON.stringify(state));
     const run = await next(disk, ["yes"]);
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(`${GITHUB} doesn't have generation ${NEW_GENERATION}`);
     expect(run.asked).toEqual([]);
     expect(run.provider.tokens.has(OLD_ID)).toBe(true);
@@ -515,7 +514,7 @@ describe("keypin rotate: the next run", () => {
     const disk = await published();
     const run = await next(disk, ["yes"]);
     run.provider.tokens.delete(NEW_ID);
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(`the new token ${NEW_ID} is gone`);
     expect(run.provider.tokens.has(OLD_ID)).toBe(true);
   });
@@ -523,9 +522,9 @@ describe("keypin rotate: the next run", () => {
   test("after the revoke, the next run starts a new rotation", async () => {
     const disk = await published();
     const revoke = await next(disk, ["yes"]);
-    expect(await cli(["rotate", "site-deploy"], revoke.deps)).toBe(0);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], revoke.deps)).toBe(0);
     const again = await next(disk, ["no"]);
-    expect(await cli(["rotate", "site-deploy"], again.deps)).toBe(NEEDS_APPROVAL);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], again.deps)).toBe(NEEDS_APPROVAL);
     expect(again.stderr.text).toContain("Plan:");
   });
 });
@@ -544,7 +543,7 @@ describe("keypin rotate: a reference to a field in a section", () => {
       }),
     });
     const first = await setup({ terminal: ["yes", "yes"], disk, vault: { source: SECTIONED } });
-    expect(await cli(["rotate", "site-deploy"], first.deps)).toBe(0);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], first.deps)).toBe(0);
     expect(first.vault.values.get(SECTIONED)).toBe(NEW_VALUE);
     expect(first.vault.values.has(SOURCE)).toBe(false);
     expect(first.stderr.text).toContain(`store in: ${SECTIONED}, with rotated 2026-11-10`);
@@ -563,8 +562,8 @@ describe("keypin rotate: a reference to a field in a section", () => {
     revoke.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
     const upper = `op://app secrets/${ITEM.toUpperCase()}/Cloudflare/Credential`;
     revoke.vault.values.set(upper, NEW_VALUE);
-    expect(await cli(["rotate", "site-deploy"], revoke.deps)).toBe(0);
-    expect(revoke.stderr.text).toContain("An unfinished rotation of site-deploy (prod)");
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], revoke.deps)).toBe(0);
+    expect(revoke.stderr.text).toContain("An unfinished rotation of CLOUDFLARE_API_TOKEN (prod)");
     expect(revoke.provider.log).toContain(`revoke ${OLD_ID.slice(0, 4)}`);
     expect(revoke.provider.log.some((line) => line.startsWith("issue"))).toBe(false);
     expect((await revoke.rotations()).rotations.map((r) => r.stage)).toEqual(["revoked"]);
@@ -574,7 +573,7 @@ describe("keypin rotate: a reference to a field in a section", () => {
 describe("keypin rotate: the state file stays readable by keypin 0.1.0", () => {
   test("state.json keeps version 2 with only receipts and operations", async () => {
     const run = await setup({ terminal: ["yes"] });
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(0);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(0);
     const state = JSON.parse(run.disk.contents.get(STATE) ?? "{}");
     expect(Object.keys(state).toSorted()).toEqual(["operations", "receipts", "version"]);
     expect(state.version).toBe(2);
@@ -607,7 +606,7 @@ describe("keypin rotate: a run that stopped after storing", () => {
         rotations: [
           {
             id: "r1",
-            keyId: "site-deploy",
+            keyId: "CLOUDFLARE_API_TOKEN",
             environment: "prod",
             item: {
               kind: "1password",
@@ -636,7 +635,7 @@ describe("keypin rotate: a run that stopped after storing", () => {
     const good = await setup({ terminal: ["yes"], disk });
     good.vault.values.set(SOURCE, NEW_VALUE);
     good.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
-    expect(await cli(["rotate", "site-deploy"], good.deps)).toBe(0);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], good.deps)).toBe(0);
     expect(good.provider.log.slice(0, 3)).toEqual([
       `details ${OLD_ID.slice(0, 4)}`,
       "verify",
@@ -658,7 +657,7 @@ describe("keypin rotate: a run that stopped after storing", () => {
         rotations: [
           {
             id: "r1",
-            keyId: "site-deploy",
+            keyId: "CLOUDFLARE_API_TOKEN",
             environment: "prod",
             item: {
               kind: "1password",
@@ -687,7 +686,7 @@ describe("keypin rotate: a run that stopped after storing", () => {
     const bad = await setup({ terminal: ["yes"], disk });
     bad.vault.values.set(SOURCE, NEW_VALUE);
     bad.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, policies: [], value: NEW_VALUE });
-    expect(await cli(["rotate", "site-deploy"], bad.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], bad.deps)).toBe(1);
     expect(bad.stderr.text).toContain(`policies differ from ${OLD_ID}'s`);
     expect(bad.destinations.log).toEqual(["check github-actions:acme/site"]);
     expect((await bad.rotations()).rotations[0]?.stage).toBe("stored");
@@ -697,7 +696,7 @@ describe("keypin rotate: a run that stopped after storing", () => {
 describe("keypin rotate: review fixes", () => {
   const record = (overrides: Record<string, unknown> = {}) => ({
     id: "r1",
-    keyId: "site-deploy",
+    keyId: "CLOUDFLARE_API_TOKEN",
     environment: "prod",
     item: {
       kind: "1password",
@@ -734,11 +733,11 @@ describe("keypin rotate: review fixes", () => {
 
   test("a key with no destinations is refused before anything is read", async () => {
     const map = MAP.replace(
-      /\[\[keys\.site-deploy\.prod\.publish\]\]\nto = "github-actions"\nrepo = "acme\/site"\n/,
+      /\[\[keys\.CLOUDFLARE_API_TOKEN\.prod\.publish\]\]\nto = "github-actions"\nrepo = "acme\/site"\n/,
       "",
     );
     const run = await setup({ terminal: ["yes"], map });
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain("lists no destinations");
     expect(run.vault.calls).toEqual([]);
     expect(run.provider.log).toEqual([]);
@@ -747,7 +746,7 @@ describe("keypin rotate: review fixes", () => {
   test("a stored rotation re-checks the new token before writing, and keeps its stage when it fails", async () => {
     const run = await setup({ terminal: ["yes"], disk: await diskWith(record()) });
     run.vault.values.set(SOURCE, NEW_VALUE);
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain("HTTP 401");
     expect(run.destinations.log).toEqual(["check github-actions:acme/site"]);
     expect(run.provider.tokens.has(OLD_ID)).toBe(true);
@@ -758,7 +757,7 @@ describe("keypin rotate: review fixes", () => {
     const run = await setup({ terminal: ["yes"], disk: await diskWith(record()) });
     run.vault.values.set(SOURCE, NEW_VALUE);
     run.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(0);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(0);
     expect((await run.rotations()).rotations[0]?.stage).toBe("published");
   });
 
@@ -768,7 +767,7 @@ describe("keypin rotate: review fixes", () => {
       terminal: ["yes"],
       disk: await diskWith(record({ stage: "issued", account: other })),
     });
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
       `made its token as cloudflare-account-token in account ${other}`,
     );
@@ -788,7 +787,7 @@ describe("keypin rotate: review fixes", () => {
       },
     });
     const run = await setup({ terminal: ["no"], disk: await diskWith(elsewhere) });
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(NEEDS_APPROVAL);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(NEEDS_APPROVAL);
     expect(run.stderr.text).not.toContain("An unfinished rotation");
     expect(run.stderr.text).toContain("Plan:");
   });
@@ -817,7 +816,7 @@ describe("keypin rotate: review fixes", () => {
 
   test("a destination that left the map with the old token is shown, and the typed yes revokes", async () => {
     const run = await revokeRun(["yes"], await withRemoved(OLD_GENERATION));
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(0);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(0);
     expect(run.stderr.text).toContain(
       `github-actions:acme/old-site:CLOUDFLARE_API_TOKEN left the map and its receipt has the old token (generation ${OLD_GENERATION}); revoking breaks it unless that secret is gone`,
     );
@@ -828,23 +827,23 @@ describe("keypin rotate: review fixes", () => {
   test("after removing that secret, a retry can still finish, and no only keeps the old token", async () => {
     const disk = await withRemoved(OLD_GENERATION);
     const refused = await revokeRun(["no"], disk);
-    expect(await cli(["rotate", "site-deploy"], refused.deps)).toBe(NEEDS_APPROVAL);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], refused.deps)).toBe(NEEDS_APPROVAL);
     expect(refused.provider.tokens.has(OLD_ID)).toBe(true);
     expect((await refused.rotations()).rotations[0]?.stage).toBe("published");
     const retry = await revokeRun(["yes"], disk);
-    expect(await cli(["rotate", "site-deploy"], retry.deps)).toBe(0);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], retry.deps)).toBe(0);
     expect((await retry.rotations()).rotations[0]?.stage).toBe("revoked");
   });
 
   test("a removed destination with another value, such as another project's key, isn't shown", async () => {
     const run = await revokeRun(["yes"], await withRemoved("0000000000000000"));
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(0);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(0);
     expect(run.stderr.text).not.toContain("left the map");
     expect(run.provider.tokens.has(OLD_ID)).toBe(false);
   });
 
   test("follow-up commands keep --env dev: the plan, the rerun hint, status, and the revoke", async () => {
-    const map = MAP.replaceAll("keys.site-deploy.prod", "keys.site-deploy.dev");
+    const map = MAP.replaceAll("keys.CLOUDFLARE_API_TOKEN.prod", "keys.CLOUDFLARE_API_TOKEN.dev");
     const disk = memoryFiles({
       "/work/billing/keypin.toml": map,
       [REGISTRY]: registryWith("/work/billing"),
@@ -855,23 +854,27 @@ describe("keypin rotate: review fixes", () => {
       }),
     });
     const first = await setup({ terminal: ["yes"], disk });
-    expect(await cli(["rotate", "site-deploy", "--env", "dev"], first.deps)).toBe(0);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN", "--env", "dev"], first.deps)).toBe(0);
     expect(first.stderr.text).toContain(
-      "then stop: the old token stays active until you run keypin rotate site-deploy --env dev again.",
+      "then stop: the old token stays active until you run keypin rotate CLOUDFLARE_API_TOKEN --env dev again.",
     );
     expect(first.stderr.text).toContain(
-      "Then run keypin rotate site-deploy --env dev again to revoke the old token.",
+      "Then run keypin rotate CLOUDFLARE_API_TOKEN --env dev again to revoke the old token.",
     );
 
     const status = await setup({ disk });
     await cli(["status"], status.deps);
     expect(status.stdout.text).toContain(
-      `is at stage "published"; run keypin rotate site-deploy --env dev to continue`,
+      `is at stage "published"; run keypin rotate CLOUDFLARE_API_TOKEN --env dev to continue`,
     );
 
     const hint = await setup({ disk });
-    expect(await cli(["rotate", "site-deploy", "--env", "dev"], hint.deps)).toBe(NEEDS_APPROVAL);
-    expect(hint.stderr.text).toMatch(/&& \S+ --no-env-file \S+ rotate site-deploy --env dev\n/);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN", "--env", "dev"], hint.deps)).toBe(
+      NEEDS_APPROVAL,
+    );
+    expect(hint.stderr.text).toMatch(
+      /&& \S+ --no-env-file \S+ rotate CLOUDFLARE_API_TOKEN --env dev\n/,
+    );
 
     const revoke = await setup({ terminal: ["yes"], disk });
     revoke.provider.tokens.set(NEW_ID, {
@@ -881,10 +884,10 @@ describe("keypin rotate: review fixes", () => {
       value: NEW_VALUE,
     });
     revoke.vault.values.set(SOURCE, NEW_VALUE);
-    expect(await cli(["rotate", "site-deploy", "--env", "dev"], revoke.deps)).toBe(0);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN", "--env", "dev"], revoke.deps)).toBe(0);
     expect(revoke.asked).toEqual([`Type yes to revoke the old token ${OLD_ID}: `]);
     expect(revoke.stderr.text).toContain(
-      `Rotated site-deploy (dev): ${NEW_ID} replaced ${OLD_ID}.`,
+      `Rotated CLOUDFLARE_API_TOKEN (dev): ${NEW_ID} replaced ${OLD_ID}.`,
     );
 
     for (const text of [
@@ -893,24 +896,23 @@ describe("keypin rotate: review fixes", () => {
       hint.stderr.text,
       revoke.stderr.text,
     ]) {
-      expect(text).not.toMatch(/keypin rotate site-deploy(?! --env dev)/);
+      expect(text).not.toMatch(/keypin rotate CLOUDFLARE_API_TOKEN(?! --env dev)/);
     }
   });
 });
 
 describe("keypin rotate: other holders of the vault item", () => {
   const DOCS = "github-actions:acme/docs:CLOUDFLARE_API_TOKEN";
-  const docsMap = (keyId = "docs-deploy") => `
+  const docsMap = (name = "CLOUDFLARE_API_TOKEN") => `
 [1password]
 account = "my.1password.com"
 
-[keys.${keyId}]
-env = "CLOUDFLARE_API_TOKEN"
+[keys.${name}]
 
-[keys.${keyId}.prod]
+[keys.${name}.prod]
 from = "op://App Secrets/${ITEM}/password"
 
-[[keys.${keyId}.prod.publish]]
+[[keys.${name}.prod.publish]]
 to = "github-actions"
 repo = "acme/docs"
 `;
@@ -926,7 +928,7 @@ repo = "acme/docs"
       ...files,
     });
     const first = await setup({ terminal: ["yes"], disk });
-    expect(await cli(["rotate", "site-deploy"], first.deps)).toBe(0);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], first.deps)).toBe(0);
     return disk;
   }
 
@@ -939,14 +941,14 @@ repo = "acme/docs"
 
   const docsReceipt = async (value: string, overrides: Partial<Receipt> = {}) => ({
     ...(await receiptFor(value)),
-    keyId: "docs-deploy",
+    keyId: "CLOUDFLARE_API_TOKEN",
     destinationId: DOCS,
     ...overrides,
   });
 
   const issuedRotation = {
     id: "r1",
-    keyId: "site-deploy",
+    keyId: "CLOUDFLARE_API_TOKEN",
     environment: "prod",
     item: {
       kind: "1password",
@@ -978,9 +980,9 @@ repo = "acme/docs"
   test("a registered project's key with the old token blocks the revoke and names its publish", async () => {
     const disk = await publishedWith([await docsReceipt(OLD_VALUE)], registered());
     const run = await secondRun(disk);
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
-      `${DOCS} (docs-deploy, prod): cd /work/docs && keypin publish docs-deploy`,
+      `${DOCS} (CLOUDFLARE_API_TOKEN, prod): cd /work/docs && keypin publish CLOUDFLARE_API_TOKEN`,
     );
     expect(run.asked).toEqual([]);
     expect(run.provider.tokens.has(OLD_ID)).toBe(true);
@@ -988,41 +990,40 @@ repo = "acme/docs"
   });
 
   test("another project's key with the same ID and environment blocks it too", async () => {
-    const same = await docsReceipt(OLD_VALUE, { keyId: "site-deploy" });
-    const disk = await publishedWith([same], registered("site-deploy"));
+    const same = await docsReceipt(OLD_VALUE, { keyId: "CLOUDFLARE_API_TOKEN" });
+    const disk = await publishedWith([same], registered("CLOUDFLARE_API_TOKEN"));
     const run = await secondRun(disk);
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
-    expect(run.stderr.text).toContain(`cd /work/docs && keypin publish site-deploy`);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain(`cd /work/docs && keypin publish CLOUDFLARE_API_TOKEN`);
     expect(run.provider.tokens.has(OLD_ID)).toBe(true);
   });
 
   test("the same key's dev entry with the old token blocks it, with --env dev", async () => {
     const map = `${MAP}
-[keys.site-deploy.dev]
+[keys.CLOUDFLARE_API_TOKEN.dev]
 from = "op://App Secrets/${ITEM}/password"
 
-[[keys.site-deploy.dev.publish]]
+[[keys.CLOUDFLARE_API_TOKEN.dev.publish]]
 to = "github-actions"
 repo = "acme/docs"
 `;
-    const dev = await docsReceipt(OLD_VALUE, { keyId: "site-deploy", environment: "dev" });
+    const dev = await docsReceipt(OLD_VALUE, { keyId: "CLOUDFLARE_API_TOKEN", environment: "dev" });
     const disk = await publishedWith([dev], { "/work/billing/keypin.toml": map });
     const run = await secondRun(disk);
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
-      `${DOCS} (site-deploy, dev): keypin publish site-deploy --env dev`,
+      `${DOCS} (CLOUDFLARE_API_TOKEN, dev): keypin publish CLOUDFLARE_API_TOKEN --env dev`,
     );
     expect(run.provider.tokens.has(OLD_ID)).toBe(true);
   });
 
-  test("a destination moved to a renamed key gets the current key's publish", async () => {
-    const disk = await publishedWith([await docsReceipt(OLD_VALUE)], registered("docs-renamed"));
+  test("a renamed variable's old secret, no longer in any map, is shown and doesn't block", async () => {
+    const disk = await publishedWith([await docsReceipt(OLD_VALUE)], registered("DOCS_TOKEN"));
     const run = await secondRun(disk);
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(0);
     expect(run.stderr.text).toContain(
-      `${DOCS} (docs-deploy, prod): cd /work/docs && keypin publish docs-renamed`,
+      `${DOCS} left the map and its receipt has the old token (generation ${OLD_GENERATION}); revoking breaks it unless that secret is gone`,
     );
-    expect(run.provider.tokens.has(OLD_ID)).toBe(true);
   });
 
   test("abandon names another project's publish for a holder there", async () => {
@@ -1038,9 +1039,9 @@ repo = "acme/docs"
     });
     const run = await setup({ terminal: ["yes"], disk });
     run.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
-      `${DOCS} (docs-deploy, prod): cd /work/docs && keypin publish docs-deploy`,
+      `${DOCS} (CLOUDFLARE_API_TOKEN, prod): cd /work/docs && keypin publish CLOUDFLARE_API_TOKEN`,
     );
     expect(run.provider.tokens.has(NEW_ID)).toBe(true);
   });
@@ -1051,15 +1052,15 @@ repo = "acme/docs"
       registered(),
     );
     const run = await secondRun(disk);
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
     expect(run.provider.tokens.has(OLD_ID)).toBe(true);
   });
 
   test("a receipt that no registered map lists is shown, and the typed yes revokes", async () => {
     const run = await secondRun(await publishedWith([await docsReceipt(OLD_VALUE)]));
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(0);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(0);
     expect(run.stderr.text).toContain(
-      `${DOCS} (docs-deploy, prod) has the old token, and no registered map lists it any more`,
+      `${DOCS} left the map and its receipt has the old token (generation ${OLD_GENERATION}); revoking breaks it unless that secret is gone`,
     );
     expect(run.asked).toEqual([`Type yes to revoke the old token ${OLD_ID}: `]);
     expect(run.provider.tokens.has(OLD_ID)).toBe(false);
@@ -1070,7 +1071,7 @@ repo = "acme/docs"
       [REGISTRY]: registryWith("/work/billing", "/work/gone"),
     });
     const run = await secondRun(disk);
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain("/work/gone/keypin.toml is missing");
     expect(run.provider.tokens.has(OLD_ID)).toBe(true);
   });
@@ -1078,13 +1079,13 @@ repo = "acme/docs"
   test("another key whose receipt already has the new token doesn't block it", async () => {
     const disk = await publishedWith([await docsReceipt(NEW_VALUE)], registered());
     const run = await secondRun(disk);
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(0);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(0);
     expect(run.provider.tokens.has(OLD_ID)).toBe(false);
   });
 
   test("an item that no longer holds the new token blocks the revoke", async () => {
     const run = await secondRun(await publishedWith([]), OLD_VALUE);
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
       `op://App Secrets/${ITEM}/password holds generation ${OLD_GENERATION}, not the new ${NEW_GENERATION}`,
     );
@@ -1104,8 +1105,10 @@ repo = "acme/docs"
     });
     const run = await setup({ terminal: ["yes"], disk });
     run.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
-    expect(run.stderr.text).toContain(`${GITHUB} (site-deploy, prod): keypin publish site-deploy`);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain(
+      `${GITHUB} (CLOUDFLARE_API_TOKEN, prod): keypin publish CLOUDFLARE_API_TOKEN`,
+    );
     expect(run.asked).toEqual([]);
     expect(run.provider.tokens.has(NEW_ID)).toBe(true);
     expect((await run.rotations()).rotations[0]?.stage).toBe("issued");

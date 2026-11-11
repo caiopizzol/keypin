@@ -239,8 +239,7 @@ export const BILLING_MAP = `
 [1password]
 account = "my.1password.com"
 
-[keys.billing-stripe]
-env = "STRIPE_API_KEY"
+[keys.STRIPE_API_KEY]
 rotate_every = "365d"
 dev = "op://Private/billing stripe api key/password"
 prod = { from = "op://Private/billing stripe api key/password", publish = [
@@ -253,8 +252,7 @@ export const WEB_MAP = `
 [1password]
 account = "my.1password.com"
 
-[keys.web-session]
-env = "SESSION_SECRET"
+[keys.SESSION_SECRET]
 rotate_every = "180d"
 dev = "op://Private/web dev session secret/password"
 prod = { from = "op://Private/web prod session secret/password", publish = [

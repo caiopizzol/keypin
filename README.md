@@ -61,15 +61,14 @@ A key looks like this:
 [1password]
 account = "my.1password.com"
 
-[keys.api-token]
-env = "API_TOKEN"
+[keys.API_TOKEN] # the variable your program reads
 rotate_every = "90d"
 dev = "op://Private/my-project dev api token/credential" # read by keypin run
 
-[keys.api-token.prod] # read by keypin publish
+[keys.API_TOKEN.prod] # read by keypin publish
 from = "op://Private/my-project prod api token/credential"
 
-[[keys.api-token.prod.publish]] # where publish writes it
+[[keys.API_TOKEN.prod.publish]] # where publish writes it
 to = "github-actions"
 repo = "me/my-project"
 ```
@@ -80,7 +79,7 @@ Reference**. Add a `rotated` date to the item. Now use it:
 ```sh
 keypin status               # every key, when it's due, and any problem
 keypin run -- npm run dev   # run a command with the dev keys
-keypin publish api-token    # write the prod value to the GitHub secret
+keypin publish API_TOKEN    # write the prod value to the GitHub secret
 ```
 
 ## Commands
@@ -91,8 +90,8 @@ keypin unregister [folder]   # stop listing a project (its keypin.toml stays)
 keypin status [--json]       # every key, when it's due, and any problem
 keypin discover [folder]     # every key name a project uses, where it's set, and a draft map
 keypin run -- <command>      # run a command with the project's dev keys (--env for another)
-keypin publish <key-id>      # check each destination's account, then write the key
-keypin rotate <key-id>       # replace a Cloudflare API token, then revoke the old one
+keypin publish <VARIABLE>    # check each destination's account, then write the key
+keypin rotate <VARIABLE>     # replace a Cloudflare API token, then revoke the old one
 ```
 
 `publish` and `rotate` show a plan and wait for you to type `yes`. `--yes` skips that only for routine updates. It

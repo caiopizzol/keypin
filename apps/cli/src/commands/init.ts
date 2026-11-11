@@ -12,22 +12,21 @@ export const TEMPLATE = `# keypin.toml: this project's keys. It holds names and 
 # [1password]
 # account = "my.1password.com"
 #
-# A key. Its ID ("example-api-key") stays the same when vault items are renamed.
-# [keys.example-api-key]
-# env = "EXAMPLE_API_KEY" # the variable your program reads
+# A key, named after the variable your program reads.
+# [keys.EXAMPLE_API_KEY]
 # rotate_every = "180d" # <n>d, <n>w, <n>m or never
 # dev = "op://Private/my-project dev example api key/password" # what keypin run reads
 #
 # What keypin publish reads, and every place it writes it.
-# [keys.example-api-key.prod]
+# [keys.EXAMPLE_API_KEY.prod]
 # from = "op://Private/my-project prod example api key/password"
 #
-# [[keys.example-api-key.prod.publish]]
+# [[keys.EXAMPLE_API_KEY.prod.publish]]
 # to = "cloudflare-worker"
 # account = "<cloudflare account ID>"
 # worker = "my-worker"
 #
-# [[keys.example-api-key.prod.publish]]
+# [[keys.EXAMPLE_API_KEY.prod.publish]]
 # to = "github-actions"
 # repo = "owner/repo"
 `;

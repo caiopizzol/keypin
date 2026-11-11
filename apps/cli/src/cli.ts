@@ -57,6 +57,11 @@ export async function cli(argv: string[], deps: Deps): Promise<number> {
     deps.stderr.write(`keypin: unknown command "${name}"\n${USAGE}`);
     return 2;
   }
+  const own = args.includes("--") ? args.slice(0, args.indexOf("--")) : args;
+  if (own.includes("--help") || own.includes("-h")) {
+    deps.stdout.write(USAGE);
+    return 0;
+  }
   try {
     return await command(args, deps);
   } catch (error) {

@@ -167,7 +167,7 @@ export function rerun(deps: Deps, command: string, args: readonly string[]): str
   return `To approve, run this in a terminal:\n  cd ${shellWord(deps.cwd)} && ${words}`;
 }
 
-function shellWord(word: string): string {
+export function shellWord(word: string): string {
   return /^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`;
 }
 

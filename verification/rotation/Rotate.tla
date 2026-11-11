@@ -12,7 +12,8 @@ CONSTANTS
                \* current token, set by hand, and has no receipt
   OtherDests,  \* entry.publish of another key or environment that reads the same vault item
   MaxTokens,   \* how many new tokens Cloudflare can make in one behavior
-  OutsideEdits \* TRUE: someone can restore an earlier version of the vault item
+  OutsideEdits,\* TRUE: someone can restore an earlier version of the vault item
+  LostReceipts \* TRUE: a run can stop after a destination write, before its receipt is saved
 
 Nil == 99
 Tokens == 0..MaxTokens
@@ -165,11 +166,15 @@ ResumeStored ==
   /\ UNCHANGED <<listed, held, tok, vault, dest, rcpt, rot, made, wd, ppc, pk, pv, pd>>
 
 \* A later run at "published": revokeOld() stops while any destination's
-\* receipt lacks the new generation, and needs the new token to be active.
+\* receipt lacks the new generation, while otherHolders() finds a destination
+\* that a registered map lists and whose latest receipt has the old one, or when
+\* the item doesn't hold the new value. It needs the new token to be active.
 RevokeStart ==
   /\ Unlocked
   /\ rot.stage = "published"
   /\ \A d \in listed : rcpt[d] = rot.new  \* mutant: revoke-skips-receipts
+  /\ \A d \in OtherDests : rcpt[d] # rot.old  \* mutant: revoke-skips-other-keys
+  /\ vault = rot.new  \* mutant: revoke-skips-item-read
   /\ tok[rot.new] = "active"
   /\ pc' = "revoke"
   /\ UNCHANGED <<listed, held, tok, vault, dest, rcpt, rot, made, wd, ppc, pk, pv, pd>>
@@ -198,12 +203,14 @@ AbandonToStored ==
   /\ rot' = [rot EXCEPT !.stage = "stored"]
   /\ UNCHANGED <<listed, held, tok, vault, dest, rcpt, made, pc, wd, ppc, pk, pv, pd>>
 
-\* The item holds the old value: the new token is deleted, then the record dropped.
+\* The item holds the old value and no latest receipt has the new one: the new
+\* token is deleted, then the record dropped.
 AbandonDelete ==
   /\ Unlocked
   /\ rot.stage \in {"issuing", "issued"}
   /\ rot.new # Nil
   /\ vault = rot.old  \* mutant: abandon-skips-item-read
+  /\ \A d \in AllDests : rcpt[d] # rot.new  \* mutant: abandon-skips-receipts
   /\ tok' = [tok EXCEPT ![rot.new] = "gone"]
   /\ pc' = "drop"
   /\ UNCHANGED <<listed, held, vault, dest, rcpt, rot, made, wd, ppc, pk, pv, pd>>
@@ -228,6 +235,7 @@ Drop ==
 \* Any failure, refusal or kill ends the run; files keep what was saved.
 Crash ==
   /\ pc # "idle"
+  /\ LostReceipts \/ pc # "receipt"
   /\ pc' = "idle"
   /\ UNCHANGED <<listed, held, tok, vault, dest, rcpt, rot, made, wd, ppc, pk, pv, pd>>
 
@@ -283,6 +291,7 @@ PubReceipt ==
 
 PubEnd ==
   /\ ppc # "idle"
+  /\ LostReceipts \/ ppc # "receipt"
   /\ ppc' = "idle"
   /\ UNCHANGED <<listed, held, tok, vault, dest, rcpt, rot, made, pc, wd, pk, pv, pd>>
 

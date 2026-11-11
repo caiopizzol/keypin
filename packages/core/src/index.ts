@@ -24,6 +24,8 @@ export {
   DESTINATION_KINDS,
   destinationId,
   parseMap,
+  receiptSecretKey,
+  secretKey,
   validateMap,
   type Consumer,
   type EnvEntry,
@@ -61,6 +63,7 @@ export {
 } from "./state";
 export {
   approvalsFor,
+  latestPerSecret,
   planPublish,
   sameRef,
   type Approval,

@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { parseArgs } from "node:util";
 import {
   addDays,
@@ -11,25 +12,32 @@ import {
   generationOf,
   type IssueSpec,
   type KeyEntry,
+  type KeysMap,
+  latestPerSecret,
+  loadRegistry,
   loadRotations,
   loadState,
+  parseMap,
   periodDays,
   planPublish,
   type ProviderToken,
   putRotation,
+  type Receipt,
+  receiptSecretKey,
   rotateCommand,
   type Rotation,
   type Rotations,
   sameAccess,
   saveRotations,
+  secretKey,
   type Secret,
   type TokenProvider,
   unfinishedRotation,
 } from "@keypin/core";
 import { type Deps, localDay, UsageError } from "../deps";
 import { messageOf } from "../errors";
-import { rotationsPath } from "../paths";
-import { findMap } from "../project";
+import { registryPath, rotationsPath } from "../paths";
+import { findMap, MAP_FILE } from "../project";
 import {
   accountFacts,
   type Checked,
@@ -39,6 +47,7 @@ import {
   NEEDS_APPROVAL,
   rerun,
   type Say,
+  shellWord,
   writeAll,
   writesFor,
 } from "../publishing";
@@ -47,6 +56,7 @@ import { announce } from "../vault";
 const GRACE_DAYS = DUE_SOON_DAYS;
 
 interface Run {
+  map: KeysMap;
   key: KeyEntry;
   entry: EnvEntry;
   issue: IssueSpec;
@@ -90,6 +100,7 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
   const say: Say = (text) => deps.stderr.write(`${text}\n`);
   return locked(deps, async (statePath) => {
     const run: Run = {
+      map,
       key,
       entry,
       issue,
@@ -404,11 +415,22 @@ async function revokeOld(run: Run, data: Rotations, rotation: Rotation): Promise
     );
     return 1;
   }
-  say(`Every destination's receipt has generation ${generation}.`);
+  say(`Every destination of ${key.id} (${environment}) has generation ${generation}.`);
   for (const removed of retired) {
     say(
       `  ${removed.destinationId} left the map and its receipt has the old token (generation ${removed.lastReceipt.generation}); revoking breaks it unless that secret is gone`,
     );
+  }
+  const others = await otherHolders(run, state.receipts, rotation.old.generation, retired);
+  if (others === null) return 1;
+  if (others.length) {
+    say(
+      `Stopped: these destinations still have the old token. Put the new value in each one's vault item, then run its keypin publish. Nothing was revoked.`,
+    );
+    for (const { receipt, owner } of others) {
+      say(`  ${describeHolder(receipt)}: ${publishCommand(owner)}`);
+    }
+    return 1;
   }
   if (!deps.isTerminal) {
     say(
@@ -418,7 +440,17 @@ async function revokeOld(run: Run, data: Rotations, rotation: Rotation): Promise
     return NEEDS_APPROVAL;
   }
 
-  announce(deps.stderr, "the admin token", [issue.admin]);
+  announce(deps.stderr, "the current value, to check it's the new token, and the admin token", [
+    run.entry.ref,
+    issue.admin,
+  ]);
+  const holds = await generationOf(await deps.vault().read(run.entry.ref));
+  if (holds !== generation) {
+    say(
+      `Stopped: item "${run.entry.ref.item}" holds generation ${holds}, not the new ${generation}. Something else changed it, and revoking would leave it with a dead token. Nothing was revoked.`,
+    );
+    return 1;
+  }
   const provider = deps.provider(issue, await deps.vault().read(issue.admin));
   const current = await provider.details(rotation.new.id);
   if (current?.status !== "active") {
@@ -475,6 +507,24 @@ async function abandon(run: Run, data: Rotations, rotation: Rotation): Promise<n
       say(
         `Stopped: item "${entry.ref.item}" holds generation ${holds}, neither the old ${rotation.old.generation} nor the new ${rotation.new.generation}. Something else changed it. Nothing was changed.`,
       );
+      return 1;
+    }
+  }
+  if (rotation.new.generation) {
+    const state = await loadState(deps.files, run.statePath);
+    const holders = holdersOf(state.receipts, rotation.new.generation);
+    if (holders.length) {
+      say(
+        `Stopped: the new token ${rotation.new.id} was published, so keypin won't delete it. Nothing was changed. Either put the new value back in item "${entry.ref.item}" and run ${again(run)} again to finish, or publish the old value to each destination that has the new one:`,
+      );
+      const owners = await listedOwners(run);
+      if (owners === null) return 1;
+      for (const r of holders) {
+        const owner = ownerOf(r, owners);
+        say(
+          `  ${describeHolder(r)}: ${owner ? publishCommand(owner) : "no registered map lists it; set that secret to the old value by hand"}`,
+        );
+      }
       return 1;
     }
   }
@@ -543,6 +593,90 @@ async function recheck(run: Run, rotation: Rotation, value: Secret): Promise<str
   const old = await provider.details(rotation.old.id);
   if (!old) return `the old token ${rotation.old.id} is gone, so its policies can't be compared`;
   return checkNew(provider, rotation.new.id, value, old);
+}
+
+function holdersOf(receipts: readonly Receipt[], generation: string | null): Receipt[] {
+  return latestPerSecret(receipts).filter((r) => r.generation === generation);
+}
+
+function describeHolder(receipt: Receipt): string {
+  return `${receipt.destinationId} (${receipt.keyId}, ${receipt.environment})`;
+}
+
+interface Owner {
+  project: string | null;
+  keyId: string;
+  environment: string;
+}
+
+function publishCommand(owner: Owner): string {
+  const env = owner.environment === "prod" ? "" : ` --env ${owner.environment}`;
+  const where = owner.project === null ? "" : `cd ${shellWord(owner.project)} && `;
+  return `${where}keypin publish ${owner.keyId}${env}`;
+}
+
+async function listedOwners(run: Run): Promise<Map<string, Owner[]> | null> {
+  const { deps, say } = run;
+  const owners = new Map<string, Owner[]>();
+  const list = (map: KeysMap, project: string | null) => {
+    for (const k of map.keys) {
+      for (const [name, entry] of Object.entries(k.environments)) {
+        for (const target of entry.publish) {
+          const secret = secretKey(target, k.env);
+          owners.set(secret, [
+            ...(owners.get(secret) ?? []),
+            { project, keyId: k.id, environment: name },
+          ]);
+        }
+      }
+    }
+  };
+  list(run.map, null);
+  const registry = await loadRegistry(deps.files, registryPath(deps));
+  for (const project of registry.projects) {
+    const file = join(project, MAP_FILE);
+    if (file === run.map.file) continue;
+    const text = await deps.files.read(file);
+    const result = text === null ? null : parseMap(text, file);
+    if (!result?.ok) {
+      say(
+        `Stopped: ${file} ${result ? "has errors" : "is missing"}, so keypin can't tell which keys use these destinations. Fix it or run keypin unregister ${shellWord(project)}. Nothing was changed.`,
+      );
+      return null;
+    }
+    list(result.map, project);
+  }
+  return owners;
+}
+
+function ownerOf(receipt: Receipt, owners: Map<string, Owner[]>): Owner | undefined {
+  const found = owners.get(receiptSecretKey(receipt)) ?? [];
+  return (
+    found.find((o) => o.keyId === receipt.keyId && o.environment === receipt.environment) ??
+    found[0]
+  );
+}
+
+const UNLISTED =
+  "no registered map lists it any more; revoking breaks it unless that secret is gone";
+
+async function otherHolders(
+  run: Run,
+  receipts: readonly Receipt[],
+  generation: string | null,
+  retired: readonly { destinationId: string }[],
+): Promise<{ receipt: Receipt; owner: Owner }[] | null> {
+  const owners = await listedOwners(run);
+  if (owners === null) return null;
+  const shown = new Set(retired.map((r) => r.destinationId));
+  return holdersOf(receipts, generation).flatMap((receipt) => {
+    const owner = ownerOf(receipt, owners);
+    if (owner) return [{ receipt, owner }];
+    if (!shown.has(receipt.destinationId)) {
+      run.say(`  ${describeHolder(receipt)} has the old token, and ${UNLISTED}`);
+    }
+    return [];
+  });
 }
 
 function again(run: Run): string {

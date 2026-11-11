@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
+  formatReference,
   generationOf,
   type KeyRef,
   loadRotations,
@@ -33,6 +34,8 @@ const ADMIN_VALUE = "cfat_admin-sentinel-3f27";
 const ITEM = "site deploy token";
 const ADMIN_ITEM = "shared cloudflare token admin";
 const GITHUB = "github-actions:acme/site:CLOUDFLARE_API_TOKEN";
+const SOURCE = `op://App Secrets/${ITEM}/password`;
+const ADMIN_SOURCE = `op://App Secrets/${ADMIN_ITEM}/password`;
 
 const MAP = `
 [1password]
@@ -43,7 +46,7 @@ env = "CLOUDFLARE_API_TOKEN"
 rotate_every = "90d"
 
 [keys.site-deploy.prod]
-from = "op://App Secrets/${ITEM}/password"
+from = "${SOURCE}"
 
 [[keys.site-deploy.prod.publish]]
 to = "github-actions"
@@ -52,7 +55,7 @@ repo = "acme/site"
 [keys.site-deploy.prod.issue]
 provider = "cloudflare-account-token"
 account = "${ACCOUNT}"
-admin = "op://App Secrets/${ADMIN_ITEM}/password"
+admin = "${ADMIN_SOURCE}"
 `;
 
 const POLICIES = [
@@ -133,24 +136,25 @@ function fakeProvider(options: ProviderOptions = {}) {
   return { build, log, tokens, admins };
 }
 
-function writableVault(options: { failWrite?: boolean } = {}) {
+function writableVault(options: { failWrite?: boolean; source?: string } = {}) {
   const values = new Map([
-    [ITEM, OLD_VALUE],
-    [ADMIN_ITEM, ADMIN_VALUE],
+    [options.source ?? SOURCE, OLD_VALUE],
+    [ADMIN_SOURCE, ADMIN_VALUE],
   ]);
   const calls: string[] = [];
   const vault: VaultBackend = {
     capabilities: { read: true, write: true, list: false, metadata: true },
     async read(ref: KeyRef) {
       calls.push(`read ${ref.item}`);
-      const value = values.get(ref.item);
-      if (value === undefined) throw new Error(`no item "${ref.item}"`);
+      const value = values.get(formatReference(ref));
+      if (value === undefined) throw new Error(`no field ${formatReference(ref)}`);
       return new Secret(value);
     },
     async write(ref, secret, writeOptions) {
       calls.push(`write ${ref.item} rotated ${writeOptions?.rotated}`);
       if (options.failWrite) throw new Error("1Password is locked");
-      values.set(ref.item, secret.reveal());
+      if (!values.has(formatReference(ref))) throw new Error(`no field ${formatReference(ref)}`);
+      values.set(formatReference(ref), secret.reveal());
     },
     async list() {
       throw new Error("no list");
@@ -247,7 +251,7 @@ describe("keypin rotate: the first run", () => {
     ]);
     expect(run.provider.admins).toEqual([ADMIN_VALUE]);
     expect(run.provider.tokens.has(OLD_ID)).toBe(true);
-    expect(run.vault.values.get(ITEM)).toBe(NEW_VALUE);
+    expect(run.vault.values.get(SOURCE)).toBe(NEW_VALUE);
     expect(run.vault.calls).toContain(`write ${ITEM} rotated 2026-11-10`);
     expect(run.destinations.log).toEqual([
       "check github-actions:acme/site",
@@ -356,7 +360,7 @@ describe("keypin rotate: the first run", () => {
     expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain("No token was made");
     expect((await run.rotations()).rotations).toEqual([]);
-    expect(run.vault.values.get(ITEM)).toBe(OLD_VALUE);
+    expect(run.vault.values.get(SOURCE)).toBe(OLD_VALUE);
   });
 
   test.each([
@@ -441,7 +445,7 @@ describe("keypin rotate: the next run", () => {
       lastUsedOn: null,
       value: NEW_VALUE,
     });
-    run.vault.values.set(ITEM, NEW_VALUE);
+    run.vault.values.set(SOURCE, NEW_VALUE);
     return run;
   }
 
@@ -512,6 +516,47 @@ describe("keypin rotate: the next run", () => {
   });
 });
 
+describe("keypin rotate: a reference to a field in a section", () => {
+  const SECTIONED = `op://App Secrets/${ITEM}/cloudflare/credential`;
+  const map = MAP.replace(`from = "${SOURCE}"`, `from = "${SECTIONED}"`);
+
+  test("reads, stores and revokes through that field, and a case change still finds the rotation", async () => {
+    const disk = memoryFiles({
+      "/work/billing/keypin.toml": map,
+      [STATE]: JSON.stringify({
+        version: 2,
+        receipts: [await receiptFor(OLD_VALUE)],
+        operations: [],
+      }),
+    });
+    const first = await setup({ terminal: ["yes", "yes"], disk, vault: { source: SECTIONED } });
+    expect(await cli(["rotate", "site-deploy"], first.deps)).toBe(0);
+    expect(first.vault.values.get(SECTIONED)).toBe(NEW_VALUE);
+    expect(first.vault.values.has(SOURCE)).toBe(false);
+    expect(first.stderr.text).toContain(`store in: ${SECTIONED}, with rotated 2026-11-10`);
+    const [rotation] = (await first.rotations()).rotations;
+    expect(rotation?.item).toMatchObject({ section: "cloudflare", field: "credential" });
+    expect((await first.state()).receipts[0]?.source).toMatchObject({
+      section: "cloudflare",
+      field: "credential",
+    });
+
+    disk.contents.set(
+      "/work/billing/keypin.toml",
+      map.replace(SECTIONED, `op://app secrets/${ITEM.toUpperCase()}/Cloudflare/Credential`),
+    );
+    const revoke = await setup({ terminal: ["yes"], disk, vault: { source: SECTIONED } });
+    revoke.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
+    const upper = `op://app secrets/${ITEM.toUpperCase()}/Cloudflare/Credential`;
+    revoke.vault.values.set(upper, NEW_VALUE);
+    expect(await cli(["rotate", "site-deploy"], revoke.deps)).toBe(0);
+    expect(revoke.stderr.text).toContain("An unfinished rotation of site-deploy (prod)");
+    expect(revoke.provider.log).toContain(`revoke ${OLD_ID.slice(0, 4)}`);
+    expect(revoke.provider.log.some((line) => line.startsWith("issue"))).toBe(false);
+    expect((await revoke.rotations()).rotations.map((r) => r.stage)).toEqual(["revoked"]);
+  });
+});
+
 describe("keypin rotate: the state file stays readable by keypin 0.1.0", () => {
   test("state.json keeps version 2 with only receipts and operations", async () => {
     const run = await setup({ terminal: ["yes"] });
@@ -575,7 +620,7 @@ describe("keypin rotate: a run that stopped after storing", () => {
       }),
     });
     const good = await setup({ terminal: ["yes"], disk });
-    good.vault.values.set(ITEM, NEW_VALUE);
+    good.vault.values.set(SOURCE, NEW_VALUE);
     good.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
     expect(await cli(["rotate", "site-deploy"], good.deps)).toBe(0);
     expect(good.provider.log.slice(0, 3)).toEqual([
@@ -626,7 +671,7 @@ describe("keypin rotate: a run that stopped after storing", () => {
       }),
     });
     const bad = await setup({ terminal: ["yes"], disk });
-    bad.vault.values.set(ITEM, NEW_VALUE);
+    bad.vault.values.set(SOURCE, NEW_VALUE);
     bad.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, policies: [], value: NEW_VALUE });
     expect(await cli(["rotate", "site-deploy"], bad.deps)).toBe(1);
     expect(bad.stderr.text).toContain(`policies differ from ${OLD_ID}'s`);
@@ -687,7 +732,7 @@ describe("keypin rotate: review fixes", () => {
 
   test("a stored rotation re-checks the new token before writing, and keeps its stage when it fails", async () => {
     const run = await setup({ terminal: ["yes"], disk: await diskWith(record()) });
-    run.vault.values.set(ITEM, NEW_VALUE);
+    run.vault.values.set(SOURCE, NEW_VALUE);
     expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain("HTTP 401");
     expect(run.destinations.log).toEqual(["check github-actions:acme/site"]);
@@ -697,7 +742,7 @@ describe("keypin rotate: review fixes", () => {
 
   test("a stored rotation whose token still checks out is published", async () => {
     const run = await setup({ terminal: ["yes"], disk: await diskWith(record()) });
-    run.vault.values.set(ITEM, NEW_VALUE);
+    run.vault.values.set(SOURCE, NEW_VALUE);
     run.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
     expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(0);
     expect((await run.rotations()).rotations[0]?.stage).toBe("published");
@@ -752,7 +797,7 @@ describe("keypin rotate: review fixes", () => {
   async function revokeRun(terminal: string[], disk: ReturnType<typeof memoryFiles>) {
     const run = await setup({ terminal, disk });
     run.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
-    run.vault.values.set(ITEM, NEW_VALUE);
+    run.vault.values.set(SOURCE, NEW_VALUE);
     return run;
   }
 
@@ -821,7 +866,7 @@ describe("keypin rotate: review fixes", () => {
       name: "cicd-keypin 2026-11-10",
       value: NEW_VALUE,
     });
-    revoke.vault.values.set(ITEM, NEW_VALUE);
+    revoke.vault.values.set(SOURCE, NEW_VALUE);
     expect(await cli(["rotate", "site-deploy", "--env", "dev"], revoke.deps)).toBe(0);
     expect(revoke.asked).toEqual([`Type yes to revoke the old token ${OLD_ID}: `]);
     expect(revoke.stderr.text).toContain(
@@ -874,7 +919,7 @@ repo = "acme/docs"
   async function secondRun(disk: ReturnType<typeof memoryFiles>, itemValue = NEW_VALUE) {
     const run = await setup({ terminal: ["yes"], disk });
     run.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
-    run.vault.values.set(ITEM, itemValue);
+    run.vault.values.set(SOURCE, itemValue);
     return run;
   }
 

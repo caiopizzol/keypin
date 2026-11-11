@@ -56,6 +56,7 @@ describe("keypin status", () => {
     expect(stderr.text).toContain(
       "from 1Password account my.1password.com: op://Private/billing stripe api key/password,",
     );
+    expect(stderr.text).toContain("op://Private/web prod session secret/password");
   });
 
   test("shows a destination's last receipt", async () => {

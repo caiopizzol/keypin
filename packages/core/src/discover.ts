@@ -448,7 +448,7 @@ function workerLabel(worker: WorkerDeclaration): string {
 export interface DraftOptions {
   project: string;
   githubAccount: string | null;
-  vault: { account: string | null; vault: string } | null;
+  map: { account: string | null; vault: string | null } | null;
   takenIds: readonly string[];
   environments: readonly Environment[];
 }
@@ -458,12 +458,13 @@ export function draftMap(names: readonly NameRow[], options: DraftOptions): stri
   const taken = new Set(options.takenIds);
   const runName = runEnvironment(options);
   const publishName = publishEnvironment(options);
-  const vault = options.vault?.vault ?? "<your vault>";
+  const vault = options.map?.vault ?? "<your vault>";
+  const project = options.project.replace(/[^A-Za-z0-9 ._-]/g, "-");
   const from = (environment: string, what: string) =>
     str(
       formatReference({
         vault,
-        item: `${options.project} ${environment} ${what}`,
+        item: `${project} ${environment} ${what}`,
         section: null,
         field: "password",
       }),
@@ -515,12 +516,14 @@ export function draftMap(names: readonly NameRow[], options: DraftOptions): stri
     }
   }
   if (!lines.length) return null;
-  const account = options.vault?.account ?? "<your 1Password account>";
+  const account = options.map?.account ?? "<your 1Password account>";
   const header = [
     "# Draft from keypin discover; nothing was written. The op:// references are placeholders.",
-    options.vault
-      ? "# The vault is the one this project's keypin.toml uses; copy only the [keys.*] tables."
-      : "# Fill in your account and vault, then save this as keypin.toml.",
+    !options.map?.account
+      ? "# Fill in your account and vault, then save this as keypin.toml."
+      : options.map.vault === null
+        ? "# Fill in the vault, then copy only the [keys.*] tables into this project's keypin.toml."
+        : "# The vault is the one this project's keypin.toml uses; copy only the [keys.*] tables.",
     ...(options.environments.join() === DEFAULT_ENVIRONMENTS.join()
       ? []
       : ["", `environments = [${options.environments.map(str).join(", ")}]`]),

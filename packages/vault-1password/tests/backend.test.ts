@@ -172,6 +172,40 @@ describe("read", () => {
   });
 });
 
+describe("names in a reference", () => {
+  test("find the vault and item by title in any case, or by ID", async () => {
+    const { client } = fake([item("Demo Dev Token", [field("password", "Concealed", VALUE)])]);
+    const { backend } = backendFor(client);
+    for (const named of [
+      { vault: "private", item: "demo dev token" },
+      { vault: "vault-1", item: "id-Demo Dev Token" },
+    ]) {
+      expect((await backend.read({ ...ref, ...named })).reveal()).toBe(VALUE);
+    }
+  });
+
+  test("a vault or item named by ID isn't confused with one titled that way", async () => {
+    const { client } = fake([
+      item("demo dev token", [field("password", "Concealed", VALUE)], "abc"),
+      item("abc", [field("password", "Concealed", "not-this")], "xyz"),
+    ]);
+    expect((await backendFor(client).backend.read({ ...ref, item: "abc" })).reveal()).toBe(VALUE);
+  });
+
+  test("refuses the rotated field, which keypin writes the rotation day into", async () => {
+    const existing = item("demo dev token", [field("rotated", "Date", "2026-11-09")]);
+    const { client, calls } = fake([existing]);
+    const { backend } = backendFor(client);
+    await expect(
+      backend.write({ ...ref, field: "rotated" }, new Secret(VALUE), { rotated: "2026-11-10" }),
+    ).rejects.toThrow('"rotated" holds the day the value last changed');
+    await expect(backend.read({ ...ref, field: "Rotated" })).rejects.toThrow(
+      '"rotated" holds the day the value last changed',
+    );
+    expect(calls.put).toEqual([]);
+  });
+});
+
 describe("write", () => {
   test("writes the field the reference names, and won't create an item for another field", async () => {
     const existing = item("demo dev token", [

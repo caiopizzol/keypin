@@ -72,7 +72,7 @@ To let `rotate` replace the key, add an `issue` section. See [Rotation](rotation
 ## Vault items
 
 The reference's field holds the value. Any field works, such as `password` or an API Credential item's
-`credential`. Add a **`rotated`** Date field, the day the value last changed.
+`credential`, except `rotated`. Add a **`rotated`** Date field, the day the value last changed.
 
 `keypin status` adds the key's `rotate_every` to `rotated` to show when it's due. Without a `rotate_every`, `status`
 reports the key as a problem, and `rotate` refuses to run.

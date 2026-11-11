@@ -2,7 +2,7 @@ import { TOML } from "bun";
 import type { Environment, KeyId, KeyRef } from "./contracts";
 import { DEFAULT_ENVIRONMENTS } from "./contracts";
 import { isRecord } from "./record";
-import { parseReference } from "./reference";
+import { parseReference, sameItem } from "./reference";
 import { periodDays } from "./rotation";
 
 export type PublishTarget =
@@ -347,7 +347,7 @@ function validateIssue(
     err(`field "provider" must be one of: ${PROVIDER_KINDS.join(", ")}`);
   if (account !== undefined && !ACCOUNT_ID.test(account))
     err(`field "account" must be a Cloudflare account ID (32 hex characters)`);
-  if (admin && admin.vault === own.vault && admin.item === own.item)
+  if (admin && sameItem(admin, own))
     err(`field "admin" names the key's own item; the admin token needs its own item`);
   if (failed || !kind || account === undefined || admin === undefined) return undefined;
   return { provider: kind, account, admin };

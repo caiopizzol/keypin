@@ -551,6 +551,10 @@ ${issue}
       `field "admin" names the key's own item; the admin token needs its own item`,
     ],
     [
+      `provider = "cloudflare-account-token"\naccount = "${ACCOUNT}"\nadmin = "op://private/Site Deploy Token/credential"`,
+      `field "admin" names the key's own item; the admin token needs its own item`,
+    ],
+    [
       `provider = "cloudflare-account-token"\naccount = "${ACCOUNT}"\nadmin = "op://Private/a/password"\npermissions = []`,
       `unknown field "permissions"`,
     ],

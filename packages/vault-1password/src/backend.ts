@@ -25,7 +25,7 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
   }
 
   async function vaultId(sdk: SdkClient, scope: VaultScope): Promise<string> {
-    const matches = (await sdk.vaults.list()).filter((vault) => vault.title === scope.vault);
+    const matches = named(await sdk.vaults.list(), scope.vault);
     const [match] = matches;
     if (!match) {
       throw new Error(`1Password account "${scope.account}" has no vault "${scope.vault}"`);
@@ -39,7 +39,7 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
   }
 
   async function find(sdk: SdkClient, id: string, ref: KeyRef): Promise<{ id: string } | null> {
-    const matches = (await sdk.items.list(id)).filter((item) => item.title === ref.item);
+    const matches = named(await sdk.items.list(id), ref.item);
     if (matches.length > 1)
       throw new Error(`${where(ref)}: ${matches.length} items have this name`);
     return matches[0] ?? null;
@@ -127,26 +127,33 @@ function where(ref: KeyRef): string {
   return `${formatReference(ref)} (1Password account ${ref.account})`;
 }
 
+function named<T extends { id: string; title: string }>(candidates: T[], name: string): T[] {
+  const byId = candidates.filter((candidate) => candidate.id === name);
+  return byId.length
+    ? byId
+    : candidates.filter((candidate) => candidate.title.toLowerCase() === name.toLowerCase());
+}
+
 function valueField(item: FullItem, ref: KeyRef): Field {
-  const named = (candidate: { id: string; title: string }, name: string) =>
-    candidate.id === name || candidate.title.toLowerCase() === name.toLowerCase();
-  const sections = item.sections.filter(
-    (section) => ref.section !== null && named(section, ref.section),
-  );
+  const sections = ref.section === null ? [] : named(item.sections, ref.section);
   if (ref.section !== null && !sections.length) {
     throw new Error(`${where(ref)}: the item has no section "${ref.section}"`);
   }
-  const fields = item.fields.filter(
-    (field) =>
-      named(field, ref.field) &&
-      (ref.section === null || sections.some((section) => section.id === field.sectionId)),
+  const [field, ...more] = named(
+    item.fields.filter(
+      (field) => ref.section === null || sections.some((section) => section.id === field.sectionId),
+    ),
+    ref.field,
   );
-  const exact = fields.filter((field) => field.id === ref.field);
-  const [field, ...more] = exact.length ? exact : fields;
   if (!field) throw new Error(`${where(ref)}: the item has no field "${ref.field}"`);
   if (more.length) {
     throw new Error(
       `${where(ref)}: ${more.length + 1} fields are named "${ref.field}"; name a section`,
+    );
+  }
+  if (field.title === ROTATED) {
+    throw new Error(
+      `${where(ref)}: "${ROTATED}" holds the day the value last changed; put the value in another field`,
     );
   }
   return field;

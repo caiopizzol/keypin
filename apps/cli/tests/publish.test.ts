@@ -477,6 +477,31 @@ describe("a destination only takes a value without approval when it came from th
     expect(leaks(...disk.contents.values(), swapped.stderr.text, approved.stderr.text)).toBe(false);
   });
 
+  test("pointing a key at another field of the same item needs approval, and the receipt records it", async () => {
+    const at = (field: string) =>
+      deployMap("billing deploy token").replace("/password", `/${field}`);
+    const disk = memoryFiles({ "/work/billing/keypin.toml": at("password") });
+    expect(await cli(["publish", "deploy"], publisher(disk, "/work/billing", true).deps)).toBe(0);
+
+    disk.contents.set("/work/billing/keypin.toml", at("Password"));
+    const same = publisher(disk, "/work/billing", false);
+    expect(await cli(["publish", "deploy", "--yes"], same.deps)).toBe(0);
+    expect(same.writes()).toEqual([]);
+
+    disk.contents.set("/work/billing/keypin.toml", at("live/credential"));
+    const moved = publisher(disk, "/work/billing", false);
+    expect(await cli(["publish", "deploy", "--yes"], moved.deps)).toBe(NEEDS_APPROVAL);
+    expect(moved.writes()).toEqual([]);
+    expect(moved.stderr.text).toContain(
+      "and now from op://Private/billing deploy token/live/credential",
+    );
+
+    const approved = publisher(disk, "/work/billing", true);
+    expect(await cli(["publish", "deploy"], approved.deps)).toBe(0);
+    const [saved] = (await loadState(disk.files, STATE)).receipts;
+    expect(saved?.source).toMatchObject({ section: "live", field: "credential" });
+  });
+
   test("two keys writing the same repo secret are rejected before anything is read", async () => {
     const map = `${VAULTS}\n[keys.token-a]\nenv = "API_TOKEN"\nprod = { from = "op://Private/billing deploy token/password", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n[keys.token-b]\nenv = "API_TOKEN"\nprod = { from = "op://Private/cloudflare admin token/password", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
     const run = publisher(memoryFiles({ "/work/billing/keypin.toml": map }), "/work/billing", true);

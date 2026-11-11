@@ -26,15 +26,20 @@ export function formatReference(ref: Reference): string {
   return `${SCHEME}${parts.join("/")}`;
 }
 
-export function sameRef(a: KeyRef, b: KeyRef): boolean {
+const sameName = (a: string | null, b: string | null) =>
+  a === b || (a !== null && b !== null && a.toLowerCase() === b.toLowerCase());
+
+export function sameItem(a: KeyRef, b: KeyRef): boolean {
   return (
     a.kind === b.kind &&
     a.account === b.account &&
-    a.vault === b.vault &&
-    a.item === b.item &&
-    a.section === b.section &&
-    a.field === b.field
+    sameName(a.vault, b.vault) &&
+    sameName(a.item, b.item)
   );
+}
+
+export function sameRef(a: KeyRef, b: KeyRef): boolean {
+  return sameItem(a, b) && sameName(a.section, b.section) && sameName(a.field, b.field);
 }
 
 export function storedRefWithPasswordDefault(value: unknown): KeyRef | null {

@@ -129,7 +129,7 @@ export async function discover(args: string[], deps: Deps): Promise<number> {
   const draft = draftMap(discovery.names, {
     project: basename(folder),
     githubAccount: login,
-    vault: map ? mapVault(map) : null,
+    map: map ? { account: map.account, vault: firstVault(map) } : null,
     takenIds: map?.keys.map((k) => k.id) ?? [],
     environments: map?.environments ?? DEFAULT_ENVIRONMENTS,
   });
@@ -239,9 +239,9 @@ async function githubOrigin(
   return { repo: `${match[1]}/${match[2]}`, owner: match[1] };
 }
 
-function mapVault(map: KeysMap): { account: string | null; vault: string } | null {
-  const ref = map.keys.flatMap((key) => Object.values(key.environments))[0]?.ref;
-  return ref ? { account: map.account, vault: ref.vault } : null;
+function firstVault(map: KeysMap): string | null {
+  const [entry] = map.keys.flatMap((key) => Object.values(key.environments).filter((e) => e));
+  return entry?.ref.vault ?? null;
 }
 
 const WHERE: Record<NameRow["where"], string> = {

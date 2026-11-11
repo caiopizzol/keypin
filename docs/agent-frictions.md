@@ -29,6 +29,16 @@ The same seven scenarios, run again against these fixes:
 - The routine update went as intended: the agent ran `publish` without `--yes`, read the plan (exit 3), saw an
   ordinary update, then reran with `--yes`. It was the only run that wrote anything.
 
+## Fixed since
+
+- **8. `missing-receipt` was a problem even before the first publish.** A key and environment this project has
+  never published is now one `never-published` notice that names the `keypin publish` command, and `status`
+  exits 0. `missing-receipt` stays a problem when this project published the key before but a destination has no
+  receipt (added later, or the receipt was lost), or when the destination's last receipt is from another project
+  and another item.
+- **9. `authority-unknown` appeared on every key.** It's gone, along with the row's `authority` field, which was
+  always `"unknown"`.
+
 ## Next
 
 ### 1. Without a terminal, `publish` and `rotate` stop before showing the evidence
@@ -87,17 +97,6 @@ user. `keypin publish --all` with one combined plan and one approval would cut t
 followed "check with `status`" missed a Worker without a required secret. Consider showing discover's cloud
 problems in `status` for registered projects, or a single `keypin doctor`.
 
-### 8. `missing-receipt` is a problem even before the first publish
-
-A correct new map exits 1 with a `missing-receipt` per destination, so a fresh setup looks broken. Distinguish
-"never published" (next step: publish) from "receipt lost" (something is wrong).
-
-### 9. `authority-unknown` appears on every key
-
-Every key gets "what this key grants is unknown, because keypin didn't create it", including one keypin just
-rotated. No doc says what to do about it. Agents called it noise. Drop it until there's an action, or show it
-once.
-
 ### 10. Rotation's admin token isn't checked
 
 `status` reads only each environment's item, not `issue.admin`, though `docs/rotation.md` says the admin item
@@ -111,7 +110,7 @@ can't, for secrets). The output should say "receipt matches", not imply the dest
 ## Smaller
 
 - "Generation" is never defined in the docs. Say it's a fingerprint of the value.
-- `status --json` fields such as `stale: null` and `authority` aren't documented.
+- `status --json` fields such as `stale: null` aren't documented.
 - `discover` doesn't say where the GitHub login came from (`github.account` or the repo owner).
 - Timestamps are UTC while `status`'s `today` is local, so "started today" can read as a different day.
 - Rotation stages (`issued`, `published`, …) aren't explained.

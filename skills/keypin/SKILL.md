@@ -17,7 +17,8 @@ from 1Password only while a command runs.
   rewrite it in the current format (see Configuration) and show the user the diff.
 - Check a project: `keypin status --json` for due dates and receipts, and `keypin discover` for the names
   each repo and Worker holds. `cloud unknown` means discover couldn't read it, not that the name is missing.
-  `status` exits 1 when it finds a problem; the JSON still prints.
+  `status` exits 1 when it finds a problem; the JSON still prints. Notices, such as `never-published`, exit 0
+  and name the next step.
 - Run with dev keys: `keypin run -- <command>`.
 - 1Password asks the user to approve each command. If a command waits, tell the user to approve it.
 - `publish` and `rotate` need a typed `yes` in a terminal, which you don't have. Run them without `--yes`:

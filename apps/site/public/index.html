@@ -66,29 +66,25 @@
       </section>
 
       <figure class="win" aria-label="Terminal output of keypin status">
-        <div class="bar">
-          <span>~/code/api: keypin status</span><span>exit 1 · 3 problems</span>
-        </div>
+        <div class="bar"><span>~/code/api: keypin status</span><span>exit 1 · 1 problem</span></div>
         <pre class="term"><span class="p">$ </span><span class="b">keypin status</span>
 <span class="d">keypin: reading rotated dates (no values) from 1Password account my.1password.com: op://App Secrets/api dev api token/credential, op://App Secrets/api prod api token/credential, op://App Secrets/web prod session secret/credential</span>
 <span class="d">KEY             ENV   FROM                                                 ROTATED     EVERY  DUE</span>
 <span class="b"># /Users/dev/code/api</span>
 <span class="b">API_TOKEN</span>       dev   op://App Secrets/api dev api token/credential        2026-08-01  180d   2027-01-28
 <span class="b">API_TOKEN</span>       prod  op://App Secrets/api prod api token/credential       2026-05-20  180d   <span class="y">2026-11-16</span>
-<span class="d">    -> </span>github-actions:acme/api:API_TOKEN<span class="d"> (account acme): </span><span class="r">no receipt</span>
-<span class="d">    -> </span>cloudflare-worker:api-edge:API_TOKEN<span class="d"> (account 3b1f0c9a7d2e4f6a8b5c1d0e9f7a6b4c): </span><span class="r">no receipt</span>
+<span class="d">    -> </span>github-actions:acme/api:API_TOKEN<span class="d"> (account acme): </span><span class="y">no receipt</span>
+<span class="d">    -> </span>cloudflare-worker:api-edge:API_TOKEN<span class="d"> (account 3b1f0c9a7d2e4f6a8b5c1d0e9f7a6b4c): </span><span class="y">no receipt</span>
 <span class="b"># /Users/dev/code/web</span>
 <span class="b">SESSION_SECRET</span>  prod  op://App Secrets/web prod session secret/credential  2026-08-02  90d    <span class="r">2026-10-31</span>
 <span class="d">    -> </span>cloudflare-worker:web:SESSION_SECRET<span class="d"> (account 3b1f0c9a7d2e4f6a8b5c1d0e9f7a6b4c): </span><span class="g">last published 2026-08-02T10:14:51.330Z by dev@acme.example, generation a5e3c8f1d7092b64</span>
 
-<span class="r b">Problems (3):</span>
-  <span class="r">missing-receipt</span>: API_TOKEN (prod): no receipt for github-actions:acme/api:API_TOKEN, so what it holds is unknown
-  <span class="r">missing-receipt</span>: API_TOKEN (prod): no receipt for cloudflare-worker:api-edge:API_TOKEN, so what it holds is unknown
+<span class="r b">Problems (1):</span>
   <span class="r">overdue</span>: SESSION_SECRET (prod): was due 2026-10-31 (rotated 2026-08-02, every 90d)
 
 <span class="y b">Notices (2):</span>
   <span class="y">due-soon</span>: API_TOKEN (prod): is due 2026-11-16 (rotated 2026-05-20, every 180d)
-  <span class="y">authority-unknown</span>: 2 keys (API_TOKEN, SESSION_SECRET): what each grants is unknown, because keypin didn't create it</pre>
+  <span class="y">never-published</span>: API_TOKEN (prod): not published yet to github-actions:acme/api:API_TOKEN, cloudflare-worker:api-edge:API_TOKEN; run keypin publish API_TOKEN</pre>
       </figure>
 
       <section id="how">

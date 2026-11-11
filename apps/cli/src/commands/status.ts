@@ -8,7 +8,6 @@ import {
   loadState,
   type MapResult,
   parseMap,
-  type Problem,
   type Status,
   type StatusRow,
   type VaultMetadata,
@@ -123,25 +122,10 @@ function render(result: Status, projects: number): string {
     ["problem", "Problems"],
     ["notice", "Notices"],
   ] as const) {
-    const found = shown(result.problems.filter((p) => p.severity === severity));
+    const found = result.problems.filter((p) => p.severity === severity);
     if (!found.length) continue;
     lines.push("", `${title} (${found.length}):`);
     for (const p of found) lines.push(`  ${p.kind}: ${p.message.replaceAll("\n", "\n    ")}`);
   }
   return `${lines.join("\n")}\n`;
-}
-
-function shown(problems: Problem[]): Pick<Problem, "kind" | "message">[] {
-  const unknown = problems.filter((p) => p.kind === "authority-unknown");
-  const rest = problems.filter((p) => p.kind !== "authority-unknown");
-  if (!unknown.length) return rest;
-  const keys = [...new Set(unknown.map((p) => p.keyId ?? p.project))];
-  const subject = keys.length === 1 ? "1 key" : `${keys.length} keys`;
-  return [
-    ...rest,
-    {
-      kind: "authority-unknown",
-      message: `${subject} (${keys.join(", ")}): what each grants is unknown, because keypin didn't create it`,
-    },
-  ];
 }

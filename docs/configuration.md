@@ -4,8 +4,7 @@ Each project has a `keypin.toml` at its root. It holds names and places, never v
 doesn't know, so a typo shows up as an error.
 
 A `keypin.toml` from keypin 0.4 (with `[vaults]`, `env`, `vault` and `item`) doesn't parse any more. Rewrite it in
-the format below. The first `publish` of each key afterwards asks for approval once, because its receipts name the
-old key ID.
+the format below.
 
 ## 1Password account
 

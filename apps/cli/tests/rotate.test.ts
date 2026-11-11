@@ -136,7 +136,7 @@ function fakeProvider(options: ProviderOptions = {}) {
   return { build, log, tokens, admins };
 }
 
-function writableVault(options: { failWrite?: boolean; rotateEvery?: string | null } = {}) {
+function writableVault(options: { failWrite?: boolean } = {}) {
   const values = new Map([
     [ITEM, OLD_VALUE],
     [ADMIN_ITEM, ADMIN_VALUE],
@@ -160,7 +160,7 @@ function writableVault(options: { failWrite?: boolean; rotateEvery?: string | nu
     },
     async metadata(ref) {
       calls.push(`metadata ${ref.item}`);
-      return { rotated: "2026-11-10", rotateEvery: options.rotateEvery ?? null };
+      return { rotated: "2026-11-10" };
     },
   };
   return { vault, calls, values };
@@ -290,20 +290,11 @@ describe("keypin rotate: the first run", () => {
     expect(run.leaked()).toBe(false);
   });
 
-  test("the expiry falls back to the item's rotate_every", async () => {
-    const run = await setup({
-      terminal: ["yes"],
-      map: MAP.replace(`rotate_every = "90d"\n`, ""),
-      vault: { rotateEvery: "30d" },
-    });
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(0);
-    expect(run.provider.log).toContain(`issue "cicd-keypin 2026-11-10" until 2026-12-24T23:59:59Z`);
-  });
-
-  test("without a rotation period it stops before making anything", async () => {
+  test("without a rotate_every in the map it stops before reading or making anything", async () => {
     const run = await setup({ terminal: ["yes"], map: MAP.replace(`rotate_every = "90d"\n`, "") });
     expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
-    expect(run.stderr.text).toContain("rotate_every is missing");
+    expect(run.stderr.text).toContain("keypin.toml has no rotate_every for this key");
+    expect(run.vault.calls).toEqual([]);
     expect(run.provider.log).toEqual([]);
   });
 

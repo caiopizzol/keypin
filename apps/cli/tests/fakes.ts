@@ -73,7 +73,7 @@ export function fakeVault(options: FakeVaultOptions = {}) {
     async metadata(ref) {
       calls.push(`metadata ${ref.item}`);
       fail(ref);
-      return options.metadata?.[ref.item] ?? { rotated: null, rotateEvery: null };
+      return options.metadata?.[ref.item] ?? { rotated: null };
     },
   };
   return { vault, calls };
@@ -243,6 +243,7 @@ vault = "Private"
 
 [keys.billing-stripe]
 env = "STRIPE_API_KEY"
+rotate_every = "365d"
 dev = { vault = "personal", item = "billing stripe api key" }
 prod = { vault = "personal", item = "billing stripe api key", publish = [
   { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
@@ -258,6 +259,7 @@ vault = "Private"
 
 [keys.web-session]
 env = "SESSION_SECRET"
+rotate_every = "180d"
 dev = { vault = "personal", item = "web dev session secret" }
 prod = { vault = "personal", item = "web prod session secret", publish = [
   { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "web" },

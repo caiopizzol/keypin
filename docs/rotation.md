@@ -25,7 +25,7 @@ The key also needs at least one destination and a `rotate_every` other than `nev
 - the account your keys live in;
 - a short expiry, such as 30 days.
 
-Store it in your vault as the `admin` item, with `rotated` and `rotate_every` like any other key. Only `rotate`
+Store it in your vault as the `admin` item, with a `rotated` date like any other key. Only `rotate`
 reads it. keypin never publishes it, and `run` never passes it on.
 
 ## First run: replace

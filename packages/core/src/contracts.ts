@@ -34,7 +34,6 @@ export interface VaultItem {
 
 export interface VaultMetadata {
   rotated: string | null;
-  rotateEvery: string | null;
 }
 
 export interface VaultBackend {

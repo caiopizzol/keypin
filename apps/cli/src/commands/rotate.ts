@@ -152,6 +152,14 @@ async function start(run: Run, data: Rotations): Promise<number> {
     );
     return 1;
   }
+  const every = key.rotateEvery;
+  const days = periodDays(every);
+  if (!days) {
+    say(
+      `Stopped: rotate needs a rotation period to set the new token's expiry, and ${every ? `rotate_every is "${every}"` : "keypin.toml has no rotate_every for this key"}. Nothing was changed.`,
+    );
+    return 1;
+  }
 
   const state = await loadState(deps.files, run.statePath);
   const checked = await checkAccounts(key, entry, deps, say);
@@ -171,27 +179,15 @@ async function start(run: Run, data: Rotations): Promise<number> {
     return NEEDS_APPROVAL;
   }
 
-  announce(deps.stderr, "the current value, its rotation fields and the admin token", [
-    entry.ref,
-    issue.admin,
-  ]);
+  announce(deps.stderr, "the current value and the admin token", [entry.ref, issue.admin]);
   const vault = deps.vault();
   let current: Secret;
   let admin: Secret;
-  let every: string | null;
   try {
     current = await vault.read(entry.ref);
-    every = key.rotateEvery ?? (await vault.metadata(entry.ref)).rotateEvery;
     admin = await vault.read(issue.admin);
   } catch (error) {
     say(`Stopped: ${messageOf(error)}. Nothing was changed.`);
-    return 1;
-  }
-  const days = periodDays(every);
-  if (!days) {
-    say(
-      `Stopped: rotate needs a rotation period to set the new token's expiry, and rotate_every is ${every ? `"${every}"` : "missing"}. Nothing was changed.`,
-    );
     return 1;
   }
 

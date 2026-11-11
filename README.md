@@ -64,6 +64,7 @@ vault = "Private"
 
 [keys.api-token]
 env = "API_TOKEN"
+rotate_every = "90d"
 
 [keys.api-token.dev] # read by keypin run
 vault = "personal"
@@ -78,8 +79,7 @@ to = "github-actions"
 repo = "me/my-project"
 ```
 
-In 1Password, each item holds the value in its `password` field, plus a `rotated` date and a `rotate_every` period
-such as `90d`. Now use it:
+In 1Password, each item holds the value in its `password` field, plus a `rotated` date. Now use it:
 
 ```sh
 keypin status               # every key, when it's due, and any problem

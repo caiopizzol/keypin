@@ -18,7 +18,7 @@ vault = "Private" # the vault's name in 1Password
 ```toml
 [keys.api-token] # the key ID: lowercase letters, digits and dashes
 env = "API_TOKEN" # the variable your program reads
-rotate_every = "180d" # optional; overrides the vault item's rotate_every
+rotate_every = "180d" # <n>d, <n>w, <n>m or never
 ```
 
 Two keys with a `dev` entry can't share an `env`, because `keypin run` would set the variable twice.
@@ -61,7 +61,6 @@ Each 1Password item needs:
 
 - **`password`:** the value.
 - **`rotated`:** a Date field, the day the value last changed.
-- **`rotate_every`:** a Text field: `<n>d`, `<n>w`, `<n>m` or `never`. A `rotate_every` in `keypin.toml` takes
-  precedence.
 
-`keypin status` uses the last two to show when each key is due.
+`keypin status` adds the key's `rotate_every` to `rotated` to show when it's due. Without a `rotate_every`, `status`
+reports the key as a problem, and `rotate` refuses to run.

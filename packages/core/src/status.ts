@@ -109,7 +109,7 @@ export function buildStatus(input: StatusInput): Status {
           });
 
         const metadata = input.metadata(entry.ref);
-        const rotateEvery = key.rotateEvery ?? metadata?.rotateEvery ?? null;
+        const rotateEvery = key.rotateEvery;
         const rotated = metadata?.rotated ?? null;
         const due = rotationDue({ label, metadata, rotated, rotateEvery, today: input.today, add });
 
@@ -193,7 +193,7 @@ function rotationDue(input: {
   if (!metadata) {
     add(
       "rotation-unreadable",
-      `${label}: the vault's rotation fields couldn't be read, so whether it's due is unknown`,
+      `${label}: the vault item's rotated date couldn't be read, so whether it's due is unknown`,
     );
     return null;
   }
@@ -208,7 +208,9 @@ function rotationDue(input: {
   if (days === undefined) {
     add(
       "bad-rotation-period",
-      `${label}: rotate_every is ${rotateEvery ? `"${rotateEvery}"` : "missing"}; use <n>d, <n>w, <n>m or never`,
+      rotateEvery
+        ? `${label}: rotate_every is "${rotateEvery}"; use <n>d, <n>w, <n>m or never`
+        : `${label}: keypin.toml has no rotate_every for this key; add one, such as "90d", or "never"`,
     );
     return null;
   }

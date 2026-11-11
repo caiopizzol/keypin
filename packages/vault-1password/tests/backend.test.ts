@@ -197,7 +197,7 @@ describe("write", () => {
 });
 
 describe("metadata", () => {
-  test("reads rotated and rotate_every only", async () => {
+  test("reads the rotated date only", async () => {
     const { client } = fake([
       item("demo dev token", [
         field("password", "Concealed", VALUE),
@@ -207,7 +207,7 @@ describe("metadata", () => {
       ]),
     ]);
     const metadata = await backendFor(client).backend.metadata(ref);
-    expect(metadata).toEqual({ rotated: "2026-11-09", rotateEvery: "365d" });
+    expect(metadata).toEqual({ rotated: "2026-11-09" });
     expect(JSON.stringify(metadata)).not.toContain(VALUE);
   });
 
@@ -216,26 +216,18 @@ describe("metadata", () => {
     const { client } = fake([
       item("demo dev token", [field("rotated", "Date", String(localMidnight))]),
     ]);
-    expect(await backendFor(client).backend.metadata(ref)).toEqual({
-      rotated: "2026-11-09",
-      rotateEvery: null,
-    });
+    expect(await backendFor(client).backend.metadata(ref)).toEqual({ rotated: "2026-11-09" });
   });
 
   test("gives null for missing fields", async () => {
     const { client } = fake([item("demo dev token", [field("password", "Concealed", VALUE)])]);
-    expect(await backendFor(client).backend.metadata(ref)).toEqual({
-      rotated: null,
-      rotateEvery: null,
-    });
+    expect(await backendFor(client).backend.metadata(ref)).toEqual({ rotated: null });
   });
 
   test("refuses a concealed rotation field without returning its value", async () => {
-    const { client } = fake([item("demo dev token", [field("rotate_every", "Concealed", VALUE)])]);
+    const { client } = fake([item("demo dev token", [field("rotated", "Concealed", VALUE)])]);
     const failure = backendFor(client).backend.metadata(ref);
-    await expect(failure).rejects.toThrow(
-      'field "rotate_every" is Concealed, expected Text or Date',
-    );
+    await expect(failure).rejects.toThrow('field "rotated" is Concealed, expected Text or Date');
     await expect(failure).rejects.not.toThrow(VALUE);
   });
 

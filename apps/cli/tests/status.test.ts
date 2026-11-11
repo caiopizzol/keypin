@@ -13,9 +13,9 @@ import {
 } from "./fakes";
 
 const METADATA = {
-  "web dev session secret": { rotated: "2026-11-09", rotateEvery: "365d" },
-  "web prod session secret": { rotated: "2026-11-09", rotateEvery: "180d" },
-  "billing stripe api key": { rotated: "2026-10-23", rotateEvery: "365d" },
+  "web dev session secret": { rotated: "2026-11-09" },
+  "web prod session secret": { rotated: "2026-11-09" },
+  "billing stripe api key": { rotated: "2026-10-23" },
 };
 
 function setup(options: { failing?: string[]; state?: string } = {}) {
@@ -34,7 +34,7 @@ describe("keypin status", () => {
     const { deps, stdout, stderr, calls } = setup();
     expect(await cli(["status"], deps)).toBe(1);
     expect(stdout.text).toMatch(
-      /web-session\s+dev\s+SESSION_SECRET\s+web dev session secret\s+2026-11-09\s+365d\s+2027-11-09/,
+      /web-session\s+dev\s+SESSION_SECRET\s+web dev session secret\s+2026-11-09\s+180d\s+2027-05-08/,
     );
     expect(stdout.text).toMatch(/web-session\s+prod.+2026-11-09\s+180d\s+2027-05-08/);
     expect(stdout.text).toMatch(/billing-stripe\s+prod.+2026-10-23\s+365d\s+2027-10-23/);
@@ -88,7 +88,7 @@ describe("keypin status", () => {
   test("a failing metadata read is rotation-unreadable, never nothing due", async () => {
     const { deps, stdout, stderr } = setup({ failing: ["billing stripe api key"] });
     expect(await cli(["status"], deps)).toBe(1);
-    expect(stdout.text).toMatch(/billing-stripe\s+prod.+\s-\s+-\s+unknown/);
+    expect(stdout.text).toMatch(/billing-stripe\s+prod.+\s-\s+365d\s+unknown/);
     expect(stdout.text.match(/rotation-unreadable/g)).toHaveLength(2);
     expect(stderr.text).toContain(`"billing stripe api key" isn't readable`);
   });
@@ -116,7 +116,7 @@ describe("keypin status", () => {
       rows: [
         { keyId: "billing-stripe", environment: "dev", due: "2027-10-23" },
         { keyId: "billing-stripe", environment: "prod", due: "2027-10-23" },
-        { keyId: "web-session", environment: "dev", due: "2027-11-09" },
+        { keyId: "web-session", environment: "dev", due: "2027-05-08" },
         { keyId: "web-session", environment: "prod", due: "2027-05-08" },
       ],
     });

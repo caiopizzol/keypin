@@ -1,7 +1,7 @@
 import type {
   Destination,
   Files,
-  IssueSpec,
+  RotateSpec,
   PublishTarget,
   Secret,
   StoreRead,
@@ -61,7 +61,7 @@ export interface Deps {
   launch: Launch;
   onSignals: OnSignals;
   destination(target: PublishTarget): Destination;
-  provider(issue: IssueSpec, admin: Secret): TokenProvider;
+  provider(spec: RotateSpec, admin: Secret): TokenProvider;
   lock: Lock;
   isTerminal: boolean;
   ask(question: string): Promise<string>;

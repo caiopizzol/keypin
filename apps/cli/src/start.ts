@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { createInterface } from "node:readline/promises";
-import type { Destination, IssueSpec, PublishTarget, Secret, VaultBackend } from "@keypin/core";
+import type { Destination, RotateSpec, PublishTarget, Secret, VaultBackend } from "@keypin/core";
 import {
   CloudflareReader,
   currentWranglerToken,
@@ -31,12 +31,12 @@ function destination(target: PublishTarget): Destination {
   }
 }
 
-function provider(issue: IssueSpec, admin: Secret) {
-  switch (issue.provider) {
+function provider(spec: RotateSpec, admin: Secret) {
+  switch (spec.provider) {
     case "cloudflare-account-token":
-      return new CloudflareAccountTokens({ account: issue.account, admin });
+      return new CloudflareAccountTokens({ account: spec.account, admin });
     default: {
-      const unknown: never = issue.provider;
+      const unknown: never = spec.provider;
       throw new Error(`unknown provider ${JSON.stringify(unknown)}`);
     }
   }

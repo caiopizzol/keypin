@@ -52,7 +52,7 @@ from = "${SOURCE}"
 to = "github-actions"
 repo = "acme/site"
 
-[keys.CLOUDFLARE_API_TOKEN.prod.issue]
+[keys.CLOUDFLARE_API_TOKEN.prod.rotate]
 provider = "cloudflare-account-token"
 account = "${ACCOUNT}"
 admin = "${ADMIN_SOURCE}"
@@ -89,7 +89,7 @@ function fakeProvider(options: ProviderOptions = {}) {
     [OLD_ID, { ...OLD_TOKEN, value: OLD_VALUE }],
   ]);
   const admins: string[] = [];
-  const build = (_issue: unknown, admin: Secret): TokenProvider => {
+  const build = (_spec: unknown, admin: Secret): TokenProvider => {
     admins.push(admin.reveal());
     return {
       describe: () => "fake",
@@ -347,13 +347,13 @@ describe("keypin rotate: the first run", () => {
     expect(run.vault.calls).toEqual([]);
   });
 
-  test("a key without an issue section is refused", async () => {
+  test("a key without a rotate section is refused", async () => {
     const run = await setup({
       terminal: ["yes"],
-      map: MAP.replace(/\[keys\.CLOUDFLARE_API_TOKEN\.prod\.issue\][^]*$/, ""),
+      map: MAP.replace(/\[keys\.CLOUDFLARE_API_TOKEN\.prod\.rotate\][^]*$/, ""),
     });
     expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
-    expect(run.stderr.text).toContain("has no [keys.CLOUDFLARE_API_TOKEN.prod.issue] section");
+    expect(run.stderr.text).toContain("has no [keys.CLOUDFLARE_API_TOKEN.prod.rotate] section");
   });
 
   test("an admin reference that reaches the key's own value, such as by item ID, stops before anything is made", async () => {

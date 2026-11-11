@@ -31,7 +31,7 @@ export {
   secretKey,
   validateMap,
   type EnvEntry,
-  type IssueSpec,
+  type RotateSpec,
   type KeyEntry,
   type KeysMap,
   type MapResult,

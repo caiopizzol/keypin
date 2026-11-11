@@ -38,4 +38,4 @@ Bounds: 2 new tokens, up to 3 destinations, one other key in the same `state.jso
 
 ## Sync
 
-Last confirmed against `21cbb7b7aa6f03c89af12a893f6ec0de946ae705`. When `check.sh` prints `NOTE`, covered code changed after that commit. Move the commit forward, in this file and in `check.sh`, only after you confirm the model describes the new code. A change can't name its own commit, so point at its parent and leave the `NOTE` until a later change moves it.
+Last confirmed against `4166181d2ba0c169992b87f9f6fb73f0bd56657e`. When `check.sh` prints `NOTE`, covered code changed after that commit. Move the commit forward, in this file and in `check.sh`, only after you confirm the model describes the new code. A change can't name its own commit, so point at its parent and leave the `NOTE` until a later change moves it.

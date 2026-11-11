@@ -13,6 +13,7 @@ import { cli } from "./cli";
 import { createFile, diskFiles, diskLock, git, isFolder, listFolder } from "./disk";
 import { installProblem } from "./install";
 import { launch, onSignals } from "./launch";
+import { selfCommand } from "./runtime";
 
 let vault: VaultBackend | undefined;
 let cloudflare: CloudflareReader | undefined;
@@ -59,7 +60,7 @@ async function ask(question: string): Promise<string> {
 export function main(): Promise<number> {
   return cli(process.argv.slice(2), {
     cwd: process.cwd(),
-    self: [process.argv[0] ?? "bun", ...process.execArgv, process.argv[1] ?? "keypin"],
+    self: selfCommand(process.argv[0] ?? "bun", process.argv[1] ?? "keypin"),
     env: process.env,
     home: homedir(),
     files: diskFiles,

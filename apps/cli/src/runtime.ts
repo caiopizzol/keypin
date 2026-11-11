@@ -2,6 +2,10 @@ export const MIN_BUN = "1.4.4";
 export const NO_ENV_FILE = "--no-env-file";
 const ENV_FILE = "--env-file";
 
+export function selfCommand(bun: string, script: string): string[] {
+  return [bun, NO_ENV_FILE, script];
+}
+
 export function runtimeProblem(
   bun: string | undefined,
   script: string,

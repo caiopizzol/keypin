@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { MIN_BUN, NO_ENV_FILE, runtimeProblem } from "../src/runtime";
+import { MIN_BUN, NO_ENV_FILE, runtimeProblem, selfCommand } from "../src/runtime";
 
 const FLAGS = [NO_ENV_FILE];
 
@@ -36,5 +36,13 @@ describe("runtimeProblem", () => {
         "keypin can't run with Bun's --env-file: Bun would add that file's values to every command keypin runs. Remove --env-file from the command and from BUN_OPTIONS.",
       );
     }
+  });
+
+  test("the command keypin prints to rerun itself keeps --no-env-file and no other Bun flag", () => {
+    expect(selfCommand("/opt/bun", "/usr/local/bin/keypin")).toEqual([
+      "/opt/bun",
+      NO_ENV_FILE,
+      "/usr/local/bin/keypin",
+    ]);
   });
 });

@@ -9,6 +9,7 @@ import {
   type EnvEntry,
   type Environment,
   envFlag,
+  formatReference,
   generationOf,
   type IssueSpec,
   type KeyEntry,
@@ -138,10 +139,10 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
 
 async function start(run: Run, data: Rotations): Promise<number> {
   const { key, entry, issue, environment, deps, say } = run;
-  say(`Rotating ${key.id} (${environment}) as ${key.env}, item "${entry.ref.item}"`);
-  say(`  vault: 1Password account ${entry.ref.account}, vault "${entry.ref.vault}"`);
+  say(`Rotating ${key.id} (${environment}) as ${key.env}, from ${formatReference(entry.ref)}`);
+  say(`  1Password account: ${entry.ref.account}`);
   say(
-    `  new token: ${issue.provider} in account ${issue.account}, made with the admin token in item "${issue.admin.item}"`,
+    `  new token: ${issue.provider} in account ${issue.account}, made with the admin token in ${formatReference(issue.admin)}`,
   );
   for (const target of entry.publish) say(`  to: ${describeTarget(target, key.env)}`);
   if (!entry.publish.length) {
@@ -188,6 +189,12 @@ async function start(run: Run, data: Rotations): Promise<number> {
     say(`Stopped: ${messageOf(error)}. Nothing was changed.`);
     return 1;
   }
+  if (current.reveal() === admin.reveal()) {
+    say(
+      `Stopped: ${formatReference(issue.admin)} holds the same value as ${formatReference(entry.ref)}. The admin token needs its own field, or rotating would overwrite it. Nothing was changed.`,
+    );
+    return 1;
+  }
 
   const provider = deps.provider(issue, admin);
   const found = await provider.verify(current);
@@ -216,7 +223,7 @@ async function start(run: Run, data: Rotations): Promise<number> {
     `  new token: "${name}", expires ${expiresOn} (rotate_every ${every} plus ${GRACE_DAYS} days' grace)`,
   );
   for (const line of describeAccess(old)) say(`    ${line}`);
-  say(`  store in: item "${entry.ref.item}", with rotated ${today}`);
+  say(`  store in: ${formatReference(entry.ref)}, with rotated ${today}`);
   for (const target of entry.publish) {
     const found = checked.get(destinationId(target, key.env));
     say(`  publish to: ${describeTarget(target, key.env)}`);
@@ -275,7 +282,7 @@ async function start(run: Run, data: Rotations): Promise<number> {
   }
   say(`  checked: ${made.token.id} is active and has the same policies as ${old.id}`);
 
-  say(`keypin: writing the new value to item "${entry.ref.item}", with rotated ${today}`);
+  say(`keypin: writing the new value to ${formatReference(entry.ref)}, with rotated ${today}`);
   try {
     await vault.write(entry.ref, made.value, { rotated: today });
     const stored = await generationOf(await vault.read(entry.ref));
@@ -330,7 +337,7 @@ async function publishNew(
     const generation = await generationOf(value);
     if (generation !== rotation.new.generation) {
       say(
-        `Stopped: item "${entry.ref.item}" holds generation ${generation}, not the rotation's ${rotation.new.generation}. Something else changed it. Nothing was written.`,
+        `Stopped: ${formatReference(entry.ref)} holds generation ${generation}, not the rotation's ${rotation.new.generation}. Something else changed it. Nothing was written.`,
       );
       return 1;
     }
@@ -440,7 +447,7 @@ async function revokeOld(run: Run, data: Rotations, rotation: Rotation): Promise
   const holds = await generationOf(await deps.vault().read(run.entry.ref));
   if (holds !== generation) {
     say(
-      `Stopped: item "${run.entry.ref.item}" holds generation ${holds}, not the new ${generation}. Something else changed it, and revoking would leave it with a dead token. Nothing was revoked.`,
+      `Stopped: ${formatReference(run.entry.ref)} holds generation ${holds}, not the new ${generation}. Something else changed it, and revoking would leave it with a dead token. Nothing was revoked.`,
     );
     return 1;
   }
@@ -493,12 +500,12 @@ async function abandon(run: Run, data: Rotations, rotation: Rotation): Promise<n
       };
       const next = putRotation(data, stored);
       await saveRotations(deps.files, run.rotationsPath, next);
-      say(`Item "${entry.ref.item}" already holds the new value (generation ${holds}).`);
+      say(`${formatReference(entry.ref)} already holds the new value (generation ${holds}).`);
       return publishNew(run, next, stored, null);
     }
     if (holds !== rotation.old.generation) {
       say(
-        `Stopped: item "${entry.ref.item}" holds generation ${holds}, neither the old ${rotation.old.generation} nor the new ${rotation.new.generation}. Something else changed it. Nothing was changed.`,
+        `Stopped: ${formatReference(entry.ref)} holds generation ${holds}, neither the old ${rotation.old.generation} nor the new ${rotation.new.generation}. Something else changed it. Nothing was changed.`,
       );
       return 1;
     }
@@ -508,7 +515,7 @@ async function abandon(run: Run, data: Rotations, rotation: Rotation): Promise<n
     const holders = holdersOf(state.receipts, rotation.new.generation);
     if (holders.length) {
       say(
-        `Stopped: the new token ${rotation.new.id} was published, so keypin won't delete it. Nothing was changed. Either put the new value back in item "${entry.ref.item}" and run ${again(run)} again to finish, or publish the old value to each destination that has the new one:`,
+        `Stopped: the new token ${rotation.new.id} was published, so keypin won't delete it. Nothing was changed. Either put the new value back in ${formatReference(entry.ref)} and run ${again(run)} again to finish, or publish the old value to each destination that has the new one:`,
       );
       const owners = await listedOwners(run);
       if (owners === null) return 1;

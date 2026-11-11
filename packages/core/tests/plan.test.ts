@@ -143,6 +143,8 @@ const OTHER_ITEM = {
   account: "my.1password.com",
   vault: "Private",
   item: "cloudflare admin token",
+  section: null,
+  field: "password",
 } as const;
 
 test("a destination last published from another item needs approval, even with the same generation", () => {
@@ -157,7 +159,7 @@ test("a destination last published from another item needs approval, even with t
       action: "write",
       destinationId: WORKER,
       reason: "item changed",
-      approval: `${WORKER} was last published from item "cloudflare admin token" (1Password account my.1password.com, vault "Private"), and now from item "billing stripe api key" (1Password account my.1password.com, vault "Private")`,
+      approval: `${WORKER} was last published from op://Private/cloudflare admin token/password (1Password account my.1password.com), and now from op://Private/billing stripe api key/password (1Password account my.1password.com)`,
     });
     expect(plan.needsApproval).toBe(true);
   }
@@ -265,6 +267,8 @@ test("an organization repo published by another login compares the pin, not the 
           account: "a",
           vault: "v",
           item: "i",
+          section: null,
+          field: "password",
         },
         publish: [{ to: "github-actions" as const, repo: "acme/billing", account: "alice" }],
       },

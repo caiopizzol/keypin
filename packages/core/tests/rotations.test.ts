@@ -16,7 +16,14 @@ const rotation = (overrides: Partial<Rotation> = {}): Rotation => ({
   id: "r1",
   keyId: "site-deploy",
   environment: "prod",
-  item: { kind: "1password", account: "my.1password.com", vault: "Private", item: "site token" },
+  item: {
+    kind: "1password",
+    account: "my.1password.com",
+    vault: "Private",
+    item: "site token",
+    section: null,
+    field: "password",
+  },
   provider: "cloudflare-account-token",
   account: "11111111111111111111111111111111",
   stage: "issued",
@@ -39,6 +46,14 @@ describe("rotations file", () => {
     expect(await loadRotations(disk.files, PATH)).toEqual(data);
   });
 
+  test("an item saved before references named a field reads as the password field", async () => {
+    const { section: _section, field: _field, ...before } = rotation().item;
+    const disk = fakeFiles({
+      [PATH]: JSON.stringify({ version: 1, rotations: [{ ...rotation(), item: before }] }),
+    });
+    expect((await loadRotations(disk.files, PATH)).rotations[0]?.item).toEqual(rotation().item);
+  });
+
   test("refuses another version and a malformed rotation", async () => {
     const disk = fakeFiles({
       [PATH]: JSON.stringify({ version: 2, rotations: [] }),
@@ -56,7 +71,12 @@ describe("rotations file", () => {
     const dev = rotation({ id: "r2", environment: "dev" });
     const elsewhere = rotation({
       id: "r3",
-      item: { ...rotation().item, item: "another project's token" },
+      item: {
+        ...rotation().item,
+        item: "another project's token",
+        section: null,
+        field: "password",
+      },
     });
     const data = [done, open, dev, elsewhere].reduce(putRotation, emptyRotations());
     const item = rotation().item;

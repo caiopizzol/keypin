@@ -46,6 +46,20 @@ describe("state", () => {
     expect(await loadState(fake.files, STATE)).toEqual(before);
   });
 
+  test("a source saved before references named a field reads as the password field", async () => {
+    const saved = receipt(WORKER, "aaaaaaaaaaaaaaaa");
+    assert(saved.source);
+    const { section: _section, field: _field, ...before } = saved.source;
+    const fake = fakeFiles({
+      [STATE]: JSON.stringify({
+        version: 2,
+        receipts: [{ ...saved, source: before }],
+        operations: [],
+      }),
+    });
+    expect((await loadState(fake.files, STATE)).receipts[0]?.source).toEqual(saved.source);
+  });
+
   test("another schema version gives a clear error", async () => {
     const fake = fakeFiles({
       [STATE]: JSON.stringify({ version: 3, receipts: [], operations: [] }),

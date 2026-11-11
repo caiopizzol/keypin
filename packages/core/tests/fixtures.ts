@@ -3,16 +3,14 @@ import type { Files, KeyEntry, Receipt } from "../src/index";
 export const MAP_FILE = "/work/web/keypin.toml";
 
 export const VALID_MAP = `
-[vaults."1password"]       # quoted: Bun 1.3 can't parse a bare key starting with a digit
-kind = "1password"
+[1password]
 account = "my.1password.com"
-vault = "Private"
 
 [keys.web-session]          # stable key ID, independent of vault item names
 env = "SESSION_SECRET"
 rotate_every = "180d"
-dev  = { vault = "1password", item = "web dev session secret" }
-prod = { vault = "1password", item = "web prod session secret", publish = [
+dev  = "op://Private/web dev session secret/password"
+prod = { from = "op://Private/web prod session secret/password", publish = [
   { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "web" },
   { to = "github-actions", repo = "acme/web" },
 ] }
@@ -29,6 +27,8 @@ export const KEY: KeyEntry = {
         account: "my.1password.com",
         vault: "Private",
         item: "billing stripe api key",
+        section: null,
+        field: "password",
       },
       publish: [
         {

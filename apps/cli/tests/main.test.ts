@@ -6,10 +6,8 @@ import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { NO_ENV_FILE } from "../src/runtime";
 
 const MAIN = fileURLToPath(new URL("../src/main.ts", import.meta.url));
-const MAP = `[vaults.personal]
-kind = "1password"
+const MAP = `[1password]
 account = "my.1password.com"
-vault = "Private"
 `;
 
 let folder = "";

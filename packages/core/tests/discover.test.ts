@@ -366,7 +366,7 @@ describe("buildDiscovery", () => {
 
   test("a mapped name that is only a var stays a plain variable", () => {
     const parsed = parseMap(
-      `[vaults.p]\nkind = "1password"\naccount = "a"\nvault = "v"\n[keys.region]\nenv = "REGION"\ndev = { vault = "p", item = "i" }\n`,
+      `[1password]\naccount = "a"\n[keys.region]\nenv = "REGION"\ndev = "op://v/i/password"\n`,
       "keypin.toml",
     );
     assert(parsed.ok);
@@ -391,14 +391,12 @@ describe("buildDiscovery", () => {
 
   test("marks names the project's map already has", () => {
     const parsed = parseMap(
-      `[vaults.personal]
-kind = "1password"
+      `[1password]
 account = "my.1password.com"
-vault = "App Secrets"
 
 [keys.billing-stripe]
 env = "STRIPE_KEY"
-dev = { vault = "personal", item = "billing dev stripe key" }
+dev = "op://App Secrets/billing dev stripe key/password"
 `,
       "keypin.toml",
     );
@@ -458,12 +456,12 @@ describe("draftMap", () => {
     const draft = draftMap(discovery.names, {
       project: "billing",
       githubAccount: "me",
-      vault: null,
+      map: null,
       takenIds: ["stripe-key"],
       environments: DEFAULT_ENVIRONMENTS,
     });
     assert(draft !== null);
-    expect(draft).toContain("# Fill in the vault");
+    expect(draft).toContain("# Fill in your account and vault");
     const parsed = parseMap(draft, "draft");
     assert(parsed.ok, JSON.stringify(parsed));
     const keys = Object.fromEntries(parsed.map.keys.map((k) => [k.env, k]));
@@ -482,7 +480,7 @@ describe("draftMap", () => {
     const draft = draftMap(discovery.names, {
       project: "billing",
       githubAccount: "acme",
-      vault: { name: "work", account: "my.1password.com", vault: "App Secrets" },
+      map: { account: "my.1password.com", vault: "App Secrets" },
       takenIds: [],
       environments: DEFAULT_ENVIRONMENTS,
     });
@@ -496,16 +494,18 @@ describe("draftMap", () => {
       account: "my.1password.com",
       vault: "App Secrets",
       item: "billing prod stripe key",
+      section: null,
+      field: "password",
     });
     expect(draft).not.toContain('account = "acme"');
   });
 
-  test("quotes a vault alias that isn't a bare TOML key", () => {
-    for (const name of ["App Secrets", "team.prod"]) {
+  test("a vault name with spaces or dots stays in the op:// reference", () => {
+    for (const vault of ["App Secrets", "team.prod"]) {
       const draft = draftMap(discovery.names, {
         project: "billing",
         githubAccount: null,
-        vault: { name, account: "my.1password.com", vault: "App Secrets" },
+        map: { account: "my.1password.com", vault },
         takenIds: [],
         environments: DEFAULT_ENVIRONMENTS,
       });
@@ -515,8 +515,40 @@ describe("draftMap", () => {
       const refs = parsed.map.keys.flatMap((k) =>
         Object.values(k.environments).flatMap((e) => (e ? [e.ref.vault] : [])),
       );
-      expect(new Set(refs)).toEqual(new Set(["App Secrets"]));
+      expect(new Set(refs)).toEqual(new Set([vault]));
     }
+  });
+
+  test("keeps the map's account when it has no keys yet, with a vault placeholder", () => {
+    const draft = draftMap(discovery.names, {
+      project: "billing",
+      githubAccount: null,
+      map: { account: "my.1password.com", vault: null },
+      takenIds: [],
+      environments: DEFAULT_ENVIRONMENTS,
+    });
+    assert(draft !== null);
+    expect(draft).toContain('account = "my.1password.com"');
+    expect(draft).toContain("# Fill in the vault, then copy only the [keys.*] tables");
+    expect(draft).toContain('"op://<your vault>/billing prod stripe key/password"');
+  });
+
+  test("a folder name with characters a reference can't hold still drafts a map that parses", () => {
+    const draft = draftMap(discovery.names, {
+      project: "app#2?/x",
+      githubAccount: null,
+      map: null,
+      takenIds: [],
+      environments: DEFAULT_ENVIRONMENTS,
+    });
+    assert(draft !== null);
+    const parsed = parseMap(draft, "draft");
+    assert(parsed.ok, JSON.stringify(parsed));
+    const items = parsed.map.keys.flatMap((k) =>
+      Object.values(k.environments).flatMap((e) => (e ? [e.ref.item] : [])),
+    );
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) expect(item).toMatch(/^app-2--x (dev|prod) /);
   });
 
   test("has nothing to draft when every set name is mapped", () => {
@@ -525,7 +557,7 @@ describe("draftMap", () => {
       draftMap(mapped, {
         project: "o",
         githubAccount: null,
-        vault: null,
+        map: null,
         takenIds: [],
         environments: DEFAULT_ENVIRONMENTS,
       }),

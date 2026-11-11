@@ -6,6 +6,7 @@ import {
   receiptSecretKey,
   secretKey,
 } from "./map";
+import { formatReference, sameRef } from "./reference";
 import type { Generation } from "./secret";
 
 export type ApprovalReason = "no receipt" | "new destination" | "account changed" | "item changed";
@@ -159,10 +160,6 @@ export function latestPerSecret(receipts: readonly Receipt[]): Receipt[] {
   return [...latest.values()];
 }
 
-export function sameRef(a: KeyRef, b: KeyRef): boolean {
-  return a.kind === b.kind && a.account === b.account && a.vault === b.vault && a.item === b.item;
-}
-
 function describeRef(ref: KeyRef): string {
-  return `item "${ref.item}" (1Password account ${ref.account}, vault "${ref.vault}")`;
+  return `${formatReference(ref)} (1Password account ${ref.account})`;
 }

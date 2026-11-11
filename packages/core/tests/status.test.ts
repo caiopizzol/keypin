@@ -24,6 +24,7 @@ function status(rotation: Rotation | null, overrides: Partial<StatusInput> = {})
     ok: true,
     map: {
       file: `${PROJECT}/keypin.toml`,
+      account: "my.1password.com",
       environments: ["dev", "prod"],
       keys: [{ ...KEY, rotateEvery }],
     },
@@ -55,7 +56,14 @@ describe("receipts in status follow the destination, like publish", () => {
   });
 
   test("another key's receipt from another item doesn't count", () => {
-    const other = { kind: "1password", account: "a", vault: "v", item: "x" } as const;
+    const other = {
+      kind: "1password",
+      account: "a",
+      vault: "v",
+      item: "x",
+      section: null,
+      field: "password",
+    } as const;
     const result = status(rotation, {
       receipts: [
         receipt(WORKER, "aaaaaaaaaaaaaaaa"),
@@ -167,6 +175,7 @@ describe("status", () => {
       ok: true,
       map: {
         file: "keypin.toml",
+        account: "my.1password.com",
         environments: ["dev", "prod"],
         keys: [{ ...KEY, rotateEvery: null }],
       },

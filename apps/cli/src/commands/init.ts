@@ -8,25 +8,19 @@ import { MAP_FILE } from "../project";
 export const TEMPLATE = `# keypin.toml: this project's keys. It holds names and places, never values.
 # Uncomment and edit. Every field is checked; an unknown one is an error.
 #
-# A 1Password vault the keys below read from. The name ("personal") is yours to choose.
-# [vaults.personal]
+# The 1Password account the keys below read from: its sign-in address or account ID.
+# [1password]
 # account = "my.1password.com"
-# vault = "Private"
 #
 # A key. Its ID ("example-api-key") stays the same when vault items are renamed.
 # [keys.example-api-key]
 # env = "EXAMPLE_API_KEY" # the variable your program reads
 # rotate_every = "180d" # <n>d, <n>w, <n>m or never
+# dev = "op://Private/my-project dev example api key/password" # what keypin run reads
 #
-# Where keypin run reads the value from.
-# [keys.example-api-key.dev]
-# vault = "personal"
-# item = "my-project dev example api key"
-#
-# Where keypin publish reads it from, and every place it writes it.
+# What keypin publish reads, and every place it writes it.
 # [keys.example-api-key.prod]
-# vault = "personal"
-# item = "my-project prod example api key"
+# from = "op://Private/my-project prod example api key/password"
 #
 # [[keys.example-api-key.prod.publish]]
 # to = "cloudflare-worker"

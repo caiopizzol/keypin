@@ -217,21 +217,20 @@ describe("keypin discover", () => {
   test("marks mapped names and drafts only the rest, with the map's vault", async () => {
     const { deps, stdout } = setup({
       files: {
-        [`${ROOT}/keypin.toml`]: `[vaults.work]
-kind = "1password"
+        [`${ROOT}/keypin.toml`]: `[1password]
 account = "my.1password.com"
-vault = "App Secrets"
 
 [keys.stripe-key]
 env = "STRIPE_KEY"
-dev = { vault = "work", item = "billing dev stripe" }
+dev = "op://App Secrets/billing dev stripe/password"
 `,
       },
     });
     expect(await cli(["discover"], deps)).toBe(0);
     expect(stdout.text).toMatch(/STRIPE_KEY {2}\[local and cloud, mapped\]/);
     const draft = stdout.text.slice(stdout.text.indexOf("# Draft from keypin discover"));
-    expect(draft).toContain("[vaults.work]");
+    expect(draft).toContain(`[1password]\naccount = "my.1password.com"`);
+    expect(draft).toContain(`"op://App Secrets/billing `);
     expect(draft).not.toContain('env = "STRIPE_KEY"');
     const parsed = parseMap(draft, "draft");
     assert(parsed.ok, JSON.stringify(parsed));
@@ -245,10 +244,8 @@ dev = { vault = "work", item = "billing dev stripe" }
   test("drafts use the map's declared environments, so its key tables copy into that map", async () => {
     const map = `environments = ["local", "production"]
 
-[vaults.work]
-kind = "1password"
+[1password]
 account = "my.1password.com"
-vault = "App Secrets"
 `;
     const { deps, stdout } = setup({ files: { [`${ROOT}/keypin.toml`]: map } });
     expect(await cli(["discover"], deps)).toBe(0);
@@ -336,12 +333,13 @@ vault = "App Secrets"
   test("an invalid keypin.toml falls back to the placeholder vault in the draft", async () => {
     const { deps, stdout } = setup({
       files: {
-        [`${ROOT}/keypin.toml`]: `[vaults."App Secrets"]\nkind = "1password"\naccount = "a"\nvault = "v"\n[keys.Bad_Id]\nenv = "X"\n`,
+        [`${ROOT}/keypin.toml`]: `[1password]\naccount = "a"\n[keys.Bad_Id]\nenv = "X"\n`,
       },
     });
     expect(await cli(["discover"], deps)).toBe(0);
     const draft = stdout.text.slice(stdout.text.indexOf("# Draft from keypin discover"));
-    expect(draft).toContain("[vaults.personal]");
+    expect(draft).toContain(`account = "<your 1Password account>"`);
+    expect(draft).toContain(`"op://<your vault>/billing `);
     assert(parseMap(draft, "draft").ok);
   });
 

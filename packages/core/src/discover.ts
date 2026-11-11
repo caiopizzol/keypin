@@ -1,3 +1,4 @@
+import { formatReference } from "./reference";
 import { TOML } from "bun";
 import type { Environment } from "./contracts";
 import { DEFAULT_ENVIRONMENTS } from "./contracts";
@@ -444,16 +445,10 @@ function workerLabel(worker: WorkerDeclaration): string {
     : `${name} (${worker.config})`;
 }
 
-export interface DraftVault {
-  name: string;
-  account: string;
-  vault: string;
-}
-
 export interface DraftOptions {
   project: string;
   githubAccount: string | null;
-  vault: DraftVault | null;
+  map: { account: string | null; vault: string | null } | null;
   takenIds: readonly string[];
   environments: readonly Environment[];
 }
@@ -463,11 +458,17 @@ export function draftMap(names: readonly NameRow[], options: DraftOptions): stri
   const taken = new Set(options.takenIds);
   const runName = runEnvironment(options);
   const publishName = publishEnvironment(options);
-  const vault = options.vault ?? {
-    name: "personal",
-    account: "<your 1Password account>",
-    vault: "<your vault>",
-  };
+  const vault = options.map?.vault ?? "<your vault>";
+  const project = options.project.replace(/[^A-Za-z0-9 ._-]/g, "-");
+  const from = (environment: string, what: string) =>
+    str(
+      formatReference({
+        vault,
+        item: `${project} ${environment} ${what}`,
+        section: null,
+        field: "password",
+      }),
+    );
   for (const row of names) {
     if (row.mapped.length) continue;
     const local = row.sources.some((s) => s.kind === "env-file");
@@ -503,40 +504,32 @@ export function draftMap(names: readonly NameRow[], options: DraftOptions): stri
 
     const id = freeId(keyIdFor(row.name), taken);
     const what = row.name.toLowerCase().replaceAll("_", " ").trim();
-    lines.push("", `[keys.${id}]`, `env = ${str(row.name)}`);
+    lines.push("", `[keys.${id}]`, `env = ${str(row.name)}`, `rotate_every = "90d"`);
     if (local && !(publish.length && runName === publishName)) {
-      lines.push(
-        "",
-        `[keys.${id}.${runName}]`,
-        `vault = ${str(vault.name)}`,
-        `item = ${str(`${options.project} ${runName} ${what}`)}`,
-      );
+      lines.push(`${runName} = ${from(runName, what)}`);
     }
     if (publish.length) {
-      lines.push(
-        "",
-        `[keys.${id}.${publishName}]`,
-        `vault = ${str(vault.name)}`,
-        `item = ${str(`${options.project} ${publishName} ${what}`)}`,
-      );
+      lines.push("", `[keys.${id}.${publishName}]`, `from = ${from(publishName, what)}`);
       for (const target of publish) {
         lines.push("", `[[keys.${id}.${publishName}.publish]]`, ...target);
       }
     }
   }
   if (!lines.length) return null;
+  const account = options.map?.account ?? "<your 1Password account>";
   const header = [
-    "# Draft from keypin discover; nothing was written. Vault item names are placeholders.",
-    options.vault
-      ? "# The vault is the one in this project's keypin.toml; copy only the [keys.*] tables."
-      : "# Fill in the vault, then save this as keypin.toml.",
+    "# Draft from keypin discover; nothing was written. The op:// references are placeholders.",
+    !options.map?.account
+      ? "# Fill in your account and vault, then save this as keypin.toml."
+      : options.map.vault === null
+        ? "# Fill in the vault, then copy only the [keys.*] tables into this project's keypin.toml."
+        : "# The vault is the one this project's keypin.toml uses; copy only the [keys.*] tables.",
     ...(options.environments.join() === DEFAULT_ENVIRONMENTS.join()
       ? []
       : ["", `environments = [${options.environments.map(str).join(", ")}]`]),
     "",
-    `[vaults.${/^[A-Za-z_][A-Za-z0-9_-]*$/.test(vault.name) ? vault.name : str(vault.name)}]`,
-    `account = ${str(vault.account)}`,
-    `vault = ${str(vault.vault)}`,
+    "[1password]",
+    `account = ${str(account)}`,
   ];
   return `${[...header, ...lines].join("\n")}\n`;
 }

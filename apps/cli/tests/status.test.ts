@@ -34,7 +34,7 @@ describe("keypin status", () => {
     const { deps, stdout, stderr, calls } = setup();
     expect(await cli(["status"], deps)).toBe(1);
     expect(stdout.text).toMatch(
-      /web-session\s+dev\s+SESSION_SECRET\s+web dev session secret\s+2026-11-09\s+180d\s+2027-05-08/,
+      /web-session\s+dev\s+SESSION_SECRET\s+op:\/\/Private\/web dev session secret\/password\s+2026-11-09\s+180d\s+2027-05-08/,
     );
     expect(stdout.text).toMatch(/web-session\s+prod.+2026-11-09\s+180d\s+2027-05-08/);
     expect(stdout.text).toMatch(/billing-stripe\s+prod.+2026-10-23\s+365d\s+2027-10-23/);
@@ -53,8 +53,10 @@ describe("keypin status", () => {
       "metadata web dev session secret",
       "metadata web prod session secret",
     ]);
-    expect(stderr.text).toContain(`1Password account my.1password.com, vault "Private"`);
-    expect(stderr.text).toContain(`"web prod session secret"`);
+    expect(stderr.text).toContain(
+      "from 1Password account my.1password.com: op://Private/billing stripe api key/password,",
+    );
+    expect(stderr.text).toContain("op://Private/web prod session secret/password");
   });
 
   test("shows a destination's last receipt", async () => {
@@ -195,6 +197,8 @@ describe("keypin status: rotations", () => {
               account: "my.1password.com",
               vault: "Private",
               item: "web prod session secret",
+              section: null,
+              field: "password",
             },
             provider: "cloudflare-account-token",
             account: "11111111111111111111111111111111",

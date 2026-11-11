@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { parseArgs } from "node:util";
 import {
   buildStatus,
+  formatReference,
   loadRegistry,
   loadRotations,
   loadState,
@@ -83,12 +84,12 @@ export async function status(args: string[], deps: Deps): Promise<number> {
 function render(result: Status, projects: number): string {
   if (!projects) return `No projects registered. Run "keypin init" in a project folder.\n`;
   const lines: string[] = [];
-  const header = ["KEY", "ENV", "VARIABLE", "ITEM", "ROTATED", "EVERY", "DUE"];
+  const header = ["KEY", "ENV", "VARIABLE", "FROM", "ROTATED", "EVERY", "DUE"];
   const cells = (row: StatusRow) => [
     row.keyId,
     row.environment,
     row.env,
-    row.ref.item,
+    formatReference(row.ref),
     row.rotated ?? "-",
     row.rotateEvery ?? "-",
     row.due ?? (row.rotateEvery === "never" ? "never" : "unknown"),

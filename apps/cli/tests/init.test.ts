@@ -4,7 +4,13 @@ import { cli } from "../src/cli";
 import { TEMPLATE } from "../src/commands/init";
 import { fakeDeps, REGISTRY } from "./fakes";
 
-const VAULT = { kind: "1password", account: "my.1password.com", vault: "Private" };
+const VAULT = {
+  kind: "1password",
+  account: "my.1password.com",
+  vault: "Private",
+  section: null,
+  field: "password",
+};
 const CLOUDFLARE_ACCOUNT = "11111111111111111111111111111111";
 
 function uncomment(template: string): string {
@@ -27,7 +33,7 @@ describe("keypin init", () => {
     expect(TEMPLATE.split("\n").every((line) => line === "" || line.startsWith("#"))).toBe(true);
     expect(parseMap(TEMPLATE, "keypin.toml")).toEqual({
       ok: true,
-      map: { file: "keypin.toml", environments: ["dev", "prod"], keys: [] },
+      map: { file: "keypin.toml", account: null, environments: ["dev", "prod"], keys: [] },
     });
   });
 
@@ -50,9 +56,22 @@ describe("keypin init", () => {
         env: "EXAMPLE_API_KEY",
         rotateEvery: "180d",
         environments: {
-          dev: { ref: { ...VAULT, item: "my-project dev example api key" }, publish: [] },
+          dev: {
+            ref: {
+              ...VAULT,
+              item: "my-project dev example api key",
+              section: null,
+              field: "password",
+            },
+            publish: [],
+          },
           prod: {
-            ref: { ...VAULT, item: "my-project prod example api key" },
+            ref: {
+              ...VAULT,
+              item: "my-project prod example api key",
+              section: null,
+              field: "password",
+            },
             publish: [
               {
                 to: "cloudflare-worker",

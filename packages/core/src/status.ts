@@ -6,7 +6,8 @@ import {
   receiptSecretKey,
   secretKey,
 } from "./map";
-import { latestPerSecret, sameRef } from "./plan";
+import { latestPerSecret } from "./plan";
+import { sameRef } from "./reference";
 import type { Registry } from "./registry";
 import { type Rotation, rotateCommand, unfinishedRotation } from "./rotations";
 import { addDays, DUE_SOON_DAYS, isDay, periodDays } from "./rotation";

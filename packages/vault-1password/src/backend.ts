@@ -1,5 +1,5 @@
 import type { KeyRef, VaultBackend, VaultItem, VaultMetadata, VaultScope } from "@keypin/core";
-import { isDay, Secret } from "@keypin/core";
+import { formatReference, isDay, Secret } from "@keypin/core";
 import type { Connect, Field, FullItem, SdkClient } from "./sdk";
 import { desktopConnect } from "./sdk";
 
@@ -25,7 +25,7 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
   }
 
   async function vaultId(sdk: SdkClient, scope: VaultScope): Promise<string> {
-    const matches = (await sdk.vaults.list()).filter((vault) => vault.title === scope.vault);
+    const matches = named(await sdk.vaults.list(), scope.vault);
     const [match] = matches;
     if (!match) {
       throw new Error(`1Password account "${scope.account}" has no vault "${scope.vault}"`);
@@ -39,7 +39,7 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
   }
 
   async function find(sdk: SdkClient, id: string, ref: KeyRef): Promise<{ id: string } | null> {
-    const matches = (await sdk.items.list(id)).filter((item) => item.title === ref.item);
+    const matches = named(await sdk.items.list(id), ref.item);
     if (matches.length > 1)
       throw new Error(`${where(ref)}: ${matches.length} items have this name`);
     return matches[0] ?? null;
@@ -58,9 +58,7 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
 
     async read(ref) {
       const item = await get(ref);
-      const field = valueField(item.fields);
-      if (!field) throw new Error(`${where(ref)}: no "${VALUE_FIELD}" field`);
-      return new Secret(field.value);
+      return new Secret(valueField(item, ref).value);
     },
 
     async write(ref, secret, options = {}) {
@@ -75,6 +73,9 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
       const found = await find(sdk, id, ref);
 
       if (!found) {
+        if (ref.field !== VALUE_FIELD || ref.section !== null) {
+          throw new Error(`${where(ref)}: no such item; create it in 1Password first`);
+        }
         const fields = [passwordField(secret)];
         if (rotated) fields.push(rotatedField(rotated));
         await sdk.items.create({
@@ -88,9 +89,8 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
 
       const item = await sdk.items.get(id, found.id);
       const fields = [...item.fields];
-      const value = valueField(fields);
-      if (value) fields[fields.indexOf(value)] = { ...value, value: secret.reveal() };
-      else fields.push(passwordField(secret));
+      const value = valueField(item, ref);
+      fields[fields.indexOf(value)] = { ...value, value: secret.reveal() };
       if (rotated) {
         const existing = fields.find((field) => field.title === ROTATED);
         if (existing)
@@ -124,14 +124,40 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
 }
 
 function where(ref: KeyRef): string {
-  return `1Password ${ref.account} / ${ref.vault} / ${ref.item}`;
+  return `${formatReference(ref)} (1Password account ${ref.account})`;
 }
 
-function valueField(fields: Field[]): Field | undefined {
-  return (
-    fields.find((field) => field.id === VALUE_FIELD) ??
-    fields.find((field) => field.title === VALUE_FIELD)
+function named<T extends { id: string; title: string }>(candidates: T[], name: string): T[] {
+  const wanted = name.toLowerCase();
+  return candidates.filter(
+    (candidate) =>
+      candidate.id.toLowerCase() === wanted || candidate.title.toLowerCase() === wanted,
   );
+}
+
+function valueField(item: FullItem, ref: KeyRef): Field {
+  const sections = ref.section === null ? [] : named(item.sections, ref.section);
+  if (ref.section !== null && !sections.length) {
+    throw new Error(`${where(ref)}: the item has no section "${ref.section}"`);
+  }
+  const [field, ...more] = named(
+    item.fields.filter(
+      (field) => ref.section === null || sections.some((section) => section.id === field.sectionId),
+    ),
+    ref.field,
+  );
+  if (!field) throw new Error(`${where(ref)}: the item has no field "${ref.field}"`);
+  if (more.length) {
+    throw new Error(
+      `${where(ref)}: ${more.length + 1} fields are named "${ref.field}"; name a section`,
+    );
+  }
+  if (field.title === ROTATED) {
+    throw new Error(
+      `${where(ref)}: "${ROTATED}" holds the day the value last changed; put the value in another field`,
+    );
+  }
+  return field;
 }
 
 function passwordField(secret: Secret): Field {

@@ -122,8 +122,3 @@ can't, for secrets). The output should say "receipt matches", not imply the dest
 - The approval command uses the resolved path (`/private/tmp/...` on macOS), not the folder the user is in.
 - Install: this Mac had Bun 1.3.12 and keypin needs 1.4.4. The runtime message names the fix, but the README
   could show `bun upgrade` next to the install command.
-
-## Ship the skill
-
-The npm package ships only `README.md` and `LICENSE`. Once the skill is stable, publish it where agents look
-(the package, or a documented `npx skills add` path).

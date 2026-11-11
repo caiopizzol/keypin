@@ -1,6 +1,8 @@
 ---
 name: verify-rotation
 description: Model-check keypin rotate with TLA+ to find orders of runs, crashes and publishes that leave a revoked Cloudflare token in use. Use when a change touches rotate.ts, publishing.ts, publish.ts, rotations.ts or the receipt planning in plan.ts, or when asked whether rotation is safe.
+metadata:
+  internal: "true"
 ---
 
 # Verify rotation

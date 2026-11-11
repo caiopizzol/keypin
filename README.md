@@ -94,6 +94,16 @@ keypin rotate <key-id>       # replace a Cloudflare API token, then revoke the o
 `publish` and `rotate` show a plan and wait for you to type `yes`. `--yes` skips that only for routine updates. It
 never approves a first write, a changed account or vault item, or a revoke. `keypin --help` lists the exit codes.
 
+## Use with an agent
+
+The keypin skill tells a coding agent how to use keypin: keep values out of chat and files, and hand each approval
+back to you. It works with Claude Code, Codex, Cursor and other agents that read skills.
+
+```sh
+npx skills add caiopizzol/keypin       # this project
+npx skills add caiopizzol/keypin -g    # all your projects
+```
+
 ## Docs
 
 - [Configuration](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md): every field in

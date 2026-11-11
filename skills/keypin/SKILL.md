@@ -15,7 +15,7 @@ from 1Password only while a command runs.
 - Check a project: `keypin status --json` for due dates and receipts, and `keypin discover` for the names
   each repo and Worker holds. `cloud unknown` means discover couldn't read it, not that the name is missing.
   `status` exits 1 when it finds a problem; the JSON still prints.
-- Run with dev keys: `keypin run -- <command>`. For `wrangler dev`, see [notes](../../docs/notes.md).
+- Run with dev keys: `keypin run -- <command>`.
 - 1Password asks the user to approve each command. If a command waits, tell the user to approve it.
 - `publish` and `rotate` need a typed `yes` in a terminal, which you don't have. Run them without `--yes`:
   they stop, exit 3, and print the command for the user to run. Use `--yes` only when the user asks and
@@ -25,5 +25,9 @@ from 1Password only while a command runs.
   the old one.
 - Never put a value in chat, arguments, files, or `keypin.toml`.
 
-Fields and details: [configuration](../../docs/configuration.md), [publishing](../../docs/publishing.md),
-[rotation](../../docs/rotation.md).
+Fields and details:
+
+- [Configuration](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md)
+- [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md)
+- [Rotation](https://github.com/caiopizzol/keypin/blob/main/docs/rotation.md)
+- [Notes](https://github.com/caiopizzol/keypin/blob/main/docs/notes.md): `wrangler dev`

@@ -236,32 +236,28 @@ function listMemoryFolder(disk: ReturnType<typeof memoryFiles>, path: string): F
 }
 
 export const BILLING_MAP = `
-[vaults.personal]
-kind = "1password"
+[1password]
 account = "my.1password.com"
-vault = "Private"
 
 [keys.billing-stripe]
 env = "STRIPE_API_KEY"
 rotate_every = "365d"
-dev = { vault = "personal", item = "billing stripe api key" }
-prod = { vault = "personal", item = "billing stripe api key", publish = [
+dev = "op://Private/billing stripe api key/password"
+prod = { from = "op://Private/billing stripe api key/password", publish = [
   { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
   { to = "github-actions", repo = "acme/billing" },
 ] }
 `;
 
 export const WEB_MAP = `
-[vaults.personal]
-kind = "1password"
+[1password]
 account = "my.1password.com"
-vault = "Private"
 
 [keys.web-session]
 env = "SESSION_SECRET"
 rotate_every = "180d"
-dev = { vault = "personal", item = "web dev session secret" }
-prod = { vault = "personal", item = "web prod session secret", publish = [
+dev = "op://Private/web dev session secret/password"
+prod = { from = "op://Private/web prod session secret/password", publish = [
   { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "web" },
 ] }
 `;

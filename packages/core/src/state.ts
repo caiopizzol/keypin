@@ -1,7 +1,8 @@
-import type { Environment, KeyId, KeyRef, Receipt } from "./contracts";
+import type { Environment, KeyId, Receipt } from "./contracts";
 import { type Files, readVersionedJson, writeJsonAtomic } from "./files";
 import { receiptSecretKey } from "./map";
 import { isRecord } from "./record";
+import { storedRefWithPasswordDefault } from "./reference";
 import type { Generation } from "./secret";
 
 export const STATE_VERSION = 2;
@@ -30,7 +31,7 @@ export async function loadState(files: Files, path: string): Promise<State> {
   const { operations } = data;
   const receipts = Array.isArray(data.receipts)
     ? data.receipts.map((r: unknown) =>
-        data.version === 1 && isRecord(r) ? { ...r, source: null } : r,
+        isRecord(r) ? { ...r, source: data.version === 1 ? null : storedSource(r.source) } : r,
       )
     : data.receipts;
   if (!Array.isArray(receipts) || !receipts.every(isReceipt)) {
@@ -88,16 +89,14 @@ function isReceipt(r: unknown): r is Receipt {
     isText(r.account.pinned) &&
     isText(r.account.publisher) &&
     isText(r.account.destinationAccount) &&
-    (r.source === null || isKeyRef(r.source)) &&
+    (r.source === null || storedRefWithPasswordDefault(r.source) !== null) &&
     typeof r.evidence === "object" &&
     r.evidence !== null
   );
 }
 
-function isKeyRef(ref: unknown): ref is KeyRef {
-  return (
-    isRecord(ref) && ref.kind === "1password" && [ref.account, ref.vault, ref.item].every(isText)
-  );
+function storedSource(source: unknown): unknown {
+  return source === null ? null : (storedRefWithPasswordDefault(source) ?? source);
 }
 
 function isOperation(o: unknown): o is Operation {

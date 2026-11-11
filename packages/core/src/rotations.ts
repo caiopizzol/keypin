@@ -1,6 +1,6 @@
 import type { Environment, KeyId, KeyRef } from "./contracts";
 import { envFlag } from "./map";
-import { sameRef } from "./plan";
+import { sameRef, storedRefWithPasswordDefault } from "./reference";
 import { type Files, readVersionedJson, writeJsonAtomic } from "./files";
 import { isRecord } from "./record";
 import type { Generation } from "./secret";
@@ -41,7 +41,11 @@ export const emptyRotations = (): Rotations => ({ version: ROTATIONS_VERSION, ro
 export async function loadRotations(files: Files, path: string): Promise<Rotations> {
   const data = await readVersionedJson(files, path, [ROTATIONS_VERSION], "rotations file");
   if (!data) return emptyRotations();
-  const { rotations } = data;
+  const rotations = Array.isArray(data.rotations)
+    ? data.rotations.map((r: unknown) =>
+        isRecord(r) ? { ...r, item: storedRefWithPasswordDefault(r.item) ?? r.item } : r,
+      )
+    : data.rotations;
   if (!Array.isArray(rotations) || !rotations.every(isRotation)) {
     throw new Error(`${path}: the rotations file's "rotations" must be a list of rotations`);
   }
@@ -98,9 +102,7 @@ function isRotation(r: unknown): r is Rotation {
     isRecord(r) &&
     [r.id, r.keyId, r.environment, r.provider, r.account, r.startedAt, r.updatedAt].every(isText) &&
     ROTATION_STAGES.some((stage) => stage === r.stage) &&
-    isRecord(r.item) &&
-    r.item.kind === "1password" &&
-    [r.item.account, r.item.vault, r.item.item].every(isText) &&
+    storedRefWithPasswordDefault(r.item) !== null &&
     isTokenRecord(r.old) &&
     isTokenRecord(r.new)
   );

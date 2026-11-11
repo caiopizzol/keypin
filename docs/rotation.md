@@ -11,7 +11,7 @@ Add an `issue` section to the key's environment:
 [keys.site-deploy.prod.issue]
 provider = "cloudflare-account-token"
 account = "<Cloudflare account ID>"
-admin = "shared cloudflare token admin" # an item in the same vault
+admin = "op://Private/shared cloudflare token admin/credential"
 ```
 
 The key also needs at least one destination and a `rotate_every` other than `never`.
@@ -25,7 +25,7 @@ The key also needs at least one destination and a `rotate_every` other than `nev
 - the account your keys live in;
 - a short expiry, such as 30 days.
 
-Store it in your vault as the `admin` item, with a `rotated` date like any other key. Only `rotate`
+Store it in 1Password, with a `rotated` date like any other key, and point `admin` at it. Only `rotate`
 reads it. keypin never publishes it, and `run` never passes it on.
 
 ## First run: replace

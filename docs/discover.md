@@ -36,5 +36,5 @@ When a read isn't possible, discover says what and why. Unknown never means none
 ## The draft
 
 The draft adds a `dev` entry for each unmapped name set locally, and a `prod` entry with every repo and Worker where
-it was found. Vault item names are placeholders; rename them to match your vault. If the project has a `keypin.toml`,
-copy only the `[keys.*]` tables into it.
+it was found. The `op://` references are placeholders: replace each with the field's secret reference from 1Password. If the
+project has a `keypin.toml`, copy only the `[keys.*]` tables into it.

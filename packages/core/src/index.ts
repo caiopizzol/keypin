@@ -38,6 +38,7 @@ export {
   type PublishTarget,
 } from "./map";
 export { addDays, DUE_SOON_DAYS, isDay, periodDays } from "./rotation";
+export { formatReference, parseReference, sameRef, type Reference } from "./reference";
 export { type Files } from "./files";
 export { sameAccess } from "./tokens";
 export { isRecord } from "./record";
@@ -67,7 +68,6 @@ export {
   approvalsFor,
   latestPerSecret,
   planPublish,
-  sameRef,
   type Approval,
   type ApprovalReason,
   type PlanInput,
@@ -112,7 +112,6 @@ export {
   type DiscoverInput,
   type DiscoverProblem,
   type Discovery,
-  type DraftVault,
   type EnvFileKind,
   type NameRow,
   type Source,

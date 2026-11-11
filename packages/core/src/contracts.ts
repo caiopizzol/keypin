@@ -10,6 +10,8 @@ export interface KeyRef {
   account: string;
   vault: string;
   item: string;
+  section: string | null;
+  field: string;
 }
 
 export interface VaultScope {

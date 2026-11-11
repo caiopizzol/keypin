@@ -3,9 +3,8 @@ import { parseMap } from "../src/index";
 import { MAP_FILE, VALID_MAP } from "./fixtures";
 
 const VAULTS = `
-[vaults.personal]
+[1password]
 account = "my.1password.com"
-vault = "Private"
 `;
 
 function errorsOf(text: string): string[] {
@@ -21,6 +20,7 @@ describe("a valid map", () => {
       ok: true,
       map: {
         file: MAP_FILE,
+        account: "my.1password.com",
         environments: ["dev", "prod"],
         keys: [
           {
@@ -34,6 +34,8 @@ describe("a valid map", () => {
                   account: "my.1password.com",
                   vault: "Private",
                   item: "web dev session secret",
+                  section: null,
+                  field: "password",
                 },
                 publish: [],
               },
@@ -43,6 +45,8 @@ describe("a valid map", () => {
                   account: "my.1password.com",
                   vault: "Private",
                   item: "web prod session secret",
+                  section: null,
+                  field: "password",
                 },
                 publish: [
                   {
@@ -67,8 +71,7 @@ describe("a valid map", () => {
 env = "STRIPE_API_KEY"
 
 [keys.billing-stripe.prod]
-vault = "personal"
-item = "billing stripe api key"
+from = "op://Private/billing stripe api key/password"
 
 [[keys.billing-stripe.prod.publish]]
 to = "github-actions"
@@ -89,13 +92,13 @@ account = "acme-ops"
   test("an empty map has no keys", () => {
     expect(parseMap("", MAP_FILE)).toEqual({
       ok: true,
-      map: { file: MAP_FILE, environments: ["dev", "prod"], keys: [] },
+      map: { file: MAP_FILE, account: null, environments: ["dev", "prod"], keys: [] },
     });
   });
 
   test("declared environments replace dev and prod", () => {
     const result = parseMap(
-      `environments = ["local", "staging", "production"]\n${VAULTS}[keys.k]\nenv = "A"\nlocal = { vault = "personal", item = "l" }\nstaging = { vault = "personal", item = "s" }\n`,
+      `environments = ["local", "staging", "production"]\n${VAULTS}[keys.k]\nenv = "A"\nlocal = "op://Private/l/password"\nstaging = "op://Private/s/password"\n`,
       MAP_FILE,
     );
     assert(result.ok, JSON.stringify(result));
@@ -103,7 +106,7 @@ account = "acme-ops"
     expect(Object.keys(result.map.keys[0]?.environments ?? {})).toEqual(["local", "staging"]);
     expect(
       errorsOf(
-        `environments = ["local", "production"]\n${VAULTS}[keys.k]\nenv = "A"\ndev = { vault = "personal", item = "i" }\n`,
+        `environments = ["local", "production"]\n${VAULTS}[keys.k]\nenv = "A"\ndev = "op://Private/i/password"\n`,
       ),
     ).toEqual([
       `${MAP_FILE}: key "k": unknown field "dev"; environments are "local", "production"`,
@@ -113,7 +116,7 @@ account = "acme-ops"
 
   test("an environment named like an object property is read only from the key", () => {
     const result = parseMap(
-      `environments = ["constructor", "prod"]\n${VAULTS}[keys.k]\nenv = "A"\nprod = { vault = "personal", item = "p" }\n`,
+      `environments = ["constructor", "prod"]\n${VAULTS}[keys.k]\nenv = "A"\nprod = "op://Private/p/password"\n`,
       MAP_FILE,
     );
     assert(result.ok, JSON.stringify(result));
@@ -149,19 +152,14 @@ describe("missing fields", () => {
       .join("\n")}\n`;
 
   test.each([
-    ["env", key({ prod: '{ vault = "personal", item = "i" }' }), `key "k": missing field "env"`],
+    ["env", key({ prod: '"op://Private/i/password"' }), `key "k": missing field "env"`],
     ["an environment", key(base), `key "k": needs at least one of "dev", "prod"`],
-    ["vault", key({ ...base, prod: '{ item = "i" }' }), `key "k" prod: missing field "vault"`],
-    [
-      "item",
-      key({ ...base, prod: '{ vault = "personal" }' }),
-      `key "k" prod: missing field "item"`,
-    ],
+    ["from", key({ ...base, prod: "{ publish = [] }" }), `key "k" prod: missing field "from"`],
     [
       "worker",
       key({
         ...base,
-        prod: '{ vault = "personal", item = "i", publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111" }] }',
+        prod: '{ from = "op://Private/i/password", publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111" }] }',
       }),
       `key "k" prod: publish[0]: missing field "worker"`,
     ],
@@ -169,7 +167,7 @@ describe("missing fields", () => {
       "a Worker's account",
       key({
         ...base,
-        prod: '{ vault = "personal", item = "i", publish = [{ to = "cloudflare-worker", worker = "w" }] }',
+        prod: '{ from = "op://Private/i/password", publish = [{ to = "cloudflare-worker", worker = "w" }] }',
       }),
       `key "k" prod: publish[0]: missing field "account"`,
     ],
@@ -177,28 +175,25 @@ describe("missing fields", () => {
       "repo",
       key({
         ...base,
-        prod: '{ vault = "personal", item = "i", publish = [{ to = "github-actions" }] }',
+        prod: '{ from = "op://Private/i/password", publish = [{ to = "github-actions" }] }',
       }),
       `key "k" prod: publish[0]: missing field "repo"`,
     ],
     [
       "to",
-      key({ ...base, prod: '{ vault = "personal", item = "i", publish = [{ repo = "a/b" }] }' }),
+      key({ ...base, prod: '{ from = "op://Private/i/password", publish = [{ repo = "a/b" }] }' }),
       `key "k" prod: publish[0]: missing field "to"`,
     ],
   ])("%s", (_, text, message) => {
     expect(errorsOf(text)).toContain(`${MAP_FILE}: ${message}`);
   });
 
-  test("a vault's account", () => {
-    expect(errorsOf(`[vaults.op]\nkind = "1password"\nvault = "Private"\n`)).toEqual([
-      `${MAP_FILE}: vault "op": missing field "account"`,
+  test("the 1Password account", () => {
+    expect(errorsOf(`[1password]\n`)).toEqual([
+      `${MAP_FILE}: [1password]: missing field "account"`,
     ]);
-  });
-
-  test("an undeclared vault", () => {
-    expect(errorsOf(`[keys.k]\nenv = "A"\ndev = { vault = "op", item = "i" }\n`)).toEqual([
-      `${MAP_FILE}: key "k" dev: field "vault" names a vault that isn't under [vaults]`,
+    expect(errorsOf(`[keys.k]\nenv = "A"\ndev = "op://v/i/password"\n`)).toEqual([
+      `${MAP_FILE}: key "k" dev: field "from" needs your 1Password account: add [1password] with account = "..."`,
     ]);
   });
 });
@@ -207,33 +202,43 @@ describe("unknown fields are errors that name the file, the key and the field", 
   test.each([
     ["top level", `owner = "x"\n`, `unknown top-level field "owner"`],
     [
-      "vault",
-      `[vaults.op]\nkind = "1password"\naccount = "a"\nvault = "v"\ntoken = "x"\n`,
-      `vault "op": unknown field "token"`,
+      "1password",
+      `[1password]\naccount = "a"\ntoken = "x"\n`,
+      `[1password]: unknown field "token"`,
+    ],
+    [
+      "the old vault table",
+      `[vaults.personal]\naccount = "a"\nvault = "v"\n`,
+      `[vaults] is replaced by [1password] with your account, and op:// references in each key`,
+    ],
+    [
+      "the old vault and item fields",
+      `${VAULTS}[keys.k]\nenv = "A"\ndev = { from = "op://v/i/password", item = "i" }\n`,
+      `key "k" dev: "vault" and "item" are replaced by from = "op://<vault>/<item>/<field>"`,
     ],
     [
       "key",
-      `${VAULTS}[keys.k]\nenv = "A"\nrotate = "90d"\ndev = { vault = "personal", item = "i" }\n`,
+      `${VAULTS}[keys.k]\nenv = "A"\nrotate = "90d"\ndev = "op://Private/i/password"\n`,
       `key "k": unknown field "rotate"; environments are "dev", "prod"`,
     ],
     [
       "environment name",
-      `${VAULTS}[keys.k]\nenv = "A"\ndev = { vault = "personal", item = "i" }\nstaging = { vault = "personal", item = "i" }\n`,
+      `${VAULTS}[keys.k]\nenv = "A"\ndev = "op://Private/i/password"\nstaging = "op://Private/i/password"\n`,
       `key "k": unknown field "staging"; environments are "dev", "prod"`,
     ],
     [
       "environment",
-      `${VAULTS}[keys.k]\nenv = "A"\ndev = { vault = "personal", item = "i", value = "x" }\n`,
+      `${VAULTS}[keys.k]\nenv = "A"\ndev = { from = "op://Private/i/password", value = "x" }\n`,
       `key "k" dev: unknown field "value"`,
     ],
     [
       "Worker target",
-      `${VAULTS}[keys.k]\nenv = "A"\nprod = { vault = "personal", item = "i", publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "w", repo = "x/y" }] }\n`,
+      `${VAULTS}[keys.k]\nenv = "A"\nprod = { from = "op://Private/i/password", publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "w", repo = "x/y" }] }\n`,
       `key "k" prod: publish[0]: unknown field "repo" for cloudflare-worker`,
     ],
     [
       "GitHub target",
-      `${VAULTS}[keys.k]\nenv = "A"\nprod = { vault = "personal", item = "i", publish = [{ to = "github-actions", repo = "x/y", environment = "production" }] }\n`,
+      `${VAULTS}[keys.k]\nenv = "A"\nprod = { from = "op://Private/i/password", publish = [{ to = "github-actions", repo = "x/y", environment = "production" }] }\n`,
       `key "k" prod: publish[0]: unknown field "environment" for github-actions`,
     ],
   ])("%s", (_, text, message) => {
@@ -243,7 +248,7 @@ describe("unknown fields are errors that name the file, the key and the field", 
   test("a removed field says to delete it", () => {
     expect(
       errorsOf(
-        `${VAULTS}[keys.k]\nenv = "A"\nowner = "o"\nconsumers = []\ndev = { vault = "personal", item = "i" }\n`,
+        `${VAULTS}[keys.k]\nenv = "A"\nowner = "o"\nconsumers = []\ndev = "op://Private/i/password"\n`,
       ),
     ).toEqual([
       `${MAP_FILE}: key "k": field "owner" is no longer used; delete it`,
@@ -275,28 +280,56 @@ describe("wrong kinds and values", () => {
       `key "k" prod: publish[0]: field "account" must be a non-empty string`,
     ],
   ])("%s", (_, targets, message) => {
-    const text = `${VAULTS}[keys.k]\nenv = "A"\nprod = { vault = "personal", item = "i", publish = [${targets}] }\n`;
+    const text = `${VAULTS}[keys.k]\nenv = "A"\nprod = { from = "op://Private/i/password", publish = [${targets}] }\n`;
     expect(errorsOf(text)).toEqual([`${MAP_FILE}: ${message}`]);
   });
 
-  test("a vault without a kind is 1Password", () => {
+  test("a reference names the vault, item, optional section and field", () => {
     const result = parseMap(
-      `[vaults.p]\naccount = "a"\nvault = "v"\n[keys.k]\nenv = "A"\ndev = { vault = "p", item = "i" }\n`,
+      `${VAULTS}[keys.k]\nenv = "A"\ndev = "op://App Secrets/stripe/credential"\nprod = { from = "op://Shared/stripe live/api/secret key" }\n`,
       MAP_FILE,
     );
-    expect(result.ok && result.map.keys[0]?.environments.dev?.ref.kind).toBe("1password");
+    assert(result.ok, JSON.stringify(result));
+    const { dev, prod } = result.map.keys[0]?.environments ?? {};
+    expect(dev?.ref).toMatchObject({
+      vault: "App Secrets",
+      item: "stripe",
+      section: null,
+      field: "credential",
+    });
+    expect(prod?.ref).toMatchObject({
+      vault: "Shared",
+      item: "stripe live",
+      section: "api",
+      field: "secret key",
+    });
   });
 
-  test("an unknown vault kind", () => {
-    expect(errorsOf(`[vaults.ss]\nkind = "infisical"\naccount = "a"\nvault = "v"\n`)).toEqual([
-      `${MAP_FILE}: vault "ss": field "kind" must be one of: 1password`,
+  test.each([
+    ["Private/i/password", "must start with op://"],
+    [
+      "op://Private/i",
+      "must be op://<vault>/<item>/<field> or op://<vault>/<item>/<section>/<field>",
+    ],
+    [
+      "op://Private/i/a/b/c",
+      "must be op://<vault>/<item>/<field> or op://<vault>/<item>/<section>/<field>",
+    ],
+    [
+      "op://Private//password",
+      "must be op://<vault>/<item>/<field> or op://<vault>/<item>/<section>/<field>",
+    ],
+    ["op://Private/i/password?attribute=otp", "can't have a query such as ?attribute="],
+  ])("the reference %s is refused", (reference, message) => {
+    expect(errorsOf(`${VAULTS}[keys.k]\nenv = "A"\ndev = "${reference}"\n`)).toEqual([
+      `${MAP_FILE}: key "k" dev: field "from" ${message}`,
     ]);
   });
 
   test("a bad rotate_every, env name and key ID", () => {
     expect(
       errorsOf(
-        `${VAULTS}[keys.K_1]\nenv = "MY-KEY"\nrotate_every = "soon"\ndev = { vault = "personal", item = "i" }\n`,
+        `${VAULTS}[keys.K_1]\nenv = "MY-KEY"\nrotate_every = "soon"\ndev = "op://Private/i/password"\n`,
       ),
     ).toEqual([
       `${MAP_FILE}: key "K_1": a key ID uses lowercase letters, digits and dashes`,
@@ -309,7 +342,7 @@ describe("wrong kinds and values", () => {
     for (const env of ["GITHUB_TOKEN", "github_app_key"]) {
       expect(
         errorsOf(
-          `${VAULTS}[keys.k]\nenv = "${env}"\ndev = { vault = "personal", item = "i" }\nprod = { vault = "personal", item = "i", publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "w" }, { to = "github-actions", repo = "a/b" }] }\n`,
+          `${VAULTS}[keys.k]\nenv = "${env}"\ndev = "op://Private/i/password"\nprod = { from = "op://Private/i/password", publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "w" }, { to = "github-actions", repo = "a/b" }] }\n`,
         ),
       ).toEqual([
         `${MAP_FILE}: key "k" prod: publish[1]: github-actions can't take this key, because GitHub reserves secret names that start with GITHUB_; rename field "env"`,
@@ -319,7 +352,7 @@ describe("wrong kinds and values", () => {
 
   test("a GITHUB_ name is fine anywhere else", () => {
     const result = parseMap(
-      `${VAULTS}[keys.k]\nenv = "GITHUB_TOKEN"\ndev = { vault = "personal", item = "i" }\nprod = { vault = "personal", item = "i", publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "w" }] }\n`,
+      `${VAULTS}[keys.k]\nenv = "GITHUB_TOKEN"\ndev = "op://Private/i/password"\nprod = { from = "op://Private/i/password", publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "w" }] }\n`,
       MAP_FILE,
     );
     expect(result.ok).toBe(true);
@@ -329,7 +362,7 @@ describe("wrong kinds and values", () => {
     const worker = (name: string) =>
       `{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "${name}" }`;
     const prod = (targets: string[]) =>
-      `${VAULTS}[keys.k]\nenv = "A"\nprod = { vault = "personal", item = "i", publish = [${targets.join(", ")}] }\n`;
+      `${VAULTS}[keys.k]\nenv = "A"\nprod = { from = "op://Private/i/password", publish = [${targets.join(", ")}] }\n`;
     expect(errorsOf(prod([worker("x"), worker("x"), worker("y"), worker("y")]))).toEqual([
       `${MAP_FILE}: key "k" prod: publish[1]: the same destination as publish[0]`,
       `${MAP_FILE}: key "k" prod: publish[3]: the same destination as publish[2]`,
@@ -342,11 +375,11 @@ describe("wrong kinds and values", () => {
 
   test("one destination secret can't belong to two keys, or to a key's dev and prod", () => {
     const repo = `{ to = "github-actions", repo = "acme/billing" }`;
-    const twoKeys = `${VAULTS}[keys.token-a]\nenv = "API_TOKEN"\nprod = { vault = "personal", item = "a", publish = [${repo}] }\n[keys.token-b]\nenv = "api_token"\nprod = { vault = "personal", item = "b", publish = [${repo}] }\n`;
+    const twoKeys = `${VAULTS}[keys.token-a]\nenv = "API_TOKEN"\nprod = { from = "op://Private/a/password", publish = [${repo}] }\n[keys.token-b]\nenv = "api_token"\nprod = { from = "op://Private/b/password", publish = [${repo}] }\n`;
     expect(errorsOf(twoKeys)).toEqual([
       `${MAP_FILE}: key "token-b" prod publish[0]: writes the same destination secret as key "token-a" prod publish[0]`,
     ]);
-    const devAndProd = `${VAULTS}[keys.deploy]\nenv = "DEPLOY_TOKEN"\ndev = { vault = "personal", item = "b", publish = [${repo}] }\nprod = { vault = "personal", item = "a", publish = [${repo}] }\n`;
+    const devAndProd = `${VAULTS}[keys.deploy]\nenv = "DEPLOY_TOKEN"\ndev = { from = "op://Private/b/password", publish = [${repo}] }\nprod = { from = "op://Private/a/password", publish = [${repo}] }\n`;
     expect(errorsOf(devAndProd)).toEqual([
       `${MAP_FILE}: key "deploy" prod publish[0]: writes the same destination secret as key "deploy" dev publish[0]`,
     ]);
@@ -355,7 +388,7 @@ describe("wrong kinds and values", () => {
   test("a Worker's account is a Cloudflare account ID", () => {
     expect(
       errorsOf(
-        `${VAULTS}[keys.k]\nenv = "A"\nprod = { vault = "personal", item = "i", publish = [{ to = "cloudflare-worker", account = "me@example.com", worker = "w" }] }\n`,
+        `${VAULTS}[keys.k]\nenv = "A"\nprod = { from = "op://Private/i/password", publish = [{ to = "cloudflare-worker", account = "me@example.com", worker = "w" }] }\n`,
       ),
     ).toEqual([
       `${MAP_FILE}: key "k" prod: publish[0]: field "account" must be a Cloudflare account ID (32 hex characters)`,
@@ -366,7 +399,7 @@ describe("wrong kinds and values", () => {
     const target = (repo: string) => `{ to = "github-actions", repo = "${repo}" }`;
     expect(
       errorsOf(
-        `${VAULTS}[keys.a]\nenv = "TOKEN"\nprod = { vault = "personal", item = "a", publish = [${target("acme/billing")}] }\n[keys.b]\nenv = "TOKEN"\nprod = { vault = "personal", item = "b", publish = [${target("Acme/Billing")}] }\n`,
+        `${VAULTS}[keys.a]\nenv = "TOKEN"\nprod = { from = "op://Private/a/password", publish = [${target("acme/billing")}] }\n[keys.b]\nenv = "TOKEN"\nprod = { from = "op://Private/b/password", publish = [${target("Acme/Billing")}] }\n`,
       ),
     ).toEqual([
       `${MAP_FILE}: key "b" prod publish[0]: writes the same destination secret as key "a" prod publish[0]`,
@@ -377,7 +410,7 @@ describe("wrong kinds and values", () => {
     const worker = (account: string) =>
       `{ to = "cloudflare-worker", account = "${account.repeat(8)}", worker = "api" }`;
     const result = parseMap(
-      `${VAULTS}[keys.k]\nenv = "TOKEN"\ndev = { vault = "personal", item = "d", publish = [${worker("aaaa")}] }\nprod = { vault = "personal", item = "p", publish = [${worker("bbbb")}] }\n`,
+      `${VAULTS}[keys.k]\nenv = "TOKEN"\ndev = { from = "op://Private/d/password", publish = [${worker("aaaa")}] }\nprod = { from = "op://Private/p/password", publish = [${worker("bbbb")}] }\n`,
       MAP_FILE,
     );
     expect(result.ok).toBe(true);
@@ -387,7 +420,7 @@ describe("wrong kinds and values", () => {
     const worker = (name: string) =>
       `{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "${name}" }`;
     const result = parseMap(
-      `${VAULTS}[keys.a]\nenv = "TOKEN"\nprod = { vault = "personal", item = "a", publish = [${worker("one")}] }\n[keys.b]\nenv = "TOKEN"\nprod = { vault = "personal", item = "b", publish = [${worker("two")}] }\n[keys.c]\nenv = "token"\nprod = { vault = "personal", item = "c", publish = [${worker("one")}] }\n`,
+      `${VAULTS}[keys.a]\nenv = "TOKEN"\nprod = { from = "op://Private/a/password", publish = [${worker("one")}] }\n[keys.b]\nenv = "TOKEN"\nprod = { from = "op://Private/b/password", publish = [${worker("two")}] }\n[keys.c]\nenv = "token"\nprod = { from = "op://Private/c/password", publish = [${worker("one")}] }\n`,
       MAP_FILE,
     );
     expect(result.ok).toBe(true);
@@ -396,7 +429,7 @@ describe("wrong kinds and values", () => {
   test("publish must be a list", () => {
     expect(
       errorsOf(
-        `${VAULTS}[keys.k]\nenv = "A"\nprod = { vault = "personal", item = "i", publish = { to = "github-actions", repo = "a/b" } }\n`,
+        `${VAULTS}[keys.k]\nenv = "A"\nprod = { from = "op://Private/i/password", publish = { to = "github-actions", repo = "a/b" } }\n`,
       ),
     ).toEqual([`${MAP_FILE}: key "k" prod: field "publish" must be a list`]);
   });
@@ -409,7 +442,7 @@ describe("wrong kinds and values", () => {
   test("no error quotes the text it found, so a value pasted by mistake stays out of the output", () => {
     const pasted = "sentinel-pasted-value-5555";
     const target = (fields: string) =>
-      `${VAULTS}[keys.k]\nenv = "A"\nprod = { vault = "personal", item = "i", publish = [${fields}] }\n`;
+      `${VAULTS}[keys.k]\nenv = "A"\nprod = { from = "op://Private/i/password", publish = [${fields}] }\n`;
     const texts = [
       `API_KEY=${pasted}\n`,
       `k = ${pasted}\n`,
@@ -421,10 +454,11 @@ describe("wrong kinds and values", () => {
       `k = \u00e9${pasted}\n`,
       `k = "\u0001${pasted}"\n`,
       `k = \u0002${pasted}\n`,
-      `${VAULTS}[keys.k]\nenv = "${pasted}"\ndev = { vault = "personal", item = "i" }\n`,
-      `${VAULTS}[keys.k]\nenv = "A"\nrotate_every = "${pasted}"\ndev = { vault = "personal", item = "i" }\n`,
-      `${VAULTS}[keys.k]\nenv = "A"\ndev = { vault = "${pasted}", item = "i" }\n`,
-      `[vaults.v]\nkind = "${pasted}"\naccount = "a"\nvault = "v"\n`,
+      `${VAULTS}[keys.k]\nenv = "${pasted}"\ndev = "op://Private/i/password"\n`,
+      `${VAULTS}[keys.k]\nenv = "A"\nrotate_every = "${pasted}"\ndev = "op://Private/i/password"\n`,
+      `${VAULTS}[keys.k]\nenv = "A"\ndev = "${pasted}"\n`,
+      `${VAULTS}[keys.k]\nenv = "A"\ndev = "op://${pasted}"\n`,
+      `[1password]\naccount = 7\n`,
       target(`{ to = "${pasted}" }`),
       target(`{ to = "github-actions", repo = "${pasted}" }`),
       target(
@@ -468,17 +502,16 @@ describe("an issue section", () => {
 env = "CLOUDFLARE_API_TOKEN"
 
 [keys.site-deploy.prod]
-vault = "personal"
-item = "site deploy token"
+from = "op://Private/site deploy token/password"
 
 [keys.site-deploy.prod.issue]
 ${issue}
 `;
 
-  test("names the provider, the account and an admin item in the same vault", () => {
+  test("names the provider, the account and the admin token's reference", () => {
     const result = parseMap(
       mapWith(
-        `provider = "cloudflare-account-token"\naccount = "${ACCOUNT}"\nadmin = "shared cloudflare token admin"`,
+        `provider = "cloudflare-account-token"\naccount = "${ACCOUNT}"\nadmin = "op://Private/shared cloudflare token admin/password"`,
       ),
       MAP_FILE,
     );
@@ -491,6 +524,8 @@ ${issue}
         account: "my.1password.com",
         vault: "Private",
         item: "shared cloudflare token admin",
+        section: null,
+        field: "password",
       },
     });
   });
@@ -502,21 +537,21 @@ ${issue}
   });
 
   test.each([
-    [`account = "${ACCOUNT}"\nadmin = "a"`, `missing field "provider"`],
+    [`account = "${ACCOUNT}"\nadmin = "op://Private/a/password"`, `missing field "provider"`],
     [
-      `provider = "aws-iam-key"\naccount = "${ACCOUNT}"\nadmin = "a"`,
+      `provider = "aws-iam-key"\naccount = "${ACCOUNT}"\nadmin = "op://Private/a/password"`,
       `field "provider" must be one of: cloudflare-account-token`,
     ],
     [
-      `provider = "cloudflare-account-token"\naccount = "personal"\nadmin = "a"`,
+      `provider = "cloudflare-account-token"\naccount = "personal"\nadmin = "op://Private/a/password"`,
       `field "account" must be a Cloudflare account ID (32 hex characters)`,
     ],
     [
-      `provider = "cloudflare-account-token"\naccount = "${ACCOUNT}"\nadmin = "site deploy token"`,
+      `provider = "cloudflare-account-token"\naccount = "${ACCOUNT}"\nadmin = "op://Private/site deploy token/credential"`,
       `field "admin" names the key's own item; the admin token needs its own item`,
     ],
     [
-      `provider = "cloudflare-account-token"\naccount = "${ACCOUNT}"\nadmin = "a"\npermissions = []`,
+      `provider = "cloudflare-account-token"\naccount = "${ACCOUNT}"\nadmin = "op://Private/a/password"\npermissions = []`,
       `unknown field "permissions"`,
     ],
   ])("%s is refused", (issue, message) => {

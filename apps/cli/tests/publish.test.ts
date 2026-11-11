@@ -98,7 +98,7 @@ describe("keypin publish", () => {
     await cli(["publish", "billing-stripe"], run.deps);
     const beforeRead = run.stderr.text.split("keypin: reading")[0] ?? "";
     expect(beforeRead).toContain(
-      `Publishing billing-stripe (prod) as STRIPE_API_KEY, from item "billing stripe api key"`,
+      `Publishing billing-stripe (prod) as STRIPE_API_KEY, from op://Private/billing stripe api key/password`,
     );
     expect(beforeRead).toContain(`to: ${WORKER} (account 11111111111111111111111111111111)`);
     expect(beforeRead).toContain(`to: ${GITHUB} (account acme)`);
@@ -230,7 +230,7 @@ describe("keypin publish", () => {
     const run = setup({ terminal: "yes", failRead: true });
     expect(await cli(["publish", "billing-stripe"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
-      `couldn't read billing-stripe (item "billing stripe api key")`,
+      `couldn't read billing-stripe (op://Private/billing stripe api key/password)`,
     );
     expect(run.log.some((l) => l.startsWith("write"))).toBe(false);
   });
@@ -394,20 +394,18 @@ describe("keypin publish", () => {
 const TWO_KEYS_MAP = `${BILLING_MAP}
 [keys.billing-other]
 env = "OTHER_KEY"
-prod = { vault = "personal", item = "billing other key", publish = [
+prod = { from = "op://Private/billing other key/password", publish = [
   { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
 ] }
 `;
 
 const ORG_MAP = `
-[vaults.personal]
-kind = "1password"
+[1password]
 account = "my.1password.com"
-vault = "Private"
 
 [keys.billing-stripe]
 env = "STRIPE_API_KEY"
-prod = { vault = "personal", item = "billing stripe api key", publish = [
+prod = { from = "op://Private/billing stripe api key/password", publish = [
   { to = "github-actions", repo = "acme/billing", account = "alice" },
 ] }
 `;
@@ -432,9 +430,9 @@ const ORG_ROUTES = new Map<string, { status: number; body: unknown }>([
 describe("a destination only takes a value without approval when it came from the same item", () => {
   const ORDINARY = `${SENTINEL}-ordinary`;
   const ADMIN = `${SENTINEL}-admin`;
-  const VAULTS = `[vaults.personal]\nkind = "1password"\naccount = "my.1password.com"\nvault = "Private"\n`;
+  const VAULTS = `[1password]\naccount = "my.1password.com"\n`;
   const deployMap = (item: string) =>
-    `${VAULTS}\n[keys.deploy]\nenv = "DEPLOY_TOKEN"\nprod = { vault = "personal", item = "${item}", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
+    `${VAULTS}\n[keys.deploy]\nenv = "DEPLOY_TOKEN"\nprod = { from = "op://Private/${item}/password", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
 
   function publisher(disk: ReturnType<typeof memoryFiles>, cwd: string, terminal: boolean) {
     const destinations = fakeDestinations();
@@ -459,7 +457,7 @@ describe("a destination only takes a value without approval when it came from th
     expect(await cli(["publish", "deploy", "--yes"], swapped.deps)).toBe(NEEDS_APPROVAL);
     expect(swapped.writes()).toEqual([]);
     expect(swapped.stderr.text).toContain(
-      `  github-actions:acme/billing:DEPLOY_TOKEN was last published from item "billing deploy token"`,
+      `  github-actions:acme/billing:DEPLOY_TOKEN was last published from op://Private/billing deploy token/password`,
     );
     expect(swapped.stderr.text).toContain("Stopped before reading the value");
     expect(disk.contents.get(STATE)).toBe(before);
@@ -473,12 +471,14 @@ describe("a destination only takes a value without approval when it came from th
       account: "my.1password.com",
       vault: "Private",
       item: "cloudflare admin token",
+      section: null,
+      field: "password",
     });
     expect(leaks(...disk.contents.values(), swapped.stderr.text, approved.stderr.text)).toBe(false);
   });
 
   test("two keys writing the same repo secret are rejected before anything is read", async () => {
-    const map = `${VAULTS}\n[keys.token-a]\nenv = "API_TOKEN"\nprod = { vault = "personal", item = "billing deploy token", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n[keys.token-b]\nenv = "API_TOKEN"\nprod = { vault = "personal", item = "cloudflare admin token", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
+    const map = `${VAULTS}\n[keys.token-a]\nenv = "API_TOKEN"\nprod = { from = "op://Private/billing deploy token/password", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n[keys.token-b]\nenv = "API_TOKEN"\nprod = { from = "op://Private/cloudflare admin token/password", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
     const run = publisher(memoryFiles({ "/work/billing/keypin.toml": map }), "/work/billing", true);
     expect(await cli(["publish", "token-a"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
@@ -488,7 +488,7 @@ describe("a destination only takes a value without approval when it came from th
   });
 
   test("a key's dev and prod writing the same secret are rejected", async () => {
-    const map = `${VAULTS}\n[keys.deploy]\nenv = "DEPLOY_TOKEN"\ndev = { vault = "personal", item = "cloudflare admin token", publish = [{ to = "github-actions", repo = "acme/billing" }] }\nprod = { vault = "personal", item = "billing deploy token", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
+    const map = `${VAULTS}\n[keys.deploy]\nenv = "DEPLOY_TOKEN"\ndev = { from = "op://Private/cloudflare admin token/password", publish = [{ to = "github-actions", repo = "acme/billing" }] }\nprod = { from = "op://Private/billing deploy token/password", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
     const run = publisher(memoryFiles({ "/work/billing/keypin.toml": map }), "/work/billing", true);
     expect(await cli(["publish", "deploy"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
@@ -511,7 +511,7 @@ describe("a destination only takes a value without approval when it came from th
 
   test("another project writing the same GitHub secret in another case makes the next write need approval", async () => {
     const named = (name: string, item: string) =>
-      `${VAULTS}\n[keys.deploy]\nenv = "${name}"\nprod = { vault = "personal", item = "${item}", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
+      `${VAULTS}\n[keys.deploy]\nenv = "${name}"\nprod = { from = "op://Private/${item}/password", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
     const disk = memoryFiles({
       "/work/billing/keypin.toml": named("TOKEN", "billing deploy token"),
       "/work/web/keypin.toml": named("token", "cloudflare admin token"),
@@ -522,7 +522,9 @@ describe("a destination only takes a value without approval when it came from th
 
     const again = publisher(disk, "/work/billing", false);
     expect(await cli(["publish", "deploy", "--yes"], again.deps)).toBe(NEEDS_APPROVAL);
-    expect(again.stderr.text).toContain('was last published from item "cloudflare admin token"');
+    expect(again.stderr.text).toContain(
+      "was last published from op://Private/cloudflare admin token/password",
+    );
     expect(again.writes()).toEqual([]);
   });
 

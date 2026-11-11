@@ -39,7 +39,7 @@ describe("keypin run", () => {
     ]);
     expect(JSON.stringify(launcher.launches)).not.toContain(PROD_VALUE);
     expect(stdout.text).toBe("");
-    expect(stderr.text).toContain(`"web dev session secret"`);
+    expect(stderr.text).toContain("op://Private/web dev session secret/password");
     expect(stderr.text).not.toContain("prod session secret");
     expect(leaks(stdout.text, stderr.text)).toBe(false);
   });
@@ -58,7 +58,7 @@ describe("keypin run", () => {
   });
 
   test("the first declared environment is the default", async () => {
-    const map = `environments = ["local", "production"]\n${WEB_MAP.replaceAll("dev = {", "local = {").replaceAll("prod = {", "production = {")}`;
+    const map = `environments = ["local", "production"]\n${WEB_MAP.replace("\ndev = ", "\nlocal = ").replace("\nprod = ", "\nproduction = ")}`;
     const disk = memoryFiles({ "/work/web/keypin.toml": map });
     const vault = fakeVault({ values: { "web dev session secret": SENTINEL } });
     const launcher = fakeLauncher();
@@ -72,7 +72,7 @@ describe("keypin run", () => {
   });
 
   test("two keys setting one variable start nothing and read nothing", async () => {
-    const twice = `${WEB_MAP}\n[keys.web-session-2]\nenv = "SESSION_SECRET"\ndev = { vault = "personal", item = "other" }\n`;
+    const twice = `${WEB_MAP}\n[keys.web-session-2]\nenv = "SESSION_SECRET"\ndev = "op://Private/other/password"\n`;
     const disk = memoryFiles({ "/work/web/keypin.toml": twice });
     const vault = fakeVault({ values: { "web dev session secret": SENTINEL, other: SENTINEL } });
     const launcher = fakeLauncher();
@@ -91,7 +91,7 @@ describe("keypin run", () => {
     const { deps, launcher, stderr } = setup({ failing: ["web dev session secret"] });
     expect(await cli(["run", "--", "true"], deps)).toBe(1);
     expect(launcher.launches).toHaveLength(0);
-    expect(stderr.text).toContain(`web-session (item "web dev session secret")`);
+    expect(stderr.text).toContain("web-session (op://Private/web dev session secret/password)");
   });
 
   test("passes the child's exit code through", async () => {

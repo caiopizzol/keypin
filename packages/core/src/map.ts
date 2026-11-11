@@ -2,6 +2,7 @@ import { TOML } from "bun";
 import type { Environment, KeyId, KeyRef } from "./contracts";
 import { DEFAULT_ENVIRONMENTS } from "./contracts";
 import { isRecord } from "./record";
+import { parseReference } from "./reference";
 import { periodDays } from "./rotation";
 
 export type PublishTarget =
@@ -33,6 +34,7 @@ export interface KeyEntry {
 
 export interface KeysMap {
   file: string;
+  account: string | null;
   environments: readonly Environment[];
   keys: KeyEntry[];
 }
@@ -102,7 +104,6 @@ const ENVIRONMENT_NAME = /^[a-z][a-z0-9-]*$/;
 const KEY_FIELDS: readonly string[] = ["env", "rotate_every"];
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
-const VAULT_KINDS: readonly string[] = ["1password"];
 const REMOVED_KEY_FIELDS: readonly string[] = ["owner", "consumers"];
 
 export function validateMap(data: unknown, file: string): MapResult {
@@ -110,41 +111,23 @@ export function validateMap(data: unknown, file: string): MapResult {
   const fail = (where: string, message: string) => errors.push(`${file}: ${where}${message}`);
 
   if (!isRecord(data)) return { ok: false, errors: [`${file}: expected a table at the top level`] };
-  unknownFields(data, ["environments", "vaults", "keys"], (field) =>
-    fail("", `unknown top-level field "${field}"`),
+  unknownFields(data, ["environments", "1password", "keys"], (field) =>
+    fail(
+      "",
+      field === "vaults"
+        ? `[vaults] is replaced by [1password] with your account, and op:// references in each key`
+        : `unknown top-level field "${field}"`,
+    ),
   );
   const environments = validateEnvironments(data.environments, (message) => fail("", message));
-
-  const vaults = new Map<string, Omit<KeyRef, "item">>();
-  const rawVaults = data.vaults ?? {};
-  if (!isRecord(rawVaults)) fail("", `"vaults" must be a table`);
-  else {
-    for (const [name, raw] of Object.entries(rawVaults)) {
-      const at = `vault "${name}": `;
-      if (!isRecord(raw)) {
-        fail(at, "must be a table");
-        continue;
-      }
-      unknownFields(raw, ["kind", "account", "vault"], (field) =>
-        fail(at, `unknown field "${field}"`),
-      );
-      const kind = optionalString(raw, "kind", (m) => fail(at, m)) ?? "1password";
-      const account = requiredString(raw, "account", (m) => fail(at, m));
-      const vault = requiredString(raw, "vault", (m) => fail(at, m));
-      if (!VAULT_KINDS.includes(kind)) {
-        fail(at, `field "kind" must be one of: ${VAULT_KINDS.join(", ")}`);
-      } else if (account !== undefined && vault !== undefined) {
-        vaults.set(name, { kind: "1password", account, vault });
-      }
-    }
-  }
+  const account = validateAccount(data["1password"], (message) => fail("[1password]: ", message));
 
   const keys: KeyEntry[] = [];
   const rawKeys = data.keys ?? {};
   if (!isRecord(rawKeys)) fail("", `"keys" must be a table`);
   else {
     for (const [id, raw] of Object.entries(rawKeys)) {
-      const entry = validateKey(id, raw, vaults, environments, (where, message) =>
+      const entry = validateKey(id, raw, account, environments, (where, message) =>
         fail(`key "${id}"${where}: `, message),
       );
       if (entry) keys.push(entry);
@@ -152,7 +135,19 @@ export function validateMap(data: unknown, file: string): MapResult {
   }
 
   sharedDestinations(keys, environments, (where, message) => fail(where, message));
-  return errors.length ? { ok: false, errors } : { ok: true, map: { file, environments, keys } };
+  return errors.length
+    ? { ok: false, errors }
+    : { ok: true, map: { file, account: account ?? null, environments, keys } };
+}
+
+function validateAccount(raw: unknown, fail: (message: string) => void): string | undefined {
+  if (raw === undefined) return undefined;
+  if (!isRecord(raw)) {
+    fail("must be a table");
+    return undefined;
+  }
+  unknownFields(raw, ["account"], (field) => fail(`unknown field "${field}"`));
+  return requiredString(raw, "account", fail);
 }
 
 function validateEnvironments(
@@ -201,7 +196,7 @@ function sharedDestinations(
 function validateKey(
   id: string,
   raw: unknown,
-  vaults: Map<string, Omit<KeyRef, "item">>,
+  account: string | undefined,
   environmentNames: readonly Environment[],
   fail: (where: string, message: string) => void,
 ): KeyEntry | undefined {
@@ -237,7 +232,7 @@ function validateKey(
   const environments: Record<Environment, EnvEntry> = Object.create(null);
   const declared = environmentNames.filter((name) => Object.hasOwn(raw, name));
   for (const name of declared) {
-    const entry = validateEnv(raw[name], vaults, (m) => err(` ${name}`, m));
+    const entry = validateEnv(raw[name], account, (m) => err(` ${name}`, m));
     if (entry) environments[name] = entry;
   }
   for (const [name, entry] of Object.entries(environments)) {
@@ -258,12 +253,13 @@ function validateKey(
 }
 
 function validateEnv(
-  raw: unknown,
-  vaults: Map<string, Omit<KeyRef, "item">>,
+  given: unknown,
+  account: string | undefined,
   fail: (message: string) => void,
 ): EnvEntry | undefined {
+  const raw = typeof given === "string" ? { from: given } : given;
   if (!isRecord(raw)) {
-    fail("must be a table");
+    fail(`must be an op:// reference, or a table with "from"`);
     return undefined;
   }
   let failed = false;
@@ -271,14 +267,14 @@ function validateEnv(
     failed = true;
     fail(message);
   };
-  unknownFields(raw, ["vault", "item", "publish", "issue"], (field) =>
-    err(`unknown field "${field}"`),
+  unknownFields(raw, ["from", "publish", "issue"], (field) =>
+    err(
+      field === "vault" || field === "item"
+        ? `"vault" and "item" are replaced by from = "op://<vault>/<item>/<field>"`
+        : `unknown field "${field}"`,
+    ),
   );
-  const vaultName = requiredString(raw, "vault", err);
-  const item = requiredString(raw, "item", err);
-  const vault = vaultName === undefined ? undefined : vaults.get(vaultName);
-  if (vaultName !== undefined && !vault)
-    err(`field "vault" names a vault that isn't under [vaults]`);
+  const ref = reference(raw, "from", account, err);
 
   const publish: PublishTarget[] = [];
   const firstAt = new Map<string, number>();
@@ -298,19 +294,39 @@ function validateEnv(
     }
   }
   const issue =
-    raw.issue === undefined || !vault || item === undefined
+    raw.issue === undefined || !ref
       ? undefined
-      : validateIssue(raw.issue, vault, item, (m) => err(`issue: ${m}`));
-  if (failed || !vault || item === undefined) return undefined;
-  return { ref: { ...vault, item }, publish, ...(issue ? { issue } : {}) };
+      : validateIssue(raw.issue, ref, account, (m) => err(`issue: ${m}`));
+  if (failed || !ref) return undefined;
+  return { ref, publish, ...(issue ? { issue } : {}) };
+}
+
+function reference(
+  table: Table,
+  field: string,
+  account: string | undefined,
+  fail: (message: string) => void,
+): KeyRef | undefined {
+  const text = requiredString(table, field, fail);
+  if (text === undefined) return undefined;
+  const parsed = parseReference(text);
+  if (typeof parsed === "string") {
+    fail(`field "${field}" ${parsed}`);
+    return undefined;
+  }
+  if (account === undefined) {
+    fail(`field "${field}" needs your 1Password account: add [1password] with account = "..."`);
+    return undefined;
+  }
+  return { kind: "1password", account, ...parsed };
 }
 
 const ACCOUNT_ID = /^[0-9a-f]{32}$/;
 
 function validateIssue(
   raw: unknown,
-  vault: Omit<KeyRef, "item">,
-  item: string,
+  own: KeyRef,
+  vaultAccount: string | undefined,
   fail: (message: string) => void,
 ): IssueSpec | undefined {
   if (!isRecord(raw)) {
@@ -325,16 +341,16 @@ function validateIssue(
   unknownFields(raw, ["provider", "account", "admin"], (field) => err(`unknown field "${field}"`));
   const provider = requiredString(raw, "provider", err);
   const account = requiredString(raw, "account", err);
-  const admin = requiredString(raw, "admin", err);
+  const admin = reference(raw, "admin", vaultAccount, err);
   const kind = PROVIDER_KINDS.find((known) => known === provider);
   if (provider !== undefined && !kind)
     err(`field "provider" must be one of: ${PROVIDER_KINDS.join(", ")}`);
   if (account !== undefined && !ACCOUNT_ID.test(account))
     err(`field "account" must be a Cloudflare account ID (32 hex characters)`);
-  if (admin !== undefined && admin === item)
+  if (admin && admin.vault === own.vault && admin.item === own.item)
     err(`field "admin" names the key's own item; the admin token needs its own item`);
   if (failed || !kind || account === undefined || admin === undefined) return undefined;
-  return { provider: kind, account, admin: { ...vault, item: admin } };
+  return { provider: kind, account, admin };
 }
 
 function validateTarget(raw: unknown, fail: (message: string) => void): PublishTarget | undefined {

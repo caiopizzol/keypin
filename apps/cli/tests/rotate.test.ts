@@ -35,18 +35,15 @@ const ADMIN_ITEM = "shared cloudflare token admin";
 const GITHUB = "github-actions:acme/site:CLOUDFLARE_API_TOKEN";
 
 const MAP = `
-[vaults.personal]
-kind = "1password"
+[1password]
 account = "my.1password.com"
-vault = "App Secrets"
 
 [keys.site-deploy]
 env = "CLOUDFLARE_API_TOKEN"
 rotate_every = "90d"
 
 [keys.site-deploy.prod]
-vault = "personal"
-item = "${ITEM}"
+from = "op://App Secrets/${ITEM}/password"
 
 [[keys.site-deploy.prod.publish]]
 to = "github-actions"
@@ -55,7 +52,7 @@ repo = "acme/site"
 [keys.site-deploy.prod.issue]
 provider = "cloudflare-account-token"
 account = "${ACCOUNT}"
-admin = "${ADMIN_ITEM}"
+admin = "op://App Secrets/${ADMIN_ITEM}/password"
 `;
 
 const POLICIES = [
@@ -170,7 +167,14 @@ async function receiptFor(value: string, at = "2026-11-10T14:52:03.000Z"): Promi
   return {
     keyId: "site-deploy",
     environment: "prod",
-    source: { kind: "1password", account: "my.1password.com", vault: "App Secrets", item: ITEM },
+    source: {
+      kind: "1password",
+      account: "my.1password.com",
+      vault: "App Secrets",
+      item: ITEM,
+      section: null,
+      field: "password",
+    },
     destinationId: GITHUB,
     generation: await generationOf(new Secret(value)),
     account: { pinned: "acme", publisher: "acme", destinationAccount: "acme" },
@@ -281,7 +285,9 @@ describe("keypin rotate: the first run", () => {
     );
     expect(run.stderr.text).toContain("allow Workers Admin");
     expect(run.stderr.text).toContain(`on com.cloudflare.api.account.${ACCOUNT}: "*"`);
-    expect(run.stderr.text).toContain(`store in: item "${ITEM}", with rotated 2026-11-10`);
+    expect(run.stderr.text).toContain(
+      `store in: op://App Secrets/${ITEM}/password, with rotated 2026-11-10`,
+    );
     expect(run.stderr.text).toContain(`publish to: ${GITHUB} (account acme)`);
     expect(run.stderr.text).toContain(`The old token ${OLD_ID} "cicd-keypin" is still active.`);
     expect(run.stderr.text).toContain(
@@ -549,6 +555,8 @@ describe("keypin rotate: a run that stopped after storing", () => {
               account: "my.1password.com",
               vault: "App Secrets",
               item: ITEM,
+              section: null,
+              field: "password",
             },
             provider: "cloudflare-account-token",
             account: ACCOUNT,
@@ -598,6 +606,8 @@ describe("keypin rotate: a run that stopped after storing", () => {
               account: "my.1password.com",
               vault: "App Secrets",
               item: ITEM,
+              section: null,
+              field: "password",
             },
             provider: "cloudflare-account-token",
             account: ACCOUNT,
@@ -630,7 +640,14 @@ describe("keypin rotate: review fixes", () => {
     id: "r1",
     keyId: "site-deploy",
     environment: "prod",
-    item: { kind: "1password", account: "my.1password.com", vault: "App Secrets", item: ITEM },
+    item: {
+      kind: "1password",
+      account: "my.1password.com",
+      vault: "App Secrets",
+      item: ITEM,
+      section: null,
+      field: "password",
+    },
     provider: "cloudflare-account-token",
     account: ACCOUNT,
     stage: "stored",
@@ -707,6 +724,8 @@ describe("keypin rotate: review fixes", () => {
         account: "my.1password.com",
         vault: "App Secrets",
         item: "other token",
+        section: null,
+        field: "password",
       },
     });
     const run = await setup({ terminal: ["no"], disk: await diskWith(elsewhere) });
@@ -823,17 +842,14 @@ describe("keypin rotate: review fixes", () => {
 describe("keypin rotate: other holders of the vault item", () => {
   const DOCS = "github-actions:acme/docs:CLOUDFLARE_API_TOKEN";
   const docsMap = (keyId = "docs-deploy") => `
-[vaults.personal]
-kind = "1password"
+[1password]
 account = "my.1password.com"
-vault = "App Secrets"
 
 [keys.${keyId}]
 env = "CLOUDFLARE_API_TOKEN"
 
 [keys.${keyId}.prod]
-vault = "personal"
-item = "${ITEM}"
+from = "op://App Secrets/${ITEM}/password"
 
 [[keys.${keyId}.prod.publish]]
 to = "github-actions"
@@ -873,7 +889,14 @@ repo = "acme/docs"
     id: "r1",
     keyId: "site-deploy",
     environment: "prod",
-    item: { kind: "1password", account: "my.1password.com", vault: "App Secrets", item: ITEM },
+    item: {
+      kind: "1password",
+      account: "my.1password.com",
+      vault: "App Secrets",
+      item: ITEM,
+      section: null,
+      field: "password",
+    },
     provider: "cloudflare-account-token",
     account: ACCOUNT,
     stage: "issued",
@@ -917,8 +940,7 @@ repo = "acme/docs"
   test("the same key's dev entry with the old token blocks it, with --env dev", async () => {
     const map = `${MAP}
 [keys.site-deploy.dev]
-vault = "personal"
-item = "${ITEM}"
+from = "op://App Secrets/${ITEM}/password"
 
 [[keys.site-deploy.dev.publish]]
 to = "github-actions"
@@ -1005,7 +1027,7 @@ repo = "acme/docs"
     const run = await secondRun(await publishedWith([]), OLD_VALUE);
     expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
-      `item "${ITEM}" holds generation ${OLD_GENERATION}, not the new ${NEW_GENERATION}`,
+      `op://App Secrets/${ITEM}/password holds generation ${OLD_GENERATION}, not the new ${NEW_GENERATION}`,
     );
     expect(run.asked).toEqual([]);
     expect(run.provider.tokens.has(OLD_ID)).toBe(true);

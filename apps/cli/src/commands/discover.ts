@@ -1,16 +1,13 @@
 import { basename, join, relative, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { TOML } from "bun";
 import {
   buildDiscovery,
   DEFAULT_ENVIRONMENTS,
   type DiscoverInput,
   type Discovery,
   draftMap,
-  type DraftVault,
   envFileKind,
   envNames,
-  isRecord,
   type KeysMap,
   type NameRow,
   parseMap,
@@ -132,7 +129,7 @@ export async function discover(args: string[], deps: Deps): Promise<number> {
   const draft = draftMap(discovery.names, {
     project: basename(folder),
     githubAccount: login,
-    vault: map && mapText !== null ? firstVault(mapText) : null,
+    vault: map ? mapVault(map) : null,
     takenIds: map?.keys.map((k) => k.id) ?? [],
     environments: map?.environments ?? DEFAULT_ENVIRONMENTS,
   });
@@ -242,20 +239,9 @@ async function githubOrigin(
   return { repo: `${match[1]}/${match[2]}`, owner: match[1] };
 }
 
-function firstVault(text: string): DraftVault | null {
-  let data: unknown;
-  try {
-    data = TOML.parse(text);
-  } catch {
-    return null;
-  }
-  const vaults = isRecord(data) && isRecord(data.vaults) ? data.vaults : {};
-  for (const [name, raw] of Object.entries(vaults)) {
-    if (!isRecord(raw)) continue;
-    const { account, vault } = raw;
-    if (typeof account === "string" && typeof vault === "string") return { name, account, vault };
-  }
-  return null;
+function mapVault(map: KeysMap): { account: string | null; vault: string } | null {
+  const ref = map.keys.flatMap((key) => Object.values(key.environments))[0]?.ref;
+  return ref ? { account: map.account, vault: ref.vault } : null;
 }
 
 const WHERE: Record<NameRow["where"], string> = {

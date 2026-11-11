@@ -58,28 +58,24 @@ keypin init
 A key looks like this:
 
 ```toml
-[vaults.personal]
+[1password]
 account = "my.1password.com"
-vault = "Private"
 
 [keys.api-token]
 env = "API_TOKEN"
 rotate_every = "90d"
-
-[keys.api-token.dev] # read by keypin run
-vault = "personal"
-item = "my-project dev api token"
+dev = "op://Private/my-project dev api token/credential" # read by keypin run
 
 [keys.api-token.prod] # read by keypin publish
-vault = "personal"
-item = "my-project prod api token"
+from = "op://Private/my-project prod api token/credential"
 
 [[keys.api-token.prod.publish]] # where publish writes it
 to = "github-actions"
 repo = "me/my-project"
 ```
 
-In 1Password, each item holds the value in its `password` field, plus a `rotated` date. Now use it:
+Each `op://` reference is a 1Password secret reference: in the item, open the field's menu and select **Copy Secret
+Reference**. Add a `rotated` date to the item. Now use it:
 
 ```sh
 keypin status               # every key, when it's due, and any problem

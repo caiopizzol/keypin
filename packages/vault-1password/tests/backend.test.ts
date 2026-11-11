@@ -12,6 +12,8 @@ const ref: KeyRef = {
   account: ACCOUNT,
   vault: "Private",
   item: "demo dev token",
+  section: null,
+  field: "password",
 };
 const scope = { kind: "1password" as const, account: ACCOUNT, vault: "Private" };
 
@@ -118,15 +120,77 @@ describe("read", () => {
     expect(inspect(secret)).toBe("[secret]");
   });
 
-  test("fails clearly when the item has no password field", async () => {
+  test("fails clearly when the item has no such field", async () => {
     const { client } = fake([item("demo dev token", [field("rotated", "Date", "2026-11-09")])]);
     await expect(backendFor(client).backend.read(ref)).rejects.toThrow(
-      '1Password my.1password.com / Private / demo dev token: no "password" field',
+      'op://Private/demo dev token/password (1Password account my.1password.com): the item has no field "password"',
+    );
+  });
+
+  test("reads the field the reference names, by title in any case, or by ID", async () => {
+    const { client } = fake([
+      item("demo dev token", [
+        field("password", "Concealed", "not-this"),
+        { id: "abc123", title: "Credential", fieldType: "Concealed", value: VALUE },
+      ]),
+    ]);
+    const { backend } = backendFor(client);
+    expect((await backend.read({ ...ref, field: "credential" })).reveal()).toBe(VALUE);
+    expect((await backend.read({ ...ref, field: "abc123" })).reveal()).toBe(VALUE);
+  });
+
+  test("a section picks between fields with the same name", async () => {
+    const sections = [
+      { id: "s-live", title: "live" },
+      { id: "s-test", title: "test" },
+    ];
+    const both = [
+      {
+        id: "f1",
+        title: "key",
+        sectionId: "s-test",
+        fieldType: "Concealed" as const,
+        value: "test-value",
+      },
+      {
+        id: "f2",
+        title: "key",
+        sectionId: "s-live",
+        fieldType: "Concealed" as const,
+        value: VALUE,
+      },
+    ];
+    const { client } = fake([{ ...item("demo dev token", both), sections }]);
+    const { backend } = backendFor(client);
+    expect((await backend.read({ ...ref, section: "live", field: "key" })).reveal()).toBe(VALUE);
+    await expect(backend.read({ ...ref, field: "key" })).rejects.toThrow(
+      '2 fields are named "key"; name a section',
+    );
+    await expect(backend.read({ ...ref, section: "staging", field: "key" })).rejects.toThrow(
+      'the item has no section "staging"',
     );
   });
 });
 
 describe("write", () => {
+  test("writes the field the reference names, and won't create an item for another field", async () => {
+    const existing = item("demo dev token", [
+      field("password", "Concealed", "keep-this"),
+      field("credential", "Concealed", "old-value"),
+    ]);
+    const { client, calls } = fake([existing]);
+    const { backend } = backendFor(client);
+    await backend.write({ ...ref, field: "credential" }, new Secret(VALUE));
+    expect(calls.put[0]?.fields).toEqual([
+      field("password", "Concealed", "keep-this"),
+      field("credential", "Concealed", VALUE),
+    ]);
+    await expect(
+      backend.write({ ...ref, item: "new item", field: "credential" }, new Secret(VALUE)),
+    ).rejects.toThrow("no such item; create it in 1Password first");
+    expect(calls.create).toEqual([]);
+  });
+
   test("creates a Password item when it is missing, with rotated when asked", async () => {
     const { client, calls } = fake();
     await backendFor(client).backend.write(ref, new Secret(VALUE), { rotated: "2026-11-09" });
@@ -258,7 +322,7 @@ describe("errors", () => {
   test("names the item when it is missing", async () => {
     const { client } = fake();
     await expect(backendFor(client).backend.metadata(ref)).rejects.toThrow(
-      "1Password my.1password.com / Private / demo dev token: no such item",
+      "op://Private/demo dev token/password (1Password account my.1password.com): no such item",
     );
   });
 

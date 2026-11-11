@@ -1,5 +1,5 @@
 import { parseArgs } from "node:util";
-import { runEnvironment, type Secret } from "@keypin/core";
+import { formatReference, runEnvironment, type Secret } from "@keypin/core";
 import { type Child, type Deps, UsageError } from "../deps";
 import { errorCode, messageOf } from "../errors";
 import { findMap, pickEnvironment } from "../project";
@@ -41,7 +41,7 @@ export async function run(args: string[], deps: Deps): Promise<number> {
       try {
         found.set(key.env, await vault.read(ref));
       } catch (error) {
-        failures.push(`${key.id} (item "${ref.item}"): ${messageOf(error)}`);
+        failures.push(`${key.id} (${formatReference(ref)}): ${messageOf(error)}`);
       }
     }
     if (failures.length) {

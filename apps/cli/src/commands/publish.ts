@@ -2,18 +2,18 @@ import { parseArgs } from "node:util";
 import {
   approvalsFor,
   type Environment,
-  ENVIRONMENTS,
   type KeysMap,
   generationOf,
   loadState,
   planPublish,
+  publishEnvironment,
   saveState,
   type Secret,
   unfinishedOperations,
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
 import { messageOf } from "../errors";
-import { findMap } from "../project";
+import { findMap, pickEnvironment } from "../project";
 import {
   accountFacts,
   checkAccounts,
@@ -30,27 +30,25 @@ import { announce } from "../vault";
 export { NEEDS_APPROVAL };
 
 export async function publish(args: string[], deps: Deps): Promise<number> {
-  const request = parseRequest(args);
+  const { keyId, env, yes } = parseRequest(args);
   const map = await findMap(deps.files, deps.cwd);
-  return locked(deps, (path) => publishLocked({ ...request, args }, map, path, deps));
+  const environment = pickEnvironment(map, env, publishEnvironment(map));
+  const request = { keyId, environment, yes, args };
+  return locked(deps, (path) => publishLocked(request, map, path, deps));
 }
 
 function parseRequest(args: string[]) {
   const { values, positionals } = parseArgs({
     args,
     options: {
-      env: { type: "string", default: "prod" },
+      env: { type: "string" },
       yes: { type: "boolean", default: false },
     },
     allowPositionals: true,
   });
   const [keyId, ...extra] = positionals;
   if (keyId === undefined || extra.length) throw new UsageError("keypin publish takes one key ID");
-  const environment = ENVIRONMENTS.find((name) => name === values.env);
-  if (!environment) {
-    throw new UsageError(`--env is ${ENVIRONMENTS.join(" or ")}, got "${values.env}"`);
-  }
-  return { keyId, environment, yes: values.yes };
+  return { keyId, env: values.env, yes: values.yes };
 }
 
 async function publishLocked(

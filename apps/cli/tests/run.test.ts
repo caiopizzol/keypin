@@ -44,6 +44,49 @@ describe("keypin run", () => {
     expect(leaks(stdout.text, stderr.text)).toBe(false);
   });
 
+  test("--env reads another declared environment; an undeclared one is a usage error", async () => {
+    const { deps, launcher, calls } = setup();
+    expect(await cli(["run", "--env", "prod", "--", "true"], deps)).toBe(0);
+    expect(calls).toEqual(["read web prod session secret"]);
+    expect(launcher.launches[0]?.env.SESSION_SECRET).toBe(PROD_VALUE);
+    const staging = setup();
+    expect(await cli(["run", "--env", "staging", "--", "true"], staging.deps)).toBe(2);
+    expect(staging.stderr.text).toContain(
+      `--env is one of "dev", "prod" in /work/web/keypin.toml, got "staging"`,
+    );
+    expect(staging.launcher.launches).toHaveLength(0);
+  });
+
+  test("the first declared environment is the default", async () => {
+    const map = `environments = ["local", "production"]\n${WEB_MAP.replaceAll("dev = {", "local = {").replaceAll("prod = {", "production = {")}`;
+    const disk = memoryFiles({ "/work/web/keypin.toml": map });
+    const vault = fakeVault({ values: { "web dev session secret": SENTINEL } });
+    const launcher = fakeLauncher();
+    const { deps } = fakeDeps({
+      disk,
+      backend: vault.vault,
+      deps: { cwd: "/work/web", env: {}, launch: launcher.launch, onSignals: launcher.onSignals },
+    });
+    expect(await cli(["run", "--", "true"], deps)).toBe(0);
+    expect(vault.calls).toEqual(["read web dev session secret"]);
+  });
+
+  test("two keys setting one variable start nothing and read nothing", async () => {
+    const twice = `${WEB_MAP}\n[keys.web-session-2]\nenv = "SESSION_SECRET"\ndev = { vault = "personal", item = "other" }\n`;
+    const disk = memoryFiles({ "/work/web/keypin.toml": twice });
+    const vault = fakeVault({ values: { "web dev session secret": SENTINEL, other: SENTINEL } });
+    const launcher = fakeLauncher();
+    const { deps, stderr } = fakeDeps({
+      disk,
+      backend: vault.vault,
+      deps: { cwd: "/work/web", launch: launcher.launch, onSignals: launcher.onSignals },
+    });
+    expect(await cli(["run", "--", "true"], deps)).toBe(1);
+    expect(stderr.text).toContain("in dev, more than one key sets SESSION_SECRET");
+    expect(vault.calls).toEqual([]);
+    expect(launcher.launches).toHaveLength(0);
+  });
+
   test("a failed read starts nothing and names the key and item", async () => {
     const { deps, launcher, stderr } = setup({ failing: ["web dev session secret"] });
     expect(await cli(["run", "--", "true"], deps)).toBe(1);

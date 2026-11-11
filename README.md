@@ -94,7 +94,7 @@ keypin init [folder]         # register a project and write a keypin.toml
 keypin unregister [folder]   # stop listing a project (its keypin.toml stays)
 keypin status [--json]       # every key, when it's due, and any problem
 keypin discover [folder]     # every key name a project uses, where it's set, and a draft map
-keypin run -- <command>      # run a command with the project's dev keys
+keypin run -- <command>      # run a command with the project's dev keys (--env for another)
 keypin publish <key-id>      # check each destination's account, then write the key
 keypin rotate <key-id>       # replace a Cloudflare API token, then revoke the old one
 ```

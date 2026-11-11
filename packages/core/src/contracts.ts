@@ -2,8 +2,8 @@ import type { Generation, Secret } from "./secret";
 
 export type KeyId = string;
 
-export type Environment = "dev" | "prod";
-export const ENVIRONMENTS: readonly Environment[] = ["dev", "prod"];
+export type Environment = string;
+export const DEFAULT_ENVIRONMENTS: readonly Environment[] = ["dev", "prod"];
 
 export interface KeyRef {
   kind: "1password";

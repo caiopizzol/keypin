@@ -1,7 +1,7 @@
 import type { KeyId } from "./contracts";
 import { type Files, readVersionedJson, writeJsonAtomic } from "./files";
 
-export const REGISTRY_VERSION = 1;
+const REGISTRY_VERSION = 1;
 
 export interface SharedKey {
   id: KeyId;
@@ -14,7 +14,7 @@ export interface Registry {
   shared: SharedKey[];
 }
 
-export const emptyRegistry = (): Registry => ({
+const emptyRegistry = (): Registry => ({
   version: REGISTRY_VERSION,
   projects: [],
   shared: [],

@@ -8,7 +8,7 @@ import { type KeyOwner, ownedBy } from "./state";
 
 export const ROTATIONS_VERSION = 2;
 
-export const ROTATION_STAGES = ["issuing", "issued", "stored", "published", "revoked"] as const;
+const ROTATION_STAGES = ["issuing", "issued", "stored", "published", "revoked"] as const;
 export type RotationStage = (typeof ROTATION_STAGES)[number];
 
 export interface TokenRecord {

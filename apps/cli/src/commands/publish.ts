@@ -35,8 +35,6 @@ import {
 } from "../publishing";
 import { announce } from "../vault";
 
-export { NEEDS_APPROVAL };
-
 interface Request {
   keyId: string | null;
   environment: Environment;

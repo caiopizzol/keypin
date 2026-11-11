@@ -289,7 +289,7 @@ export interface Discovery {
   unknowns: Unknown[];
 }
 
-export const GITHUB_PROVIDED = "GITHUB_TOKEN";
+const GITHUB_PROVIDED = "GITHUB_TOKEN";
 
 const LOCAL_KINDS: readonly Source["kind"][] = ["env-file"];
 const CLOUD_KINDS: readonly Source["kind"][] = ["github-secret", "worker-secret"];

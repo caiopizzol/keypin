@@ -12,7 +12,7 @@ import type { Deps, FolderEntry, Launch, Lock } from "../src/deps";
 
 export const SENTINEL = "sentinel-value-7f3a9c2e1d";
 
-export const HOME = "/home/me";
+const HOME = "/home/me";
 export const REGISTRY = "/home/me/.config/keypin/registry.json";
 export const STATE = "/home/me/.local/state/keypin/state.json";
 
@@ -50,7 +50,7 @@ export interface FakeVaultOptions {
   items?: string[];
 }
 
-export interface CreatedItem {
+interface CreatedItem {
   ref: KeyRef;
   value: Secret;
   rotated: string | undefined;
@@ -98,7 +98,7 @@ export function fakeVault(options: FakeVaultOptions = {}) {
   return { vault, calls, created };
 }
 
-export function output() {
+function output() {
   let text = "";
   return {
     writer: { write: (chunk: string) => void (text += chunk) },
@@ -297,7 +297,7 @@ export function parseJson(text: string): unknown {
   return JSON.parse(text);
 }
 
-export function memoryLock(disk: ReturnType<typeof memoryFiles>): Lock {
+function memoryLock(disk: ReturnType<typeof memoryFiles>): Lock {
   return async (path) => {
     const text = disk.contents.get(path);
     if (text !== undefined) {

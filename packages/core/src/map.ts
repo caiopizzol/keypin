@@ -9,9 +9,9 @@ export type PublishTarget =
   | { to: "cloudflare-worker"; account: string; worker: string }
   | { to: "github-actions"; repo: string; account: string };
 
-export const DESTINATION_KINDS = ["cloudflare-worker", "github-actions"] as const;
+const DESTINATION_KINDS = ["cloudflare-worker", "github-actions"] as const;
 
-export const PROVIDER_KINDS = ["cloudflare-account-token"] as const;
+const PROVIDER_KINDS = ["cloudflare-account-token"] as const;
 
 export interface RotateSpec {
   provider: (typeof PROVIDER_KINDS)[number];
@@ -110,7 +110,7 @@ const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 const REMOVED_KEY_FIELDS: readonly string[] = ["owner", "consumers"];
 const OLD_FORMAT = "see docs/configuration.md for the current format";
 
-export function validateMap(data: unknown, file: string): MapResult {
+function validateMap(data: unknown, file: string): MapResult {
   const errors: string[] = [];
   const fail = (where: string, message: string) => errors.push(`${file}: ${where}${message}`);
 

@@ -14,8 +14,7 @@
   },
   "workspaces": [
     "packages/*",
-    "apps/*",
-    "tools/*"
+    "apps/*"
   ],
   "type": "module",
   "scripts": {

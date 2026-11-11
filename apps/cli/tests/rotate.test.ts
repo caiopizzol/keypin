@@ -42,7 +42,6 @@ vault = "App Secrets"
 
 [keys.site-deploy]
 env = "CLOUDFLARE_API_TOKEN"
-owner = "site"
 rotate_every = "90d"
 
 [keys.site-deploy.prod]
@@ -840,7 +839,6 @@ vault = "App Secrets"
 
 [keys.${keyId}]
 env = "CLOUDFLARE_API_TOKEN"
-owner = "docs"
 
 [keys.${keyId}.prod]
 vault = "personal"

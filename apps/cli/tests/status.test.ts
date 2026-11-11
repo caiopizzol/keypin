@@ -34,7 +34,7 @@ describe("keypin status", () => {
     const { deps, stdout, stderr, calls } = setup();
     expect(await cli(["status"], deps)).toBe(1);
     expect(stdout.text).toMatch(
-      /web-session\s+dev\s+SESSION_SECRET\s+web\s+web dev session secret\s+2026-11-09\s+365d\s+2027-11-09/,
+      /web-session\s+dev\s+SESSION_SECRET\s+web dev session secret\s+2026-11-09\s+365d\s+2027-11-09/,
     );
     expect(stdout.text).toMatch(/web-session\s+prod.+2026-11-09\s+180d\s+2027-05-08/);
     expect(stdout.text).toMatch(/billing-stripe\s+prod.+2026-10-23\s+365d\s+2027-10-23/);

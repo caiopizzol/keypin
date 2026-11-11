@@ -81,12 +81,11 @@ export async function status(args: string[], deps: Deps): Promise<number> {
 function render(result: Status, projects: number): string {
   if (!projects) return `No projects registered. Run "keypin init" in a project folder.\n`;
   const lines: string[] = [];
-  const header = ["KEY", "ENV", "VARIABLE", "OWNER", "ITEM", "ROTATED", "EVERY", "DUE"];
+  const header = ["KEY", "ENV", "VARIABLE", "ITEM", "ROTATED", "EVERY", "DUE"];
   const cells = (row: StatusRow) => [
     row.keyId,
     row.environment,
     row.env,
-    row.owner,
     row.ref.item,
     row.rotated ?? "-",
     row.rotateEvery ?? "-",

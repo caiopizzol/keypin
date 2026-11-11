@@ -394,7 +394,6 @@ describe("keypin publish", () => {
 const TWO_KEYS_MAP = `${BILLING_MAP}
 [keys.billing-other]
 env = "OTHER_KEY"
-owner = "billing"
 prod = { vault = "personal", item = "billing other key", publish = [
   { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
 ] }
@@ -408,7 +407,6 @@ vault = "Private"
 
 [keys.billing-stripe]
 env = "STRIPE_API_KEY"
-owner = "billing"
 prod = { vault = "personal", item = "billing stripe api key", publish = [
   { to = "github-actions", repo = "acme/billing", account = "alice" },
 ] }
@@ -436,7 +434,7 @@ describe("a destination only takes a value without approval when it came from th
   const ADMIN = `${SENTINEL}-admin`;
   const VAULTS = `[vaults.personal]\nkind = "1password"\naccount = "my.1password.com"\nvault = "Private"\n`;
   const deployMap = (item: string) =>
-    `${VAULTS}\n[keys.deploy]\nenv = "DEPLOY_TOKEN"\nowner = "billing"\nprod = { vault = "personal", item = "${item}", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
+    `${VAULTS}\n[keys.deploy]\nenv = "DEPLOY_TOKEN"\nprod = { vault = "personal", item = "${item}", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
 
   function publisher(disk: ReturnType<typeof memoryFiles>, cwd: string, terminal: boolean) {
     const destinations = fakeDestinations();
@@ -480,7 +478,7 @@ describe("a destination only takes a value without approval when it came from th
   });
 
   test("two keys writing the same repo secret are rejected before anything is read", async () => {
-    const map = `${VAULTS}\n[keys.token-a]\nenv = "API_TOKEN"\nowner = "x"\nprod = { vault = "personal", item = "billing deploy token", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n[keys.token-b]\nenv = "API_TOKEN"\nowner = "x"\nprod = { vault = "personal", item = "cloudflare admin token", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
+    const map = `${VAULTS}\n[keys.token-a]\nenv = "API_TOKEN"\nprod = { vault = "personal", item = "billing deploy token", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n[keys.token-b]\nenv = "API_TOKEN"\nprod = { vault = "personal", item = "cloudflare admin token", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
     const run = publisher(memoryFiles({ "/work/billing/keypin.toml": map }), "/work/billing", true);
     expect(await cli(["publish", "token-a"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
@@ -490,7 +488,7 @@ describe("a destination only takes a value without approval when it came from th
   });
 
   test("a key's dev and prod writing the same secret are rejected", async () => {
-    const map = `${VAULTS}\n[keys.deploy]\nenv = "DEPLOY_TOKEN"\nowner = "x"\ndev = { vault = "personal", item = "cloudflare admin token", publish = [{ to = "github-actions", repo = "acme/billing" }] }\nprod = { vault = "personal", item = "billing deploy token", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
+    const map = `${VAULTS}\n[keys.deploy]\nenv = "DEPLOY_TOKEN"\ndev = { vault = "personal", item = "cloudflare admin token", publish = [{ to = "github-actions", repo = "acme/billing" }] }\nprod = { vault = "personal", item = "billing deploy token", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
     const run = publisher(memoryFiles({ "/work/billing/keypin.toml": map }), "/work/billing", true);
     expect(await cli(["publish", "deploy"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
@@ -513,7 +511,7 @@ describe("a destination only takes a value without approval when it came from th
 
   test("another project writing the same GitHub secret in another case makes the next write need approval", async () => {
     const named = (name: string, item: string) =>
-      `${VAULTS}\n[keys.deploy]\nenv = "${name}"\nowner = "x"\nprod = { vault = "personal", item = "${item}", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
+      `${VAULTS}\n[keys.deploy]\nenv = "${name}"\nprod = { vault = "personal", item = "${item}", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
     const disk = memoryFiles({
       "/work/billing/keypin.toml": named("TOKEN", "billing deploy token"),
       "/work/web/keypin.toml": named("token", "cloudflare admin token"),

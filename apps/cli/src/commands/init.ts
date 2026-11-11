@@ -8,16 +8,14 @@ import { MAP_FILE } from "../project";
 export const TEMPLATE = `# keypin.toml: this project's keys. It holds names and places, never values.
 # Uncomment and edit. Every field is checked; an unknown one is an error.
 #
-# A vault the keys below read from. The name ("personal") is yours to choose.
+# A 1Password vault the keys below read from. The name ("personal") is yours to choose.
 # [vaults.personal]
-# kind = "1password"
 # account = "my.1password.com"
 # vault = "Private"
 #
 # A key. Its ID ("example-api-key") stays the same when vault items are renamed.
 # [keys.example-api-key]
 # env = "EXAMPLE_API_KEY" # the variable your program reads
-# owner = "my-project"
 # rotate_every = "180d" # <n>d, <n>w, <n>m or never; leave out to use the vault item's rotate_every
 #
 # Where keypin run reads the value from.

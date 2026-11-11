@@ -24,18 +24,11 @@ export interface EnvEntry {
   issue?: IssueSpec;
 }
 
-export interface Consumer {
-  name: string;
-  kind: string;
-}
-
 export interface KeyEntry {
   id: KeyId;
   env: string;
-  owner: string;
   rotateEvery: string | null;
   environments: Partial<Record<Environment, EnvEntry>>;
-  consumers: Consumer[];
 }
 
 export interface KeysMap {
@@ -95,6 +88,7 @@ const KEY_ID = /^[a-z0-9][a-z0-9-]*$/;
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 const VAULT_KINDS: readonly string[] = ["1password"];
+const REMOVED_KEY_FIELDS: readonly string[] = ["owner", "consumers"];
 
 export function validateMap(data: unknown, file: string): MapResult {
   const errors: string[] = [];
@@ -118,12 +112,12 @@ export function validateMap(data: unknown, file: string): MapResult {
       unknownFields(raw, ["kind", "account", "vault"], (field) =>
         fail(at, `unknown field "${field}"`),
       );
-      const kind = requiredString(raw, "kind", (m) => fail(at, m));
+      const kind = optionalString(raw, "kind", (m) => fail(at, m)) ?? "1password";
       const account = requiredString(raw, "account", (m) => fail(at, m));
       const vault = requiredString(raw, "vault", (m) => fail(at, m));
-      if (kind !== undefined && !VAULT_KINDS.includes(kind)) {
+      if (!VAULT_KINDS.includes(kind)) {
         fail(at, `field "kind" must be one of: ${VAULT_KINDS.join(", ")}`);
-      } else if (kind !== undefined && account !== undefined && vault !== undefined) {
+      } else if (account !== undefined && vault !== undefined) {
         vaults.set(name, { kind: "1password", account, vault });
       }
     }
@@ -141,8 +135,23 @@ export function validateMap(data: unknown, file: string): MapResult {
     }
   }
 
+  sharedDevVariables(keys, (where, message) => fail(where, message));
   sharedDestinations(keys, (where, message) => fail(where, message));
   return errors.length ? { ok: false, errors } : { ok: true, map: { file, keys } };
+}
+
+function sharedDevVariables(keys: KeyEntry[], fail: (where: string, message: string) => void) {
+  const first = new Map<string, string>();
+  for (const key of keys) {
+    if (!key.environments.dev) continue;
+    const other = first.get(key.env);
+    if (other === undefined) first.set(key.env, key.id);
+    else
+      fail(
+        `key "${key.id}" dev: `,
+        `keypin run would set ${key.env} twice; key "${other}" dev sets it too`,
+      );
+  }
 }
 
 function sharedDestinations(keys: KeyEntry[], fail: (where: string, message: string) => void) {
@@ -176,8 +185,13 @@ function validateKey(
     err("", "must be a table");
     return undefined;
   }
-  unknownFields(raw, ["env", "owner", "rotate_every", "consumers", ...ENVIRONMENTS], (field) =>
-    err("", `unknown field "${field}"`),
+  unknownFields(raw, ["env", "rotate_every", ...ENVIRONMENTS], (field) =>
+    err(
+      "",
+      REMOVED_KEY_FIELDS.includes(field)
+        ? `field "${field}" is no longer used; delete it`
+        : `unknown field "${field}"`,
+    ),
   );
   const env = requiredString(raw, "env", (m) => err("", m));
   if (env !== undefined && !ENV_NAME.test(env))
@@ -185,7 +199,6 @@ function validateKey(
       "",
       `field "env" must be a variable name: letters, digits and _, not starting with a digit`,
     );
-  const owner = requiredString(raw, "owner", (m) => err("", m));
   const rotateEvery = optionalString(raw, "rotate_every", (m) => err("", m));
   if (rotateEvery !== undefined && periodDays(rotateEvery) === undefined) {
     err("", `field "rotate_every" must be <n>d, <n>w, <n>m or never`);
@@ -210,23 +223,8 @@ function validateKey(
     err("", `needs at least one of ${ENVIRONMENTS.map((n) => `"${n}"`).join(", ")}`);
   }
 
-  const consumers: Consumer[] = [];
-  if (raw.consumers !== undefined) {
-    if (!Array.isArray(raw.consumers)) err("", `field "consumers" must be a list`);
-    else {
-      raw.consumers.forEach((c: unknown, i: number) => {
-        const at = ` consumers[${i}]`;
-        if (!isRecord(c)) return err(at, "must be a table");
-        unknownFields(c, ["name", "kind"], (field) => err(at, `unknown field "${field}"`));
-        const name = requiredString(c, "name", (m) => err(at, m));
-        const kind = requiredString(c, "kind", (m) => err(at, m));
-        if (name !== undefined && kind !== undefined) consumers.push({ name, kind });
-      });
-    }
-  }
-
-  if (failures || env === undefined || owner === undefined) return undefined;
-  return { id, env, owner, rotateEvery: rotateEvery ?? null, environments, consumers };
+  if (failures || env === undefined) return undefined;
+  return { id, env, rotateEvery: rotateEvery ?? null, environments };
 }
 
 function validateEnv(
@@ -327,6 +325,8 @@ function validateTarget(raw: unknown, fail: (message: string) => void): PublishT
     );
     const account = requiredString(raw, "account", err);
     const worker = requiredString(raw, "worker", err);
+    if (account !== undefined && !ACCOUNT_ID.test(account))
+      err(`field "account" must be a Cloudflare account ID (32 hex characters)`);
     return failed || account === undefined || worker === undefined
       ? undefined
       : { to, account, worker };

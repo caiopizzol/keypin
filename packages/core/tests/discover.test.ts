@@ -365,7 +365,7 @@ describe("buildDiscovery", () => {
 
   test("a mapped name that is only a var stays a plain variable", () => {
     const parsed = parseMap(
-      `[vaults.p]\nkind = "1password"\naccount = "a"\nvault = "v"\n[keys.region]\nenv = "REGION"\nowner = "o"\ndev = { vault = "p", item = "i" }\n`,
+      `[vaults.p]\nkind = "1password"\naccount = "a"\nvault = "v"\n[keys.region]\nenv = "REGION"\ndev = { vault = "p", item = "i" }\n`,
       "keypin.toml",
     );
     assert(parsed.ok);
@@ -397,7 +397,6 @@ vault = "App Secrets"
 
 [keys.billing-stripe]
 env = "STRIPE_KEY"
-owner = "billing"
 dev = { vault = "personal", item = "billing dev stripe key" }
 `,
       "keypin.toml",
@@ -456,7 +455,7 @@ describe("draftMap", () => {
 
   test("drafts dev for local names and prod with every destination found, and it parses", () => {
     const draft = draftMap(discovery.names, {
-      owner: "billing",
+      project: "billing",
       githubAccount: "me",
       vault: null,
       takenIds: ["stripe-key"],
@@ -479,7 +478,7 @@ describe("draftMap", () => {
 
   test("reuses the map's vault and leaves out the account when it's the repo owner", () => {
     const draft = draftMap(discovery.names, {
-      owner: "billing",
+      project: "billing",
       githubAccount: "acme",
       vault: { name: "work", account: "my.1password.com", vault: "App Secrets" },
       takenIds: [],
@@ -501,7 +500,7 @@ describe("draftMap", () => {
   test("quotes a vault alias that isn't a bare TOML key", () => {
     for (const name of ["App Secrets", "team.prod"]) {
       const draft = draftMap(discovery.names, {
-        owner: "billing",
+        project: "billing",
         githubAccount: null,
         vault: { name, account: "my.1password.com", vault: "App Secrets" },
         takenIds: [],
@@ -519,7 +518,7 @@ describe("draftMap", () => {
   test("has nothing to draft when every set name is mapped", () => {
     const mapped = discovery.names.map((row) => ({ ...row, mapped: ["x"] }));
     expect(
-      draftMap(mapped, { owner: "o", githubAccount: null, vault: null, takenIds: [] }),
+      draftMap(mapped, { project: "o", githubAccount: null, vault: null, takenIds: [] }),
     ).toBeNull();
   });
 });

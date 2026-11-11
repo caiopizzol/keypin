@@ -10,20 +10,17 @@ vault = "Private"
 
 [keys.web-session]          # stable key ID, independent of vault item names
 env = "SESSION_SECRET"
-owner = "web"
 rotate_every = "180d"
 dev  = { vault = "1password", item = "web dev session secret" }
 prod = { vault = "1password", item = "web prod session secret", publish = [
   { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "web" },
   { to = "github-actions", repo = "acme/web" },
 ] }
-consumers = [{ name = "support-bot", kind = "manual" }]
 `;
 
 export const KEY: KeyEntry = {
   id: "billing-stripe",
   env: "STRIPE_API_KEY",
-  owner: "billing",
   rotateEvery: "365d",
   environments: {
     prod: {
@@ -43,7 +40,6 @@ export const KEY: KeyEntry = {
       ],
     },
   },
-  consumers: [],
 };
 
 export const WORKER = "cloudflare-worker:billing-worker:STRIPE_API_KEY";

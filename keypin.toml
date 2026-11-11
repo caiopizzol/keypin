@@ -1,11 +1,9 @@
 [vaults.personal]
-kind = "1password"
 account = "my.1password.com"
 vault = "App Secrets"
 
 [keys.site-deploy]
 env = "CLOUDFLARE_API_TOKEN"
-owner = "keypin"
 
 [keys.site-deploy.prod]
 vault = "personal"

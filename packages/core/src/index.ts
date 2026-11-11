@@ -27,7 +27,6 @@ export {
   receiptSecretKey,
   secretKey,
   validateMap,
-  type Consumer,
   type EnvEntry,
   type IssueSpec,
   type KeyEntry,

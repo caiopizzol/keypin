@@ -224,7 +224,6 @@ vault = "App Secrets"
 
 [keys.stripe-key]
 env = "STRIPE_KEY"
-owner = "billing"
 dev = { vault = "work", item = "billing dev stripe" }
 `,
       },
@@ -236,7 +235,11 @@ dev = { vault = "work", item = "billing dev stripe" }
     expect(draft).not.toContain('env = "STRIPE_KEY"');
     const parsed = parseMap(draft, "draft");
     assert(parsed.ok, JSON.stringify(parsed));
-    expect(parsed.map.keys.every((k) => k.owner === "billing")).toBe(true);
+    const items = parsed.map.keys.flatMap((k) =>
+      Object.values(k.environments).map((e) => e.ref.item),
+    );
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.every((item) => item.startsWith("billing "))).toBe(true);
   });
 
   test("Worker list entries with text or key material never reach the output", async () => {

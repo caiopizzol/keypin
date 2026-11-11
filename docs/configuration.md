@@ -9,7 +9,6 @@ Name each 1Password vault the keys read from. The name (`personal` here) is your
 
 ```toml
 [vaults.personal]
-kind = "1password" # the only kind for now
 account = "my.1password.com" # your 1Password account
 vault = "Private" # the vault's name in 1Password
 ```
@@ -19,9 +18,10 @@ vault = "Private" # the vault's name in 1Password
 ```toml
 [keys.api-token] # the key ID: lowercase letters, digits and dashes
 env = "API_TOKEN" # the variable your program reads
-owner = "my-project"
 rotate_every = "180d" # optional; overrides the vault item's rotate_every
 ```
+
+Two keys with a `dev` entry can't share an `env`, because `keypin run` would set the variable twice.
 
 A key needs at least one environment, `dev` or `prod`:
 
@@ -47,7 +47,7 @@ account = "owner" # optional: the GitHub login that writes; defaults to the repo
 
 [[keys.api-token.prod.publish]]
 to = "cloudflare-worker"
-account = "<Cloudflare account ID>"
+account = "<Cloudflare account ID>" # 32 hex characters
 worker = "my-worker"
 ```
 

@@ -23,6 +23,13 @@ export const USAGE = `Usage:
                            replace a token with a new one that has the same permissions, publish it,
                            and revoke the old one on the next run
   keypin --version         print the version
+
+Exit codes:
+  0  done
+  1  failed, or status found a problem
+  2  usage error
+  3  stopped for approval: run the printed command in a terminal and type yes
+  keypin run exits with the command's own code.
 `;
 
 const COMMANDS = new Map<string, (args: string[], deps: Deps) => Promise<number>>([

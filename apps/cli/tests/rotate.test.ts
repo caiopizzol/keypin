@@ -11,6 +11,7 @@ import {
   type VaultBackend,
 } from "@keypin/core";
 import { cli } from "../src/cli";
+import { NEEDS_APPROVAL } from "../src/publishing";
 import { nextName } from "../src/commands/rotate";
 import {
   fakeDeps,
@@ -315,7 +316,7 @@ describe("keypin rotate: the first run", () => {
 
   test("without a terminal or --yes it stops before reading anything", async () => {
     const run = await setup({});
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(2);
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(NEEDS_APPROVAL);
     expect(run.vault.calls).toEqual([]);
     expect(run.provider.log).toEqual([]);
     expect(run.stderr.text).toContain("rotate site-deploy");
@@ -324,14 +325,14 @@ describe("keypin rotate: the first run", () => {
 
   test("--yes can't approve a first write to a destination", async () => {
     const run = await setup({ receipts: null });
-    expect(await cli(["rotate", "site-deploy", "--yes"], run.deps)).toBe(2);
+    expect(await cli(["rotate", "site-deploy", "--yes"], run.deps)).toBe(NEEDS_APPROVAL);
     expect(run.stderr.text).toContain(`needs approval: first write to ${GITHUB}`);
     expect(run.vault.calls).toEqual([]);
   });
 
   test("answering anything but yes changes nothing", async () => {
     const run = await setup({ terminal: ["no"] });
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(2);
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(NEEDS_APPROVAL);
     expect(run.provider.log).not.toContainEqual(expect.stringMatching(/^issue/));
     expect(run.disk.contents.has(ROTATIONS)).toBe(false);
   });
@@ -468,7 +469,7 @@ describe("keypin rotate: the next run", () => {
   test("--yes can't revoke, and without a terminal nothing is read", async () => {
     const disk = await published();
     const run = await next(disk);
-    expect(await cli(["rotate", "site-deploy", "--yes"], run.deps)).toBe(2);
+    expect(await cli(["rotate", "site-deploy", "--yes"], run.deps)).toBe(NEEDS_APPROVAL);
     expect(run.stderr.text).toContain(
       "revoking needs yes typed in a terminal, and --yes can't give it",
     );
@@ -479,7 +480,7 @@ describe("keypin rotate: the next run", () => {
   test("anything but yes keeps the old token", async () => {
     const disk = await published();
     const run = await next(disk, ["y"]);
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(2);
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(NEEDS_APPROVAL);
     expect(run.provider.tokens.has(OLD_ID)).toBe(true);
     expect((await run.rotations()).rotations[0]?.stage).toBe("published");
   });
@@ -510,7 +511,7 @@ describe("keypin rotate: the next run", () => {
     const revoke = await next(disk, ["yes"]);
     expect(await cli(["rotate", "site-deploy"], revoke.deps)).toBe(0);
     const again = await next(disk, ["no"]);
-    expect(await cli(["rotate", "site-deploy"], again.deps)).toBe(2);
+    expect(await cli(["rotate", "site-deploy"], again.deps)).toBe(NEEDS_APPROVAL);
     expect(again.stderr.text).toContain("Plan:");
   });
 });
@@ -719,7 +720,7 @@ describe("keypin rotate: review fixes", () => {
       },
     });
     const run = await setup({ terminal: ["no"], disk: await diskWith(elsewhere) });
-    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(2);
+    expect(await cli(["rotate", "site-deploy"], run.deps)).toBe(NEEDS_APPROVAL);
     expect(run.stderr.text).not.toContain("An unfinished rotation");
     expect(run.stderr.text).toContain("Plan:");
   });
@@ -759,7 +760,7 @@ describe("keypin rotate: review fixes", () => {
   test("after removing that secret, a retry can still finish, and no only keeps the old token", async () => {
     const disk = await withRemoved(OLD_GENERATION);
     const refused = await revokeRun(["no"], disk);
-    expect(await cli(["rotate", "site-deploy"], refused.deps)).toBe(2);
+    expect(await cli(["rotate", "site-deploy"], refused.deps)).toBe(NEEDS_APPROVAL);
     expect(refused.provider.tokens.has(OLD_ID)).toBe(true);
     expect((await refused.rotations()).rotations[0]?.stage).toBe("published");
     const retry = await revokeRun(["yes"], disk);
@@ -801,7 +802,7 @@ describe("keypin rotate: review fixes", () => {
     );
 
     const hint = await setup({ disk });
-    expect(await cli(["rotate", "site-deploy", "--env", "dev"], hint.deps)).toBe(2);
+    expect(await cli(["rotate", "site-deploy", "--env", "dev"], hint.deps)).toBe(NEEDS_APPROVAL);
     expect(hint.stderr.text).toMatch(/&& \S+ --no-env-file \S+ rotate site-deploy --env dev\n/);
 
     const revoke = await setup({ terminal: ["yes"], disk });

@@ -47,9 +47,11 @@ writes only when there's no `keypin.toml`, or when it's still the untouched `key
 changes a real map: it exits 1, and you copy the `[keys.*]` tables from the draft by hand. It doesn't write
 through a symbolic link, and it writes nothing when there's no draft.
 
-To replace the template, it moves the template aside, checks it, and puts the draft in its place, so for a moment
-there's no `keypin.toml`. If an editor saves a map in that moment, the editor's map wins and nothing is written. If
-keypin can't put a moved file back, it leaves it next to `keypin.toml` and names it.
+To replace the template, it writes the draft to a temporary file next to it, checks that `keypin.toml` is still the
+same untouched template file, then renames the draft over it. `keypin.toml` is never missing, empty, or half
+written. If an editor saves during the write, the editor's file wins and nothing is written. An editor save in the
+instant between that last check and the rename can still be replaced. That can happen only to a file that was the
+untouched template, with no keys, a moment before.
 
 The file it writes still has placeholder `op://` references. Replace each before you run `keypin run` or
 `keypin publish`.

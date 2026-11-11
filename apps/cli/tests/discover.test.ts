@@ -435,17 +435,15 @@ dev = "op://App Secrets/billing dev stripe/password"
     expect(template.disk.contents.has(REGISTRY)).toBe(false);
   });
 
-  test("when the map changes while it writes, says so, names a file kept aside, and registers nothing", async () => {
-    const changed = setup({ files: { [MAP]: TEMPLATE }, replaceFile: async () => "changed" });
-    expect(await cli(["discover", "--write"], changed.deps)).toBe(1);
-    expect(changed.stderr.text).toContain(`${MAP} changed while discover ran; nothing was written`);
-    expect(changed.disk.contents.has(REGISTRY)).toBe(false);
-
-    const kept = `${MAP}.1.aside`;
-    const aside = setup({ files: { [MAP]: TEMPLATE }, replaceFile: async () => ({ kept }) });
-    expect(await cli(["discover", "--write"], aside.deps)).toBe(1);
-    expect(aside.stderr.text).toContain(`it's at ${kept}. Nothing was written`);
-    expect(aside.disk.contents.has(REGISTRY)).toBe(false);
+  test("when the map changes while it writes, says so and registers nothing", async () => {
+    const { deps, disk, stderr } = setup({
+      files: { [MAP]: TEMPLATE },
+      replaceFile: async () => "changed",
+    });
+    expect(await cli(["discover", "--write"], deps)).toBe(1);
+    expect(stderr.text).toContain(`${MAP} changed while discover ran; nothing was written`);
+    expect(disk.contents.get(MAP)).toBe(TEMPLATE);
+    expect(disk.contents.has(REGISTRY)).toBe(false);
   });
 
   test("with nothing to draft, writes nothing and registers nothing", async () => {

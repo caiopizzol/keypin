@@ -195,10 +195,6 @@ async function writeDraft(
       : await deps.replaceFile(file, TEMPLATE, draft);
   if (result === "link")
     throw new Error(`${file} is a symbolic link; keypin discover doesn't follow one`);
-  if (typeof result === "object")
-    throw new Error(
-      `${file} changed while discover ran, and keypin couldn't put back the file it had moved aside: it's at ${result.kept}. Nothing was written; compare the two and keep what you need.`,
-    );
   if (result === "exists" || result === "changed")
     throw new Error(`${file} changed while discover ran; nothing was written. Run it again.`);
   return file;

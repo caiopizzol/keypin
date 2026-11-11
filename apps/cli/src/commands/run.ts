@@ -1,5 +1,6 @@
+import { dirname, join, relative } from "node:path";
 import { parseArgs } from "node:util";
-import { formatReference, runEnvironment, type Secret } from "@keypin/core";
+import { envFileKind, envNames, formatReference, runEnvironment, type Secret } from "@keypin/core";
 import { type Child, type Deps, UsageError } from "../deps";
 import { errorCode, messageOf } from "../errors";
 import { findMap, pickEnvironment } from "../project";
@@ -63,6 +64,12 @@ export async function run(args: string[], deps: Deps): Promise<number> {
     return 1;
   }
 
+  await warnAboutEnvFiles(
+    deps,
+    [...new Set([dirname(map.file), deps.cwd])],
+    keys.map((k) => k.key.name),
+  );
+
   let child: Child;
   try {
     child = deps.launch(positionals, env);
@@ -78,4 +85,30 @@ export async function run(args: string[], deps: Deps): Promise<number> {
   } finally {
     stop();
   }
+}
+
+async function warnAboutEnvFiles(deps: Deps, folders: string[], mapped: string[]): Promise<void> {
+  if (!mapped.length) return;
+  for (const folder of folders) {
+    const entries = await deps.listFolder(folder).catch(() => []);
+    for (const entry of entries.toSorted((a, b) => a.name.localeCompare(b.name))) {
+      if (entry.kind !== "file" || envFileKind(entry.name) !== "set") continue;
+      const path = join(folder, entry.name);
+      const text = await deps.files.read(path).catch(() => null);
+      if (text === null) continue;
+      const names = new Set(envNames(text));
+      const held = mapped.filter((name) => names.has(name));
+      if (held.length)
+        deps.stderr.write(envFileWarning(entry.name, relative(deps.cwd, path), held));
+    }
+  }
+}
+
+function envFileWarning(name: string, file: string, keys: string[]): string {
+  const list = keys.join(", ");
+  const it = keys.length === 1 ? "it" : "them";
+  const effect = name.startsWith(".dev.vars")
+    ? `still sets ${list}; wrangler dev uses the file's value over keypin's`
+    : `still holds a plaintext copy of ${list}; tools differ on which value wins`;
+  return `keypin: ${file} ${effect}. Move ${it} out of the file.\n`;
 }

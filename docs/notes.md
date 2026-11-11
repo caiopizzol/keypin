@@ -10,6 +10,11 @@
 keypin run -- wrangler dev
 ```
 
+`keypin run` warns, before it starts the command, when an env file in the project folder or the current folder still
+holds a key it provides. It names the file and the keys, never a value, and still starts the command. For
+`.dev.vars`, `wrangler dev` uses the file's value over keypin's. For `.env` files, which value wins depends on the
+tool, but the file still holds a plaintext copy.
+
 ## Files on your machine
 
 | File                                   | Holds                                              |

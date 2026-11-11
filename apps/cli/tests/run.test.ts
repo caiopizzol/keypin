@@ -1,12 +1,24 @@
+import { spawnSync } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import { cli } from "../src/cli";
+import { diskFiles, listFolder } from "../src/disk";
 import { launch } from "../src/launch";
 import { fakeDeps, fakeLauncher, fakeVault, leaks, memoryFiles, SENTINEL, WEB_MAP } from "./fakes";
 
 const PROD_VALUE = "prod-value-that-run-never-reads";
 
-function setup(options: { failing?: string[]; code?: number; env?: Record<string, string> } = {}) {
-  const disk = memoryFiles({ "/work/web/keypin.toml": WEB_MAP });
+interface SetupOptions {
+  failing?: string[];
+  code?: number;
+  env?: Record<string, string>;
+  files?: Record<string, string>;
+}
+
+function setup(options: SetupOptions = {}) {
+  const disk = memoryFiles({ "/work/web/keypin.toml": WEB_MAP, ...options.files });
   disk.folders.add("/work/web/src");
   const vault = fakeVault({
     values: {
@@ -146,5 +158,75 @@ describe("keypin run", () => {
     expect(await cli(["run", "--", "keypin-no-such-command-zz"], deps)).toBe(1);
     expect(stderr.text).toContain(`couldn't start "keypin-no-such-command-zz": ENOENT`);
     expect(leaks(stdout.text, stderr.text)).toBe(false);
+  });
+
+  describe("env files that still hold a mapped key", () => {
+    test(".dev.vars: names the file and key, says wrangler dev prefers it, and still starts", async () => {
+      const { deps, launcher, stdout, stderr } = setup({
+        files: { "/work/web/.dev.vars": `SESSION_SECRET=${SENTINEL}\nPORT=8787\n` },
+      });
+      expect(await cli(["run", "--", "wrangler", "dev"], deps)).toBe(0);
+      expect(stderr.text).toContain(
+        "keypin: ../.dev.vars still sets SESSION_SECRET; wrangler dev uses the file's value over keypin's. Move it out of the file.\n",
+      );
+      expect(stderr.text).not.toContain("PORT");
+      expect(launcher.launches).toMatchObject([{ env: { SESSION_SECRET: SENTINEL } }]);
+      expect(leaks(stdout.text, stderr.text)).toBe(false);
+    });
+
+    test(".env.local in the current folder: says the file holds a plaintext copy", async () => {
+      const { deps, launcher, stdout, stderr } = setup({
+        files: { "/work/web/src/.env.local": `export SESSION_SECRET="${SENTINEL}"\n` },
+      });
+      expect(await cli(["run", "--", "true"], deps)).toBe(0);
+      expect(stderr.text).toContain(
+        "keypin: .env.local still holds a plaintext copy of SESSION_SECRET; tools differ on which value wins. Move it out of the file.\n",
+      );
+      expect(launcher.launches).toHaveLength(1);
+      expect(leaks(stdout.text, stderr.text)).toBe(false);
+    });
+
+    test("no warning for unmapped names, example files, or no files", async () => {
+      const files = {
+        "/work/web/.env": `PORT=3000\nDEBUG=1\n`,
+        "/work/web/.env.example": `SESSION_SECRET=\n`,
+        "/work/web/.dev.vars.template": `SESSION_SECRET=${SENTINEL}\n`,
+        "/work/web/src/nested/.env": `SESSION_SECRET=${SENTINEL}\n`,
+      };
+      for (const run of [setup({ files }), setup()]) {
+        expect(await cli(["run", "--", "true"], run.deps)).toBe(0);
+        expect(run.stderr.text).not.toContain("Move it out");
+        expect(run.launcher.launches).toHaveLength(1);
+      }
+    });
+
+    test("a file that isn't a regular file is skipped without reading it", async () => {
+      const { deps, launcher, stderr } = setup();
+      const reads: string[] = [];
+      const files = deps.files;
+      deps.files = { ...files, read: (path) => (reads.push(path), files.read(path)) };
+      deps.listFolder = async () => [{ name: ".dev.vars", kind: "other" }];
+      expect(await cli(["run", "--", "true"], deps)).toBe(0);
+      expect(reads).not.toContain("/work/web/.dev.vars");
+      expect(stderr.text).not.toContain(".dev.vars");
+      expect(launcher.launches).toHaveLength(1);
+    });
+
+    test("a real FIFO named .env doesn't block run", async () => {
+      const folder = await mkdtemp(join(tmpdir(), "keypin-run-"));
+      try {
+        await writeFile(join(folder, "keypin.toml"), WEB_MAP);
+        expect(spawnSync("mkfifo", [join(folder, ".env")]).status).toBe(0);
+        const { deps, launcher, stderr } = setup();
+        deps.cwd = folder;
+        deps.files = diskFiles;
+        deps.listFolder = listFolder;
+        expect(await cli(["run", "--", "true"], deps)).toBe(0);
+        expect(stderr.text).not.toContain("Move it out");
+        expect(launcher.launches).toHaveLength(1);
+      } finally {
+        await rm(folder, { recursive: true, force: true });
+      }
+    });
   });
 });

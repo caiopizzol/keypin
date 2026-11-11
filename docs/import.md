@@ -62,4 +62,5 @@ keypin never changes or deletes the env file, and it never prints a value. It na
 the file: one that isn't a variable name, has a `$`, is mapped only in another environment, shares an item with
 another, or whose item exists with another value. Move those, then delete the file and stop loading it. An empty
 value or a variable the map already has in that environment needs nothing. For
-example, `wrangler dev` reads `.dev.vars` (see [Notes](notes.md)). Then `keypin run -- <command>` provides the values.
+example, `wrangler dev` reads `.dev.vars` (see [Notes](notes.md)). Then `keypin run -- <command>` provides the values,
+and warns while an env file still holds one of them.

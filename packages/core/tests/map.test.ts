@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vite-plus/test";
+import { assert, describe, expect, test } from "vite-plus/test";
 import { parseMap } from "../src/index";
 import { MAP_FILE, VALID_MAP } from "./fixtures";
 
@@ -21,6 +21,7 @@ describe("a valid map", () => {
       ok: true,
       map: {
         file: MAP_FILE,
+        environments: ["dev", "prod"],
         keys: [
           {
             id: "web-session",
@@ -86,7 +87,57 @@ account = "acme-ops"
   });
 
   test("an empty map has no keys", () => {
-    expect(parseMap("", MAP_FILE)).toEqual({ ok: true, map: { file: MAP_FILE, keys: [] } });
+    expect(parseMap("", MAP_FILE)).toEqual({
+      ok: true,
+      map: { file: MAP_FILE, environments: ["dev", "prod"], keys: [] },
+    });
+  });
+
+  test("declared environments replace dev and prod", () => {
+    const result = parseMap(
+      `environments = ["local", "staging", "production"]\n${VAULTS}[keys.k]\nenv = "A"\nlocal = { vault = "personal", item = "l" }\nstaging = { vault = "personal", item = "s" }\n`,
+      MAP_FILE,
+    );
+    assert(result.ok, JSON.stringify(result));
+    expect(result.map.environments).toEqual(["local", "staging", "production"]);
+    expect(Object.keys(result.map.keys[0]?.environments ?? {})).toEqual(["local", "staging"]);
+    expect(
+      errorsOf(
+        `environments = ["local", "production"]\n${VAULTS}[keys.k]\nenv = "A"\ndev = { vault = "personal", item = "i" }\n`,
+      ),
+    ).toEqual([
+      `${MAP_FILE}: key "k": unknown field "dev"; environments are "local", "production"`,
+      `${MAP_FILE}: key "k": needs at least one of "local", "production"`,
+    ]);
+  });
+
+  test("an environment named like an object property is read only from the key", () => {
+    const result = parseMap(
+      `environments = ["constructor", "prod"]\n${VAULTS}[keys.k]\nenv = "A"\nprod = { vault = "personal", item = "p" }\n`,
+      MAP_FILE,
+    );
+    assert(result.ok, JSON.stringify(result));
+    expect(Object.keys(result.map.keys[0]?.environments ?? {})).toEqual(["prod"]);
+    expect(result.map.keys[0]?.environments.constructor).toBeUndefined();
+  });
+
+  test.each([
+    [
+      `environments = []`,
+      `"environments" must be a list of names, such as ["dev", "staging", "prod"]`,
+    ],
+    [
+      `environments = "prod"`,
+      `"environments" must be a list of names, such as ["dev", "staging", "prod"]`,
+    ],
+    [
+      `environments = ["Prod"]`,
+      `environment "Prod": a name starts with a lowercase letter and uses only lowercase letters, digits and dashes`,
+    ],
+    [`environments = ["env"]`, `environment "env": that name is a key field`],
+    [`environments = ["dev", "dev"]`, `environment "dev" is listed twice`],
+  ])("%s is rejected", (line, message) => {
+    expect(errorsOf(`${line}\n`)).toEqual([`${MAP_FILE}: ${message}`]);
   });
 });
 
@@ -163,12 +214,12 @@ describe("unknown fields are errors that name the file, the key and the field", 
     [
       "key",
       `${VAULTS}[keys.k]\nenv = "A"\nrotate = "90d"\ndev = { vault = "personal", item = "i" }\n`,
-      `key "k": unknown field "rotate"`,
+      `key "k": unknown field "rotate"; environments are "dev", "prod"`,
     ],
     [
       "environment name",
       `${VAULTS}[keys.k]\nenv = "A"\ndev = { vault = "personal", item = "i" }\nstaging = { vault = "personal", item = "i" }\n`,
-      `key "k": unknown field "staging"`,
+      `key "k": unknown field "staging"; environments are "dev", "prod"`,
     ],
     [
       "environment",
@@ -299,24 +350,6 @@ describe("wrong kinds and values", () => {
     expect(errorsOf(devAndProd)).toEqual([
       `${MAP_FILE}: key "deploy" prod publish[0]: writes the same destination secret as key "deploy" dev publish[0]`,
     ]);
-  });
-
-  test("two keys with a dev entry can't set the same variable for keypin run", () => {
-    const dev = (item: string) => `dev = { vault = "personal", item = "${item}" }`;
-    expect(
-      errorsOf(
-        `${VAULTS}[keys.a]\nenv = "API_TOKEN"\n${dev("a")}\n[keys.b]\nenv = "API_TOKEN"\n${dev("b")}\n`,
-      ),
-    ).toEqual([
-      `${MAP_FILE}: key "b" dev: keypin run would set API_TOKEN twice; key "a" dev sets it too`,
-    ]);
-    const worker = (name: string) =>
-      `publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "${name}" }]`;
-    const prodOnly = parseMap(
-      `${VAULTS}[keys.a]\nenv = "API_TOKEN"\nprod = { vault = "personal", item = "a", ${worker("one")} }\n[keys.b]\nenv = "API_TOKEN"\nprod = { vault = "personal", item = "b", ${worker("two")} }\n`,
-      MAP_FILE,
-    );
-    expect(prodOnly.ok).toBe(true);
   });
 
   test("a Worker's account is a Cloudflare account ID", () => {

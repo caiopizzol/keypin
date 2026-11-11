@@ -16,10 +16,12 @@ export const USAGE = `Usage:
   keypin status [--json]   every key in every registered project, with problems
   keypin discover [folder] [--json]
                            every key name a project uses, local and in the cloud, and a draft map
-  keypin run -- <command>  run a command with this project's dev keys in its environment
-  keypin publish <key-id> [--env prod|dev] [--yes]
+  keypin run [--env <name>] -- <command>
+                           run a command with one environment's keys (default: the first, dev)
+  keypin publish <key-id> [--env <name>] [--yes]
                            check accounts, plan, confirm, then write the key to every destination
-  keypin rotate <key-id> [--env prod|dev] [--yes]
+                           (default environment: the last, prod)
+  keypin rotate <key-id> [--env <name>] [--yes]
                            replace a token with a new one that has the same permissions, publish it,
                            and revoke the old one on the next run
   keypin --version         print the version

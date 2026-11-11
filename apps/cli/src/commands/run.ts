@@ -1,34 +1,45 @@
 import { parseArgs } from "node:util";
-import type { Secret } from "@keypin/core";
+import { runEnvironment, type Secret } from "@keypin/core";
 import { type Child, type Deps, UsageError } from "../deps";
 import { errorCode, messageOf } from "../errors";
-import { findMap } from "../project";
+import { findMap, pickEnvironment } from "../project";
 import { announce } from "../vault";
 
 export async function run(args: string[], deps: Deps): Promise<number> {
-  const { positionals } = parseArgs({ args, options: {}, allowPositionals: true });
+  const { values, positionals } = parseArgs({
+    args,
+    options: { env: { type: "string" } },
+    allowPositionals: true,
+  });
   if (!positionals.length) throw new UsageError("keypin run needs a command after --");
 
   const map = await findMap(deps.files, deps.cwd);
+  const environment = pickEnvironment(map, values.env, runEnvironment(map));
   const keys = map.keys.flatMap((key) => {
-    const dev = key.environments.dev;
-    return dev ? [{ key, ref: dev.ref }] : [];
+    const entry = key.environments[environment];
+    return entry ? [{ key, ref: entry.ref }] : [];
   });
-  const skipped = map.keys.filter((key) => !key.environments.dev).map((key) => key.id);
-  if (skipped.length) deps.stderr.write(`keypin: no dev entry, not added: ${skipped.join(", ")}\n`);
+  const twice = keys.filter(({ key }, i) => keys.findIndex((k) => k.key.env === key.env) !== i);
+  if (twice.length) {
+    const names = [...new Set(twice.map(({ key }) => key.env))];
+    deps.stderr.write(
+      `keypin: in ${environment}, more than one key sets ${names.join(", ")}, so the command didn't start\n`,
+    );
+    return 1;
+  }
 
-  const values = new Map<string, Secret>();
+  const found = new Map<string, Secret>();
   if (keys.length) {
     announce(
       deps.stderr,
-      "dev values",
+      `${environment} values`,
       keys.map((k) => k.ref),
     );
     const vault = deps.vault();
     const failures: string[] = [];
     for (const { key, ref } of keys) {
       try {
-        values.set(key.env, await vault.read(ref));
+        found.set(key.env, await vault.read(ref));
       } catch (error) {
         failures.push(`${key.id} (item "${ref.item}"): ${messageOf(error)}`);
       }
@@ -43,7 +54,7 @@ export async function run(args: string[], deps: Deps): Promise<number> {
 
   const env: Record<string, string> = {};
   for (const [name, value] of Object.entries(deps.env)) if (value !== undefined) env[name] = value;
-  for (const [name, secret] of values) {
+  for (const [name, secret] of found) {
     if (env[name] !== undefined) {
       deps.stderr.write(`keypin: ${name} was already set; using the vault's value\n`);
     }

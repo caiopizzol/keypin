@@ -1,6 +1,7 @@
 import { assert, describe, expect, test } from "vite-plus/test";
 import {
   buildDiscovery,
+  DEFAULT_ENVIRONMENTS,
   type DiscoverInput,
   draftMap,
   envFileKind,
@@ -459,6 +460,7 @@ describe("draftMap", () => {
       githubAccount: "me",
       vault: null,
       takenIds: ["stripe-key"],
+      environments: DEFAULT_ENVIRONMENTS,
     });
     assert(draft !== null);
     expect(draft).toContain("# Fill in the vault");
@@ -482,6 +484,7 @@ describe("draftMap", () => {
       githubAccount: "acme",
       vault: { name: "work", account: "my.1password.com", vault: "App Secrets" },
       takenIds: [],
+      environments: DEFAULT_ENVIRONMENTS,
     });
     assert(draft !== null);
     expect(draft).toContain("copy only the [keys.*] tables");
@@ -504,12 +507,13 @@ describe("draftMap", () => {
         githubAccount: null,
         vault: { name, account: "my.1password.com", vault: "App Secrets" },
         takenIds: [],
+        environments: DEFAULT_ENVIRONMENTS,
       });
       assert(draft !== null);
       const parsed = parseMap(draft, "draft");
       assert(parsed.ok, JSON.stringify(parsed));
       const refs = parsed.map.keys.flatMap((k) =>
-        Object.values(k.environments).map((e) => e.ref.vault),
+        Object.values(k.environments).flatMap((e) => (e ? [e.ref.vault] : [])),
       );
       expect(new Set(refs)).toEqual(new Set(["App Secrets"]));
     }
@@ -518,7 +522,13 @@ describe("draftMap", () => {
   test("has nothing to draft when every set name is mapped", () => {
     const mapped = discovery.names.map((row) => ({ ...row, mapped: ["x"] }));
     expect(
-      draftMap(mapped, { project: "o", githubAccount: null, vault: null, takenIds: [] }),
+      draftMap(mapped, {
+        project: "o",
+        githubAccount: null,
+        vault: null,
+        takenIds: [],
+        environments: DEFAULT_ENVIRONMENTS,
+      }),
     ).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 import { TOML } from "bun";
 import type { Environment, KeyId, KeyRef } from "./contracts";
-import { ENVIRONMENTS } from "./contracts";
+import { DEFAULT_ENVIRONMENTS } from "./contracts";
 import { isRecord } from "./record";
 import { periodDays } from "./rotation";
 
@@ -33,10 +33,23 @@ export interface KeyEntry {
 
 export interface KeysMap {
   file: string;
+  environments: readonly Environment[];
   keys: KeyEntry[];
 }
 
 export type MapResult = { ok: true; map: KeysMap } | { ok: false; errors: string[] };
+
+export function runEnvironment(map: Pick<KeysMap, "environments">): Environment {
+  return map.environments[0] ?? "dev";
+}
+
+export function publishEnvironment(map: Pick<KeysMap, "environments">): Environment {
+  return map.environments.at(-1) ?? "prod";
+}
+
+export function envFlag(environment: Environment, fallback: Environment): string {
+  return environment === fallback ? "" : ` --env ${environment}`;
+}
 
 export function destinationId(target: PublishTarget, secretName: string): string {
   return `${placeId(target)}:${secretName}`;
@@ -85,6 +98,8 @@ export function parseMap(text: string, file: string): MapResult {
 type Table = Record<string, unknown>;
 
 const KEY_ID = /^[a-z0-9][a-z0-9-]*$/;
+const ENVIRONMENT_NAME = /^[a-z][a-z0-9-]*$/;
+const KEY_FIELDS: readonly string[] = ["env", "rotate_every"];
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 const VAULT_KINDS: readonly string[] = ["1password"];
@@ -95,9 +110,10 @@ export function validateMap(data: unknown, file: string): MapResult {
   const fail = (where: string, message: string) => errors.push(`${file}: ${where}${message}`);
 
   if (!isRecord(data)) return { ok: false, errors: [`${file}: expected a table at the top level`] };
-  unknownFields(data, ["vaults", "keys"], (field) =>
+  unknownFields(data, ["environments", "vaults", "keys"], (field) =>
     fail("", `unknown top-level field "${field}"`),
   );
+  const environments = validateEnvironments(data.environments, (message) => fail("", message));
 
   const vaults = new Map<string, Omit<KeyRef, "item">>();
   const rawVaults = data.vaults ?? {};
@@ -128,36 +144,49 @@ export function validateMap(data: unknown, file: string): MapResult {
   if (!isRecord(rawKeys)) fail("", `"keys" must be a table`);
   else {
     for (const [id, raw] of Object.entries(rawKeys)) {
-      const entry = validateKey(id, raw, vaults, (where, message) =>
+      const entry = validateKey(id, raw, vaults, environments, (where, message) =>
         fail(`key "${id}"${where}: `, message),
       );
       if (entry) keys.push(entry);
     }
   }
 
-  sharedDevVariables(keys, (where, message) => fail(where, message));
-  sharedDestinations(keys, (where, message) => fail(where, message));
-  return errors.length ? { ok: false, errors } : { ok: true, map: { file, keys } };
+  sharedDestinations(keys, environments, (where, message) => fail(where, message));
+  return errors.length ? { ok: false, errors } : { ok: true, map: { file, environments, keys } };
 }
 
-function sharedDevVariables(keys: KeyEntry[], fail: (where: string, message: string) => void) {
-  const first = new Map<string, string>();
-  for (const key of keys) {
-    if (!key.environments.dev) continue;
-    const other = first.get(key.env);
-    if (other === undefined) first.set(key.env, key.id);
-    else
-      fail(
-        `key "${key.id}" dev: `,
-        `keypin run would set ${key.env} twice; key "${other}" dev sets it too`,
-      );
+function validateEnvironments(
+  raw: unknown,
+  fail: (message: string) => void,
+): readonly Environment[] {
+  if (raw === undefined) return DEFAULT_ENVIRONMENTS;
+  if (!Array.isArray(raw) || !raw.length || !raw.every((name) => typeof name === "string")) {
+    fail(`"environments" must be a list of names, such as ["dev", "staging", "prod"]`);
+    return DEFAULT_ENVIRONMENTS;
   }
+  const names: string[] = [];
+  for (const name of raw) {
+    if (!ENVIRONMENT_NAME.test(name)) {
+      fail(
+        `environment "${name}": a name starts with a lowercase letter and uses only lowercase letters, digits and dashes`,
+      );
+    } else if (KEY_FIELDS.includes(name)) {
+      fail(`environment "${name}": that name is a key field`);
+    } else if (names.includes(name)) {
+      fail(`environment "${name}" is listed twice`);
+    } else names.push(name);
+  }
+  return names;
 }
 
-function sharedDestinations(keys: KeyEntry[], fail: (where: string, message: string) => void) {
+function sharedDestinations(
+  keys: KeyEntry[],
+  environments: readonly Environment[],
+  fail: (where: string, message: string) => void,
+) {
   const owners = new Map<string, string>();
   for (const key of keys) {
-    for (const environment of ENVIRONMENTS) {
+    for (const environment of environments) {
       key.environments[environment]?.publish.forEach((target, i) => {
         const where = `key "${key.id}" ${environment} publish[${i}]`;
         const secret = secretKey(target, key.env);
@@ -173,6 +202,7 @@ function validateKey(
   id: string,
   raw: unknown,
   vaults: Map<string, Omit<KeyRef, "item">>,
+  environmentNames: readonly Environment[],
   fail: (where: string, message: string) => void,
 ): KeyEntry | undefined {
   let failures = 0;
@@ -185,12 +215,12 @@ function validateKey(
     err("", "must be a table");
     return undefined;
   }
-  unknownFields(raw, ["env", "rotate_every", ...ENVIRONMENTS], (field) =>
+  unknownFields(raw, [...KEY_FIELDS, ...environmentNames], (field) =>
     err(
       "",
       REMOVED_KEY_FIELDS.includes(field)
         ? `field "${field}" is no longer used; delete it`
-        : `unknown field "${field}"`,
+        : `unknown field "${field}"; environments are ${environmentNames.map((n) => `"${n}"`).join(", ")}`,
     ),
   );
   const env = requiredString(raw, "env", (m) => err("", m));
@@ -204,9 +234,9 @@ function validateKey(
     err("", `field "rotate_every" must be <n>d, <n>w, <n>m or never`);
   }
 
-  const environments: Partial<Record<Environment, EnvEntry>> = {};
-  for (const name of ENVIRONMENTS) {
-    if (raw[name] === undefined) continue;
+  const environments: Record<Environment, EnvEntry> = Object.create(null);
+  const declared = environmentNames.filter((name) => Object.hasOwn(raw, name));
+  for (const name of declared) {
     const entry = validateEnv(raw[name], vaults, (m) => err(` ${name}`, m));
     if (entry) environments[name] = entry;
   }
@@ -219,8 +249,8 @@ function validateKey(
       );
     }
   }
-  if (!ENVIRONMENTS.some((name) => raw[name] !== undefined)) {
-    err("", `needs at least one of ${ENVIRONMENTS.map((n) => `"${n}"`).join(", ")}`);
+  if (!declared.length) {
+    err("", `needs at least one of ${environmentNames.map((n) => `"${n}"`).join(", ")}`);
   }
 
   if (failures || env === undefined) return undefined;

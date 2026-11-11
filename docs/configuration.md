@@ -21,9 +21,7 @@ env = "API_TOKEN" # the variable your program reads
 rotate_every = "180d" # <n>d, <n>w, <n>m or never
 ```
 
-Two keys with a `dev` entry can't share an `env`, because `keypin run` would set the variable twice.
-
-A key needs at least one environment, `dev` or `prod`:
+A key needs at least one environment. By default these are `dev` and `prod`:
 
 ```toml
 [keys.api-token.dev] # what keypin run reads
@@ -34,6 +32,20 @@ item = "my-project dev api token"
 vault = "personal"
 item = "my-project prod api token"
 ```
+
+## Environments
+
+To use other names, list them at the top of the file. The first is what `keypin run` reads by default, and the last
+is what `publish` and `rotate` use by default. `--env <name>` picks another.
+
+```toml
+environments = ["dev", "staging", "prod"]
+```
+
+Every name a key uses must be listed, so a typo such as `stagng` is an error. A name starts with a lowercase letter
+and uses only lowercase letters, digits and dashes.
+
+If two keys in the same environment set the same `env`, `keypin run` refuses to start the command.
 
 ## Destinations
 

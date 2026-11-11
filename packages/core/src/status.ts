@@ -1,6 +1,11 @@
 import type { Environment, KeyId, KeyRef, Receipt, VaultMetadata } from "./contracts";
-import { ENVIRONMENTS } from "./contracts";
-import { destinationId, type MapResult, receiptSecretKey, secretKey } from "./map";
+import {
+  destinationId,
+  type MapResult,
+  publishEnvironment,
+  receiptSecretKey,
+  secretKey,
+} from "./map";
 import { latestPerSecret, sameRef } from "./plan";
 import type { Registry } from "./registry";
 import { type Rotation, rotateCommand, unfinishedRotation } from "./rotations";
@@ -94,7 +99,7 @@ export function buildStatus(input: StatusInput): Status {
     }
     const latest = new Map(latestPerSecret(input.receipts).map((r) => [receiptSecretKey(r), r]));
     for (const key of result.map.keys) {
-      for (const environment of ENVIRONMENTS) {
+      for (const environment of result.map.environments) {
         const entry = key.environments[environment];
         if (!entry) continue;
         const where = { project, keyId: key.id, environment };
@@ -161,7 +166,7 @@ export function buildStatus(input: StatusInput): Status {
         if (rotation) {
           add(
             "rotation-unfinished",
-            `${label}: a rotation started ${rotation.startedAt} is at stage "${rotation.stage}"; run ${rotateCommand(key.id, environment)} to continue`,
+            `${label}: a rotation started ${rotation.startedAt} is at stage "${rotation.stage}"; run ${rotateCommand(key.id, environment, publishEnvironment(result.map))} to continue`,
           );
         }
 

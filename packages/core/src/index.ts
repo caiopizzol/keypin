@@ -1,6 +1,6 @@
 export { Secret, generationOf, type Generation } from "./secret";
 export {
-  ENVIRONMENTS,
+  DEFAULT_ENVIRONMENTS,
   type AccountCheck,
   type Destination,
   type DestinationCapabilities,
@@ -23,7 +23,10 @@ export {
 export {
   DESTINATION_KINDS,
   destinationId,
+  envFlag,
   parseMap,
+  publishEnvironment,
+  runEnvironment,
   receiptSecretKey,
   secretKey,
   validateMap,

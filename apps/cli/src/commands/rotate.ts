@@ -8,7 +8,7 @@ import {
   dropRotation,
   type EnvEntry,
   type Environment,
-  ENVIRONMENTS,
+  envFlag,
   generationOf,
   type IssueSpec,
   type KeyEntry,
@@ -20,6 +20,7 @@ import {
   parseMap,
   periodDays,
   planPublish,
+  publishEnvironment,
   type ProviderToken,
   putRotation,
   type Receipt,
@@ -37,7 +38,7 @@ import {
 import { type Deps, localDay, UsageError } from "../deps";
 import { messageOf } from "../errors";
 import { registryPath, rotationsPath } from "../paths";
-import { findMap, MAP_FILE } from "../project";
+import { findMap, MAP_FILE, pickEnvironment } from "../project";
 import {
   accountFacts,
   type Checked,
@@ -73,19 +74,16 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
   const { values, positionals } = parseArgs({
     args,
     options: {
-      env: { type: "string", default: "prod" },
+      env: { type: "string" },
       yes: { type: "boolean", default: false },
     },
     allowPositionals: true,
   });
   const [keyId, ...extra] = positionals;
   if (keyId === undefined || extra.length) throw new UsageError("keypin rotate takes one key ID");
-  const environment = ENVIRONMENTS.find((name) => name === values.env);
-  if (!environment) {
-    throw new UsageError(`--env is ${ENVIRONMENTS.join(" or ")}, got "${values.env}"`);
-  }
 
   const map = await findMap(deps.files, deps.cwd);
+  const environment = pickEnvironment(map, values.env, publishEnvironment(map));
   const key = map.keys.find((k) => k.id === keyId);
   if (!key) throw new Error(`${map.file} has no key "${keyId}"`);
   const entry = key.environments[environment];
@@ -406,7 +404,7 @@ async function revokeOld(run: Run, data: Rotations, rotation: Rotation): Promise
   );
   if (behind.length) {
     say(
-      `Stopped: run keypin publish ${key.id}${environment === "prod" ? "" : ` --env ${environment}`} first. Nothing was revoked.`,
+      `Stopped: run keypin publish ${key.id}${envFlag(environment, publishEnvironment(run.map))} first. Nothing was revoked.`,
     );
     return 1;
   }
@@ -602,10 +600,11 @@ interface Owner {
   project: string | null;
   keyId: string;
   environment: string;
+  publishDefault: Environment;
 }
 
 function publishCommand(owner: Owner): string {
-  const env = owner.environment === "prod" ? "" : ` --env ${owner.environment}`;
+  const env = envFlag(owner.environment, owner.publishDefault);
   const where = owner.project === null ? "" : `cd ${shellWord(owner.project)} && `;
   return `${where}keypin publish ${owner.keyId}${env}`;
 }
@@ -616,11 +615,11 @@ async function listedOwners(run: Run): Promise<Map<string, Owner[]> | null> {
   const list = (map: KeysMap, project: string | null) => {
     for (const k of map.keys) {
       for (const [name, entry] of Object.entries(k.environments)) {
-        for (const target of entry.publish) {
+        for (const target of entry?.publish ?? []) {
           const secret = secretKey(target, k.env);
           owners.set(secret, [
             ...(owners.get(secret) ?? []),
-            { project, keyId: k.id, environment: name },
+            { project, keyId: k.id, environment: name, publishDefault: publishEnvironment(map) },
           ]);
         }
       }
@@ -675,7 +674,7 @@ async function otherHolders(
 }
 
 function again(run: Run): string {
-  return rotateCommand(run.key.id, run.environment);
+  return rotateCommand(run.key.id, run.environment, publishEnvironment(run.map));
 }
 
 async function checkNew(

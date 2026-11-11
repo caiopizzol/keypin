@@ -1,4 +1,5 @@
 import type { Environment, KeyId, KeyRef } from "./contracts";
+import { envFlag } from "./map";
 import { sameRef } from "./plan";
 import { type Files, readVersionedJson, writeJsonAtomic } from "./files";
 import { isRecord } from "./record";
@@ -66,8 +67,12 @@ export function unfinishedRotation(
   );
 }
 
-export function rotateCommand(keyId: KeyId, environment: Environment): string {
-  return `keypin rotate ${keyId}${environment === "prod" ? "" : ` --env ${environment}`}`;
+export function rotateCommand(
+  keyId: KeyId,
+  environment: Environment,
+  fallback: Environment,
+): string {
+  return `keypin rotate ${keyId}${envFlag(environment, fallback)}`;
 }
 
 export function putRotation(data: Rotations, rotation: Rotation): Rotations {

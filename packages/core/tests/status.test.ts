@@ -22,7 +22,11 @@ function status(rotation: Rotation | null, overrides: Partial<StatusInput> = {})
   const rotateEvery = rotation?.rotateEvery ?? "365d";
   const map: MapResult = {
     ok: true,
-    map: { file: `${PROJECT}/keypin.toml`, keys: [{ ...KEY, rotateEvery }] },
+    map: {
+      file: `${PROJECT}/keypin.toml`,
+      environments: ["dev", "prod"],
+      keys: [{ ...KEY, rotateEvery }],
+    },
   };
   const metadata: VaultMetadata | null = rotation && { rotated: rotation.rotated };
   return buildStatus({
@@ -161,7 +165,11 @@ describe("status", () => {
   test("no rotate_every in the map says where to add one", () => {
     const map: MapResult = {
       ok: true,
-      map: { file: "keypin.toml", keys: [{ ...KEY, rotateEvery: null }] },
+      map: {
+        file: "keypin.toml",
+        environments: ["dev", "prod"],
+        keys: [{ ...KEY, rotateEvery: null }],
+      },
     };
     const result = status(
       { rotated: "2026-11-09", rotateEvery: null },

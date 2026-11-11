@@ -5,7 +5,6 @@ import { desktopConnect } from "./sdk";
 
 const VALUE_FIELD = "password";
 const ROTATED = "rotated";
-const ROTATE_EVERY = "rotate_every";
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const UNIX_SECONDS = /^\d+$/;
@@ -119,8 +118,7 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
     async metadata(ref): Promise<VaultMetadata> {
       const item = await get(ref);
       const rotated = plainField(item.fields, ROTATED, ref);
-      const rotateEvery = plainField(item.fields, ROTATE_EVERY, ref);
-      return { rotated: rotated === null ? null : toDay(rotated, ref), rotateEvery };
+      return { rotated: rotated === null ? null : toDay(rotated, ref) };
     },
   };
 }

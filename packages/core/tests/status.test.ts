@@ -13,11 +13,18 @@ import { GITHUB, KEY, receipt, WORKER } from "./fixtures";
 const TODAY = "2026-11-09";
 const PROJECT = "/work/billing";
 
-function status(metadata: VaultMetadata | null, overrides: Partial<StatusInput> = {}) {
+interface Rotation {
+  rotated: string | null;
+  rotateEvery: string | null;
+}
+
+function status(rotation: Rotation | null, overrides: Partial<StatusInput> = {}) {
+  const rotateEvery = rotation?.rotateEvery ?? "365d";
   const map: MapResult = {
     ok: true,
-    map: { file: `${PROJECT}/keypin.toml`, keys: [{ ...KEY, rotateEvery: null }] },
+    map: { file: `${PROJECT}/keypin.toml`, keys: [{ ...KEY, rotateEvery }] },
   };
+  const metadata: VaultMetadata | null = rotation && { rotated: rotation.rotated };
   return buildStatus({
     registry: { version: 1, projects: [PROJECT], shared: [] },
     maps: new Map([[PROJECT, map]]),
@@ -98,7 +105,7 @@ describe("status", () => {
     ]);
   });
 
-  test.each<[string, VaultMetadata | null, ProblemKind, string]>([
+  test.each<[string, Rotation | null, ProblemKind, string]>([
     [
       "overdue",
       { rotated: "2025-01-01", rotateEvery: "90d" },
@@ -135,15 +142,9 @@ describe("status", () => {
       "bad-rotation-period",
       `rotate_every is "soon"`,
     ],
-    [
-      "no period",
-      { rotated: "2026-11-09", rotateEvery: null },
-      "bad-rotation-period",
-      "rotate_every is missing",
-    ],
     ["unreadable fields", null, "rotation-unreadable", "couldn't be read"],
-  ])("%s", (_, metadata, kind, message) => {
-    const problem = status(metadata).problems.find((p) => p.kind === kind);
+  ])("%s", (_, rotation, kind, message) => {
+    const problem = status(rotation).problems.find((p) => p.kind === kind);
     expect(problem?.message).toContain(message);
     expect(problem?.severity).toBe(kind === "due-soon" ? "notice" : "problem");
   });
@@ -157,17 +158,19 @@ describe("status", () => {
     expect(never.rows[0]?.due).toBeNull();
   });
 
-  test("the map's rotate_every wins over the vault's", () => {
+  test("no rotate_every in the map says where to add one", () => {
     const map: MapResult = {
       ok: true,
-      map: { file: "keypin.toml", keys: [{ ...KEY, rotateEvery: "30d" }] },
+      map: { file: "keypin.toml", keys: [{ ...KEY, rotateEvery: null }] },
     };
     const result = status(
-      { rotated: "2026-09-01", rotateEvery: "365d" },
+      { rotated: "2026-11-09", rotateEvery: null },
       { maps: new Map([[PROJECT, map]]) },
     );
-    expect(result.rows[0]?.rotateEvery).toBe("30d");
-    expect(kinds(result)).toContain("overdue");
+    expect(result.problems.find((p) => p.kind === "bad-rotation-period")).toMatchObject({
+      severity: "problem",
+      message: `${KEY.id} (prod): keypin.toml has no rotate_every for this key; add one, such as "90d", or "never"`,
+    });
   });
 
   test("a destination with no receipt", () => {

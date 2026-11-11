@@ -99,6 +99,7 @@ export function parseMap(text: string, file: string): MapResult {
 type Table = Record<string, unknown>;
 
 const ENVIRONMENT_NAME = /^[a-z][a-z0-9-]*$/;
+const TARGET_NAME = ENVIRONMENT_NAME;
 const KEY_FIELDS: readonly string[] = ["rotate_every"];
 const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
@@ -110,7 +111,7 @@ export function validateMap(data: unknown, file: string): MapResult {
   const fail = (where: string, message: string) => errors.push(`${file}: ${where}${message}`);
 
   if (!isRecord(data)) return { ok: false, errors: [`${file}: expected a table at the top level`] };
-  unknownFields(data, ["environments", "1password", "keys"], (field) =>
+  unknownFields(data, ["environments", "1password", "targets", "keys"], (field) =>
     fail(
       "",
       field === "vaults"
@@ -120,6 +121,7 @@ export function validateMap(data: unknown, file: string): MapResult {
   );
   const environments = validateEnvironments(data.environments, (message) => fail("", message));
   const account = validateAccount(data["1password"], (message) => fail("[1password]: ", message));
+  const targets = validateTargets(data.targets, (where, message) => fail(where, message));
 
   const keys: KeyEntry[] = [];
   const rawKeys = data.keys ?? {};
@@ -127,13 +129,17 @@ export function validateMap(data: unknown, file: string): MapResult {
   else {
     Object.entries(rawKeys).forEach(([id, raw], index) => {
       const label = VARIABLE_NAME.test(id) ? `key "${id}"` : `keys[${index}]`;
-      const entry = validateKey(id, raw, account, environments, (where, message) =>
+      const entry = validateKey(id, raw, account, environments, targets, (where, message) =>
         fail(`${label}${where}: `, message),
       );
       if (entry) keys.push(entry);
     });
   }
 
+  for (const name of targets.defined) {
+    if (!targets.used.has(name))
+      fail(`target "${name}": `, "no key publishes to it; use it in a publish list or delete it");
+  }
   sharedDestinations(keys, environments, (where, message) => fail(where, message));
   return errors.length
     ? { ok: false, errors }
@@ -148,6 +154,58 @@ function validateAccount(raw: unknown, fail: (message: string) => void): string 
   }
   unknownFields(raw, ["account"], (field) => fail(`unknown field "${field}"`));
   return requiredString(raw, "account", fail);
+}
+
+interface Targets {
+  defined: string[];
+  valid: Map<string, PublishTarget>;
+  used: Set<string>;
+}
+
+function validateTargets(raw: unknown, fail: (where: string, message: string) => void): Targets {
+  const targets: Targets = { defined: [], valid: new Map(), used: new Set() };
+  if (raw === undefined) return targets;
+  if (!isRecord(raw)) {
+    fail("", `"targets" must be a table of named destinations, such as [targets.ci]`);
+    return targets;
+  }
+  Object.entries(raw).forEach(([name, table], index) => {
+    if (!TARGET_NAME.test(name)) {
+      fail(
+        `targets[${index}]: `,
+        "a target name starts with a lowercase letter and uses only lowercase letters, digits and dashes",
+      );
+      return;
+    }
+    targets.defined.push(name);
+    const target = validateTarget(table, (m) => fail(`target "${name}": `, m));
+    if (target) targets.valid.set(name, target);
+  });
+  return targets;
+}
+
+function resolveTarget(
+  raw: unknown,
+  targets: Targets,
+  fail: (message: string) => void,
+): PublishTarget | undefined {
+  if (isRecord(raw)) return validateTarget(raw, fail);
+  if (typeof raw !== "string") {
+    fail("must be a target name or a table");
+    return undefined;
+  }
+  const name = targets.defined.find((defined) => defined === raw);
+  if (name === undefined) {
+    fail(
+      targets.defined.length
+        ? `names no target in [targets]; targets are ${targets.defined.map((n) => `"${n}"`).join(", ")}`
+        : "names a target, but the map has no [targets]",
+    );
+    return undefined;
+  }
+  targets.used.add(name);
+  const target = targets.valid.get(name);
+  return target ? { ...target } : undefined;
 }
 
 function validateEnvironments(
@@ -196,6 +254,7 @@ function validateKey(
   raw: unknown,
   account: string | undefined,
   environmentNames: readonly Environment[],
+  targets: Targets,
   fail: (where: string, message: string) => void,
 ): KeyEntry | undefined {
   let failures = 0;
@@ -230,7 +289,7 @@ function validateKey(
   const environments: Record<Environment, EnvEntry> = Object.create(null);
   const declared = environmentNames.filter((name) => Object.hasOwn(raw, name));
   for (const name of declared) {
-    const entry = validateEnv(raw[name], account, (m) => err(` ${name}`, m));
+    const entry = validateEnv(raw[name], account, targets, (m) => err(` ${name}`, m));
     if (entry) environments[name] = entry;
   }
   for (const [name, entry] of Object.entries(environments)) {
@@ -253,6 +312,7 @@ function validateKey(
 function validateEnv(
   given: unknown,
   account: string | undefined,
+  targets: Targets,
   fail: (message: string) => void,
 ): EnvEntry | undefined {
   const raw = typeof given === "string" ? { from: given } : given;
@@ -282,7 +342,7 @@ function validateEnv(
     if (!Array.isArray(raw.publish)) err(`field "publish" must be a list`);
     else {
       raw.publish.forEach((t: unknown, i: number) => {
-        const target = validateTarget(t, (m) => err(`publish[${i}]: ${m}`));
+        const target = resolveTarget(t, targets, (m) => err(`publish[${i}]: ${m}`));
         if (!target) return;
         const same = firstAt.get(placeId(target));
         if (same !== undefined) err(`publish[${i}]: the same destination as publish[${same}]`);

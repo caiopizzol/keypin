@@ -577,3 +577,159 @@ ${fields}
     ]);
   });
 });
+
+describe("shared targets", () => {
+  const WORKER = `{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "api" }`;
+  const CI = `[targets.ci]\nto = "github-actions"\nrepo = "acme/api"\n`;
+  const withPublish = (targets: string, publish: string) =>
+    `${VAULTS}${targets}\n[keys.API_TOKEN]\nprod = { from = "op://Private/i/password", publish = [${publish}] }\n`;
+
+  test("a name and an inline table resolve to the same destinations as two inline tables", () => {
+    const named = parseMap(withPublish(CI, `"ci", ${WORKER}`), MAP_FILE);
+    const inline = parseMap(
+      withPublish("", `{ to = "github-actions", repo = "acme/api" }, ${WORKER}`),
+      MAP_FILE,
+    );
+    assert(named.ok, JSON.stringify(named));
+    assert(inline.ok, JSON.stringify(inline));
+    expect(named.map).toEqual(inline.map);
+    expect(named.map.keys[0]?.environments.prod?.publish).toEqual([
+      { to: "github-actions", repo: "acme/api", account: "acme" },
+      { to: "cloudflare-worker", account: "11111111111111111111111111111111", worker: "api" },
+    ]);
+  });
+
+  test("two keys share a target, and array-of-tables entries still work beside it", () => {
+    const result = parseMap(
+      `${VAULTS}${CI}
+[keys.A]
+prod = { from = "op://Private/a/password", publish = ["ci"] }
+
+[keys.B.prod]
+from = "op://Private/b/password"
+publish = ["ci"]
+
+[keys.C.prod]
+from = "op://Private/c/password"
+
+[[keys.C.prod.publish]]
+to = "github-actions"
+repo = "acme/api"
+`,
+      MAP_FILE,
+    );
+    assert(result.ok, JSON.stringify(result));
+    for (const key of result.map.keys) {
+      expect(key.environments.prod?.publish).toEqual([
+        { to: "github-actions", repo: "acme/api", account: "acme" },
+      ]);
+    }
+  });
+
+  test("an unknown name lists the targets the map defines", () => {
+    expect(
+      errorsOf(
+        withPublish(
+          `${CI}[targets.web]\nto = "github-actions"\nrepo = "acme/web"\n`,
+          `"ci", "web", "cd"`,
+        ),
+      ),
+    ).toEqual([
+      `${MAP_FILE}: key "API_TOKEN" prod: publish[2]: names no target in [targets]; targets are "ci", "web"`,
+    ]);
+    expect(errorsOf(withPublish("", `"ci"`))).toEqual([
+      `${MAP_FILE}: key "API_TOKEN" prod: publish[0]: names a target, but the map has no [targets]`,
+    ]);
+  });
+
+  test("a target no key publishes to is an error", () => {
+    expect(
+      errorsOf(
+        withPublish(`${CI}[targets.web]\nto = "github-actions"\nrepo = "acme/web"\n`, `"ci"`),
+      ),
+    ).toEqual([
+      `${MAP_FILE}: target "web": no key publishes to it; use it in a publish list or delete it`,
+    ]);
+  });
+
+  test("a name and an inline table for the same destination are caught", () => {
+    expect(
+      errorsOf(
+        withPublish(CI, `"ci", { to = "github-actions", repo = "acme/api", account = "x" }`),
+      ),
+    ).toEqual([
+      `${MAP_FILE}: key "API_TOKEN" prod: publish[1]: the same destination as publish[0]`,
+    ]);
+    expect(
+      errorsOf(
+        `${VAULTS}${CI}\n[keys.TOKEN]\nprod = { from = "op://Private/a/password", publish = ["ci"] }\n[keys.token]\nprod = { from = "op://Private/b/password", publish = [{ to = "github-actions", repo = "Acme/API" }] }\n`,
+      ),
+    ).toEqual([
+      `${MAP_FILE}: key "token" prod publish[0]: writes the same destination secret as key "TOKEN" prod publish[0]`,
+    ]);
+  });
+
+  test("a GITHUB_ key can't publish to a github-actions target", () => {
+    expect(
+      errorsOf(
+        `${VAULTS}${CI}\n[keys.GITHUB_TOKEN]\nprod = { from = "op://Private/i/password", publish = ["ci"] }\n`,
+      ),
+    ).toEqual([
+      `${MAP_FILE}: key "GITHUB_TOKEN" prod: publish[0]: github-actions can't take this key, because GitHub reserves secret names that start with GITHUB_`,
+    ]);
+  });
+
+  test.each([
+    [
+      "a target with a wrong field",
+      `${CI}[targets.web]\nto = "github-actions"\nrepo = "acme/web"\nworker = "w"\n`,
+      `"ci", "web"`,
+      `target "web": unknown field "worker" for github-actions`,
+    ],
+    [
+      "a target with a missing field",
+      `[targets.ci]\nto = "github-actions"\n`,
+      `"ci"`,
+      `target "ci": missing field "repo"`,
+    ],
+    [
+      "a target name in capitals",
+      `${CI}[targets.Web]\nto = "github-actions"\nrepo = "acme/web"\n`,
+      `"ci"`,
+      `targets[1]: a target name starts with a lowercase letter and uses only lowercase letters, digits and dashes`,
+    ],
+    [
+      "a publish entry that is neither a name nor a table",
+      CI,
+      `"ci", 7`,
+      `key "API_TOKEN" prod: publish[1]: must be a target name or a table`,
+    ],
+  ])("%s is refused", (_, targets, publish, message) => {
+    expect(errorsOf(withPublish(targets, publish))).toEqual([`${MAP_FILE}: ${message}`]);
+  });
+
+  test("targets must be a table", () => {
+    expect(errorsOf(`targets = ["ci"]\n`)).toEqual([
+      `${MAP_FILE}: "targets" must be a table of named destinations, such as [targets.ci]`,
+    ]);
+  });
+
+  test("no target error quotes the text it found", () => {
+    const pasted = "sentinel-pasted-value-5555";
+    const texts = [
+      withPublish(CI, `"ci", "${pasted}"`),
+      withPublish("", `"${pasted}"`),
+      withPublish(
+        `${CI}[targets."${pasted.toUpperCase()}"]\nto = "github-actions"\nrepo = "a/b"\n`,
+        `"ci"`,
+      ),
+      withPublish(`[targets.ci]\nto = "${pasted}"\n`, `"ci"`),
+      withPublish(`[targets.ci]\nto = "github-actions"\nrepo = "${pasted}"\n`, `"ci"`),
+    ];
+    for (const text of texts) {
+      const errors = errorsOf(text).join("\n");
+      expect(errors).not.toContain(pasted);
+      expect(errors.toLowerCase()).not.toContain("sentinel");
+    }
+  });
+});

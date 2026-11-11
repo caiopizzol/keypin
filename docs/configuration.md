@@ -65,6 +65,25 @@ account = "<Cloudflare account ID>" # 32 hex characters
 worker = "my-worker"
 ```
 
+To share a destination across keys, name it under `[targets]` and list the name in `publish`. A list can mix
+names and tables:
+
+```toml
+[targets.ci]
+to = "github-actions"
+repo = "owner/repo"
+
+[keys.API_TOKEN.prod]
+from = "op://Private/my-project prod api token/credential"
+publish = [
+  "ci",
+  { to = "cloudflare-worker", account = "<Cloudflare account ID>", worker = "my-worker" },
+]
+```
+
+A target takes the same fields as a destination. Its name uses lowercase letters, digits and dashes, and some key
+must publish to it, so a typo shows up as an error.
+
 GitHub reserves secret names that start with `GITHUB_`, so a key with such a name can't publish to GitHub Actions.
 
 To let `rotate` replace the key, add a `rotate` section. See [Rotation](rotation.md).

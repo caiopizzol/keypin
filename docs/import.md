@@ -1,0 +1,56 @@
+# Import
+
+`keypin import` moves the values in an env file, such as `.env` or `.dev.vars`, into new 1Password items, and maps
+each one in `keypin.toml`. Run it in the project's folder.
+
+```sh
+keypin import .env --vault Private --account my.1password.com   # a project with no map yet
+keypin import .dev.vars --vault Private                         # a project whose map names its account
+```
+
+`--vault` is required. The account is the map's `[1password] account`. Without a map, give `--account`, the
+account's sign-in address.
+
+## What it creates
+
+For each variable, a Password item named `<folder> <environment> <variable>`, such as `billing dev stripe key` for
+`STRIPE_KEY`. The value goes in its `password` field, and `rotated` is today. The environment is the map's first,
+`dev` by default.
+
+It skips, and lists by name:
+
+- a name that isn't a variable name, such as `app.key`;
+- an empty value;
+- a variable the map already has;
+- a variable whose item already exists in the vault. keypin never overwrites an item. It imports the rest, then
+  exits 1.
+
+## The map
+
+Each item it creates gets a key:
+
+```toml
+[keys.STRIPE_KEY]
+rotate_every = "90d"
+dev = "op://Private/billing dev stripe key/password"
+```
+
+With no `keypin.toml`, or the untouched `keypin init` template, it writes a new map with the account, and registers
+the project. With a real map, it adds the new keys at the end, and leaves the rest of the file as it is. If the
+result wouldn't parse, it stops before creating anything. It doesn't write through a symbolic link, or over a map
+that changed while it ran.
+
+## Approval
+
+`import` shows every item it will create and every key it will add, then waits for you to type `yes`. Without a
+terminal, it stops, prints the command to run in one, and exits 3. `--yes` approves it, because it only creates new
+items.
+
+It creates the items one at a time. If one fails, it stops and maps only the items it created. Run it again to
+create the rest: it skips the keys it already mapped.
+
+## Afterwards
+
+keypin never changes or deletes the env file, and it never prints a value. Once the values are in 1Password, delete
+the file and stop loading it. For example, `wrangler dev` reads `.dev.vars` (see [Notes](notes.md)). Then
+`keypin run -- <command>` provides the values.

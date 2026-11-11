@@ -2,8 +2,9 @@ import { formatReference } from "./reference";
 import { TOML } from "bun";
 import type { Environment } from "./contracts";
 import { DEFAULT_ENVIRONMENTS } from "./contracts";
-import { type KeysMap, publishEnvironment, runEnvironment } from "./map";
+import { isVariableName, type KeysMap, publishEnvironment, runEnvironment } from "./map";
 import { isRecord } from "./record";
+import { Secret } from "./secret";
 
 export type EnvFileKind = "set" | "expected";
 
@@ -52,11 +53,26 @@ const DOTENV_LINE =
   /^\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?$/gm;
 
 export function envNames(text: string): string[] {
-  const names = new Set<string>();
+  return [...envValues(text).keys()];
+}
+
+export function envValues(text: string): Map<string, Secret> {
+  const values = new Map<string, Secret>();
   for (const match of text.replace(/\r\n?/g, "\n").matchAll(DOTENV_LINE)) {
-    if (match[1]) names.add(match[1]);
+    if (match[1]) values.set(match[1], new Secret(dotenvValue(match[2] ?? "")));
   }
-  return [...names];
+  return values;
+}
+
+function dotenvValue(raw: string): string {
+  const value = raw.trim();
+  const unquoted = value.replace(/^(['"`])([\s\S]*)\1$/, "$2");
+  return value.startsWith('"') ? unquoted.replace(/\\n/g, "\n").replace(/\\r/g, "\r") : unquoted;
+}
+
+export function draftItemName(project: string, environment: Environment, name: string): string {
+  const folder = project.replace(/[^A-Za-z0-9 ._-]/g, "-");
+  return `${folder} ${environment} ${name.toLowerCase().replaceAll("_", " ").trim()}`;
 }
 
 export interface WorkflowRefs {
@@ -458,12 +474,11 @@ export function draftMap(names: readonly NameRow[], options: DraftOptions): stri
   const runName = runEnvironment(options);
   const publishName = publishEnvironment(options);
   const vault = options.map?.vault ?? "<your vault>";
-  const project = options.project.replace(/[^A-Za-z0-9 ._-]/g, "-");
-  const from = (environment: string, what: string) =>
+  const from = (environment: string, name: string) =>
     str(
       formatReference({
         vault,
-        item: `${project} ${environment} ${what}`,
+        item: draftItemName(options.project, environment, name),
         section: null,
         field: "password",
       }),
@@ -499,16 +514,15 @@ export function draftMap(names: readonly NameRow[], options: DraftOptions): stri
       return [];
     });
     if (!local && !publish.length) continue;
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(row.name)) continue;
+    if (!isVariableName(row.name)) continue;
 
     const name = row.name;
-    const what = name.toLowerCase().replaceAll("_", " ").trim();
     lines.push("", `[keys.${name}]`, `rotate_every = "90d"`);
     if (local && !(publish.length && runName === publishName)) {
-      lines.push(`${runName} = ${from(runName, what)}`);
+      lines.push(`${runName} = ${from(runName, name)}`);
     }
     if (publish.length) {
-      lines.push("", `[keys.${name}.${publishName}]`, `from = ${from(publishName, what)}`);
+      lines.push("", `[keys.${name}.${publishName}]`, `from = ${from(publishName, name)}`);
       for (const target of publish) {
         lines.push("", `[[keys.${name}.${publishName}.publish]]`, ...target);
       }

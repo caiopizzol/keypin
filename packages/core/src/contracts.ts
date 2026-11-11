@@ -41,7 +41,11 @@ export interface VaultMetadata {
 export interface VaultBackend {
   readonly capabilities: VaultCapabilities;
   read(ref: KeyRef): Promise<Secret>;
-  write(ref: KeyRef, secret: Secret, options?: { rotated?: string }): Promise<void>;
+  write(
+    ref: KeyRef,
+    secret: Secret,
+    options?: { rotated?: string; newItem?: boolean },
+  ): Promise<void>;
   list(scope: VaultScope): Promise<VaultItem[]>;
   metadata(ref: KeyRef): Promise<VaultMetadata>;
 }

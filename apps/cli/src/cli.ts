@@ -1,4 +1,5 @@
 import { discover } from "./commands/discover";
+import { importEnv } from "./commands/import";
 import { init } from "./commands/init";
 import { publish } from "./commands/publish";
 import { rotate } from "./commands/rotate";
@@ -18,6 +19,10 @@ export const USAGE = `Usage:
                            every key name a project uses, local and in the cloud, and a draft map;
                            --write saves the draft as keypin.toml (only when there's none, or the
                            untouched init template) and registers the project
+  keypin import <env-file> --vault <vault> [--account <sign-in address>] [--yes]
+                           move an env file's values into new 1Password items and map them; the
+                           account is the map's, or --account when there's no map yet. It never
+                           overwrites an item, so --yes is enough to approve it. The file stays.
   keypin run [--env <name>] -- <command>
                            run a command with one environment's keys (default: the first, dev)
   keypin publish <VARIABLE> [--env <name>] [--yes]
@@ -43,6 +48,7 @@ const COMMANDS = new Map<string, (args: string[], deps: Deps) => Promise<number>
   ["unregister", unregister],
   ["status", status],
   ["discover", discover],
+  ["import", importEnv],
   ["run", run],
   ["publish", publish],
   ["rotate", rotate],

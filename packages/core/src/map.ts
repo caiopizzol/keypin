@@ -83,6 +83,10 @@ function placeId(target: PublishTarget): string {
     : `github-actions:${target.repo}`;
 }
 
+export function isVariableName(name: string): boolean {
+  return VARIABLE_NAME.test(name);
+}
+
 export function parseMap(text: string, file: string): MapResult {
   let data: unknown;
   try {

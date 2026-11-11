@@ -82,6 +82,18 @@ keypin run -- npm run dev   # run a command with the dev keys
 keypin publish API_TOKEN    # write the prod value to the GitHub secret
 ```
 
+### Coming from a .env
+
+`keypin import` moves a `.env` file's values into new 1Password items and maps them:
+
+```sh
+keypin import .env --vault Private --account my.1password.com
+```
+
+It shows each item it will create and waits for you to type `yes`. It never overwrites an item, and it never changes
+the `.env` file: delete it yourself once the values are in 1Password, and `keypin run -- <command>` provides them.
+See [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md).
+
 ## Commands
 
 ```sh
@@ -90,14 +102,17 @@ keypin unregister [folder]   # stop listing a project (its keypin.toml stays)
 keypin status [--json]       # every key, when it's due, and any problem
 keypin discover [folder]     # every key name a project uses, where it's set, and a draft map
                              # (--write saves the draft as keypin.toml and registers the project)
+keypin import <env-file> --vault <vault>
+                             # move an env file's values into 1Password and map them
 keypin run -- <command>      # run a command with the project's dev keys (--env for another)
 keypin publish <VARIABLE>    # check each destination's account, then write the key
 keypin publish --all         # publish every key, with one plan and one approval
 keypin rotate <VARIABLE>     # replace a Cloudflare API token, then revoke the old one
 ```
 
-`publish` and `rotate` show a plan and wait for you to type `yes`. `--yes` skips that only for routine updates. It
-never approves a first write, a changed account or vault item, or a revoke. `keypin --help` lists the exit codes.
+`import`, `publish` and `rotate` show a plan and wait for you to type `yes`. `--yes` skips that only for routine
+changes: `import`, which only creates new items, and routine `publish` updates. It never approves a first write, a
+changed account or vault item, or a revoke. `keypin --help` lists the exit codes.
 
 ## Docs
 
@@ -105,6 +120,8 @@ never approves a first write, a changed account or vault item, or a revoke. `key
   `keypin.toml` and in the vault items.
 - [Discover](https://github.com/caiopizzol/keypin/blob/main/docs/discover.md): what `discover` reads, the problems
   it reports, and its draft map.
+- [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md): moving a `.env` file's values into
+  1Password.
 - [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md): destinations, account checks and
   approvals.
 - [Rotation](https://github.com/caiopizzol/keypin/blob/main/docs/rotation.md): how `rotate` works, and the admin

@@ -116,6 +116,15 @@ async function readExpected(
   }
 }
 
+export async function isLink(path: string): Promise<boolean> {
+  try {
+    return (await lstat(path)).isSymbolicLink();
+  } catch (error) {
+    if (errorCode(error) === "ENOENT") return false;
+    throw error;
+  }
+}
+
 async function kindOf(path: string): Promise<"missing" | "exists" | "link"> {
   try {
     const found = await lstat(path);

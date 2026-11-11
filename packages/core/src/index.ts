@@ -24,6 +24,7 @@ export {
   DESTINATION_KINDS,
   destinationId,
   envFlag,
+  isVariableName,
   parseMap,
   publishEnvironment,
   runEnvironment,
@@ -104,9 +105,11 @@ export {
 export const packageName = "@keypin/core";
 export {
   buildDiscovery,
+  draftItemName,
   draftMap,
   envFileKind,
   envNames,
+  envValues,
   SKIPPED_FOLDERS,
   WRANGLER_FILES,
   workflowRefs,

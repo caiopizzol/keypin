@@ -61,6 +61,7 @@ export interface Deps {
   workerSecrets(account: string, worker: string): Promise<StoreRead>;
   createFile: CreateFile;
   replaceFile: ReplaceFile;
+  isLink(path: string): Promise<boolean>;
   vault(): VaultBackend;
   now(): Date;
   stdout: Writer;

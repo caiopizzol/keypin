@@ -71,6 +71,9 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
       const sdk = await client(ref.account);
       const id = await vaultId(sdk, ref);
       const found = await find(sdk, id, ref);
+      if (found && options.newItem) {
+        throw new Error(`${where(ref)}: the item already exists; keypin doesn't overwrite it`);
+      }
 
       if (!found) {
         if (ref.field !== VALUE_FIELD || ref.section !== null) {

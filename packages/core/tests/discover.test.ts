@@ -6,6 +6,7 @@ import {
   draftMap,
   envFileKind,
   envNames,
+  envValues,
   parseMap,
   workflowRefs,
   wranglerWorkers,
@@ -75,6 +76,37 @@ describe("env files", () => {
     const names = envNames(text);
     expect(names).toEqual(["app.key", "my-key", "AFTER"]);
     expect(JSON.stringify(names)).not.toContain(SENTINEL);
+  });
+});
+
+describe("env values", () => {
+  test("reads each value as dotenv does, inside a Secret", () => {
+    const text = [
+      "PLAIN= plain value  # a comment",
+      `export SINGLE='it is "quoted"'`,
+      `DOUBLE="line one\\nline two"`,
+      'MULTI="first',
+      'second"',
+      "EMPTY=",
+      "COLON: value",
+      "",
+    ].join("\r\n");
+    const values = envValues(text);
+    expect(Object.fromEntries([...values].map(([name, value]) => [name, value.reveal()]))).toEqual({
+      PLAIN: "plain value",
+      SINGLE: 'it is "quoted"',
+      DOUBLE: "line one\nline two",
+      MULTI: "first\nsecond",
+      EMPTY: "",
+      COLON: "value",
+    });
+    expect(JSON.stringify([...values])).not.toContain("plain value");
+  });
+
+  test("the last line for a name wins, and names keep their first place", () => {
+    const values = envValues(`A=${SENTINEL}\nB=2\nA=3\n`);
+    expect([...values.keys()]).toEqual(["A", "B"]);
+    expect(values.get("A")?.reveal()).toBe("3");
   });
 });
 

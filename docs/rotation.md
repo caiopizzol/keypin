@@ -5,10 +5,10 @@ works in two runs, so you can check that everything still works before the old t
 
 ## Set up
 
-Add an `issue` section to the key's environment:
+Add a `rotate` section to the key's environment:
 
 ```toml
-[keys.CLOUDFLARE_API_TOKEN.prod.issue]
+[keys.CLOUDFLARE_API_TOKEN.prod.rotate]
 provider = "cloudflare-account-token"
 account = "<Cloudflare account ID>"
 admin = "op://Private/shared cloudflare token admin/credential"

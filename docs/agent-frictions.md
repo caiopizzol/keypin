@@ -100,7 +100,7 @@ once.
 
 ### 10. Rotation's admin token isn't checked
 
-`status` reads only each environment's item, not `issue.admin`, though `docs/rotation.md` says the admin item
+`status` reads only each environment's item, not `rotate.admin`, though `docs/rotation.md` says the admin item
 has its own `rotated` and `rotate_every`. A missing or expired admin token shows up only when `rotate` fails.
 
 ### 11. "Nothing to write" trusts the receipt

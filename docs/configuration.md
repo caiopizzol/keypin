@@ -4,7 +4,7 @@ Each project has a `keypin.toml` at its root. It holds names and places, never v
 doesn't know, so a typo shows up as an error.
 
 A `keypin.toml` from keypin 0.4 (with `[vaults]`, `env`, `vault` and `item`) doesn't parse any more. Rewrite it in
-the format below.
+the format below. A keypin 0.5 `issue` section is now `rotate`.
 
 ## 1Password account
 
@@ -35,7 +35,7 @@ from = "op://Private/my-project prod api token/credential"
 ```
 
 Use the short form, `dev = "op://..."`, when the environment has nothing else. Use a table with `from` when it
-also has destinations or an `issue` section.
+also has destinations or a `rotate` section.
 
 ## Environments
 
@@ -67,7 +67,7 @@ worker = "my-worker"
 
 GitHub reserves secret names that start with `GITHUB_`, so a key with such a name can't publish to GitHub Actions.
 
-To let `rotate` replace the key, add an `issue` section. See [Rotation](rotation.md).
+To let `rotate` replace the key, add a `rotate` section. See [Rotation](rotation.md).
 
 ## Vault items
 

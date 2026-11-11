@@ -496,16 +496,16 @@ describe("wrong kinds and values", () => {
   });
 });
 
-describe("an issue section", () => {
+describe("a rotate section", () => {
   const ACCOUNT = "e48c9afabc4ff0cda321d0cf69b8943f";
-  const mapWith = (issue: string) => `${VAULTS}
+  const mapWith = (fields: string, section = "rotate") => `${VAULTS}
 [keys.CLOUDFLARE_API_TOKEN]
 
 [keys.CLOUDFLARE_API_TOKEN.prod]
 from = "op://Private/site deploy token/password"
 
-[keys.CLOUDFLARE_API_TOKEN.prod.issue]
-${issue}
+[keys.CLOUDFLARE_API_TOKEN.prod.${section}]
+${fields}
 `;
 
   test("names the provider, the account and the admin token's reference", () => {
@@ -516,7 +516,7 @@ ${issue}
       MAP_FILE,
     );
     if (!result.ok) throw new Error(result.errors.join("\n"));
-    expect(result.map.keys[0]?.environments.prod?.issue).toEqual({
+    expect(result.map.keys[0]?.environments.prod?.rotate).toEqual({
       provider: "cloudflare-account-token",
       account: ACCOUNT,
       admin: {
@@ -530,10 +530,23 @@ ${issue}
     });
   });
 
-  test("an entry without one has no issue", () => {
+  test("an entry without one has no rotate", () => {
     const result = parseMap(VALID_MAP, MAP_FILE);
     if (!result.ok) throw new Error(result.errors.join("\n"));
-    expect(result.map.keys[0]?.environments.prod).not.toHaveProperty("issue");
+    expect(result.map.keys[0]?.environments.prod).not.toHaveProperty("rotate");
+  });
+
+  test("the keypin 0.5 issue section says to rename it to rotate", () => {
+    expect(
+      errorsOf(
+        mapWith(
+          `provider = "cloudflare-account-token"\naccount = "${ACCOUNT}"\nadmin = "op://Private/a/password"`,
+          "issue",
+        ),
+      ),
+    ).toEqual([
+      `${MAP_FILE}: key "CLOUDFLARE_API_TOKEN" prod: the "issue" section is from keypin 0.5; rename it to "rotate" (see docs/configuration.md for the current format)`,
+    ]);
   });
 
   test.each([
@@ -558,9 +571,9 @@ ${issue}
       `provider = "cloudflare-account-token"\naccount = "${ACCOUNT}"\nadmin = "op://Private/a/password"\npermissions = []`,
       `unknown field "permissions"`,
     ],
-  ])("%s is refused", (issue, message) => {
-    expect(errorsOf(mapWith(issue))).toEqual([
-      `${MAP_FILE}: key "CLOUDFLARE_API_TOKEN" prod: issue: ${message}`,
+  ])("%s is refused", (fields, message) => {
+    expect(errorsOf(mapWith(fields))).toEqual([
+      `${MAP_FILE}: key "CLOUDFLARE_API_TOKEN" prod: rotate: ${message}`,
     ]);
   });
 });

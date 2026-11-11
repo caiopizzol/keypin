@@ -11,7 +11,7 @@ import {
   envFlag,
   formatReference,
   generationOf,
-  type IssueSpec,
+  type RotateSpec,
   type KeyEntry,
   type KeyOwner,
   type KeysMap,
@@ -63,7 +63,7 @@ interface Run {
   map: KeysMap;
   key: KeyEntry;
   entry: EnvEntry;
-  issue: IssueSpec;
+  spec: RotateSpec;
   environment: Environment;
   yes: boolean;
   args: string[];
@@ -92,10 +92,10 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
   if (!key) throw new Error(`${map.file} has no key "${keyId}"`);
   const entry = key.environments[environment];
   if (!entry) throw new Error(`key "${keyId}" has no ${environment} entry in ${map.file}`);
-  const issue = entry.issue;
-  if (!issue) {
+  const spec = entry.rotate;
+  if (!spec) {
     throw new Error(
-      `key "${keyId}" has no [keys.${keyId}.${environment}.issue] section in ${map.file}, so keypin can't make a new value`,
+      `key "${keyId}" has no [keys.${keyId}.${environment}.rotate] section in ${map.file}, so keypin can't make a new value`,
     );
   }
 
@@ -105,7 +105,7 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
       map,
       key,
       entry,
-      issue,
+      spec,
       environment,
       yes: values.yes,
       args,
@@ -120,9 +120,9 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
     say(
       `An unfinished rotation of ${key.name} (${environment}), started ${open.startedAt}, is at stage "${open.stage}".`,
     );
-    if (open.provider !== issue.provider || open.account !== issue.account) {
+    if (open.provider !== spec.provider || open.account !== spec.account) {
       say(
-        `Stopped: that rotation made its token as ${open.provider} in account ${open.account}, and the map now says ${issue.provider} in account ${issue.account}. Put the map back to finish it. Nothing was changed.`,
+        `Stopped: that rotation made its token as ${open.provider} in account ${open.account}, and the map now says ${spec.provider} in account ${spec.account}. Put the map back to finish it. Nothing was changed.`,
       );
       return 1;
     }
@@ -141,11 +141,11 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
 }
 
 async function start(run: Run, data: Rotations): Promise<number> {
-  const { key, entry, issue, environment, deps, say } = run;
+  const { key, entry, spec, environment, deps, say } = run;
   say(`Rotating ${key.name} (${environment}) from ${formatReference(entry.ref)}`);
   say(`  1Password account: ${entry.ref.account}`);
   say(
-    `  new token: ${issue.provider} in account ${issue.account}, made with the admin token in ${formatReference(issue.admin)}`,
+    `  new token: ${spec.provider} in account ${spec.account}, made with the admin token in ${formatReference(spec.admin)}`,
   );
   for (const target of entry.publish) say(`  to: ${describeTarget(target, key.name)}`);
   if (!entry.publish.length) {
@@ -181,25 +181,25 @@ async function start(run: Run, data: Rotations): Promise<number> {
     return NEEDS_APPROVAL;
   }
 
-  announce(deps.stderr, "the current value and the admin token", [entry.ref, issue.admin]);
+  announce(deps.stderr, "the current value and the admin token", [entry.ref, spec.admin]);
   const vault = deps.vault();
   let current: Secret;
   let admin: Secret;
   try {
     current = await vault.read(entry.ref);
-    admin = await vault.read(issue.admin);
+    admin = await vault.read(spec.admin);
   } catch (error) {
     say(`Stopped: ${messageOf(error)}. Nothing was changed.`);
     return 1;
   }
   if (current.reveal() === admin.reveal()) {
     say(
-      `Stopped: ${formatReference(issue.admin)} holds the same value as ${formatReference(entry.ref)}. The admin token needs its own field, or rotating would overwrite it. Nothing was changed.`,
+      `Stopped: ${formatReference(spec.admin)} holds the same value as ${formatReference(entry.ref)}. The admin token needs its own field, or rotating would overwrite it. Nothing was changed.`,
     );
     return 1;
   }
 
-  const provider = deps.provider(issue, admin);
+  const provider = deps.provider(spec, admin);
   const found = await provider.verify(current);
   if (found.status !== "active") {
     say(
@@ -244,8 +244,8 @@ async function start(run: Run, data: Rotations): Promise<number> {
     environment,
     mapFile: run.map.file,
     item: entry.ref,
-    provider: issue.provider,
-    account: issue.account,
+    provider: spec.provider,
+    account: spec.account,
     stage: "issuing",
     startedAt: now,
     updatedAt: now,
@@ -335,7 +335,7 @@ async function publishNew(
     }
     announce(deps.stderr, "the value to publish and the admin token, to check the new token", [
       entry.ref,
-      run.issue.admin,
+      run.spec.admin,
     ]);
     value = await deps.vault().read(entry.ref);
     const generation = await generationOf(value);
@@ -400,7 +400,7 @@ async function publishNew(
 }
 
 async function revokeOld(run: Run, data: Rotations, rotation: Rotation): Promise<number> {
-  const { key, issue, environment, deps, say } = run;
+  const { key, spec, environment, deps, say } = run;
   const generation = rotation.new.generation;
   if (!generation || !rotation.new.id || !rotation.old.id) {
     throw new Error(`rotation ${rotation.id} has no new generation or token IDs`);
@@ -447,7 +447,7 @@ async function revokeOld(run: Run, data: Rotations, rotation: Rotation): Promise
 
   announce(deps.stderr, "the current value, to check it's the new token, and the admin token", [
     run.entry.ref,
-    issue.admin,
+    spec.admin,
   ]);
   const holds = await generationOf(await deps.vault().read(run.entry.ref));
   if (holds !== generation) {
@@ -456,7 +456,7 @@ async function revokeOld(run: Run, data: Rotations, rotation: Rotation): Promise
     );
     return 1;
   }
-  const provider = deps.provider(issue, await deps.vault().read(issue.admin));
+  const provider = deps.provider(spec, await deps.vault().read(spec.admin));
   const current = await provider.details(rotation.new.id);
   if (current?.status !== "active") {
     say(
@@ -493,7 +493,7 @@ async function finish(run: Run, data: Rotations, rotation: Rotation): Promise<nu
 }
 
 async function abandon(run: Run, data: Rotations, rotation: Rotation): Promise<number> {
-  const { entry, issue, deps, say } = run;
+  const { entry, spec, deps, say } = run;
   if (rotation.new.generation) {
     announce(deps.stderr, "the current value, to see which token it holds", [entry.ref]);
     const holds = await generationOf(await deps.vault().read(entry.ref));
@@ -551,8 +551,8 @@ async function abandon(run: Run, data: Rotations, rotation: Rotation): Promise<n
       return NEEDS_APPROVAL;
     }
   } else {
-    announce(deps.stderr, "the admin token", [issue.admin]);
-    const provider = deps.provider(issue, await deps.vault().read(issue.admin));
+    announce(deps.stderr, "the admin token", [spec.admin]);
+    const provider = deps.provider(spec, await deps.vault().read(spec.admin));
     const made = await provider.details(id);
     if (made) {
       say(`New token: ${made.id} "${made.name}", ${made.status}, its value was never stored`);
@@ -594,7 +594,7 @@ async function deleteUnchecked(
 
 async function recheck(run: Run, rotation: Rotation, value: Secret): Promise<string | null> {
   if (!rotation.new.id || !rotation.old.id) return "the rotation has no token IDs";
-  const provider = run.deps.provider(run.issue, await run.deps.vault().read(run.issue.admin));
+  const provider = run.deps.provider(run.spec, await run.deps.vault().read(run.spec.admin));
   const old = await provider.details(rotation.old.id);
   if (!old) return `the old token ${rotation.old.id} is gone, so its policies can't be compared`;
   return checkNew(provider, rotation.new.id, value, old);

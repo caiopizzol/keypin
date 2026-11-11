@@ -13,7 +13,7 @@ export const DESTINATION_KINDS = ["cloudflare-worker", "github-actions"] as cons
 
 export const PROVIDER_KINDS = ["cloudflare-account-token"] as const;
 
-export interface IssueSpec {
+export interface RotateSpec {
   provider: (typeof PROVIDER_KINDS)[number];
   account: string;
   admin: KeyRef;
@@ -22,7 +22,7 @@ export interface IssueSpec {
 export interface EnvEntry {
   ref: KeyRef;
   publish: PublishTarget[];
-  issue?: IssueSpec;
+  rotate?: RotateSpec;
 }
 
 export interface KeyEntry {
@@ -265,11 +265,13 @@ function validateEnv(
     failed = true;
     fail(message);
   };
-  unknownFields(raw, ["from", "publish", "issue"], (field) =>
+  unknownFields(raw, ["from", "publish", "rotate"], (field) =>
     err(
       field === "vault" || field === "item"
         ? `"vault" and "item" are from keypin 0.4; use from = "op://<vault>/<item>/<field>" (${OLD_FORMAT})`
-        : `unknown field "${field}"`,
+        : field === "issue"
+          ? `the "issue" section is from keypin 0.5; rename it to "rotate" (${OLD_FORMAT})`
+          : `unknown field "${field}"`,
     ),
   );
   const ref = reference(raw, "from", account, err);
@@ -291,12 +293,12 @@ function validateEnv(
       });
     }
   }
-  const issue =
-    raw.issue === undefined || !ref
+  const rotate =
+    raw.rotate === undefined || !ref
       ? undefined
-      : validateIssue(raw.issue, ref, account, (m) => err(`issue: ${m}`));
+      : validateRotate(raw.rotate, ref, account, (m) => err(`rotate: ${m}`));
   if (failed || !ref) return undefined;
-  return { ref, publish, ...(issue ? { issue } : {}) };
+  return { ref, publish, ...(rotate ? { rotate } : {}) };
 }
 
 function reference(
@@ -321,12 +323,12 @@ function reference(
 
 const ACCOUNT_ID = /^[0-9a-f]{32}$/;
 
-function validateIssue(
+function validateRotate(
   raw: unknown,
   own: KeyRef,
   vaultAccount: string | undefined,
   fail: (message: string) => void,
-): IssueSpec | undefined {
+): RotateSpec | undefined {
   if (!isRecord(raw)) {
     fail("must be a table");
     return undefined;

@@ -1,6 +1,6 @@
 import { type BigIntStats, constants, rmSync } from "node:fs";
 import { execFile } from "node:child_process";
-import { chmod, lstat, mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
+import { chmod, lstat, mkdir, open, readdir, rename, rm, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Files } from "@keypin/core";
 import type { CreateFile, FolderEntry, HeldLock, Lock, ReplaceFile } from "./deps";
@@ -9,11 +9,18 @@ import { onSignals } from "./launch";
 
 export const diskFiles: Files = {
   async read(path) {
+    let handle: Awaited<ReturnType<typeof open>>;
     try {
-      return await readFile(path, "utf8");
+      handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK);
     } catch (error) {
       if (errorCode(error) === "ENOENT") return null;
       throw error;
+    }
+    try {
+      if (!(await handle.stat()).isFile()) throw new Error(`${path} isn't a regular file`);
+      return await handle.readFile("utf8");
+    } finally {
+      await handle.close();
     }
   },
   async write(path, text) {

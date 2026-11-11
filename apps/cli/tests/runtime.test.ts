@@ -26,4 +26,15 @@ describe("runtimeProblem", () => {
       `keypin needs Bun started with ${NO_ENV_FILE}, or Bun adds this folder's .env values to every command keypin runs. Run it as "keypin", or as "bun ${NO_ENV_FILE} /repo/apps/cli/src/main.ts".`,
     );
   });
+
+  test("an explicit --env-file is refused, even with --no-env-file and from BUN_OPTIONS", () => {
+    for (const flags of [
+      [NO_ENV_FILE, "--env-file=.env"],
+      ["--env-file", ".env", NO_ENV_FILE],
+    ]) {
+      expect(runtimeProblem(MIN_BUN, "keypin", flags)).toBe(
+        "keypin can't run with Bun's --env-file: Bun would add that file's values to every command keypin runs. Remove --env-file from the command and from BUN_OPTIONS.",
+      );
+    }
+  });
 });

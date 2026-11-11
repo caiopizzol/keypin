@@ -22,14 +22,19 @@ afterEach(async () => {
   await rm(folder, { recursive: true, force: true });
 });
 
-async function keypin(bunFlags: string[], args: string[]) {
+async function keypin(bunFlags: string[], args: string[], extra: Record<string, string> = {}) {
   const env: Record<string, string> = {};
   for (const [name, value] of Object.entries(process.env)) {
     if (value !== undefined && name !== "FROM_DOTENV") env[name] = value;
   }
   const child = Bun.spawn([process.execPath, ...bunFlags, MAIN, ...args], {
     cwd: folder,
-    env: { ...env, XDG_CONFIG_HOME: join(folder, "config"), XDG_STATE_HOME: join(folder, "state") },
+    env: {
+      ...env,
+      ...extra,
+      XDG_CONFIG_HOME: join(folder, "config"),
+      XDG_STATE_HOME: join(folder, "state"),
+    },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -61,5 +66,18 @@ describe("main", () => {
     expect(run.code).toBe(1);
     expect(run.stdout).toBe("");
     expect(run.stderr).toContain(`keypin needs Bun started with ${NO_ENV_FILE}`);
+  });
+
+  test("an --env-file in BUN_OPTIONS is refused before anything runs", async () => {
+    const run = await keypin(
+      [NO_ENV_FILE],
+      ["run", "--", "sh", "-c", 'echo "${FROM_DOTENV:-unset}"'],
+      {
+        BUN_OPTIONS: "--env-file=.env",
+      },
+    );
+    expect(run.code).toBe(1);
+    expect(run.stdout).toBe("");
+    expect(run.stderr).toContain("keypin can't run with Bun's --env-file");
   });
 });

@@ -1,5 +1,6 @@
 export const MIN_BUN = "1.4.4";
 export const NO_ENV_FILE = "--no-env-file";
+const ENV_FILE = "--env-file";
 
 export function runtimeProblem(
   bun: string | undefined,
@@ -12,6 +13,9 @@ export function runtimeProblem(
   }
   if (!execArgv.includes(NO_ENV_FILE)) {
     return `keypin needs Bun started with ${NO_ENV_FILE}, or Bun adds this folder's .env values to every command keypin runs. Run it as "keypin", or as "bun ${NO_ENV_FILE} ${script}".`;
+  }
+  if (execArgv.some((arg) => arg === ENV_FILE || arg.startsWith(`${ENV_FILE}=`))) {
+    return `keypin can't run with Bun's ${ENV_FILE}: Bun would add that file's values to every command keypin runs. Remove ${ENV_FILE} from the command and from BUN_OPTIONS.`;
   }
   return null;
 }

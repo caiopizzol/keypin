@@ -3,6 +3,7 @@ import { isRecord, loadRegistry, parseMap, type StoreRead } from "@keypin/core";
 import { CloudflareReader } from "@keypin/destination-cloudflare";
 import { cli } from "../src/cli";
 import { TEMPLATE } from "../src/commands/init";
+import type { Deps } from "../src/deps";
 import { fakeDeps, leaks, memoryFiles, parseJson, REGISTRY, SENTINEL } from "./fakes";
 
 const ACCOUNT = "11111111111111111111111111111111";
@@ -50,6 +51,7 @@ interface Setup {
   git?: Record<string, string | null>;
   github?: StoreRead | Error;
   worker?: StoreRead | Error;
+  replaceFile?: Deps["replaceFile"];
 }
 
 function setup(options: Setup = {}) {
@@ -91,6 +93,7 @@ function setup(options: Setup = {}) {
           secrets: [{ name: "STRIPE_KEY", updatedAt: null }],
         });
       },
+      ...(options.replaceFile && { replaceFile: options.replaceFile }),
     },
   });
   return { ...fake, calls };
@@ -430,6 +433,19 @@ dev = "op://App Secrets/billing dev stripe/password"
     expect(template.stderr.text).toContain(`${MAP} is a symbolic link`);
     expect(template.disk.contents.get(MAP)).toBe(TEMPLATE);
     expect(template.disk.contents.has(REGISTRY)).toBe(false);
+  });
+
+  test("when the map changes while it writes, says so, names a file kept aside, and registers nothing", async () => {
+    const changed = setup({ files: { [MAP]: TEMPLATE }, replaceFile: async () => "changed" });
+    expect(await cli(["discover", "--write"], changed.deps)).toBe(1);
+    expect(changed.stderr.text).toContain(`${MAP} changed while discover ran; nothing was written`);
+    expect(changed.disk.contents.has(REGISTRY)).toBe(false);
+
+    const kept = `${MAP}.1.aside`;
+    const aside = setup({ files: { [MAP]: TEMPLATE }, replaceFile: async () => ({ kept }) });
+    expect(await cli(["discover", "--write"], aside.deps)).toBe(1);
+    expect(aside.stderr.text).toContain(`it's at ${kept}. Nothing was written`);
+    expect(aside.disk.contents.has(REGISTRY)).toBe(false);
   });
 
   test("with nothing to draft, writes nothing and registers nothing", async () => {

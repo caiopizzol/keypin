@@ -37,7 +37,7 @@ export type ReplaceFile = (
   path: string,
   expected: string,
   text: string,
-) => Promise<"replaced" | "changed" | "link">;
+) => Promise<"replaced" | "changed" | "link" | { kept: string }>;
 
 export interface FolderEntry {
   name: string;

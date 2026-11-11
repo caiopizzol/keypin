@@ -1,6 +1,19 @@
 import { constants, rmSync } from "node:fs";
 import { execFile } from "node:child_process";
-import { chmod, lstat, mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
+import {
+  chmod,
+  link,
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  readlink,
+  rename,
+  rm,
+  stat,
+  symlink,
+} from "node:fs/promises";
 import { dirname } from "node:path";
 import type { Files } from "@keypin/core";
 import type { CreateFile, FolderEntry, HeldLock, Lock, ReplaceFile } from "./deps";
@@ -54,27 +67,71 @@ export const createFile: CreateFile = async (path, text) => {
   }
 };
 
-export const replaceFile: ReplaceFile = async (path, expected, text) => {
-  const before = await readUnlinked(path, expected);
-  if (typeof before === "string") return before;
-  const temporary = `${path}.${crypto.randomUUID()}.tmp`;
-  try {
-    const handle = await open(temporary, "wx", 0o600);
+export type ReplaceStep = "grab" | "verify";
+
+export function replaceFileWith(step: (name: ReplaceStep) => Promise<void>): ReplaceFile {
+  return async (path, expected, text) => {
+    const before = await readUnlinked(path, expected);
+    if (typeof before === "string") return before;
+    const id = crypto.randomUUID();
+    const temporary = `${path}.${id}.tmp`;
+    const aside = `${path}.${id}.aside`;
     try {
-      await handle.chmod(before.mode & 0o7777);
-      await handle.writeFile(text);
-      await handle.sync();
+      const handle = await open(temporary, "wx", 0o600);
+      try {
+        await handle.chmod(before.mode & 0o7777);
+        await handle.writeFile(text);
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+      await step("grab");
+      try {
+        await rename(path, aside);
+      } catch (error) {
+        if (errorCode(error) === "ENOENT") return "changed";
+        throw error;
+      }
+      await step("verify");
+      const grabbed = await readUnlinked(aside, expected).catch(() => "changed" as const);
+      if (typeof grabbed === "string") return await putBack(aside, path, grabbed);
+      try {
+        await link(temporary, path);
+      } catch (error) {
+        if (errorCode(error) === "EEXIST") {
+          await rm(aside, { force: true });
+          return "changed";
+        }
+        const back = await putBack(aside, path, "changed");
+        if (typeof back !== "string") return back;
+        throw error;
+      }
+      await rm(aside, { force: true });
+      return "replaced";
     } finally {
-      await handle.close();
+      await rm(temporary, { force: true });
     }
-    const now = await readUnlinked(path, expected);
-    if (typeof now === "string") return now;
-    await rename(temporary, path);
-    return "replaced";
-  } finally {
-    await rm(temporary, { force: true });
+  };
+}
+
+export const replaceFile = replaceFileWith(async () => {});
+
+async function putBack<Found extends "changed" | "link">(
+  aside: string,
+  path: string,
+  found: Found,
+): Promise<Found | { kept: string }> {
+  try {
+    const moved = await lstat(aside);
+    if (moved.isSymbolicLink()) await symlink(await readlink(aside), path);
+    else if (moved.isFile()) await link(aside, path);
+    else return { kept: aside };
+  } catch {
+    return { kept: aside };
   }
-};
+  await rm(aside, { force: true });
+  return found;
+}
 
 async function readUnlinked(
   path: string,

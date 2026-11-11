@@ -1,20 +1,22 @@
 import {
   chmod,
+  lstat,
   mkdir,
   mkdtemp,
   readdir,
   readFile,
+  rename,
   rm,
   stat,
   symlink,
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, assert, beforeEach, describe, expect, test } from "vite-plus/test";
 import { emptyState, register, saveState } from "@keypin/core";
-import { createFile, diskFiles, diskLock, replaceFile } from "../src/disk";
+import { createFile, diskFiles, diskLock, replaceFile, replaceFileWith } from "../src/disk";
 
 const HOLDER = fileURLToPath(new URL("lock-holder.ts", import.meta.url));
 
@@ -163,12 +165,67 @@ describe("replaceFile", () => {
     expect(await readdir(folder)).toEqual(["keypin.toml"]);
   });
 
-  test("replaces the file by renaming a new one over it, so a reader never sees it half written", async () => {
+  test("puts a complete new file in place, so a reader never sees it half written", async () => {
     const path = join(folder, "keypin.toml");
     await writeFile(path, "template");
     const before = (await stat(path)).ino;
     expect(await replaceFile(path, "template", "the draft")).toBe("replaced");
     expect((await stat(path)).ino).not.toBe(before);
+  });
+
+  test("keeps a map an editor saves after the first check, before the template is moved aside", async () => {
+    const path = join(folder, "keypin.toml");
+    await writeFile(path, "template");
+    const replace = replaceFileWith(async (step) => {
+      if (step === "grab") await editorSaves(path, "the editor's map");
+    });
+    expect(await replace(path, "template", "the draft")).toBe("changed");
+    expect(await readFile(path, "utf8")).toBe("the editor's map");
+    expect(await readdir(folder)).toEqual(["keypin.toml"]);
+  });
+
+  test("keeps a map an editor saves while the template is moved aside", async () => {
+    const path = join(folder, "keypin.toml");
+    await writeFile(path, "template");
+    const replace = replaceFileWith(async (step) => {
+      if (step === "verify") await editorSaves(path, "the editor's map");
+    });
+    expect(await replace(path, "template", "the draft")).toBe("changed");
+    expect(await readFile(path, "utf8")).toBe("the editor's map");
+    expect(await readdir(folder)).toEqual(["keypin.toml"]);
+  });
+
+  test("leaves a symbolic link that appears before the move where it was", async () => {
+    const path = join(folder, "keypin.toml");
+    const outside = join(folder, "outside");
+    await writeFile(outside, "template");
+    await writeFile(path, "template");
+    const replace = replaceFileWith(async (step) => {
+      if (step === "grab") {
+        await rm(path);
+        await symlink(outside, path);
+      }
+    });
+    expect(await replace(path, "template", "the draft")).toBe("link");
+    expect((await lstat(path)).isSymbolicLink()).toBe(true);
+    expect(await readFile(outside, "utf8")).toBe("template");
+    expect((await readdir(folder)).toSorted()).toEqual(["keypin.toml", "outside"]);
+  });
+
+  test("keeps the moved file aside and names it when an editor saves before it can go back", async () => {
+    const path = join(folder, "keypin.toml");
+    await writeFile(path, "template");
+    const replace = replaceFileWith(async (step) => {
+      if (step === "grab") await editorSaves(path, "the first save");
+      if (step === "verify") await editorSaves(path, "the second save");
+    });
+    const result = await replace(path, "template", "the draft");
+    assert(typeof result === "object");
+    expect(await readFile(path, "utf8")).toBe("the second save");
+    expect(await readFile(result.kept, "utf8")).toBe("the first save");
+    expect((await readdir(folder)).toSorted()).toEqual(
+      ["keypin.toml", basename(result.kept)].toSorted(),
+    );
   });
 
   test("reports a symbolic link and writes nothing through it", async () => {
@@ -184,3 +241,9 @@ describe("replaceFile", () => {
     expect(await readdir(folder)).toEqual([]);
   });
 });
+
+async function editorSaves(path: string, text: string): Promise<void> {
+  const saved = `${path}.editor`;
+  await writeFile(saved, text);
+  await rename(saved, path);
+}

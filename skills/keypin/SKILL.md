@@ -12,8 +12,9 @@ from 1Password only while a command runs.
 - New project: run `keypin discover` and show the draft map. Its vault item names are placeholders;
   ask the user for the real ones. The user creates vault items; you never write a value. `keypin init`
   registers the project but writes only a commented template; fill it from the draft and the answers.
-- Check a project: `keypin status --json` for due dates and receipts, and `keypin discover` for what each
-  repo and Worker actually holds. `status` exits 1 when it finds a problem; the JSON still prints.
+- Check a project: `keypin status --json` for due dates and receipts, and `keypin discover` for the names
+  each repo and Worker holds. `cloud unknown` means discover couldn't read it, not that the name is missing.
+  `status` exits 1 when it finds a problem; the JSON still prints.
 - Run with dev keys: `keypin run -- <command>`. For `wrangler dev`, see [notes](../../docs/notes.md).
 - 1Password asks the user to approve each command. If a command waits, tell the user to approve it.
 - `publish` and `rotate` need a typed `yes` in a terminal, which you don't have. Run them without `--yes`:

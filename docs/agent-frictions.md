@@ -37,9 +37,10 @@ When approval is needed and there's no terminal, they stop early:
 
 - `publish` stops before reading the value, so the plan never confirms the item exists or which destinations
   would change. `docs/publishing.md` says the plan step reads the value first.
-- The revoke run stops before it prints the old token's last-used time. That time is the evidence that the new
-  token is in use. One agent caught a user saying "I started this yesterday" when the rotation began minutes
-  earlier, and had no way to check.
+- The revoke run stops before it prints the old token's last-used time. That time shows whether something still
+  uses the old token; it doesn't prove the new one works, so the consumer checks are still needed. One agent
+  caught a user saying "I started this yesterday" when the rotation began minutes earlier, and had no way to
+  check.
 
 Add a read-only plan mode (`--plan`, or always print the full plan before stopping), so an agent can show the
 user exactly what they will approve. Rotation's revoke step is being changed separately; coordinate with that.

@@ -55,24 +55,47 @@ export const createFile: CreateFile = async (path, text) => {
 };
 
 export const replaceFile: ReplaceFile = async (path, expected, text) => {
+  const before = await readUnlinked(path, expected);
+  if (typeof before === "string") return before;
+  const temporary = `${path}.${crypto.randomUUID()}.tmp`;
+  try {
+    const handle = await open(temporary, "wx", 0o600);
+    try {
+      await handle.chmod(before.mode & 0o7777);
+      await handle.writeFile(text);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    const now = await readUnlinked(path, expected);
+    if (typeof now === "string") return now;
+    await rename(temporary, path);
+    return "replaced";
+  } finally {
+    await rm(temporary, { force: true });
+  }
+};
+
+async function readUnlinked(
+  path: string,
+  expected: string,
+): Promise<"changed" | "link" | { mode: number }> {
   if ((await kindOf(path)) === "link") return "link";
   let handle: Awaited<ReturnType<typeof open>>;
   try {
-    handle = await open(path, constants.O_RDWR | constants.O_NOFOLLOW);
+    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   } catch (error) {
     if (errorCode(error) === "ELOOP") return "link";
     if (errorCode(error) === "ENOENT") return "changed";
     throw error;
   }
   try {
-    if ((await handle.readFile("utf8")) !== expected) return "changed";
-    await handle.truncate(0);
-    await handle.write(text, 0);
-    return "replaced";
+    const { mode } = await handle.stat();
+    return (await handle.readFile("utf8")) === expected ? { mode } : "changed";
   } finally {
     await handle.close();
   }
-};
+}
 
 async function kindOf(path: string): Promise<"missing" | "exists" | "link"> {
   try {

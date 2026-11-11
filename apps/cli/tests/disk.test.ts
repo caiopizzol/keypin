@@ -1,4 +1,14 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -143,12 +153,22 @@ describe("createFile", () => {
 describe("replaceFile", () => {
   test("replaces a file only while it holds the expected text, and keeps its mode", async () => {
     const path = join(folder, "keypin.toml");
-    await writeFile(path, "template", { mode: 0o644 });
+    await writeFile(path, "template");
+    await chmod(path, 0o640);
     expect(await replaceFile(path, "other", "draft")).toBe("changed");
     expect(await readFile(path, "utf8")).toBe("template");
     expect(await replaceFile(path, "template", "the draft")).toBe("replaced");
     expect(await readFile(path, "utf8")).toBe("the draft");
-    expect((await stat(path)).mode & 0o777).toBe(0o644);
+    expect((await stat(path)).mode & 0o777).toBe(0o640);
+    expect(await readdir(folder)).toEqual(["keypin.toml"]);
+  });
+
+  test("replaces the file by renaming a new one over it, so a reader never sees it half written", async () => {
+    const path = join(folder, "keypin.toml");
+    await writeFile(path, "template");
+    const before = (await stat(path)).ino;
+    expect(await replaceFile(path, "template", "the draft")).toBe("replaced");
+    expect((await stat(path)).ino).not.toBe(before);
   });
 
   test("reports a symbolic link and writes nothing through it", async () => {

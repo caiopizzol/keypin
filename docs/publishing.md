@@ -20,7 +20,8 @@ keypin publish api-token --env dev   # the dev entry
 2. **Plan:** it reads the value and shows what it will write where. Destinations that already got this value are
    skipped.
 3. **Approval:** you type `yes`. The first write to a destination, a changed account, and a changed vault item
-   always need a typed `yes` in a terminal. `--yes` can approve only ordinary updates.
+   always need a typed `yes` in a terminal. `--yes` can approve only ordinary updates. Without a terminal,
+   `publish` and `rotate` stop, print the command to run in one, and exit 3, unless `--yes` covers every step.
 4. **Receipts:** each write that keypin confirms gets a receipt. A rerun skips those destinations and writes the rest.
 
 keypin doesn't delete a secret from a destination you remove from the map. It lists that destination in the plan

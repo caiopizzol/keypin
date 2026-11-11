@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { generationOf, loadState, type Receipt, Secret } from "@keypin/core";
 import { GitHubSecretDestination } from "@keypin/destination-github";
 import { cli } from "../src/cli";
+import { NEEDS_APPROVAL } from "../src/publishing";
 import {
   fakeDeps,
   type FakeDestinationOptions,
@@ -52,9 +53,9 @@ function setup(
 }
 
 describe("keypin publish", () => {
-  test("a first publish without a terminal stops before reading the value, exit 2", async () => {
+  test("a first publish without a terminal stops before reading the value, exit 3", async () => {
     const run = setup();
-    expect(await cli(["publish", "billing-stripe"], run.deps)).toBe(2);
+    expect(await cli(["publish", "billing-stripe"], run.deps)).toBe(NEEDS_APPROVAL);
     expect(run.log).toEqual([`check ${WORKER_PLACE}`, `check ${GITHUB_PLACE}`]);
     expect(run.calls).toEqual([]);
     expect(run.stderr.text).not.toContain("keypin: reading");
@@ -74,7 +75,9 @@ describe("keypin publish", () => {
       cwd: "/work/billing/src",
       self: ["/opt/bun 1.4/bun", "--no-env-file", "/home/me/keypin/apps/cli/src/main.ts"],
     };
-    expect(await cli(["publish", "billing-stripe", "--env", "prod", "--yes"], fake)).toBe(2);
+    expect(await cli(["publish", "billing-stripe", "--env", "prod", "--yes"], fake)).toBe(
+      NEEDS_APPROVAL,
+    );
     expect(run.stderr.text).toContain(
       `To approve, run this in a terminal:\n  cd /work/billing/src && '/opt/bun 1.4/bun' --no-env-file /home/me/keypin/apps/cli/src/main.ts publish billing-stripe --env prod --yes\n`,
     );
@@ -126,7 +129,7 @@ describe("keypin publish", () => {
 
   test("anything but yes on the terminal writes nothing", async () => {
     const run = setup({ terminal: "y" });
-    expect(await cli(["publish", "billing-stripe"], run.deps)).toBe(2);
+    expect(await cli(["publish", "billing-stripe"], run.deps)).toBe(NEEDS_APPROVAL);
     expect(run.log.some((l) => l.startsWith("write"))).toBe(false);
     expect(run.disk.contents.has(STATE)).toBe(false);
   });
@@ -178,7 +181,7 @@ describe("keypin publish", () => {
 
   test("--yes is refused when a step needs approval, and nothing is read", async () => {
     const run = setup();
-    expect(await cli(["publish", "billing-stripe", "--yes"], run.deps)).toBe(2);
+    expect(await cli(["publish", "billing-stripe", "--yes"], run.deps)).toBe(NEEDS_APPROVAL);
     expect(run.log.some((l) => l.startsWith("write"))).toBe(false);
     expect(run.calls).toEqual([]);
     expect(run.stderr.text).toContain("--yes can't give it");
@@ -186,7 +189,7 @@ describe("keypin publish", () => {
 
   test("--yes in a terminal still asks when a step needs approval", async () => {
     const run = setup({ terminal: "no" });
-    expect(await cli(["publish", "billing-stripe", "--yes"], run.deps)).toBe(2);
+    expect(await cli(["publish", "billing-stripe", "--yes"], run.deps)).toBe(NEEDS_APPROVAL);
     expect(run.asked).toEqual(["Type yes to write (this plan needs approval): "]);
     expect(run.log.some((l) => l.startsWith("write"))).toBe(false);
   });
@@ -206,7 +209,7 @@ describe("keypin publish", () => {
     const first = setup({ terminal: "yes" });
     await cli(["publish", "billing-stripe"], first.deps);
     const next = setup({ disk: first.disk, value: `${SENTINEL}-next` });
-    expect(await cli(["publish", "billing-stripe"], next.deps)).toBe(2);
+    expect(await cli(["publish", "billing-stripe"], next.deps)).toBe(NEEDS_APPROVAL);
     expect(next.log.some((l) => l.startsWith("write"))).toBe(false);
   });
 
@@ -330,7 +333,7 @@ describe("keypin publish", () => {
       BILLING_MAP.replace('env = "STRIPE_API_KEY"', 'env = "STRIPE_KEY"'),
     );
     const blocked = setup({ disk: first.disk, value: SENTINEL });
-    expect(await cli(["publish", "billing-stripe", "--yes"], blocked.deps)).toBe(2);
+    expect(await cli(["publish", "billing-stripe", "--yes"], blocked.deps)).toBe(NEEDS_APPROVAL);
     expect(blocked.stderr.text).toContain(`  first write to ${WORKER_PLACE}:STRIPE_KEY`);
     expect(blocked.calls).toEqual([]);
 
@@ -455,7 +458,7 @@ describe("a destination only takes a value without approval when it came from th
 
     disk.contents.set("/work/billing/keypin.toml", deployMap("cloudflare admin token"));
     const swapped = publisher(disk, "/work/billing", false);
-    expect(await cli(["publish", "deploy", "--yes"], swapped.deps)).toBe(2);
+    expect(await cli(["publish", "deploy", "--yes"], swapped.deps)).toBe(NEEDS_APPROVAL);
     expect(swapped.writes()).toEqual([]);
     expect(swapped.stderr.text).toContain(
       `  github-actions:acme/billing:DEPLOY_TOKEN was last published from item "billing deploy token"`,
@@ -503,7 +506,7 @@ describe("a destination only takes a value without approval when it came from th
     });
     expect(await cli(["publish", "deploy"], publisher(disk, "/work/billing", true).deps)).toBe(0);
     const other = publisher(disk, "/work/web", false);
-    expect(await cli(["publish", "deploy", "--yes"], other.deps)).toBe(2);
+    expect(await cli(["publish", "deploy", "--yes"], other.deps)).toBe(NEEDS_APPROVAL);
     expect(other.stderr.text).toContain("needs approval");
     expect(other.writes()).toEqual([]);
   });
@@ -520,7 +523,7 @@ describe("a destination only takes a value without approval when it came from th
     expect((await loadState(disk.files, STATE)).receipts).toHaveLength(1);
 
     const again = publisher(disk, "/work/billing", false);
-    expect(await cli(["publish", "deploy", "--yes"], again.deps)).toBe(2);
+    expect(await cli(["publish", "deploy", "--yes"], again.deps)).toBe(NEEDS_APPROVAL);
     expect(again.stderr.text).toContain('was last published from item "cloudflare admin token"');
     expect(again.writes()).toEqual([]);
   });
@@ -539,7 +542,7 @@ describe("a destination only takes a value without approval when it came from th
     );
 
     const unattended = publisher(disk, "/work/billing", false);
-    expect(await cli(["publish", "deploy", "--yes"], unattended.deps)).toBe(2);
+    expect(await cli(["publish", "deploy", "--yes"], unattended.deps)).toBe(NEEDS_APPROVAL);
     expect(unattended.stderr.text).toContain("an item its receipt doesn't record");
     expect(unattended.writes()).toEqual([]);
 

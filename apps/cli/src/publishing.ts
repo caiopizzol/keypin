@@ -20,7 +20,7 @@ import type { Deps, LockHolder } from "./deps";
 import { messageOf } from "./errors";
 import { statePath } from "./paths";
 
-export const NEEDS_APPROVAL = 2;
+export const NEEDS_APPROVAL = 3;
 
 export interface Checked {
   target: PublishTarget;

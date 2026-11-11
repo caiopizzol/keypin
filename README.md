@@ -92,7 +92,7 @@ keypin rotate <key-id>       # replace a Cloudflare API token, then revoke the o
 ```
 
 `publish` and `rotate` show a plan and wait for you to type `yes`. `--yes` skips that only for routine updates. It
-never approves a first write, a changed account or vault item, or a revoke.
+never approves a first write, a changed account or vault item, or a revoke. `keypin --help` lists the exit codes.
 
 ## Docs
 

@@ -449,7 +449,7 @@ export interface DraftVault {
 }
 
 export interface DraftOptions {
-  owner: string;
+  project: string;
   githubAccount: string | null;
   vault: DraftVault | null;
   takenIds: readonly string[];
@@ -498,13 +498,13 @@ export function draftMap(names: readonly NameRow[], options: DraftOptions): stri
 
     const id = freeId(keyIdFor(row.name), taken);
     const what = row.name.toLowerCase().replaceAll("_", " ").trim();
-    lines.push("", `[keys.${id}]`, `env = ${str(row.name)}`, `owner = ${str(options.owner)}`);
+    lines.push("", `[keys.${id}]`, `env = ${str(row.name)}`);
     if (local) {
       lines.push(
         "",
         `[keys.${id}.dev]`,
         `vault = ${str(vault.name)}`,
-        `item = ${str(`${options.owner} dev ${what}`)}`,
+        `item = ${str(`${options.project} dev ${what}`)}`,
       );
     }
     if (publish.length) {
@@ -512,7 +512,7 @@ export function draftMap(names: readonly NameRow[], options: DraftOptions): stri
         "",
         `[keys.${id}.prod]`,
         `vault = ${str(vault.name)}`,
-        `item = ${str(`${options.owner} prod ${what}`)}`,
+        `item = ${str(`${options.project} prod ${what}`)}`,
       );
       for (const target of publish) lines.push("", `[[keys.${id}.prod.publish]]`, ...target);
     }
@@ -525,7 +525,6 @@ export function draftMap(names: readonly NameRow[], options: DraftOptions): stri
       : "# Fill in the vault, then save this as keypin.toml.",
     "",
     `[vaults.${/^[A-Za-z_][A-Za-z0-9_-]*$/.test(vault.name) ? vault.name : str(vault.name)}]`,
-    'kind = "1password"',
     `account = ${str(vault.account)}`,
     `vault = ${str(vault.vault)}`,
   ];

@@ -5,6 +5,7 @@ import { TEMPLATE } from "../src/commands/init";
 import { fakeDeps, REGISTRY } from "./fakes";
 
 const VAULT = { kind: "1password", account: "my.1password.com", vault: "Private" };
+const CLOUDFLARE_ACCOUNT = "11111111111111111111111111111111";
 
 function uncomment(template: string): string {
   return template
@@ -30,16 +31,24 @@ describe("keypin init", () => {
     });
   });
 
+  test("the uncommented example rejects its Cloudflare placeholder until it's filled in", () => {
+    expect(parseMap(uncomment(TEMPLATE), "keypin.toml")).toEqual({
+      ok: false,
+      errors: [
+        `keypin.toml: key "example-api-key" prod: publish[0]: field "account" must be a Cloudflare account ID (32 hex characters)`,
+      ],
+    });
+  });
+
   test("the uncommented example parses, with dev, prod and both destinations", () => {
-    const parsed = parseMap(uncomment(TEMPLATE), "keypin.toml");
+    const filled = uncomment(TEMPLATE).replace("<cloudflare account ID>", CLOUDFLARE_ACCOUNT);
+    const parsed = parseMap(filled, "keypin.toml");
     assert(parsed.ok, JSON.stringify(parsed));
     expect(parsed.map.keys).toEqual([
       {
         id: "example-api-key",
         env: "EXAMPLE_API_KEY",
-        owner: "my-project",
         rotateEvery: "180d",
-        consumers: [],
         environments: {
           dev: { ref: { ...VAULT, item: "my-project dev example api key" }, publish: [] },
           prod: {
@@ -47,7 +56,7 @@ describe("keypin init", () => {
             publish: [
               {
                 to: "cloudflare-worker",
-                account: "<cloudflare account ID>",
+                account: CLOUDFLARE_ACCOUNT,
                 worker: "my-worker",
               },
               { to: "github-actions", repo: "owner/repo", account: "owner" },

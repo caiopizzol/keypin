@@ -42,7 +42,6 @@ export interface StatusRow {
   keyId: KeyId;
   environment: Environment;
   env: string;
-  owner: string;
   ref: KeyRef;
   rotated: string | null;
   rotateEvery: string | null;
@@ -169,7 +168,6 @@ export function buildStatus(input: StatusInput): Status {
         rows.push({
           ...where,
           env: key.env,
-          owner: key.owner,
           ref: entry.ref,
           rotated,
           rotateEvery,

@@ -243,7 +243,6 @@ vault = "Private"
 
 [keys.billing-stripe]
 env = "STRIPE_API_KEY"
-owner = "billing"
 dev = { vault = "personal", item = "billing stripe api key" }
 prod = { vault = "personal", item = "billing stripe api key", publish = [
   { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
@@ -259,12 +258,10 @@ vault = "Private"
 
 [keys.web-session]
 env = "SESSION_SECRET"
-owner = "web"
 dev = { vault = "personal", item = "web dev session secret" }
 prod = { vault = "personal", item = "web prod session secret", publish = [
   { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "web" },
 ] }
-consumers = [{ name = "support-bot", kind = "manual" }]
 `;
 
 export const registryWith = (...projects: string[]) =>

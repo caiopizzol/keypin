@@ -59,13 +59,11 @@ A key looks like this:
 
 ```toml
 [vaults.personal]
-kind = "1password"
 account = "my.1password.com"
 vault = "Private"
 
 [keys.api-token]
 env = "API_TOKEN"
-owner = "my-project"
 
 [keys.api-token.dev] # read by keypin run
 vault = "personal"

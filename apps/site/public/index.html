@@ -71,14 +71,14 @@
         </div>
         <pre class="term"><span class="p">$ </span><span class="b">keypin status</span>
 <span class="d">keypin: reading rotation fields (no values) from 1Password account my.1password.com, vault "App Secrets": "api dev api token", "api prod api token", "web prod session secret"</span>
-<span class="d">KEY             ENV   VARIABLE        OWNER  ITEM                     ROTATED     EVERY  DUE</span>
+<span class="d">KEY             ENV   VARIABLE        ITEM                     ROTATED     EVERY  DUE</span>
 <span class="b"># /Users/dev/code/api</span>
-<span class="b">api-token</span>       dev   API_TOKEN       api    api dev api token        2026-08-01  180d   2027-01-28
-<span class="b">api-token</span>       prod  API_TOKEN       api    api prod api token       2026-05-20  180d   <span class="y">2026-11-16</span>
+<span class="b">api-token</span>       dev   API_TOKEN       api dev api token        2026-08-01  180d   2027-01-28
+<span class="b">api-token</span>       prod  API_TOKEN       api prod api token       2026-05-20  180d   <span class="y">2026-11-16</span>
 <span class="d">    -> </span>github-actions:acme/api:API_TOKEN<span class="d"> (account acme): </span><span class="r">no receipt</span>
 <span class="d">    -> </span>cloudflare-worker:api-edge:API_TOKEN<span class="d"> (account 3b1f0c9a7d2e4f6a8b5c1d0e9f7a6b4c): </span><span class="r">no receipt</span>
 <span class="b"># /Users/dev/code/web</span>
-<span class="b">session-secret</span>  prod  SESSION_SECRET  web    web prod session secret  2026-08-02  90d    <span class="r">2026-10-31</span>
+<span class="b">session-secret</span>  prod  SESSION_SECRET  web prod session secret  2026-08-02  90d    <span class="r">2026-10-31</span>
 <span class="d">    -> </span>cloudflare-worker:web:SESSION_SECRET<span class="d"> (account 3b1f0c9a7d2e4f6a8b5c1d0e9f7a6b4c): </span><span class="g">last published 2026-08-02T10:14:51.330Z by dev@acme.example, generation a5e3c8f1d7092b64</span>
 
 <span class="r b">Problems (3):</span>
@@ -101,18 +101,16 @@
             <span class="n">01 / MAP</span>
             <h3>map</h3>
             <p>
-              Each project lists its keys in a committed <code>keypin.toml</code>: the owner, the
+              Each project lists its keys in a committed <code>keypin.toml</code>: the variable, the
               vault item, and every place the key is published. It never holds a value.
             </p>
             <pre><span class="c"># names and places, never values</span>
 [vaults.personal]
-kind = "1password"
 account = "my.1password.com"
 vault = "App Secrets"
 
 [keys.api-token]
 env = "API_TOKEN"
-owner = "api"
 
 [keys.api-token.prod]
 vault = "personal"

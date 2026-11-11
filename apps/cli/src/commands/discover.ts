@@ -128,9 +128,8 @@ export async function discover(args: string[], deps: Deps): Promise<number> {
   }
 
   const discovery = buildDiscovery({ envFiles, workflows, workers, github, map, unknowns });
-  const owner = map?.keys[0]?.owner ?? basename(folder);
   const draft = draftMap(discovery.names, {
-    owner,
+    project: basename(folder),
     githubAccount: login,
     vault: map && mapText !== null ? firstVault(mapText) : null,
     takenIds: map?.keys.map((k) => k.id) ?? [],

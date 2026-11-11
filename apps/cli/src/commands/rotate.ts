@@ -389,7 +389,6 @@ async function publishNew(
   say(`\nPublished. The old token ${rotation.old.id} "${rotation.old.name}" is still active.`);
   say("Next, check that every consumer works with the new value:");
   for (const target of entry.publish) say(`  ${describeTarget(target, key.env)}`);
-  for (const consumer of key.consumers) say(`  ${consumer.name} (${consumer.kind})`);
   say(`Then run ${again(run)} again to revoke the old token.`);
   return 0;
 }

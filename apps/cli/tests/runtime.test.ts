@@ -1,5 +1,12 @@
 import { describe, expect, test } from "vite-plus/test";
-import { MIN_BUN, NO_ENV_FILE, runtimeProblem, selfCommand } from "../src/runtime";
+import {
+  COMPILED_AUTOLOAD_OFF,
+  COMPILED_REFUSED_ENV,
+  MIN_BUN,
+  NO_ENV_FILE,
+  runtimeProblem,
+  selfCommand,
+} from "../src/runtime";
 
 const FLAGS = [NO_ENV_FILE];
 
@@ -44,5 +51,44 @@ describe("runtimeProblem", () => {
       NO_ENV_FILE,
       "/usr/local/bin/keypin",
     ]);
+  });
+
+  test("a compiled binary built with autoload off passes without --no-env-file", () => {
+    expect(
+      runtimeProblem(MIN_BUN, "keypin", [], { autoload: COMPILED_AUTOLOAD_OFF, env: {} }),
+    ).toBeNull();
+  });
+
+  test("a compiled binary without the build-time marker is refused", () => {
+    expect(runtimeProblem(MIN_BUN, "keypin", [NO_ENV_FILE], { autoload: undefined, env: {} })).toBe(
+      "this keypin binary wasn't built by apps/cli/compile.ts, so it may load this folder's .env and bunfig.toml. Build it with that script.",
+    );
+  });
+
+  test("a compiled binary refuses each variable that loads code or a debugger, even when empty", () => {
+    for (const name of COMPILED_REFUSED_ENV) {
+      expect(
+        runtimeProblem(MIN_BUN, "keypin", [], {
+          autoload: COMPILED_AUTOLOAD_OFF,
+          env: { [name]: "" },
+        }),
+      ).toBe(
+        `keypin can't run with ${name} set: Bun would let it load code or a debugger into keypin. Unset ${name}.`,
+      );
+    }
+    expect(
+      runtimeProblem(MIN_BUN, "keypin", [], {
+        autoload: COMPILED_AUTOLOAD_OFF,
+        env: { BUN_OPTIONS: "--preload ./x.js", BUN_INSPECT: "127.0.0.1:0" },
+      }),
+    ).toBe(
+      "keypin can't run with BUN_OPTIONS and BUN_INSPECT set: Bun would let them load code or a debugger into keypin. Unset BUN_OPTIONS and BUN_INSPECT.",
+    );
+  });
+
+  test("a compiled binary still needs the minimum Bun", () => {
+    expect(
+      runtimeProblem("1.3.12", "keypin", [], { autoload: COMPILED_AUTOLOAD_OFF, env: {} }),
+    ).toContain("keypin needs Bun 1.4.4 or newer");
   });
 });

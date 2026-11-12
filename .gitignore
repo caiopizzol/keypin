@@ -34,3 +34,6 @@ dist-ssr
 
 # AI agent worktrees
 .claude/worktrees/
+
+# Compiled keypin binaries (bun apps/cli/compile.ts)
+apps/cli/binaries

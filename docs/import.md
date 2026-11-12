@@ -22,6 +22,13 @@ rotate_every = "90d"
 dev = "op://Private/billing dev stripe key/password"
 ```
 
+A key the map already has without that environment, such as one mapped only for `prod`, gets its own table instead:
+
+```toml
+[keys.STRIPE_KEY.dev]
+from = "op://Private/billing dev stripe key/password"
+```
+
 It shows every item it will create and waits for you to type `yes`. `--yes` approves it, because it only creates
 items.
 
@@ -29,7 +36,8 @@ It never overwrites an item, and it skips, by name:
 
 - an empty value, or a name that isn't a variable name;
 - a value with a `$`, since loaders expand it differently;
-- a variable `keypin.toml` already has. It says whether the file's value matches the vault.
+- a variable `keypin.toml` already maps in that environment. It says whether the file's value matches the vault;
+- a key written inline in `keypin.toml`, where a new table wouldn't parse. Add its reference by hand.
 
 ## Afterwards
 

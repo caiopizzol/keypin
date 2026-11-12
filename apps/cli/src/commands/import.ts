@@ -35,6 +35,7 @@ interface Import {
   name: string;
   ref: KeyRef;
   value: Secret;
+  existing: boolean;
 }
 
 interface Skip {
@@ -104,12 +105,6 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
         onlyInFile: false,
         mapped: { ref: mapped.environments[environment].ref, value },
       });
-    else if (mapped)
-      skips.push({
-        name,
-        reason: `mapped in ${target.file} without ${environment}; left as it is, so add its ${environment} reference by hand`,
-        onlyInFile: true,
-      });
     else if (value.includes("$"))
       skips.push({
         name,
@@ -123,8 +118,22 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
         onlyInFile: true,
       });
     else {
-      items.set(item.toLowerCase(), name);
-      planned.push({ name, value, ref: refFor(target.account, request.vault, item) });
+      const entry = {
+        name,
+        value,
+        ref: refFor(target.account, request.vault, item),
+        existing: Boolean(mapped),
+      };
+      if (entry.existing && !parseMap(mapText(target, [entry], environment), target.file).ok)
+        skips.push({
+          name,
+          reason: `mapped in ${target.file} without ${environment}, written inline, so a [${tableName(entry, environment)}] table can't be added; add its ${environment} reference to it by hand`,
+          onlyInFile: true,
+        });
+      else {
+        items.set(item.toLowerCase(), name);
+        planned.push(entry);
+      }
     }
   }
 
@@ -165,13 +174,13 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
 
   const today = localDay(deps.now());
   say(`Import ${envPath} into 1Password account ${target.account}, vault ${request.vault}:`);
-  for (const { name, ref } of imports)
+  for (const entry of imports)
     say(
-      `  create "${ref.item}" (password, rotated ${today}), and map ${name} to ${formatReference(ref)}`,
+      `  create "${entry.ref.item}" (password, rotated ${today}), and ${mapping(entry, environment)}`,
     );
   if (!imports.length) say("  nothing to create");
-  for (const { name, ref } of stored)
-    say(`  map ${name} to ${formatReference(ref)}, an item that exists with the same value`);
+  for (const entry of stored)
+    say(`  ${mapping(entry, environment)}, an item that exists with the same value`);
   if (skips.length) {
     say("Skipped:");
     for (const skip of skips) say(`  ${skip.name}: ${skip.reason}`);
@@ -180,7 +189,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
   if (!imports.length && !stored.length) return existed ? 1 : 0;
   say(
     target.map
-      ? `Map: add ${count(imports.length + stored.length, "key")} at the end of ${target.file}`
+      ? `Map: add ${additions([...imports, ...stored], environment)} at the end of ${target.file}`
       : `Map: write ${target.file} and register ${deps.cwd}`,
   );
 
@@ -359,12 +368,36 @@ function refFor(account: string, vault: string, item: string): KeyRef {
   return { kind: "1password", account, vault, item, section: null, field: "password" };
 }
 
+function tableName(entry: Import, environment: string): string {
+  return entry.existing ? `keys.${entry.name}.${environment}` : `keys.${entry.name}`;
+}
+
+function mapping(entry: Import, environment: string): string {
+  const ref = formatReference(entry.ref);
+  return entry.existing
+    ? `add ${environment} to ${entry.name} as [${tableName(entry, environment)}], from ${ref}`
+    : `map ${entry.name} to ${ref}`;
+}
+
+function additions(entries: readonly Import[], environment: string): string {
+  const added = entries.filter((entry) => entry.existing).length;
+  const keys = entries.length - added;
+  return [
+    keys ? count(keys, "key") : "",
+    added ? `${added} ${environment} ${added === 1 ? "entry" : "entries"}` : "",
+  ]
+    .filter(Boolean)
+    .join(" and ");
+}
+
 function keyTables(imports: readonly Import[], environment: string): string {
   return imports
-    .map(
-      ({ name, ref }) =>
-        `\n[keys.${name}]\nrotate_every = ${str(ROTATE_EVERY)}\n${environment} = ${str(formatReference(ref))}\n`,
-    )
+    .map((entry) => {
+      const ref = str(formatReference(entry.ref));
+      return entry.existing
+        ? `\n[${tableName(entry, environment)}]\nfrom = ${ref}\n`
+        : `\n[${tableName(entry, environment)}]\nrotate_every = ${str(ROTATE_EVERY)}\n${environment} = ${ref}\n`;
+    })
     .join("");
 }
 

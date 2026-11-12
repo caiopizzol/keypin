@@ -399,18 +399,73 @@ describe("keypin import", () => {
     expect(leaks(stdout.text, stderr.text)).toBe(false);
   });
 
-  test("a key mapped only in another environment stays in the file, and the file isn't called done", async () => {
+  test("a key mapped only for prod gets a dev item and a [keys.X.dev] table", async () => {
     const map = `${REAL_MAP.replace('dev = "op://App Secrets/billing dev stripe/password"', '[keys.STRIPE_KEY.prod]\nfrom = "op://App Secrets/billing prod stripe/password"')}`;
     const { deps, disk, fake, text } = setup({ files: { [MAP]: map } });
     expect(await cli(["import", ".env", "--vault", "App Secrets", "--yes"], deps)).toBe(0);
-    expect(fake.created.map((c) => c.ref.item)).toEqual(["billing dev webhook secret"]);
-    expect(disk.contents.get(MAP)?.startsWith(map)).toBe(true);
+    expect(fake.created.map((c) => [c.ref.item, c.value.reveal()])).toEqual([
+      ["billing dev stripe key", `${SENTINEL}-stripe`],
+      ["billing dev webhook secret", `${SENTINEL}-webhook`],
+    ]);
+    const written = disk.contents.get(MAP);
+    assert(written !== undefined);
+    expect(written.startsWith(map)).toBe(true);
+    expect(written.slice(map.length)).toBe(
+      `\n[keys.STRIPE_KEY.dev]\nfrom = "op://App Secrets/billing dev stripe key/password"\n` +
+        `\n[keys.WEBHOOK_SECRET]\nrotate_every = "90d"\ndev = "op://App Secrets/billing dev webhook secret/password"\n`,
+    );
+    const parsed = parseMap(written, MAP);
+    assert(parsed.ok, JSON.stringify(parsed));
+    const stripe = parsed.map.keys.find((k) => k.name === "STRIPE_KEY");
+    assert(stripe !== undefined);
+    expect(stripe.rotateEvery).toBe("30d");
+    const { dev, prod } = stripe.environments;
+    assert(dev !== undefined && prod !== undefined);
+    expect(formatReference(dev.ref)).toBe("op://App Secrets/billing dev stripe key/password");
+    expect(formatReference(prod.ref)).toBe("op://App Secrets/billing prod stripe/password");
+    expect(disk.contents.get(ENV)).toBe(ENV_TEXT);
+
+    const out = text();
+    expect(out).toContain(
+      `create "billing dev stripe key" (password, rotated 2026-11-09), and add dev to STRIPE_KEY as [keys.STRIPE_KEY.dev], from op://App Secrets/billing dev stripe key/password`,
+    );
+    expect(out).toContain(`Map: add 1 key and 1 dev entry at the end of ${MAP}`);
+    expect(out).not.toContain("STRIPE_KEY:");
+    expect(out).toContain("app.key is still only in that file");
+    expect(out).not.toContain("STRIPE_KEY, app.key");
+    expect(out).toContain("Remove the STRIPE_KEY, WEBHOOK_SECRET lines from it");
+    expect(leaks(out, written)).toBe(false);
+  });
+
+  test("without a terminal, the plan shows the dev entry it will add, and nothing is created", async () => {
+    const map = `${REAL_MAP.replace('dev = "op://App Secrets/billing dev stripe/password"', '[keys.STRIPE_KEY.prod]\nfrom = "op://App Secrets/billing prod stripe/password"')}`;
+    const { deps, disk, fake, text } = setup({ files: { [MAP]: map } });
+    expect(await cli(["import", ".env", "STRIPE_KEY", "--vault", "App Secrets"], deps)).toBe(3);
+    expect(fake.created).toEqual([]);
+    expect(disk.contents.get(MAP)).toBe(map);
     expect(text()).toContain(
-      `STRIPE_KEY: mapped in ${MAP} without dev; left as it is, so add its dev reference by hand`,
+      `and add dev to STRIPE_KEY as [keys.STRIPE_KEY.dev], from op://App Secrets/billing dev stripe key/password`,
+    );
+    expect(text()).toContain(`Map: add 1 dev entry at the end of ${MAP}`);
+    expect(leaks(text())).toBe(false);
+  });
+
+  test("a key written inline without dev stays in the file, with what to add by hand", async () => {
+    const map = `[1password]\naccount = "${ACCOUNT}"\n\n[keys]\nSTRIPE_KEY = { prod = "op://App Secrets/billing prod stripe/password" }\n`;
+    const { deps, disk, fake, text } = setup({ files: { [MAP]: map } });
+    expect(await cli(["import", ".env", "--vault", "App Secrets", "--yes"], deps)).toBe(0);
+    expect(fake.created.map((c) => c.ref.item)).toEqual(["billing dev webhook secret"]);
+    const written = disk.contents.get(MAP);
+    assert(written !== undefined);
+    expect(written.startsWith(map)).toBe(true);
+    expect(written).not.toContain("STRIPE_KEY.dev");
+    assert(parseMap(written, MAP).ok);
+    expect(text()).toContain(
+      `STRIPE_KEY: mapped in ${MAP} without dev, written inline, so a [keys.STRIPE_KEY.dev] table can't be added; add its dev reference to it by hand`,
     );
     expect(text()).toContain("STRIPE_KEY, app.key are still only in that file");
     expect(text()).not.toContain("Delete it and stop loading it");
-    expect(leaks(text(), disk.contents.get(MAP) ?? "")).toBe(false);
+    expect(leaks(text(), written)).toBe(false);
   });
 
   test("a value with a $ is left in the file, since loaders differ on expanding it", async () => {

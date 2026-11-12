@@ -26,9 +26,9 @@ values from 1Password only while a command runs.
 3. Ask the user once, in one message, not name by name:
    - which names in `local.unmapped` and `local.elsewhere` are secrets (plain settings such as `PORT` stay);
    - the vault, and the 1Password sign-in address when `keypin.toml` has no `[1password]` account;
-   - whether they use staging. If so, make sure `environments` lists it before importing: add
-     `environments = ["dev", "staging", "prod"]` at the top, or add `"staging"` before the last name in the line
-     that's there;
+   - whether they use staging. If so, make sure `environments` lists it before importing. Use the line check
+     prints when it has one; otherwise, with no `environments` line, add `environments = ["dev", "staging", "prod"]`
+     at the top. Keep the first name first and the last name last: `run` uses the first, `publish` the last;
    - for each prod or staging secret that no env file sets: is it already in 1Password, or only in GitHub or
      Cloudflare? keypin can't read a value back from those, so it has to be made again at the provider and put in
      1Password by the user.

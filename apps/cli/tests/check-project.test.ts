@@ -279,7 +279,7 @@ worker = "billing-worker"
     expect(data.notes).toContain(
       ".env.production sets OTHER_KEY, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env.production NAME... --vault <vault>",
     );
-    expect(leaks(run.stdout.text)).toBe(false);
+    expect(leaks(...run.everything())).toBe(false);
   });
 
   test("a plain setting left in an env file is a note, and check still exits 0", async () => {

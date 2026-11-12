@@ -23,26 +23,17 @@ values from 1Password only while a command runs.
    - `prerequisites`: missing or unverified tools and logins. Tell the user these first; they do them, not you.
    - `problems`: one line per gap, each saying what to run or add. Exit 0 means nothing to fix.
    - `unknown`: what check couldn't read. Tell the user it's unverified; it never means missing.
-3. Ask the user once, in one message, not name by name:
-   - which names in `local.unmapped` and `local.elsewhere` are secrets (plain settings such as `PORT` stay);
-   - the vault, and the 1Password sign-in address when `keypin.toml` has no `[1password]` account;
-   - whether they use staging. If so, make sure `environments` lists it before importing. Use the line check
-     prints when it has one; otherwise, with no `environments` line, add `environments = ["dev", "staging", "prod"]`
-     at the top. Keep the first name first and the last name last: `run` uses the first, `publish` the last;
-   - for each prod or staging secret that no env file sets: is it already in 1Password, or only in GitHub or
-     Cloudflare? keypin can't read a value back from those, so it has to be made again at the provider and put in
-     1Password by the user.
-4. Import before you paste any TOML, because keypin won't import into a map with a `<...>`. For each env file, run
-   check's suggested `keypin import <file> NAME... --vault <vault>`, with `--account` when check's suggestion has
-   it. Add `--env <name>` for every file that holds another environment's values: `.env.staging` gets
-   `--env staging`, and `.env.production` gets `--env prod` when the map calls it `prod`. Without it, import maps
-   the values as the first environment; check's note says when that would happen. Run each without `--yes`; it exits 3 with a
-   command for the user. Give the user all of these commands together, and say that each one also asks for a
-   1Password approval. If import can't add a table to a key, ask the user for that reference and add it by hand.
-5. Run `keypin check --json` again. When `add` isn't null, show the user that TOML and, with their agreement, paste
-   it at the end of `keypin.toml`. Ask for every `<...>` left, in one list: each secret reference (1Password: the
-   field's menu, **Copy Secret Reference**), and any repo, Cloudflare account ID or Worker name. keypin rejects a
-   map that still has a `<...>`.
+3. Ask the user once, in one message: which names in `local.unmapped` and `local.elsewhere` are secrets; the vault,
+   and the sign-in address if `keypin.toml` has no account; whether they use staging; and, for each prod secret no
+   env file sets, whether it's in 1Password or only in GitHub or Cloudflare, where they make a new key.
+4. Import first: keypin won't import into a map with a `<...>`. For each env file, run check's suggested
+   `keypin import`, with `--env <name>` for another environment's file (`.env.staging` gets `--env staging`, once
+   `environments` lists it; use the line check prints). Run each without `--yes`; it exits 3 with a command for the
+   user. Give the user all of these commands together; each also asks for a 1Password approval. If import can't
+   add a table to a key, ask the user for that reference and add it by hand.
+5. Run `keypin check --json` again. Show the user the `add` TOML and, with their agreement, paste it into
+   `keypin.toml`. Ask for every `<...>` in one list (a reference: the 1Password field's menu, **Copy Secret
+   Reference**).
 
 ## Run
 

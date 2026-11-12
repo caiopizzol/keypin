@@ -35,11 +35,6 @@ from = "op://Production/billing prod stripe key/password"
 For a key `keypin.toml` already has without that environment, it adds only that table, at the end of the file, and
 leaves the key's other lines as they are.
 
-Import before you paste the TOML `keypin check` prints: keypin won't import into a map that still has a `<...>`.
-
-A value that's only in GitHub or Cloudflare can't be imported: neither keypin nor you can read it back. Make a new
-key at the provider, put it in 1Password, and map its reference.
-
 It shows every item it will create and waits for you to type `yes`. `--yes` approves it, because it only creates
 items.
 

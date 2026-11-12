@@ -64,20 +64,14 @@ It never changes the file: it tells you which lines to remove. See
 
 ### Production keys
 
-For staging, first add `environments = ["dev", "staging", "prod"]` at the top of `keypin.toml`. `check` prints
-that line when a Worker's staging env needs a secret.
+Put each prod value in 1Password first:
 
-Then get each prod and staging value into 1Password. Where it is now decides how:
+- **In a file:** `keypin import .env.production STRIPE_KEY --env prod --vault Private`
+- **Only in GitHub or Cloudflare:** neither keypin nor you can read it back, so make a new key at the provider.
 
-- **In a file**, such as `.env.production`: `keypin import .env.production STRIPE_KEY --env prod --vault Private`,
-  plus `--account` while `keypin.toml` has no account. For `.env.staging`, use `--env staging`. It creates the item
-  and maps it, as for local keys.
-- **Already in 1Password**: you'll paste its reference below. Open the field's menu and select **Copy Secret
-  Reference**.
-- **Only in GitHub or Cloudflare**: keypin can't read it back, and neither can you. Make a new key at the provider
-  and put it in 1Password.
+For staging, add it to `environments` first (`check` prints the line), then import with `--env staging`.
 
-Then run `keypin check`. For each secret a workflow or Worker needs, it prints the TOML to add:
+Then `keypin check` prints the TOML to add for each secret a workflow or Worker needs:
 
 ```toml
 [[keys.STRIPE_KEY.prod.publish]]
@@ -85,9 +79,8 @@ to = "github-actions"
 repo = "me/my-project"
 ```
 
-Paste it at the end of `keypin.toml`. A key you haven't imported also gets a `from = "op://<vault>/<item>/<field>"`
-line; replace each `<...>` with the real value. Import first, because keypin won't import into a map that still has
-a `<...>`.
+Paste it into `keypin.toml` and replace each `<...>`. For a key you didn't import, `from` takes its reference: in
+1Password, open the field's menu and select **Copy Secret Reference**.
 
 Then publish:
 

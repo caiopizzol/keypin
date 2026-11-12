@@ -316,7 +316,7 @@ function inlineEdit(
     return `In ${at} in keypin.toml, replace ${environment} = ${str(raw)} with ${environment} = { ${from}, ${list} }`;
   if (isRecord(raw) && Array.isArray(raw.publish))
     return `Add ${entries.join(" and ")} to the publish list of ${environment} in ${at} in keypin.toml`;
-  return `Add ${list} to ${environment} in ${at} in keypin.toml`;
+  return `In ${at} in keypin.toml, replace the ${environment} entry with ${environment} = { ${from}, ${list} }`;
 }
 
 function rawEntry(text: string, name: string, environment: Environment): unknown {

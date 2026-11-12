@@ -399,6 +399,32 @@ prod = "${ref}"
     ]);
   });
 
+  test("a key whose prod entry is an inline table without a publish list gets the entry to replace it with", async () => {
+    const ref = "op://Private/billing prod stripe api key/password";
+    const entry = `prod = { from = "${ref}" }`;
+    const map = `[1password]
+account = "my.1password.com"
+
+[keys.STRIPE_API_KEY]
+rotate_every = "90d"
+${entry}
+`;
+    const run = setup({
+      files: { [MAP]: map, [`${ROOT}/.env`]: null, [`${ROOT}/wrangler.toml`]: null },
+    });
+    expect(await cli(["check", "--json"], run.deps)).toBe(1);
+    const data = json(run.stdout.text);
+    const replaced = `prod = { from = "${ref}", publish = [{ to = "github-actions", repo = "acme/billing" }] }`;
+    expect(data.problems).toEqual([
+      `STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and keypin.toml doesn't publish it there. In [keys.STRIPE_API_KEY] in keypin.toml, replace the prod entry with ${replaced}`,
+    ]);
+    const parsed = parseMap(map.replace(entry, replaced), MAP);
+    assert(parsed.ok);
+    expect(parsed.map.keys[0]?.environments.prod?.publish).toEqual([
+      { to: "github-actions", repo: "acme/billing", account: "acme" },
+    ]);
+  });
+
   test("a lowercase map key gets publish commands in its own spelling", async () => {
     const map = `[1password]
 account = "my.1password.com"

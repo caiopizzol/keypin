@@ -15,7 +15,8 @@ keypin publish API_TOKEN --plan      # show the plan, write nothing
   or else the active one. That login needs write access to the repository; GitHub doesn't let read or triage
   access set secrets. See [Who publishes](configuration.md#who-publishes).
 - **Cloudflare Worker secrets**, written with your `wrangler` login. The Worker must already exist. This works on
-  macOS only for now, because keypin reads wrangler's login from its macOS path.
+  macOS and Linux, where keypin reads wrangler's login file the way wrangler finds it (see
+  [Notes](notes.md#the-wrangler-login)), but not yet on Windows.
 
 Run `keypin check` first: it checks every vault item and every login's account without reading a value into the
 output or writing anything.

@@ -5,8 +5,8 @@ import type { Destination, RotateSpec, PublishTarget, Secret, VaultBackend } fro
 import {
   CloudflareReader,
   currentWranglerToken,
-  WRANGLER_CONFIG,
   WorkerSecretDestination,
+  wranglerConfigFile,
 } from "@keypin/destination-cloudflare";
 import { ghToken, GitHubSecretDestination, listRepoSecrets } from "@keypin/destination-github";
 import { CloudflareAccountTokens } from "@keypin/provider-cloudflare";
@@ -105,11 +105,15 @@ export function main(): Promise<number> {
     onSignals,
     destination,
     provider,
-    wranglerLoginFile: () =>
-      access(WRANGLER_CONFIG).then(
-        () => WRANGLER_CONFIG,
-        () => null,
-      ),
+    wranglerLoginFile: async () => {
+      try {
+        const file = wranglerConfigFile();
+        await access(file);
+        return file;
+      } catch {
+        return null;
+      }
+    },
     lock: diskLock,
     isTerminal: Boolean(process.stdin.isTTY),
     ask,

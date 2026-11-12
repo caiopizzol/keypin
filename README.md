@@ -27,7 +27,7 @@ It reads values from 1Password only while a command runs, and never writes them 
 
 You need [Bun](https://bun.sh) 1.4.4 or newer and the [1Password](https://1password.com/downloads) desktop app.
 To publish, you also need a [`gh`](https://cli.github.com) login for GitHub, or a
-[`wrangler`](https://developers.cloudflare.com/workers/wrangler/) login for Cloudflare (macOS only for now).
+[`wrangler`](https://developers.cloudflare.com/workers/wrangler/) login for Cloudflare (macOS or Linux).
 
 ```sh
 bun add -g keypin

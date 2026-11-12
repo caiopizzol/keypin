@@ -1,11 +1,30 @@
 import { execFile } from "node:child_process";
+import { statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export const WRANGLER_CONFIG = join(homedir(), "Library/Preferences/.wrangler/config/default.toml");
+export function wranglerConfigFile(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  platform: string = process.platform,
+  home: string = homedir(),
+): string {
+  if (platform === "win32")
+    throw new Error(
+      "keypin doesn't find the wrangler login on Windows yet; publish to Cloudflare from macOS or Linux",
+    );
+  const legacy = join(home, ".wrangler");
+  const base =
+    env.XDG_CONFIG_HOME || join(home, platform === "darwin" ? "Library/Preferences" : ".config");
+  const folder = isDirectory(legacy) ? legacy : join(base, ".wrangler");
+  return join(folder, "config", "default.toml");
+}
 
-export async function wranglerToken(path = WRANGLER_CONFIG): Promise<string> {
+function isDirectory(path: string): boolean {
+  return statSync(path, { throwIfNoEntry: false })?.isDirectory() ?? false;
+}
+
+export async function wranglerToken(path = wranglerConfigFile()): Promise<string> {
   let login = await readLogin(path);
   if (login.expired) {
     await refresh();
@@ -18,7 +37,7 @@ export async function wranglerToken(path = WRANGLER_CONFIG): Promise<string> {
   return login.token;
 }
 
-export async function currentWranglerToken(path = WRANGLER_CONFIG): Promise<string> {
+export async function currentWranglerToken(path = wranglerConfigFile()): Promise<string> {
   const login = await readLogin(path);
   if (login.expired) throw new Error("the wrangler login has expired; run `wrangler whoami`");
   return login.token;

@@ -844,6 +844,24 @@ describe("keypin rotate: review fixes", () => {
     expect(disk.contents).toEqual(before);
   });
 
+  test("--plan on a rotation whose token ID is unknown says to delete it by hand", async () => {
+    const disk = await diskWith(
+      record({
+        stage: "issuing",
+        new: { id: null, name: "cicd-keypin 2026-11-10", expiresOn: null, generation: null },
+      }),
+    );
+    const run = await setup({ disk });
+    const before = new Map(disk.contents);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN", "--plan"], run.deps)).toBe(NEEDS_APPROVAL);
+    expect(run.stderr.text).toContain(
+      `Cloudflare may have made a token named "cicd-keypin 2026-11-10". The next run can't delete it`,
+    );
+    expect(run.stderr.text).not.toContain("The next run deletes");
+    expect(run.provider.log).toEqual([]);
+    expect(disk.contents).toEqual(before);
+  });
+
   test("a rotation made in another account is left alone", async () => {
     const other = "c".repeat(32);
     const run = await setup({

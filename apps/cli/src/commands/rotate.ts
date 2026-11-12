@@ -546,7 +546,9 @@ async function abandon(run: Run, data: Rotations, rotation: Rotation): Promise<n
   );
   if (run.plan) {
     say(
-      `The next run deletes the new token ${rotation.new.id ?? `"${rotation.new.name}"`} and forgets this rotation.`,
+      rotation.new.id
+        ? `The next run deletes the new token ${rotation.new.id} and forgets this rotation.`
+        : `Cloudflare may have made a token named "${rotation.new.name}". The next run can't delete it: find it under Account API tokens and delete it, then the next run forgets this rotation.`,
     );
     return planOnly(deps, "rotate", run.args, true);
   }

@@ -24,8 +24,9 @@ values from 1Password only while a command runs.
    - `problems`: one line per gap, each saying what to run or add. Exit 0 means nothing to fix.
    - `unknown`: what check couldn't read. Tell the user it's unverified; it never means missing.
 3. Ask the user once, in one message: which names in `local.unmapped` and `local.elsewhere` are secrets; the vault,
-   and the sign-in address if `keypin.toml` has no account; whether they use staging; and, for each prod secret no
-   env file sets, whether it's in 1Password or only in GitHub or Cloudflare, where they make a new key.
+   and the sign-in address if `keypin.toml` has no account; whether they use staging; and, for each prod or staging
+   secret no env file sets, whether it's in 1Password. If it's only in GitHub or Cloudflare, they make a new key at
+   the provider and put it in 1Password.
 4. Import first: keypin won't import into a map with a `<...>`. For each env file, run check's suggested
    `keypin import`, with `--env <name>` for another environment's file (`.env.staging` gets `--env staging`, once
    `environments` lists it; use the line check prints). Run each without `--yes`; it exits 3 with a command for the

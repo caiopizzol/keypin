@@ -84,9 +84,7 @@ export async function scanProject(deps: Deps, root: string): Promise<ScanResult>
         reason:
           "it passes secrets on (secrets: inherit or toJSON(secrets)), so check can't tell which",
       });
-  const uses = workflows.some(
-    (w) => w.refs.hidesUses || w.refs.secrets.some((name) => !name.startsWith("GITHUB_")),
-  );
+  const uses = usesSecrets(workflows);
   const origin = top ? await githubOrigin(deps, root) : null;
   const github: ProjectScan["github"] = { repo: null, read: null, environments: [] };
   let login: string | null = null;
@@ -149,6 +147,12 @@ function jobEnvironments(workflows: ProjectScan["workflows"]): string[] {
         if (!names.has(use.environment.toLowerCase()))
           names.set(use.environment.toLowerCase(), use.environment);
   return [...names.values()];
+}
+
+export function usesSecrets(workflows: ProjectScan["workflows"]): boolean {
+  return workflows.some(
+    (w) => w.refs.hidesUses || w.refs.secrets.some((name) => !name.startsWith("GITHUB_")),
+  );
 }
 
 async function walk(deps: Deps, root: string, unknowns: Unknown[]) {

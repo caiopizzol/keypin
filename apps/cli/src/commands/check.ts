@@ -16,8 +16,8 @@ import { type Deps, UsageError } from "../deps";
 import { messageOf } from "../errors";
 import { registryPath } from "../paths";
 import { locateMap, MAP_FILE } from "../project";
-import { describeLogin, publisherFor } from "../publisher";
-import { type ScanResult, scanProject, type Unknown } from "../scan";
+import { describeLogin, githubLogin, publisherFor } from "../publisher";
+import { type ScanResult, scanProject, type Unknown, usesSecrets } from "../scan";
 import { announce, distinctRefs, refKey } from "../vault";
 
 interface ItemResult {
@@ -45,6 +45,12 @@ interface KeyResult {
   destinations: DestinationResult[];
 }
 
+interface Prerequisite {
+  name: "GitHub" | "Cloudflare" | "1Password";
+  status: "not installed" | "not logged in" | "not checked" | "sign-in failed";
+  fix: string;
+}
+
 interface Report {
   folder: string;
   map: string | null;
@@ -56,6 +62,7 @@ interface Report {
   local: Gaps["local"];
   add: string | null;
   unknown: Unknown[];
+  prerequisites: Prerequisite[];
   notes: string[];
   problems: string[];
   ok: boolean;
@@ -91,9 +98,16 @@ async function build(folder: string, deps: Deps): Promise<Report> {
     local: [],
     add: null,
     unknown: scanned.unknowns,
+    prerequisites: [],
     notes: [],
     problems: [],
     ok: false,
+  };
+  const targets = new Map<string, PublishTarget>();
+  const items = new Map<string, ItemResult>();
+  const done = async () => {
+    report.prerequisites = await prerequisites(root, scanned, targets, items, deps);
+    return finish(report);
   };
   const gaps = (map: KeysMap | null) => {
     const result = findGaps(scanned.scan, map && found ? { map, text: found.text } : null);
@@ -108,7 +122,7 @@ async function build(folder: string, deps: Deps): Promise<Report> {
       `no ${MAP_FILE} in ${folder} or any folder above it; run keypin init, then keypin check again`,
     );
     gaps(null);
-    return finish(report);
+    return done();
   }
   const registry = await loadRegistry(deps.files, registryPath(deps));
   report.registered = registry.projects.includes(root);
@@ -120,7 +134,7 @@ async function build(folder: string, deps: Deps): Promise<Report> {
   const parsed = parseMap(found.text, found.file);
   if (!parsed.ok) {
     report.problems.push(...parsed.errors);
-    return finish(report);
+    return done();
   }
   const map = parsed.map;
   if (!map.keys.length) {
@@ -128,7 +142,7 @@ async function build(folder: string, deps: Deps): Promise<Report> {
       `${found.file} maps no keys yet; run keypin import for an env file, and add the TOML below for production`,
     );
     gaps(map);
-    return finish(report);
+    return done();
   }
 
   const entries = map.keys.flatMap((key) =>
@@ -145,10 +159,8 @@ async function build(folder: string, deps: Deps): Promise<Report> {
   report.notes.push(
     "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields",
   );
-  const items = new Map<string, ItemResult>();
   for (const ref of refs) items.set(refKey(ref), await checkItem(ref, deps));
 
-  const targets = new Map<string, PublishTarget>();
   for (const { entry } of entries)
     for (const target of entry.publish) targets.set(placeOf(target), target);
   const publisher = {
@@ -196,7 +208,48 @@ async function build(folder: string, deps: Deps): Promise<Report> {
     report.problems.push(`${place}: ${result.problem}${fix}${usedBy(`place ${place}`)}`);
   }
   gaps(map);
-  return finish(report);
+  return done();
+}
+
+const INTEGRATION =
+  "the 1Password desktop app, with Settings → Developer → Integrate with other apps selected";
+
+async function prerequisites(
+  root: string,
+  scanned: ScanResult,
+  targets: Map<string, PublishTarget>,
+  items: Map<string, ItemResult>,
+  deps: Deps,
+): Promise<Prerequisite[]> {
+  const list: Prerequisite[] = [];
+  const to = (kind: PublishTarget["to"]) => [...targets.values()].some((t) => t.to === kind);
+  if (usesSecrets(scanned.scan.workflows) || to("github-actions")) {
+    const login = await githubLogin(deps, root);
+    const status = await deps.ghLogin(login);
+    const signIn = `gh auth login --hostname github.com${login ? `, signing in as ${login}` : ""}`;
+    if (status === "not installed")
+      list.push({
+        name: "GitHub",
+        status,
+        fix: `install gh (https://cli.github.com), then run ${signIn}`,
+      });
+    else if (status === "not logged in")
+      list.push({ name: "GitHub", status, fix: `run ${signIn}` });
+  }
+  if (
+    (scanned.files.wrangler.length || to("cloudflare-worker")) &&
+    !(await deps.wranglerLoginFile())
+  )
+    list.push({ name: "Cloudflare", status: "not logged in", fix: "run wrangler login" });
+  if (!items.size)
+    list.push({ name: "1Password", status: "not checked", fix: `keypin needs ${INTEGRATION}` });
+  else if ([...items.values()].some((item) => item.problem?.includes("sign-in failed")))
+    list.push({
+      name: "1Password",
+      status: "sign-in failed",
+      fix: `check ${INTEGRATION}, and that it's unlocked`,
+    });
+  return list;
 }
 
 function finish(report: Report): Report {
@@ -258,6 +311,10 @@ function render(report: Report): string {
   );
   if (report.github.repo) lines.push(`  GitHub: ${report.github.repo}`);
   if (notScanned.length) lines.push(`  not scanned (own git repository): ${notScanned.join(", ")}`);
+  if (report.prerequisites.length) {
+    lines.push("", "Before you start:");
+    for (const p of report.prerequisites) lines.push(`  ${p.name}: ${p.status}; ${p.fix}`);
+  }
   for (const row of report.keys) {
     lines.push("", `${row.key} (${row.environment})`);
     lines.push(`  ${mark(row.from.ok)} from ${row.from.reference}`);

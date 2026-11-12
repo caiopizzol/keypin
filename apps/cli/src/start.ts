@@ -156,6 +156,13 @@ export function main(): Promise<number> {
         return null;
       }
     },
+    ghLogin: async (login) => {
+      if (!Bun.which("gh")) return "not installed";
+      return ghToken(login, { refresh: false }).then(
+        () => "ok" as const,
+        () => "not logged in" as const,
+      );
+    },
     lock: diskLock,
     isTerminal: Boolean(process.stdin.isTTY),
     ask,

@@ -47,6 +47,8 @@ keypin init    # write keypin.toml
 keypin check   # what the project uses, what's missing, and what to run or add
 ```
 
+`check` starts with the logins and apps you still need to set up, if any.
+
 ### Local keys
 
 Move the secrets from your `.env` into 1Password, then run your app with them:

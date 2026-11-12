@@ -965,3 +965,87 @@ jobs:
     }
   });
 });
+
+describe("keypin check's prerequisites", () => {
+  const prerequisites = (text: string) => json(text).prerequisites;
+
+  test("right after init, lists the gh and wrangler logins and 1Password, without reading the vault", async () => {
+    const run = setup({
+      files: { [MAP]: TEMPLATE },
+      git: { "config --get github.account": "alice\n" },
+      deps: { ghLogin: async () => "not logged in" },
+    });
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(run.vault).toEqual([]);
+    expect(run.stdout.text).toContain(`Before you start:
+  GitHub: not logged in; run gh auth login --hostname github.com, signing in as alice
+  Cloudflare: not logged in; run wrangler login
+  1Password: not checked; keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected
+`);
+  });
+
+  test("an empty project needs only 1Password, and that doesn't fail check", async () => {
+    const run = setup({
+      files: Object.fromEntries([...Object.keys(PROJECT).map((p) => [p, null]), [MAP, TEMPLATE]]),
+    });
+    expect(await cli(["check", "--json"], run.deps)).toBe(1);
+    const data = json(run.stdout.text);
+    expect(data.prerequisites).toEqual([
+      {
+        name: "1Password",
+        status: "not checked",
+        fix: "keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected",
+      },
+    ]);
+    expect(data.problems).toEqual([
+      `${MAP} maps no keys yet; run keypin import for an env file, and add the TOML below for production`,
+    ]);
+  });
+
+  test("says to install gh when it isn't on PATH", async () => {
+    const run = setup({
+      files: { [MAP]: TEMPLATE },
+      deps: { ghLogin: async () => "not installed" },
+    });
+    await cli(["check", "--json"], run.deps);
+    expect(prerequisites(run.stdout.text)).toContainEqual({
+      name: "GitHub",
+      status: "not installed",
+      fix: "install gh (https://cli.github.com), then run gh auth login --hostname github.com",
+    });
+  });
+
+  test("nothing to list once the logins exist and a vault item was read", async () => {
+    const wrangler = { wranglerLoginFile: async () => "/home/me/.wrangler/config/default.toml" };
+    const run = setup({ files: { [MAP]: MAPPED }, deps: wrangler });
+    await cli(["check"], run.deps);
+    expect(run.vault.length).toBeGreaterThan(0);
+    expect(run.stdout.text).not.toContain("Before you start");
+    const again = setup({ files: { [MAP]: MAPPED }, deps: wrangler });
+    await cli(["check", "--json"], again.deps);
+    expect(prerequisites(again.stdout.text)).toEqual([]);
+  });
+
+  test("a 1Password sign-in that fails is reported instead of not checked", async () => {
+    const run = setup({
+      files: { [MAP]: MAPPED },
+      deps: {
+        wranglerLoginFile: async () => "/home/me/.wrangler/config/default.toml",
+        vault: () => ({
+          ...fakeVault().vault,
+          itemIds: async () => {
+            throw new Error('1Password account "my.1password.com": sign-in failed: no desktop app');
+          },
+        }),
+      },
+    });
+    expect(await cli(["check", "--json"], run.deps)).toBe(1);
+    expect(prerequisites(run.stdout.text)).toEqual([
+      {
+        name: "1Password",
+        status: "sign-in failed",
+        fix: "check the 1Password desktop app, with Settings → Developer → Integrate with other apps selected, and that it's unlocked",
+      },
+    ]);
+  });
+});

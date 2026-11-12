@@ -301,6 +301,7 @@ describe("keypin check", () => {
       "local",
       "add",
       "unknown",
+      "prerequisites",
       "notes",
       "problems",
       "ok",

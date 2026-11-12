@@ -4,8 +4,8 @@
 
 `wrangler dev` passes environment variables to the Worker only for names in its config's `secrets.required`, and
 only when there's no `.dev.vars` file: while one exists, it reads secrets from that file alone. To use keypin's dev
-keys, list the names under `secrets.required`, move any plain setting from `.dev.vars` to `[vars]` in the wrangler
-config, delete `.dev.vars`, then run:
+keys, list the names under `secrets.required` and delete `.dev.vars`. Pass a dev-only setting that was in it with
+`wrangler dev --var NAME:value`, since top-level `[vars]` in the wrangler config deploy with the Worker. Then run:
 
 ```sh
 keypin run -- wrangler dev

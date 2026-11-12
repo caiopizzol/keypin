@@ -238,7 +238,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
   if (basename(envPath).startsWith(".dev.vars"))
     say(
       rest.length
-        ? `Delete it once ${names(rest.map(([name]) => name))} ${rest.length === 1 ? "has" : "have"} a new home: while a .dev.vars file exists, wrangler dev reads secrets only from it and ignores the ones keypin run provides. Move a plain setting to [vars] in the wrangler config.`
+        ? `Delete it once ${names(rest.map(([name]) => name))} ${rest.length === 1 ? "has" : "have"} a new home: while a .dev.vars file exists, wrangler dev reads secrets only from it and ignores the ones keypin run provides. Pass a dev-only setting to wrangler dev with --var NAME:value; [vars] in the wrangler config also deploys.`
         : "Nothing else is set in it. Delete it: while a .dev.vars file exists, wrangler dev ignores the secrets keypin run provides.",
     );
   else

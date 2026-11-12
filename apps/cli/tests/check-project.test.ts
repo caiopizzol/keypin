@@ -491,7 +491,38 @@ worker = "billing-worker"
         ok: true,
       }),
     ]);
-    expect(data.add).toContain(`account = "${other}"\nworker = "billing-worker"`);
+    expect(data.add).toBeNull();
+    expect(data.problems).toEqual([
+      expect.stringContaining(
+        `keypin.toml can't publish RESEND_API_KEY to two Workers named billing-worker from one environment (accounts ${ACCOUNT} and ${other}); publish one of them from another environment, listed in environments`,
+      ),
+    ]);
+    expect(parseMap(map, MAP).ok).toBe(true);
+  });
+
+  test("two accounts' Workers with one name, neither mapped, get TOML that parses", async () => {
+    const other = "22222222222222222222222222222222";
+    const run = setup({
+      files: {
+        [MAP]: MAPPED,
+        [`${ROOT}/.env`]: null,
+        [`${ROOT}/.github/workflows/deploy.yml`]: null,
+        [`${ROOT}/staging/wrangler.toml`]: `name = "billing-worker"\naccount_id = "${other}"\n\n[secrets]\nrequired = ["RESEND_API_KEY"]\n`,
+      },
+    });
+    run.disk.folders.add(`${ROOT}/staging`);
+    expect(await cli(["check", "--json"], run.deps)).toBe(1);
+    const data = json(run.stdout.text);
+    assert(typeof data.add === "string");
+    expect(data.add.match(/worker = "billing-worker"/g)).toHaveLength(1);
+    expect(data.problems).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("can't publish RESEND_API_KEY to two Workers named billing-worker"),
+      ]),
+    );
+    const filled = `${MAPPED}\n${data.add.replaceAll("<vault>/<item>/<field>", "Private/billing prod resend api key/password")}`;
+    const parsed = parseMap(filled, MAP);
+    assert(parsed.ok, parsed.ok ? "" : parsed.errors.join("\n"));
   });
 
   test("an unreadable repo or Worker is unknown, never missing", async () => {

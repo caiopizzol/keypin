@@ -267,9 +267,28 @@ function tomlToAdd(
   const blocks: string[][] = [];
   const edits = new Map<string, string>();
   for (const name of new Set(needs.map((n) => n.need.name))) {
-    const found = needs.filter((n) => n.need.name === name);
-    const key = found[0]?.key ?? null;
+    const all = needs.filter((n) => n.need.name === name);
+    const key = all[0]?.key ?? null;
     const id = key?.name ?? name;
+    const workers = new Map<string, string>();
+    for (const target of key?.environments[environment]?.publish ?? [])
+      if (target.to === "cloudflare-worker") workers.set(target.worker, target.account);
+    const found = all.filter(({ place }) => {
+      const worker = fieldOf(place, "worker");
+      const account = fieldOf(place, "account");
+      if (place.to !== "cloudflare-worker" || worker === null) return true;
+      const taken = workers.get(worker);
+      if (taken === undefined) {
+        workers.set(worker, account ?? "");
+        return true;
+      }
+      edits.set(
+        `${name} ${place.id}`,
+        `keypin.toml can't publish ${id} to two Workers named ${worker} from one environment (accounts ${taken} and ${account}); publish one of them from another environment, listed in environments`,
+      );
+      return false;
+    });
+    if (!found.length) continue;
     const own: string[][] = [];
     if (!key) own.push([`[keys.${id}]`, `rotate_every = ${str(ROTATE_EVERY)}`]);
     if (!key?.environments[environment])
@@ -336,6 +355,10 @@ function appends(text: string, blocks: readonly string[][]): boolean {
   } catch {
     return false;
   }
+}
+
+function fieldOf(place: Place, field: string): string | null {
+  return place.fields.find(([name]) => name === field)?.[1] ?? null;
 }
 
 function str(value: string): string {

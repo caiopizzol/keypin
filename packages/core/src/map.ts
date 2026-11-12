@@ -190,7 +190,7 @@ function validateEnvironments(
   }
   const names: string[] = [];
   for (const name of raw) {
-    if (!ENVIRONMENT_NAME.test(name)) {
+    if (!isEnvironmentName(name)) {
       fail(
         `environment "${name}": a name starts with a lowercase letter and uses only lowercase letters, digits and dashes`,
       );

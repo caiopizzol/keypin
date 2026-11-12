@@ -3,6 +3,7 @@ import type { Environment } from "./contracts";
 import { DEFAULT_ENVIRONMENTS } from "./contracts";
 import {
   envFlag,
+  isEnvironmentName,
   isVariableName,
   type KeyEntry,
   type KeysMap,
@@ -57,6 +58,7 @@ interface Place {
   fields: [string, string][];
   covers: (target: PublishTarget) => boolean;
   holds: (name: string) => boolean | null;
+  onlyFrom: readonly Environment[];
 }
 
 const PLACEHOLDER = {
@@ -78,7 +80,9 @@ interface Found {
 
 export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } | null): Gaps {
   const keys = map?.map ?? null;
-  const environment = publishEnvironment(keys ?? { environments: DEFAULT_ENVIRONMENTS });
+  const listed = keys?.environments ?? DEFAULT_ENVIRONMENTS;
+  const environment = publishEnvironment({ environments: listed });
+  const notes: string[] = [];
   const needs: Found[] = [];
   const need = (name: string, place: Place, usedBy: string) => {
     if (!isVariableName(name)) return;
@@ -87,6 +91,9 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
       if (!found.need.usedBy.includes(usedBy)) found.need.usedBy.push(usedBy);
       return;
     }
+    needs.push(resolve(name, place, [usedBy]));
+  };
+  const resolve = (name: string, place: Place, usedBy: string[]): Found => {
     const candidates = (keys?.keys ?? []).filter((k) =>
       place.to === "github-actions" ? k.name.toUpperCase() === name : k.name === name,
     );
@@ -97,19 +104,19 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
       null;
     const mapped = mappedIn(keys, key, place);
     const holds = place.holds(name);
-    needs.push({
+    return {
       place,
       key,
       need: {
         name,
         to: place.to,
         place: place.label,
-        usedBy: [usedBy],
+        usedBy,
         mapped,
         holds,
         ok: mapped !== null && holds !== false,
       },
-    });
+    };
   };
 
   const repo = githubPlace(scan, null);
@@ -141,19 +148,70 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
   for (const worker of scan.workers)
     if (worker.worker !== null)
       accounts.set(worker.worker, (accounts.get(worker.worker) ?? new Set()).add(worker.account));
-  for (const worker of scan.workers) {
-    const place = workerPlace(worker, (accounts.get(worker.worker ?? "")?.size ?? 0) > 1);
+  const places = scan.workers.map((worker) =>
+    workerPlace(worker, (accounts.get(worker.worker ?? "")?.size ?? 0) > 1),
+  );
+  const declaredBy = new Map<string, Set<Environment>>();
+  scan.workers.forEach((worker, i) => {
+    const id = places[i]?.id ?? "";
+    if (!declaredBy.has(id)) declaredBy.set(id, new Set());
+    if (worker.env !== null && isEnvironmentName(worker.env)) declaredBy.get(id)?.add(worker.env);
+  });
+  for (const [i, worker] of scan.workers.entries()) {
+    const base = places[i];
+    if (!base) continue;
+    const place = { ...base, onlyFrom: [...(declaredBy.get(base.id) ?? [])].sort() };
+    if (worker.env !== null && !isEnvironmentName(worker.env) && worker.required?.length)
+      notes.push(
+        `${worker.config} env ${worker.env} isn't a keypin environment name, so check proposes its Worker under ${environment}; publish it from the environment that holds its value`,
+      );
     for (const name of worker.required ?? []) need(name, place, worker.config);
   }
 
-  const missing = needs.filter((n) => n.need.mapped === null);
+  for (const [id, envs] of declaredBy) {
+    const label = needs.find((n) => n.place.id === id)?.place.label;
+    if (envs.size < 2 || label === undefined) continue;
+    notes.push(
+      `${label} is declared by the wrangler envs ${[...envs].sort().join(" and ")}; it holds one value, so check accepts it from any of them. Give each env its own Worker name to check them apart`,
+    );
+  }
+
+  const elsewhere = (found: Found) =>
+    found.place.onlyFrom.length
+      ? mappedIn(keys, found.key, { ...found.place, onlyFrom: [] })
+      : null;
+  const missing = needs.filter((n) => n.need.mapped === null && elsewhere(n) === null);
   const add = tomlToAdd(missing, keys, environment, map?.text ?? "");
 
   const problems: string[] = [];
-  const notes: string[] = [];
-  for (const { need: n, place, key } of needs) {
+  const unlisted = [
+    ...new Set(
+      needs.flatMap(({ need: n, place }) => {
+        const env = proposedIn(place, environment);
+        return n.mapped === null && !listed.includes(env) ? [env] : [];
+      }),
+    ),
+  ];
+  if (unlisted.length) {
+    const line = `environments = ${JSON.stringify([...listed.slice(0, -1), ...unlisted, environment]).replaceAll(",", ", ")}`;
+    const at = hasEnvironments(map?.text ?? "")
+      ? "replace the environments line in keypin.toml with"
+      : "add at the top of keypin.toml";
+    problems.push(
+      `keypin.toml has no environment for the wrangler env${unlisted.length > 1 ? "s" : ""} ${unlisted.join(" and ")}; ${at}: ${line} (keypin run uses the first, keypin publish the last)`,
+    );
+  }
+  for (const found of needs) {
+    const { need: n, place, key } = found;
     if (n.ok) continue;
     const uses = `${n.usedBy.join(", ")} ${n.to === "github-actions" ? "uses" : "requires"} it`;
+    const other = elsewhere(found);
+    if (other !== null && n.mapped === null) {
+      problems.push(
+        `${n.name}: ${uses}; keypin.toml publishes it to ${place.label} from ${other}, but that Worker is the wrangler env ${place.onlyFrom.join(" and ")}, so it would get the ${other} value; move that publish entry to ${place.onlyFrom.join(" or ")}`,
+      );
+      continue;
+    }
     if (n.mapped !== null) {
       problems.push(
         `${n.name}: keypin.toml publishes it to ${place.label}, which doesn't have it yet; run keypin publish ${key?.name ?? n.name}${envFlag(n.mapped, environment)}`,
@@ -227,6 +285,7 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
 function mappedIn(map: KeysMap | null, key: KeyEntry | null, place: Place): Environment | null {
   if (!key) return null;
   for (const environment of map?.environments ?? []) {
+    if (place.onlyFrom.length && !place.onlyFrom.includes(environment)) continue;
     if (key.environments[environment]?.publish.some(place.covers)) return environment;
   }
   return null;
@@ -266,6 +325,7 @@ function githubPlace(scan: ProjectScan, environment: string | null): Place & { h
       (repo === null || target.repo.toLowerCase() === repo.toLowerCase()) &&
       target.environment?.toLowerCase() === env,
     holds: (name) => (held ? held.has(name.toUpperCase()) : null),
+    onlyFrom: [],
   };
 }
 
@@ -289,7 +349,22 @@ function workerPlace(worker: ProjectScan["workers"][number], ambiguous: boolean)
       target.worker === name &&
       (worker.account === null || target.account === worker.account),
     holds: (secret) => (held ? held.has(secret) : null),
+    onlyFrom: [],
   };
+}
+
+function proposedIn(place: Place, publish: Environment): Environment {
+  return place.onlyFrom.length && !place.onlyFrom.includes(publish)
+    ? (place.onlyFrom[0] ?? publish)
+    : publish;
+}
+
+function hasEnvironments(text: string): boolean {
+  try {
+    return parseToml(text).environments !== undefined;
+  } catch {
+    return false;
+  }
 }
 
 function maybeEnvironment(environments: readonly string[]): string {
@@ -301,13 +376,20 @@ function maybeEnvironment(environments: readonly string[]): string {
 function tomlToAdd(
   needs: readonly Found[],
   map: KeysMap | null,
-  environment: Environment,
+  publish: Environment,
   text: string,
 ): { text: string | null; edits: Map<string, string> } {
   const blocks: string[][] = [];
   const edits = new Map<string, string>();
-  for (const name of new Set(needs.map((n) => n.need.name))) {
-    const all = needs.filter((n) => n.need.name === name);
+  const groups = new Map<string, Found[]>();
+  for (const found of needs) {
+    const group = `${found.need.name} ${proposedIn(found.place, publish)}`;
+    groups.set(group, [...(groups.get(group) ?? []), found]);
+  }
+  const started = new Set<string>();
+  for (const all of groups.values()) {
+    const name = all[0]?.need.name ?? "";
+    const environment = all[0] ? proposedIn(all[0].place, publish) : publish;
     const key = all[0]?.key ?? null;
     const id = key?.name ?? name;
     const workers = new Map<string, string>();
@@ -331,7 +413,8 @@ function tomlToAdd(
     });
     if (!found.length) continue;
     const own: string[][] = [];
-    if (!key) own.push([`[keys.${id}]`, `rotate_every = ${str(ROTATE_EVERY)}`]);
+    if (!key && !started.has(id)) own.push([`[keys.${id}]`, `rotate_every = ${str(ROTATE_EVERY)}`]);
+    started.add(id);
     if (!key?.environments[environment])
       own.push([`[keys.${id}.${environment}]`, `from = ${str(PLACEHOLDER.from)}`]);
     for (const { place } of found)

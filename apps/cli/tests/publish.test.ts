@@ -83,7 +83,10 @@ describe("keypin publish", () => {
     const fake = {
       ...run.deps,
       cwd: "/work/billing/src",
-      self: ["/opt/bun 1.4/bun", "--no-env-file", "/home/me/keypin/apps/cli/src/main.ts"],
+      self: {
+        folder: "/work/billing/src",
+        command: ["/opt/bun 1.4/bun", "--no-env-file", "/home/me/keypin/apps/cli/src/main.ts"],
+      },
     };
     expect(await cli(["publish", "STRIPE_API_KEY", "--env", "prod", "--yes"], fake)).toBe(
       NEEDS_APPROVAL,
@@ -93,6 +96,15 @@ describe("keypin publish", () => {
     );
     expect(run.stderr.text).not.toMatch(/(^|\s)keypin publish/m);
     expect(run.calls).toEqual([]);
+  });
+
+  test("when the keypin on PATH is this keypin, the command to approve is keypin itself", async () => {
+    const run = setup();
+    const fake = { ...run.deps, self: { folder: "/tmp/billing", command: ["keypin"] } };
+    expect(await cli(["publish", "STRIPE_API_KEY", "--plan"], fake)).toBe(NEEDS_APPROVAL);
+    expect(run.stderr.text).toContain(
+      "To approve, run this in a terminal:\n  cd /tmp/billing && keypin publish STRIPE_API_KEY\n",
+    );
   });
 
   test("a failed account check still comes first, before any approval", async () => {

@@ -1,3 +1,4 @@
+import { realpathSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline/promises";
@@ -25,6 +26,7 @@ import {
 import { installProblem } from "./install";
 import { launch, onSignals } from "./launch";
 import { selfCommand } from "./runtime";
+import { selfFor } from "./self";
 
 let vault: VaultBackend | undefined;
 let cloudflare: CloudflareReader | undefined;
@@ -65,12 +67,33 @@ async function ask(question: string): Promise<string> {
   }
 }
 
-export function main(): Promise<number> {
-  return cli(process.argv.slice(2), {
-    cwd: process.cwd(),
-    self: Bun.isStandaloneExecutable
+function realPath(path: string): string | null {
+  try {
+    return realpathSync(path);
+  } catch {
+    return null;
+  }
+}
+
+function self(cwd: string) {
+  const script = process.argv[1] ?? "keypin";
+  return selfFor({
+    full: Bun.isStandaloneExecutable
       ? [process.execPath]
-      : selfCommand(process.argv[0] ?? "bun", process.argv[1] ?? "keypin"),
+      : selfCommand(process.argv[0] ?? "bun", script),
+    running: Bun.isStandaloneExecutable ? [process.execPath] : [script],
+    cwd,
+    env: process.env,
+    which: (name, path) => Bun.which(name, { PATH: path }),
+    real: realPath,
+  });
+}
+
+export function main(): Promise<number> {
+  const cwd = process.cwd();
+  return cli(process.argv.slice(2), {
+    cwd,
+    self: self(cwd),
     env: process.env,
     home: homedir(),
     files: diskFiles,

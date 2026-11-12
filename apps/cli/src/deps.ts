@@ -1,4 +1,5 @@
 import type { Destination, Files, PublishTarget, StoreRead, VaultBackend } from "@keypin/core";
+import type { Self } from "./self";
 
 export interface Child {
   exited: Promise<number>;
@@ -41,7 +42,7 @@ export interface Writer {
 
 export interface Deps {
   cwd: string;
-  self: readonly string[];
+  self: Self;
   env: Readonly<Record<string, string | undefined>>;
   home: string;
   files: Files;

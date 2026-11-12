@@ -249,7 +249,7 @@ worker = "billing-worker"
       },
     ]);
     expect(data.problems).toEqual([
-      ".env sets RESEND_API_KEY, which keypin.toml maps with no dev entry; add a dev reference to each by hand",
+      ".env sets RESEND_API_KEY, which keypin.toml maps with no dev entry; run keypin import .env NAME... --vault <vault> to add one",
     ]);
     expect(data.notes).toContain(
       ".env sets DATABASE_URL, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env NAME... --vault <vault>",

@@ -22,10 +22,10 @@ values from 1Password only while a command runs.
 2. Run `keypin check --json`. Repeat after each change. It writes nothing and prints no value.
    - `problems`: one line per gap, each saying what to run or add. Exit 0 means nothing to fix.
    - `unknown`: what check couldn't read. Tell the user it's unverified; it never means missing.
-3. Local keys: for each name in `local.unmapped`, ask the user whether it's a secret and which vault. Suggest
-   `keypin import <file> NAME... --vault <vault>`, plus `--account <sign-in address>` when `keypin.toml` has no
-   `[1password]` account. Run it without `--yes`; it exits 3 with the command for the user to run. For names in
-   `local.elsewhere`, ask the user for the reference and add it by hand.
+3. Local keys: for each name in `local.unmapped` or `local.elsewhere`, ask the user whether it's a secret and
+   which vault. Suggest `keypin import <file> NAME... --vault <vault>`, plus `--account <sign-in address>` when
+   `keypin.toml` has no `[1password]` account. Run it without `--yes`; it exits 3 with the command for the user to
+   run.
 4. Production keys: when `add` isn't null, show the user that TOML. With their agreement, paste it into
    `keypin.toml` and ask them for every `<...>` value: the account's sign-in address, each field's secret
    reference (1Password: the field's menu, **Copy Secret Reference**), and any repo, Cloudflare account ID or

@@ -186,7 +186,7 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
     }
     if (elsewhere.length)
       problems.push(
-        `${file.path} sets ${elsewhere.join(", ")}, which keypin.toml maps with no ${run} entry; add a ${run} reference to each by hand`,
+        `${file.path} sets ${elsewhere.join(", ")}, which keypin.toml maps with no ${run} entry; run keypin import ${file.path} NAME... --vault ${PLACEHOLDER.vault} to add one`,
       );
   }
 

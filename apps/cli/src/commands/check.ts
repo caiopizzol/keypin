@@ -247,7 +247,7 @@ async function checkDestination(
 function placeOf(target: PublishTarget): string {
   return target.to === "cloudflare-worker"
     ? `cloudflare-worker:${target.account}/${target.worker}`
-    : `github-actions:${target.repo.toLowerCase()}`;
+    : `github-actions:${target.repo.toLowerCase()}${target.environment === undefined ? "" : `/environments/${target.environment.toLowerCase()}`}`;
 }
 
 function render(report: Report): string {

@@ -78,6 +78,7 @@ export interface WorkflowRefs {
   secrets: string[];
   vars: string[];
   environments: string[];
+  uses: { environment: string | null; secrets: string[] }[];
   hidesUses: boolean;
 }
 
@@ -97,41 +98,50 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     environments: new Set<string>(),
     hidesUses: false,
   };
-  const scan = (expression: string) => {
-    if (/toJSON\(\s*secrets\s*\)/.test(expression)) refs.hidesUses = true;
-    for (const match of expression.matchAll(CONTEXT_REF)) {
-      const name = (match[2] ?? match[3])?.toUpperCase();
-      if (!name) continue;
-      (match[1] === "secrets" ? refs.secrets : refs.vars).add(name);
-    }
+  const secretsIn = (root: unknown, skip: unknown): Set<string> => {
+    const secrets = new Set<string>();
+    const scan = (expression: string) => {
+      if (/toJSON\(\s*secrets\s*\)/.test(expression)) refs.hidesUses = true;
+      for (const match of expression.matchAll(CONTEXT_REF)) {
+        const name = (match[2] ?? match[3])?.toUpperCase();
+        if (!name) continue;
+        (match[1] === "secrets" ? secrets : refs.vars).add(name);
+      }
+    };
+    const seen = new Set<unknown>([skip]);
+    const visit = (value: unknown, key: string | null) => {
+      if (typeof value === "string") {
+        if (key === "if" && !value.includes("${{")) scan(withoutStrings(value));
+        for (const expression of expressions(value)) scan(expression);
+        if (key === "secrets" && value.trim() === "inherit") refs.hidesUses = true;
+        return;
+      }
+      if (typeof value !== "object" || value === null || seen.has(value)) return;
+      seen.add(value);
+      if (Array.isArray(value)) {
+        for (const item of value) visit(item, null);
+      } else if (isRecord(value)) {
+        for (const [k, v] of Object.entries(value)) visit(v, k);
+      }
+    };
+    visit(root, null);
+    for (const name of secrets) refs.secrets.add(name);
+    return secrets;
   };
-  const seen = new Set<object>();
-  const visit = (value: unknown, key: string | null) => {
-    if (typeof value === "string") {
-      if (key === "if" && !value.includes("${{")) scan(withoutStrings(value));
-      for (const expression of expressions(value)) scan(expression);
-      if (key === "secrets" && value.trim() === "inherit") refs.hidesUses = true;
-      return;
-    }
-    if (typeof value !== "object" || value === null || seen.has(value)) return;
-    seen.add(value);
-    if (Array.isArray(value)) {
-      for (const item of value) visit(item, null);
-    } else if (isRecord(value)) {
-      for (const [k, v] of Object.entries(value)) visit(v, k);
-    }
-  };
-  visit(data, null);
-  const jobs = isRecord(data) && isRecord(data.jobs) ? Object.values(data.jobs) : [];
-  for (const job of jobs) {
+  const jobs = isRecord(data) && isRecord(data.jobs) ? data.jobs : null;
+  const uses: WorkflowRefs["uses"] = [{ environment: null, secrets: [...secretsIn(data, jobs)] }];
+  for (const job of Object.values(jobs ?? {})) {
     const environment = isRecord(job) ? job.environment : undefined;
     const name = isRecord(environment) ? environment.name : environment;
-    if (typeof name === "string" && name.trim()) refs.environments.add(name);
+    const named = typeof name === "string" && name.trim() ? name : null;
+    if (named !== null) refs.environments.add(named);
+    uses.push({ environment: named?.trim() ?? null, secrets: [...secretsIn(job, null)] });
   }
   return {
     secrets: [...refs.secrets],
     vars: [...refs.vars],
     environments: [...refs.environments],
+    uses: uses.filter((use) => use.secrets.length),
     hidesUses: refs.hidesUses,
   };
 }

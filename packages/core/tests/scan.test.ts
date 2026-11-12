@@ -129,6 +129,42 @@ jobs:
     expect(refs.hidesUses).toBe(false);
   });
 
+  test("keeps which secrets each job uses with the environment it declares", () => {
+    const refs = workflowRefs(`
+on: push
+env:
+  TOP: \${{ secrets.TOP_LEVEL }}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo \${{ secrets.TEST_TOKEN }}
+  deploy:
+    environment:
+      name: production
+      url: https://example.com
+    steps:
+      - run: echo \${{ secrets.API_TOKEN }}
+  preview:
+    environment: \${{ github.ref_name }}
+    steps:
+      - run: echo \${{ secrets.PREVIEW_TOKEN }}
+`);
+    assert(refs);
+    expect(refs.uses).toEqual([
+      { environment: null, secrets: ["TOP_LEVEL"] },
+      { environment: null, secrets: ["TEST_TOKEN"] },
+      { environment: "production", secrets: ["API_TOKEN"] },
+      { environment: "${{ github.ref_name }}", secrets: ["PREVIEW_TOKEN"] },
+    ]);
+    expect(refs.secrets.toSorted()).toEqual([
+      "API_TOKEN",
+      "PREVIEW_TOKEN",
+      "TEST_TOKEN",
+      "TOP_LEVEL",
+    ]);
+  });
+
   test("notices secrets: inherit and toJSON(secrets), which can hide uses", () => {
     expect(
       workflowRefs(`

@@ -88,7 +88,7 @@ export async function scanProject(deps: Deps, root: string): Promise<ScanResult>
     (w) => w.refs.hidesUses || w.refs.secrets.some((name) => !name.startsWith("GITHUB_")),
   );
   const origin = top ? await githubOrigin(deps, root) : null;
-  const github: ProjectScan["github"] = { repo: null, read: null };
+  const github: ProjectScan["github"] = { repo: null, read: null, environments: [] };
   let login: string | null = null;
   if (origin && "repo" in origin) {
     github.repo = origin.repo;
@@ -103,6 +103,17 @@ export async function scanProject(deps: Deps, root: string): Promise<ScanResult>
           what: `the Actions secrets of ${origin.repo}`,
           reason: `as ${describeLogin(login)}: ${read.reason}`,
         });
+      for (const name of jobEnvironments(workflows)) {
+        const read = await deps
+          .githubSecrets(origin.repo, login, name)
+          .catch((error: unknown) => ({ ok: false as const, reason: messageOf(error) }));
+        github.environments.push({ name, read });
+        if (!read.ok)
+          unknowns.push({
+            what: `the secrets of the environment ${name} in ${origin.repo}`,
+            reason: `as ${describeLogin(login)}: ${read.reason}`,
+          });
+      }
     }
   } else if (uses) {
     unknowns.push({
@@ -124,6 +135,20 @@ export async function scanProject(deps: Deps, root: string): Promise<ScanResult>
     login,
     unknowns,
   };
+}
+
+function jobEnvironments(workflows: ProjectScan["workflows"]): string[] {
+  const names = new Map<string, string>();
+  for (const workflow of workflows)
+    for (const use of workflow.refs.uses)
+      if (
+        use.environment !== null &&
+        !use.environment.includes("${{") &&
+        use.secrets.some((name) => !name.startsWith("GITHUB_"))
+      )
+        if (!names.has(use.environment.toLowerCase()))
+          names.set(use.environment.toLowerCase(), use.environment);
+  return [...names.values()];
 }
 
 async function walk(deps: Deps, root: string, unknowns: Unknown[]) {

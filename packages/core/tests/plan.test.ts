@@ -306,6 +306,49 @@ test("a receipt for the same GitHub secret spelled in another case is the same d
   expect(plan.removed).toEqual([]);
 });
 
+test("a GitHub environment secret is another destination from the repo secret", () => {
+  const prod = KEY.environments.prod;
+  if (!prod) throw new Error("no prod entry");
+  const environment = "github-actions:acme/billing/environments/Production:STRIPE_API_KEY";
+  const key = {
+    ...KEY,
+    environments: {
+      prod: {
+        ...prod,
+        publish: [
+          ...prod.publish,
+          {
+            to: "github-actions" as const,
+            repo: "acme/billing",
+            account: "acme",
+            environment: "Production",
+          },
+        ],
+      },
+    },
+  };
+  const input = { key, environment: "prod", mapFile: KEY_MAP, generation: NEW, ids: null };
+  const first = planPublish({ ...input, receipts: [receipt(WORKER, NEW), receipt(GITHUB, NEW)] });
+  expect(summary(first)[2]).toEqual({
+    action: "write",
+    destinationId: environment,
+    reason: "new destination",
+    approval: `first write to ${environment} (account acme)`,
+  });
+
+  const done = receipt(environment, NEW, {
+    account: { pinned: "acme", publisher: "acme", destinationAccount: "acme" },
+  });
+  const after = planPublish({
+    ...input,
+    receipts: [receipt(WORKER, NEW), receipt(GITHUB, NEW), done],
+  });
+  expect(summary(after).map((s) => s.action)).toEqual(["skip", "skip", "skip"]);
+
+  const repoOnly = planPublish({ ...input, key: KEY, receipts: [receipt(GITHUB, NEW), done] });
+  expect(repoOnly.removed.map((r) => r.destinationId)).toEqual([environment]);
+});
+
 test("a Worker receipt from another Cloudflare account is another secret", () => {
   const elsewhere = receipt(WORKER, NEW, {
     keyId: "other",

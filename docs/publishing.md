@@ -10,7 +10,8 @@ keypin publish --all --plan          # show the plan and write nothing
 ```
 
 It writes GitHub Actions secrets with your `gh` login, and Cloudflare Worker secrets with your `wrangler` login on
-macOS or Linux (not Windows yet; see [Notes](notes.md#the-wrangler-login)). The Worker must already exist. Run
+macOS or Linux (not Windows yet; see [Notes](notes.md#the-wrangler-login)). The Worker, and a GitHub `environment`
+the map names, must already exist. Run
 `keypin check` first: it checks each login and lists what's missing.
 
 ## Steps

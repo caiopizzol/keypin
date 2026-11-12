@@ -167,7 +167,7 @@ export function fakeDestinations(options: FakeDestinationOptions = {}) {
     const place =
       target.to === "cloudflare-worker"
         ? `cloudflare-worker:${target.worker}`
-        : `github-actions:${target.repo}`;
+        : `github-actions:${target.repo}${target.environment === undefined ? "" : `/environments/${target.environment}`}`;
     const owner = target.to === "cloudflare-worker" ? target.account : target.repo.split("/")[0];
     let checked = false;
     return {

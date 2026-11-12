@@ -64,7 +64,8 @@ account = "<Cloudflare account ID>"
 worker = "my-worker"
 ```
 
-GitHub reserves secret names that start with `GITHUB_`.
+GitHub reserves secret names that start with `GITHUB_`. Add `environment = "production"` to write a secret of that
+GitHub environment instead of a repo secret; the environment must already exist. The two are separate destinations.
 
 The map says where a key goes, not who writes it, so every teammate publishes from the same map:
 

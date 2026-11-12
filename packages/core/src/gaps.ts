@@ -18,7 +18,11 @@ export interface ProjectScan {
   envFiles: { path: string; kind: EnvFileKind; names: string[]; tracked: boolean | null }[];
   workflows: { path: string; refs: WorkflowRefs }[];
   workers: (WorkerDeclaration & { read: StoreRead | null })[];
-  github: { repo: string | null; read: StoreRead | null };
+  github: {
+    repo: string | null;
+    read: StoreRead | null;
+    environments: { name: string; read: StoreRead }[];
+  };
 }
 
 export interface Need {
@@ -53,7 +57,6 @@ interface Place {
   fields: [string, string][];
   covers: (target: PublishTarget) => boolean;
   holds: (name: string) => boolean | null;
-  environments: string[];
 }
 
 const PLACEHOLDER = {
@@ -109,12 +112,30 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
     });
   };
 
-  const repo = githubPlace(scan);
-  for (const workflow of scan.workflows) {
-    for (const name of workflow.refs.secrets) {
-      if (name.startsWith("GITHUB_")) continue;
-      need(name, repo, workflow.path);
-    }
+  const repo = githubPlace(scan, null);
+  const uses = scan.workflows.flatMap((workflow) =>
+    workflow.refs.uses.flatMap(({ environment, secrets }) =>
+      secrets
+        .filter((name) => !name.startsWith("GITHUB_"))
+        .map((name) => ({ name, path: workflow.path, environment })),
+    ),
+  );
+  const declared = new Map<string, Set<string>>();
+  for (const use of uses) {
+    const literal = literalEnvironment(use.environment);
+    const environment = literal === null ? null : githubPlace(scan, literal);
+    const alone = uses
+      .filter((u) => u.name === use.name)
+      .every((u) => literalEnvironment(u.environment)?.toLowerCase() === literal?.toLowerCase());
+    const place =
+      environment !== null &&
+      (publishes(keys, use.name, environment) ||
+        (alone && !publishes(keys, use.name, repo) && repo.holds(use.name) === false))
+        ? environment
+        : repo;
+    if (place === repo && use.environment !== null)
+      declared.set(use.name, (declared.get(use.name) ?? new Set()).add(use.environment));
+    need(use.name, place, use.path);
   }
   const accounts = new Map<string, Set<string | null>>();
   for (const worker of scan.workers)
@@ -143,7 +164,7 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
       n.holds === true
         ? `${place.label} has it, but keypin.toml doesn't publish it there`
         : n.holds === false
-          ? `${place.label} doesn't have it${maybeEnvironment(place)}, and keypin.toml doesn't publish it there`
+          ? `${place.label} doesn't have it${maybeEnvironment(place === repo ? [...(declared.get(n.name) ?? [])] : [])}, and keypin.toml doesn't publish it there`
           : `keypin.toml doesn't publish it to ${place.label}`;
     const edit = add.edits.get(`${n.name} ${place.id}`);
     problems.push(`${n.name}: ${uses}; ${held}. ${edit ?? "Add the TOML below"}`);
@@ -211,24 +232,40 @@ function mappedIn(map: KeysMap | null, key: KeyEntry | null, place: Place): Envi
   return null;
 }
 
-function githubPlace(scan: ProjectScan): Place & { hidden: boolean } {
+function literalEnvironment(environment: string | null): string | null {
+  return environment === null || environment.includes("${{") ? null : environment;
+}
+
+function publishes(map: KeysMap | null, name: string, place: Place): boolean {
+  return (map?.keys ?? []).some(
+    (k) => k.name.toUpperCase() === name && mappedIn(map, k, place) !== null,
+  );
+}
+
+function githubPlace(scan: ProjectScan, environment: string | null): Place & { hidden: boolean } {
   const repo = scan.github.repo;
-  const read = scan.github.read;
+  const env = environment?.toLowerCase();
+  const read =
+    env === undefined
+      ? scan.github.read
+      : scan.github.environments.find((e) => e.name.toLowerCase() === env)?.read;
   const held = read?.ok ? new Set(read.secrets.map((s) => s.name.toUpperCase())) : null;
+  const fields: [string, string][] = [
+    ["to", "github-actions"],
+    ["repo", repo ?? PLACEHOLDER.repo],
+  ];
+  if (environment !== null) fields.push(["environment", environment]);
   return {
-    id: `github-actions:${repo?.toLowerCase() ?? ""}`,
+    id: `github-actions:${repo?.toLowerCase() ?? ""}${env === undefined ? "" : `/environments/${env}`}`,
     hidden: scan.workflows.some((w) => w.refs.hidesUses),
     to: "github-actions",
-    label: repo ?? "the GitHub repository",
-    fields: [
-      ["to", "github-actions"],
-      ["repo", repo ?? PLACEHOLDER.repo],
-    ],
+    label: `${repo ?? "the GitHub repository"}${environment === null ? "" : ` (environment ${environment})`}`,
+    fields,
     covers: (target) =>
       target.to === "github-actions" &&
-      (repo === null || target.repo.toLowerCase() === repo.toLowerCase()),
+      (repo === null || target.repo.toLowerCase() === repo.toLowerCase()) &&
+      target.environment?.toLowerCase() === env,
     holds: (name) => (held ? held.has(name.toUpperCase()) : null),
-    environments: [...new Set(scan.workflows.flatMap((w) => w.refs.environments))],
   };
 }
 
@@ -252,13 +289,12 @@ function workerPlace(worker: ProjectScan["workers"][number], ambiguous: boolean)
       target.worker === name &&
       (worker.account === null || target.account === worker.account),
     holds: (secret) => (held ? held.has(secret) : null),
-    environments: [],
   };
 }
 
-function maybeEnvironment(place: Place): string {
-  return place.environments.length
-    ? ` as a repo secret (it may be a secret of the environment ${place.environments.join(" or ")}, which check doesn't read)`
+function maybeEnvironment(environments: readonly string[]): string {
+  return environments.length
+    ? ` as a repo secret (it may be a secret of the environment ${environments.join(" or ")}, which check doesn't read)`
     : "";
 }
 

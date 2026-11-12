@@ -296,11 +296,23 @@ describe("status", () => {
     expect(result.rows[0]?.destinations.map((d) => d.stale)).toEqual([false, true]);
   });
 
-  test("a project with no map or a bad map is a problem, not silence", () => {
+  test("a project with no map, a bad map, or no keys is a problem, not silence", () => {
     const result = buildStatus({
-      registry: { version: 1, projects: ["/work/a", "/work/b"], shared: [] },
+      registry: { version: 1, projects: ["/work/a", "/work/b", "/work/c"], shared: [] },
       maps: new Map<string, MapResult>([
         ["/work/b", { ok: false, errors: ["/work/b/keypin.toml: missing field"] }],
+        [
+          "/work/c",
+          {
+            ok: true,
+            map: {
+              file: "/work/c/keypin.toml",
+              account: null,
+              environments: ["dev", "prod"],
+              keys: [],
+            },
+          },
+        ],
       ]),
       receipts: [],
       metadata: () => null,
@@ -309,7 +321,9 @@ describe("status", () => {
     expect(result.problems.map((p) => [p.kind, p.project])).toEqual([
       ["no-map", "/work/a"],
       ["bad-map", "/work/b"],
+      ["no-keys", "/work/c"],
     ]);
+    expect(result.problems.every((p) => p.severity === "problem")).toBe(true);
   });
 
   test("today must be a day", () => {

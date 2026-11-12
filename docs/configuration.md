@@ -59,7 +59,10 @@ and uses only lowercase letters, digits and dashes.
 
 ## Destinations
 
-Under an environment, list every place `publish` writes the key:
+Under an environment, list every place `publish` writes the key. `keypin check` prints these tables for each
+secret a workflow or Worker needs that the map doesn't publish there, with the repo, Worker and account filled in
+when it knows them, and `<...>` where it doesn't. Replace each `<...>` before you run another command; keypin
+rejects a map that still has one.
 
 ```toml
 [[keys.API_TOKEN.prod.publish]]

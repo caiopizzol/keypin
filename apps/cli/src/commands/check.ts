@@ -2,8 +2,11 @@ import { dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import {
   type Environment,
+  findGaps,
   formatReference,
+  type Gaps,
   type KeyRef,
+  type KeysMap,
   loadRegistry,
   parseMap,
   type PublishTarget,
@@ -14,6 +17,7 @@ import { messageOf } from "../errors";
 import { registryPath } from "../paths";
 import { locateMap, MAP_FILE } from "../project";
 import { describeLogin, publisherFor } from "../publisher";
+import { type ScanResult, scanProject, type Unknown } from "../scan";
 import { announce, distinctRefs, refKey } from "../vault";
 
 interface ItemResult {
@@ -45,7 +49,13 @@ interface Report {
   folder: string;
   map: string | null;
   registered: boolean;
+  read: ScanResult["files"] & { notScanned: string[] };
+  github: { repo: string | null; login: string | null };
   keys: KeyResult[];
+  production: Gaps["production"];
+  local: Gaps["local"];
+  add: string | null;
+  unknown: Unknown[];
   notes: string[];
   problems: string[];
   ok: boolean;
@@ -67,41 +77,57 @@ export async function check(args: string[], deps: Deps): Promise<number> {
 }
 
 async function build(folder: string, deps: Deps): Promise<Report> {
+  const found = await locateMap(deps.files, folder);
+  const root = found ? dirname(found.file) : folder;
+  const scanned = await scanProject(deps, root);
   const report: Report = {
-    folder,
-    map: null,
+    folder: root,
+    map: found?.file ?? null,
     registered: false,
+    read: { ...scanned.files, notScanned: scanned.nested },
+    github: { repo: scanned.scan.github.repo, login: scanned.login },
     keys: [],
+    production: [],
+    local: [],
+    add: null,
+    unknown: scanned.unknowns,
     notes: [],
     problems: [],
     ok: false,
   };
-  const found = await locateMap(deps.files, folder);
+  const gaps = (map: KeysMap | null) => {
+    const result = findGaps(scanned.scan, map && found ? { map, text: found.text } : null);
+    report.production = result.production;
+    report.local = result.local;
+    report.add = result.add;
+    report.problems.push(...result.problems);
+  };
   if (!found) {
     report.problems.push(
-      `no ${MAP_FILE} in ${folder} or any folder above it; run keypin discover --write or keypin init`,
+      `no ${MAP_FILE} in ${folder} or any folder above it; run keypin init, then keypin check again`,
     );
-    return report;
+    gaps(null);
+    return finish(report);
   }
-  report.map = found.file;
   const registry = await loadRegistry(deps.files, registryPath(deps));
-  report.registered = registry.projects.includes(dirname(found.file));
+  report.registered = registry.projects.includes(root);
   if (!report.registered)
     report.notes.push(
-      `${dirname(found.file)} isn't registered, so keypin status doesn't list it; run keypin init there`,
+      `${root} isn't registered, so keypin status doesn't list it; run keypin init there`,
     );
 
   const parsed = parseMap(found.text, found.file);
   if (!parsed.ok) {
     report.problems.push(...parsed.errors);
-    return report;
+    return finish(report);
   }
   const map = parsed.map;
   if (!map.keys.length) {
     report.problems.push(
-      `${found.file} maps no keys yet; run keypin discover for a draft, or add [keys.*] tables`,
+      `${found.file} maps no keys yet; run keypin import for an env file, and add the TOML below for production`,
     );
-    return report;
+    gaps(map);
+    return finish(report);
   }
 
   const entries = map.keys.flatMap((key) =>
@@ -114,10 +140,9 @@ async function build(folder: string, deps: Deps): Promise<Report> {
   const use = (id: string, label: string) => users.set(id, [...(users.get(id) ?? []), label]);
 
   const refs = distinctRefs(entries.map(({ entry }) => entry.ref));
-  announce(
-    deps.stderr,
-    "each value to check that its item and field exist (none is printed)",
-    refs,
+  announce(deps.stderr, "the item IDs, not the values,", refs);
+  report.notes.push(
+    "each item was found in its vault's item list, which holds no values, so its field isn't checked; keypin run and keypin publish --plan read it",
   );
   const items = new Map<string, ItemResult>();
   for (const ref of refs) items.set(refKey(ref), await checkItem(ref, deps));
@@ -169,6 +194,11 @@ async function build(folder: string, deps: Deps): Promise<Report> {
     const fix = result.fix ? `; fix: ${result.fix}` : "";
     report.problems.push(`${place}: ${result.problem}${fix}${usedBy(`place ${place}`)}`);
   }
+  gaps(map);
+  return finish(report);
+}
+
+function finish(report: Report): Report {
   report.ok = !report.problems.length;
   return report;
 }
@@ -176,14 +206,7 @@ async function build(folder: string, deps: Deps): Promise<Report> {
 async function checkItem(ref: KeyRef, deps: Deps): Promise<ItemResult> {
   const reference = formatReference(ref);
   try {
-    const secret = await deps.vault().read(ref);
-    if (secret.isEmpty()) {
-      return {
-        reference,
-        ok: false,
-        problem: `${reference} (1Password account ${ref.account}): the field "${ref.field}" is empty`,
-      };
-    }
+    await deps.vault().itemIds(ref);
     return { reference, ok: true, problem: null };
   } catch (error) {
     return { reference, ok: false, problem: messageOf(error) };
@@ -228,6 +251,12 @@ function placeOf(target: PublishTarget): string {
 
 function render(report: Report): string {
   const lines = [`keypin check ${report.map ?? report.folder}`];
+  const { env, wrangler, workflows, notScanned } = report.read;
+  lines.push(
+    `  read: ${count(env.length, "env file")}, ${count(wrangler.length, "wrangler config")}, ${count(workflows.length, "workflow")}`,
+  );
+  if (report.github.repo) lines.push(`  GitHub: ${report.github.repo}`);
+  if (notScanned.length) lines.push(`  not scanned (own git repository): ${notScanned.join(", ")}`);
   for (const row of report.keys) {
     lines.push("", `${row.key} (${row.environment})`);
     lines.push(`  ${mark(row.from.ok)} from ${row.from.reference}`);
@@ -237,6 +266,26 @@ function render(report: Report): string {
       );
     }
   }
+  if (report.production.length) {
+    lines.push("", "Production needs:");
+    for (const need of report.production) {
+      const holds = need.holds === null ? "unknown" : need.holds ? "has it" : "doesn't have it";
+      const mapped = need.mapped === null ? "not in keypin.toml" : `keypin.toml (${need.mapped})`;
+      lines.push(
+        `  ${mark(need.ok)} ${need.name} in ${need.place} (${need.usedBy.join(", ")}): ${holds}, ${mapped}`,
+      );
+    }
+  }
+  const local = report.local.filter((file) => file.unmapped.length || file.elsewhere.length);
+  if (local.length) {
+    lines.push("", "Set in an env file, with no local entry in keypin.toml:");
+    for (const file of local)
+      lines.push(`  ${file.file}: ${[...file.unmapped, ...file.elsewhere].join(", ")}`);
+  }
+  if (report.unknown.length) {
+    lines.push("", `Unknown (${report.unknown.length}):`);
+    for (const u of report.unknown) lines.push(`  ${u.what}: ${u.reason}`);
+  }
   if (report.notes.length) {
     lines.push("", `Notes (${report.notes.length}):`);
     for (const note of report.notes) lines.push(`  ${note}`);
@@ -245,7 +294,19 @@ function render(report: Report): string {
     lines.push("", `Problems (${report.problems.length}):`);
     for (const problem of report.problems) lines.push(`  ${problem}`);
   } else lines.push("", "Everything checks out.");
+  if (report.add !== null) {
+    lines.push(
+      "",
+      `Add to ${report.map ?? MAP_FILE}, then replace each <...> with the real value (keypin rejects a map that still has one):`,
+      "",
+      report.add.trimEnd(),
+    );
+  }
   return `${lines.join("\n")}\n`;
+}
+
+function count(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }
 
 function mark(ok: boolean): string {

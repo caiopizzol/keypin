@@ -32,8 +32,6 @@ The same seven scenarios, run again against these fixes:
 
 ## Fixed since
 
-- **`discover` didn't say where the GitHub login came from.** It now says `as <login> (git config
-  github.account)` or `as the active gh login`, and `publish` picks its GitHub login the same way.
 - **1. Without a terminal, `publish` stopped before showing the evidence.** `--plan` reads the value, runs the
   account checks and prints the full plan without a terminal: the generation read from the item, what would be
   written where, and which steps need a typed `yes`. It writes nothing, and exits 3 with the command to run, or 0
@@ -41,14 +39,22 @@ The same seven scenarios, run again against these fixes:
   user to approve the command, and a plain run without a terminal stops before reading so the user approves only
   once.
 - **5. No way to check vault items before publishing.** `keypin check` checks that the map parses, that each
-  referenced item and field exists, and that each login reaches the pinned account, with a fix for each
-  mismatch. It writes nothing, prints no value, and exits 1 with one line per problem. It doesn't report
+  referenced item exists (from the vault's item list, without reading a value; `run` and `publish --plan` read
+  the field), and that each login reaches the pinned account, with a fix for each mismatch. It writes nothing,
+  prints no value, and exits 1 with one line per problem. It doesn't report
   `rotated` dates or whether a key is due for rotation; `status` does.
-- **3. (part) An empty map looked healthy.** `keypin check` reports a map with no keys as a problem, and an
-  unregistered project as a note. `status` still shows an empty map with no problem.
-- **2. `init` and `discover` didn't connect.** `keypin discover --write` saves the draft as `keypin.toml` and
-  registers the project, when there's no `keypin.toml` or it's still the untouched `init` template. It refuses
-  to change a real map; copy the `[keys.*]` tables from the draft by hand.
+- **3. An empty map looked healthy.** `keypin check` reports a map with no keys as a problem, and an
+  unregistered project as a note. `status` reports a registered project with no keys, or still the `init`
+  template, as a `no-keys` problem that points at `keypin check`, and exits 1. `init` ends by naming `keypin
+  check` as the next step.
+- **4. The draft didn't act on the problems it reported.** `discover` and its draft are gone. For each secret a
+  workflow references or a Worker's `secrets.required` lists that the map doesn't publish there, `keypin check`
+  prints the TOML to add: the `[keys.X.prod]` table with `from` and the `[[keys.X.prod.publish]]` destination,
+  with the repo from the git `origin` and the Worker and account from the wrangler config, and `<...>` where it
+  can't know the value. The map parser rejects a `<...>`, so a pasted placeholder can't pass as a real reference.
+- **7. `status` and `discover` each told half the story.** `keypin check` is the one report for a project: the
+  map, the items, the logins, what each workflow and Worker needs against what the repo and Worker hold, and the
+  env files. `status` stays the cross-project view of due dates and receipts.
 - **6. First setup meant one publish per key.** `keypin publish --all` publishes every key with destinations in
   the environment, with one combined plan and one typed `yes`. Without a terminal it lists every approval and
   stops with exit 3 before reading any value.
@@ -62,29 +68,6 @@ The same seven scenarios, run again against these fixes:
 - **11. "Nothing to write" trusted the receipt.** keypin can't read a destination's secret, only its own
   receipts. `publish` now says "the receipts on this machine show every destination already got this
   generation".
-
-## Getting started
-
-### 3. An empty map looks healthy
-
-After `init`, `status --json` returns no rows and no problems, exactly as before `init`. Nothing says the project
-is registered with zero keys, or that `keypin.toml` is still the template. Report "registered, no keys mapped".
-`keypin check` now reports it; `status` doesn't yet.
-
-### 4. The draft doesn't act on the problems it reports
-
-`discover` reports that `wrangler.toml` requires `RESEND_API_KEY` and the Worker lacks it, but the draft gives
-that key no `prod` entry or Worker destination. It reports a workflow that uses `STRIPE_API_KEY` with no repo
-secret, but adds no GitHub destination. Draft a destination for each `secrets.required` name and each workflow
-reference, so the draft fixes what discover found.
-
-## Day to day
-
-### 7. `status` and `discover` each tell half the story
-
-`status` shows due dates and receipts; only `discover` shows what a repo or Worker actually holds. Agents that
-followed "check with `status`" missed a Worker without a required secret. Consider showing discover's cloud
-problems in `status` for registered projects, or a single `keypin doctor`.
 
 ## Smaller
 

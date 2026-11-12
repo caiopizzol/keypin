@@ -17,6 +17,7 @@ import type { Generation } from "./secret";
 export type ProblemKind =
   | "no-map"
   | "bad-map"
+  | "no-keys"
   | "rotation-unreadable"
   | "no-rotation-date"
   | "bad-rotation-period"
@@ -92,6 +93,15 @@ export function buildStatus(input: StatusInput): Status {
         severity: "problem",
         project,
         message: result.errors.join("\n"),
+      });
+      continue;
+    }
+    if (!result.map.keys.length) {
+      problems.push({
+        kind: "no-keys",
+        severity: "problem",
+        project,
+        message: `${result.map.file} maps no keys yet (it's empty, or still the keypin init template); run keypin check in ${project} for what to add`,
       });
       continue;
     }

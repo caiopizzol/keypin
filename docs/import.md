@@ -1,7 +1,8 @@
 # Import
 
 `keypin import` moves the values in an env file, such as `.env` or `.dev.vars`, into new 1Password items, and maps
-each one in `keypin.toml`. Run it in the project's folder.
+each one in `keypin.toml`. Run it in the project's folder. `keypin check` names each env file that sets a variable
+the map doesn't have, with the `import` command for it.
 
 ```sh
 keypin import .env --vault Private --account my.1password.com   # a project with no map yet
@@ -84,3 +85,6 @@ another, whose item exists with another value or can't be read, or that is mappe
 match or that can't be read. Move those by hand. An empty value isn't imported. If the map already has that
 variable, its empty line is one to remove too: `keypin run` warns about it, and a tool that reads the file, such as
 `wrangler dev`, would use the empty value instead of the vault's.
+
+`keypin check` lists, as a note, each name an env file still sets that the map doesn't have, with the `import`
+command for it.

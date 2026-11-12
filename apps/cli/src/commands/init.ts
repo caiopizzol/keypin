@@ -48,6 +48,9 @@ export async function init(args: string[], deps: Deps): Promise<number> {
   );
 
   await registerProject(deps, folder);
+  deps.stderr.write(
+    `keypin: next, run keypin check${folder === deps.cwd ? "" : ` ${folder}`} for what this project uses and the TOML to add\n`,
+  );
   return 0;
 }
 

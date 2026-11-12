@@ -1,5 +1,4 @@
 import { check } from "./commands/check";
-import { discover } from "./commands/discover";
 import { importEnv } from "./commands/import";
 import { init } from "./commands/init";
 import { publish } from "./commands/publish";
@@ -15,13 +14,11 @@ export const USAGE = `Usage:
   keypin unregister [folder]
                            stop listing a project; its keypin.toml stays
   keypin status [--json]   every key in every registered project, with problems
-  keypin discover [folder] [--json] [--write]
-                           every key name a project uses, local and in the cloud, and a draft map;
-                           --write saves the draft as keypin.toml (only when there's none, or the
-                           untouched init template) and registers the project
   keypin check [folder] [--json]
-                           check a project's map, vault items and logins without writing anything:
-                           each item and field exists, each login reaches the pinned account
+                           report a project without writing anything: each mapped item exists,
+                           each login reaches the pinned account, every secret a workflow or
+                           Worker needs is published there (with the TOML to add when it isn't),
+                           and every name an env file sets is mapped
   keypin import <env-file> [NAME...] --vault <vault> [--account <sign-in address>] [--yes]
                            move an env file's values into new 1Password items and map them: only
                            the named variables, or every one; the account is the map's, or --account
@@ -50,7 +47,6 @@ const COMMANDS = new Map<string, (args: string[], deps: Deps) => Promise<number>
   ["init", init],
   ["unregister", unregister],
   ["status", status],
-  ["discover", discover],
   ["check", check],
   ["import", importEnv],
   ["run", run],

@@ -65,14 +65,17 @@ export function fakeVault(options: FakeVaultOptions = {}) {
     if (options.failing?.includes(ref.item))
       throw new Error(`1Password: "${ref.item}" isn't readable`);
   };
-  const value = (ref: KeyRef) => {
-    calls.push(`read ${ref.item}`);
-    fail(ref);
-    const stored = created.find((c) => c.ref.item.toLowerCase() === ref.item.toLowerCase());
-    if (stored) return stored.value;
+  const stored = (ref: KeyRef) => {
+    const made = created.find((c) => c.ref.item.toLowerCase() === ref.item.toLowerCase());
+    if (made) return made.value;
     const found = options.values?.[ref.item];
     if (found === undefined) throw new Error(`no item "${ref.item}"`);
     return new Secret(found);
+  };
+  const value = (ref: KeyRef) => {
+    calls.push(`read ${ref.item}`);
+    fail(ref);
+    return stored(ref);
   };
   const idsOf = (ref: KeyRef) => ({
     vault: `id-${ref.vault.toLowerCase()}`,
@@ -89,6 +92,7 @@ export function fakeVault(options: FakeVaultOptions = {}) {
     async itemIds(ref) {
       calls.push(`ids ${ref.item}`);
       fail(ref);
+      stored(ref);
       return idsOf(ref);
     },
     async write(ref, secret, writeOptions = {}) {

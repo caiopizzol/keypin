@@ -41,8 +41,8 @@ A receipt records the vault item's 1Password IDs as well as its reference. The i
 differ, so an item you delete and create again with the same title needs a typed `yes`, and renaming an item
 doesn't. Another field or section of the same item, or another 1Password account, is still a changed item. Without
 a terminal, `--yes` first looks up the item's IDs from the vault's item list, which holds no values, so a replaced
-item stops the run before any value is read. A receipt from keypin 0.6 or older records no IDs, and the reference
-decides. `rotate` stores the new token in the item it read, by its IDs, so an item replaced while it runs is left
+item stops the run before any value is read. A receipt without IDs, which keypin 0.7 and older write (state
+version 3 or older), keeps comparing the reference until keypin writes that destination again. `rotate` stores the new token in the item it read, by its IDs, so an item replaced while it runs is left
 as it is and the run stops.
 
 ## See the plan first

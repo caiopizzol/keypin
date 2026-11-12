@@ -642,6 +642,21 @@ describe("a destination only takes a value without approval when it came from th
     expect(leaks(...disk.contents.values(), unattended.stderr.text)).toBe(false);
   });
 
+  test("a deleted item stops an unattended --yes at the ID lookup, before any read", async () => {
+    const disk = memoryFiles({ "/work/billing/keypin.toml": deployMap("billing deploy token") });
+    expect(
+      await cli(["publish", "DEPLOY_TOKEN"], publisher(disk, "/work/billing", true).deps),
+    ).toBe(0);
+    const before = disk.contents.get(STATE);
+    disk.contents.set("/work/billing/keypin.toml", deployMap("billing deploy token gone"));
+    const gone = publisher(disk, "/work/billing", false);
+    expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], gone.deps)).toBe(1);
+    expect(gone.calls).toEqual(["ids billing deploy token gone"]);
+    expect(gone.writes()).toEqual([]);
+    expect(gone.stderr.text).toContain('no item "billing deploy token gone"');
+    expect(disk.contents.get(STATE)).toBe(before);
+  });
+
   test("a renamed item that is still the same item stays routine", async () => {
     const disk = memoryFiles({ "/work/billing/keypin.toml": deployMap("billing deploy token") });
     const ids = { "billing deploy token": "item-1", "billing deploy token v2": "item-1" };

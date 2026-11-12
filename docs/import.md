@@ -6,18 +6,23 @@ each one in `keypin.toml`. Run it in the project's folder.
 ```sh
 keypin import .env --vault Private --account my.1password.com   # a project with no map yet
 keypin import .dev.vars --vault Private                         # a project whose map names its account
+keypin import .env STRIPE_KEY DATABASE_URL --vault Private      # only these two variables
 ```
+
+Name the variables to import only those. The others stay in the file on purpose: plain settings such as
+`PUBLIC_SITE_URL=http://localhost:3000` or a local `DATABASE_URL` don't need a vault. A name the file doesn't set is
+a usage error. Without names, it imports every variable.
 
 `--vault` is required. The account is the map's `[1password] account`. Without a map, give `--account`, the
 account's sign-in address.
 
 ## What it creates
 
-For each variable, a Password item named `<folder> <environment> <variable>`, such as `billing dev stripe key` for
+For each variable it imports, a Password item named `<folder> <environment> <variable>`, such as `billing dev stripe key` for
 `STRIPE_KEY`. The value goes in its `password` field, and `rotated` is today. The environment is the map's first,
 `dev` by default.
 
-It skips, and lists by name:
+Of those variables, it skips, and lists by name:
 
 - a name that isn't a variable name, such as `app.key`;
 - an empty value;
@@ -60,9 +65,15 @@ holds the same value. When there's nothing new to create, it maps those items wi
 
 ## Afterwards
 
-keypin never changes or deletes the env file, and it never prints a value. It names every variable still only in
-the file: one that isn't a variable name, has a `$`, is mapped only in another environment, shares an item with
+keypin never changes or deletes the env file, and it never prints a value. It names the lines to remove from the
+file: each variable it mapped, and each one already mapped with the value the vault holds. `keypin run --
+<command>` provides those, and warns, by name, while an env file still holds one of them. A variable the map
+doesn't have, such as a plain setting you didn't name, can stay in the file.
+
+When nothing else is set in the file, it says so: delete the file and stop loading it. For example, `wrangler dev`
+reads `.dev.vars` (see [Notes](notes.md)).
+
+Among the variables it was asked to import, it also names each one it left only in the file, with the reason under
+**Skipped**: one that isn't a variable name, has a `$`, is mapped only in another environment, shares an item with
 another, whose item exists with another value or can't be read, or that is mapped with a value the vault doesn't
-match or that can't be read. Move those, then delete the file and stop loading it. An empty value or a mapped
-variable that matches the vault needs nothing. For example, `wrangler dev` reads `.dev.vars` (see [Notes](notes.md)). Then `keypin run -- <command>` provides the values,
-and warns while an env file still holds one of them.
+match or that can't be read. Move those by hand. An empty value needs nothing.

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { closeSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { chmod, mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import type { Files } from "@keypin/core";
@@ -21,11 +22,13 @@ import {
   fakeVault,
   fakeWorkerSecrets,
 } from "./fakes";
-import { emptyWorld, parseWorld, type World } from "./world";
+import { emptyWorld, parseWorld, type World, type WorldStore } from "./world";
 import { errorCode } from "../../../apps/cli/src/errors";
 
 const WORLD = "world.json";
 const GIT_OUTPUT = 64 * 1024 * 1024;
+const LOCK_WAIT_MS = 10_000;
+const pause = new Int32Array(new SharedArrayBuffer(4));
 const PASSED_ENV = ["TERM", "LANG", "LC_ALL", "SHELL", "USER", "TMPDIR"];
 export const SHADOWED = ["op", "gh", "wrangler", "npx", "bunx", "keypin"];
 
@@ -82,17 +85,50 @@ export async function loadWorld(box: Sandbox): Promise<World> {
   return parseWorld(text, box.world);
 }
 
-export async function saveWorld(box: Sandbox, world: World): Promise<void> {
+async function saveWorld(box: Sandbox, world: World): Promise<void> {
   const temporary = `${box.world}.${crypto.randomUUID()}.tmp`;
   await writeFile(temporary, `${JSON.stringify(world, null, 2)}\n`);
   await rename(temporary, box.world);
 }
 
-export async function editWorld(box: Sandbox, change: (world: World) => void): Promise<World> {
-  const world = await loadWorld(box);
-  change(world);
-  await saveWorld(box, world);
-  return world;
+export function worldStore(box: Sandbox): WorldStore {
+  const read = () => parseWorld(readFileSync(box.world, "utf8"), box.world);
+  return {
+    view: (use) => use(read()),
+    change: (use) =>
+      locked(box, () => {
+        const world = read();
+        const result = use(world);
+        const temporary = `${box.world}.${crypto.randomUUID()}.tmp`;
+        writeFileSync(temporary, `${JSON.stringify(world, null, 2)}\n`);
+        renameSync(temporary, box.world);
+        return result;
+      }),
+  };
+}
+
+function locked<T>(box: Sandbox, use: () => T): T {
+  const lock = `${box.world}.lock`;
+  const until = Date.now() + LOCK_WAIT_MS;
+  for (;;) {
+    try {
+      closeSync(openSync(lock, "wx"));
+      break;
+    } catch (error) {
+      if (errorCode(error) !== "EEXIST" || Date.now() > until)
+        throw new Error(`sandbox: couldn't lock ${box.world}; remove ${lock} if no run is going`);
+      Atomics.wait(pause, 0, 0, 5);
+    }
+  }
+  try {
+    return use();
+  } finally {
+    rmSync(lock, { force: true });
+  }
+}
+
+export async function editWorld(box: Sandbox, change: (world: World) => void): Promise<void> {
+  worldStore(box).change(change);
 }
 
 export type Ask = (question: string) => Promise<string>;
@@ -115,16 +151,15 @@ export async function runKeypin(
     stderr.write(`sandbox: run keypin from inside ${box.root}, not ${cwd}\n`);
     return 2;
   }
-  const world = await loadWorld(box);
-  const before = JSON.stringify(world);
-  try {
-    return await cli(args, sandboxDeps(box, world, { ...options, cwd, stderr }));
-  } finally {
-    if (JSON.stringify(world) !== before) await saveWorld(box, world);
-  }
+  await loadWorld(box);
+  return cli(args, sandboxDeps(box, worldStore(box), { ...options, cwd, stderr }));
 }
 
-function sandboxDeps(box: Sandbox, world: World, options: RunOptions & { stderr: Writer }): Deps {
+function sandboxDeps(
+  box: Sandbox,
+  world: WorldStore,
+  options: RunOptions & { stderr: Writer },
+): Deps {
   const now = () => new Date();
   const terminal = options.terminal;
   return {
@@ -139,8 +174,10 @@ function sandboxDeps(box: Sandbox, world: World, options: RunOptions & { stderr:
       return listFolder(path);
     },
     git: (folder, args) => sandboxGit(box, folder, args),
-    githubSecrets: async (repo, login) => fakeGithubSecrets(world, repo, login),
-    workerSecrets: async (account, worker) => fakeWorkerSecrets(world, account, worker),
+    githubSecrets: async (repo, login) =>
+      world.view((current) => fakeGithubSecrets(current, repo, login)),
+    workerSecrets: async (account, worker) =>
+      world.view((current) => fakeWorkerSecrets(current, account, worker)),
     createFile: async (path, text) => createFile(await writable(box, path), text),
     replaceFile: async (path, expected, text) =>
       replaceFile(await writable(box, path), expected, text),

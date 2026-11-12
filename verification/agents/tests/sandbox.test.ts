@@ -15,8 +15,8 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { driver } from "../src/driver";
 import { fakeDestination, fakeVault } from "../src/fakes";
-import { loadWorld, type Sandbox, sandboxAt, sandboxGit } from "../src/sandbox";
-import { emptyWorld, parseWorld } from "../src/world";
+import { loadWorld, runKeypin, type Sandbox, sandboxAt, sandboxGit } from "../src/sandbox";
+import { emptyWorld, memoryStore, parseWorld } from "../src/world";
 import { Secret } from "@keypin/core";
 import { FAKE } from "../src/world";
 
@@ -317,6 +317,50 @@ describe("the sandbox's edges", () => {
     expect((await stat(box.world)).mtimeMs).toBe(before);
   });
 
+  test("a nested keypin's changes outlive the run that started it", async () => {
+    const app = await publishWorld();
+    await sandbox(["env-file", box.root, join(app, ".env"), "NEW_KEY"]);
+    const nested = `${box.bin} import .env --vault Private --yes`;
+    const outer = Bun.spawn([box.bin, "run", "--", "sh", "-c", nested], {
+      cwd: app,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect(await outer.exited).toBe(0);
+    const titles = (await loadWorld(box)).onePassword.items.map((item) => item.title);
+    expect(titles).toContain("app dev new key");
+  });
+
+  test("a publish waiting for yes keeps what another run changed meanwhile", async () => {
+    const app = await publishWorld();
+    const quiet = { write: () => {} };
+    const code = await runKeypin(box, ["publish", "API_KEY"], {
+      cwd: app,
+      stdout: quiet,
+      stderr: quiet,
+      terminal: async () => {
+        await sandbox(["repo", box.root, "acme/other"]);
+        return "yes";
+      },
+    });
+    expect(code).toBe(0);
+    const world = await loadWorld(box);
+    expect(world.github.repos).toContain("acme/other");
+    expect(world.github.secrets.map((s) => s.name)).toEqual(["API_KEY"]);
+  });
+
+  test("a world change waits for another one instead of overwriting it", async () => {
+    const names = Array.from({ length: 12 }, (_, i) => `acme/r${i}`);
+    const runs = names.map((name) =>
+      Bun.spawn([process.execPath, "--no-env-file", MAIN, "repo", box.root, name], {
+        stdout: "ignore",
+        stderr: "ignore",
+      }),
+    );
+    expect(await Promise.all(runs.map((run) => run.exited))).toEqual(names.map(() => 0));
+    expect((await loadWorld(box)).github.repos.toSorted()).toEqual(names.toSorted());
+  });
+
   test("leaks fails on a transcript it can't read, and scans .git", async () => {
     const missing = await sandbox(["leaks", box.root, join(outside, "missing.txt")]);
     expect(missing.code).toBe(1);
@@ -332,14 +376,14 @@ describe("the sandbox's edges", () => {
     const world = emptyWorld();
     expect(() =>
       fakeDestination(
-        world,
+        memoryStore(world),
         { to: "cloudflare-worker", account: ACCOUNT, worker: "my.app" },
         () => new Date(),
       ),
     ).toThrow("isn't a Worker name");
     world.github.repos.push("acme/app");
     const github = fakeDestination(
-      world,
+      memoryStore(world),
       { to: "github-actions", repo: "acme/app", account: "acme" },
       () => new Date(),
     );
@@ -357,7 +401,7 @@ describe("the sandbox's edges", () => {
       fields: { Password: `${FAKE}old` },
       rotated: null,
     });
-    const vault = fakeVault(world);
+    const vault = fakeVault(memoryStore(world));
     const ref = {
       kind: "1password" as const,
       account: "my.1password.com",

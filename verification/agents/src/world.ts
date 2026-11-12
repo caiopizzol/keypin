@@ -37,6 +37,15 @@ export interface World {
   planted: string[];
 }
 
+export interface WorldStore {
+  view<T>(use: (world: World) => T): T;
+  change<T>(use: (world: World) => T): T;
+}
+
+export function memoryStore(world: World): WorldStore {
+  return { view: (use) => use(world), change: (use) => use(world) };
+}
+
 export function emptyWorld(): World {
   return {
     version: 1,

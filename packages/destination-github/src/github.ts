@@ -53,6 +53,10 @@ export class GitHubSecretDestination implements Destination {
   async checkAccount(): Promise<AccountCheck> {
     this.#passed = false;
     const user = await this.#get("/user");
+    if (user.status === 401)
+      throw new Error(
+        `GitHub refused the token for ${this.#login ?? "the active gh login"} (HTTP 401): the login expired or was revoked; run gh auth status to refresh it, or gh auth login --hostname github.com`,
+      );
     if (user.status !== 200) throw new Error(`GitHub GET /user returned HTTP ${user.status}`);
     const publisher = stringField(user.body, "login");
     const scopes = user.headers.get("x-oauth-scopes");

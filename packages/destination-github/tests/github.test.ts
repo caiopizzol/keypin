@@ -237,6 +237,17 @@ describe("checkAccount", () => {
     );
   });
 
+  test("a refused token names the login and how to refresh it, and write then refuses", async () => {
+    const routes = happyRoutes();
+    routes["GET /user"] = { status: 401, body: { message: "Bad credentials" } };
+    const { github, requests } = destination(routes, { login: "alice" });
+    await expect(github.checkAccount()).rejects.toThrow(
+      "GitHub refused the token for alice (HTTP 401): the login expired or was revoked; run gh auth status to refresh it, or gh auth login --hostname github.com",
+    );
+    await expect(github.write("API_KEY", new Secret(SENTINEL))).rejects.toThrow(/checkAccount/);
+    expect(requests.map((r) => `${r.method} ${r.path}`)).toEqual(["GET /user"]);
+  });
+
   test("an invisible repo fails with no destination account", async () => {
     const routes = happyRoutes();
     delete routes[`GET /repos/${REPO}`];

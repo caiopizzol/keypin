@@ -30,7 +30,7 @@ The sandbox's `bin/` also holds `op`, `gh` and `wrangler` stubs that fail. They 
 ## Run a round
 
 1. Pick the scenarios the change touches, or all of them for a skill change. Read your diff first, so you know what to watch.
-2. For each scenario, make a sandbox and its setup (below) yourself. Make the setup from the driver's commands, not from keypin.
+2. For each scenario, make a sandbox and its setup (below) yourself. Make what the user already has (items, tokens, repos, Workers, env files) with the driver's commands. Make earlier keypin state, such as a `discover --write`, a publish or a first rotate run, with the sandbox's `bin/keypin`, approving with `approve`.
 3. Start one subagent per scenario, in parallel. Give each:
    - the full text of `skills/keypin/SKILL.md`, as its only guide to keypin;
    - the project folder to `cd` into, and that `keypin` means the sandbox's `bin/keypin` (put the sandbox's `bin` first on its PATH);

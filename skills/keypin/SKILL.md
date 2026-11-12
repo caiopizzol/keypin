@@ -1,6 +1,6 @@
 ---
 name: keypin
-description: Use the keypin CLI to map, check, run with, publish, or rotate a project's app keys. Use when a project has a keypin.toml, or the user asks to set up, check, run with, publish, or rotate keys with keypin.
+description: Use the keypin CLI to map, check, run with, or publish a project's app keys. Use when a project has a keypin.toml, or the user asks to set up, check, run with, publish, or rotate keys with keypin.
 ---
 
 # keypin
@@ -21,9 +21,8 @@ from 1Password only while a command runs.
   variable as still only in the file, the user deletes the file.
 - A key is named after its variable: `keypin publish API_TOKEN`. If keypin says a map is from keypin 0.4,
   rewrite it in the current format (see Configuration) and show the user the diff.
-- Before you publish or rotate, or say a setup is done, run `keypin check --json`. It checks that the map
-  parses, that each item and field exists (a `rotate` admin item too), and that each login reaches the pinned
-  account, and gives a `fix` for each mismatch. It writes nothing and prints no value, but reads each value, so
+- Before you publish, or say a setup is done, run `keypin check --json`. It checks that the map parses, that
+  each item and field exists, and that each login reaches the pinned account, and gives a `fix` for each mismatch. It writes nothing and prints no value, but reads each value, so
   1Password asks the user to approve it. It exits 1 with one line per problem in `problems`.
 - Check a project's keys over time: `keypin status --json` for due dates and receipts, and `keypin discover` for the names
   each repo and Worker holds. `cloud unknown` means discover couldn't read it, not that the name is missing.
@@ -32,20 +31,19 @@ from 1Password only while a command runs.
 - Run with dev keys: `keypin run -- <command>`. If it warns that an env file still holds a key, tell the user to
   remove that variable from the file; don't edit the file yourself.
 - 1Password asks the user to approve each command. If a command waits, tell the user to approve it.
-- `publish` and `rotate` need a typed `yes` in a terminal, which you don't have. Before you hand back the
+- `publish` needs a typed `yes` in a terminal, which you don't have. Before you hand back the
   command, run it with `--plan` (for a first setup, `keypin publish --all --plan`) and show the user the plan:
-  the account checks, what it would write where, and which steps need a typed `yes`. `publish` adds the
-  generation it read; `rotate` adds the tokens, and for a revoke, when the old token was last used.
+  the account checks, the generation it read, what it would write where, and which steps need a typed `yes`.
   `--plan` writes nothing and never prints a value. It reads the value, so 1Password asks the user to approve
   it. If an account check or a 1Password read fails, it exits 1 and names the problem. Otherwise it exits 3
   and prints the command without `--plan`; the user runs that in a terminal and types `yes` once for the
-  combined plan of every key. Exit 0 means `publish` has nothing to write; `rotate --plan` always exits 3. Use `--yes` only when the user asks and the plan
-  says it's routine. Nothing else approves a first write, a changed account or item, or a revoke.
+  combined plan of every key. Exit 0 means `publish` has nothing to write. Use `--yes` only when the user asks and the plan
+  says it's routine. Nothing else approves a first write, or a changed account or item.
 - "Nothing to write" means the receipts on this machine match the value, not that keypin checked the
   destination.
-- `rotate` takes two runs. After the first, the user checks that the new token works; the second revokes
-  the old one. Its `--plan` shows the old token's last-used time; that shows whether something still uses
-  it, not that the new one works.
+- keypin has no rotate command. To rotate a key that `status` shows as due, the user makes a new value at
+  the provider, puts it in the 1Password field and sets the item's `rotated` date to today; then publish it
+  as above. If a map has a `rotate` section, keypin rejects it: delete the section and show the user the diff.
 - Never put a value in chat, arguments, files, or `keypin.toml`.
 
 Fields and details:
@@ -53,5 +51,4 @@ Fields and details:
 - [Configuration](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md)
 - [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md)
 - [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md)
-- [Rotation](https://github.com/caiopizzol/keypin/blob/main/docs/rotation.md)
 - [Notes](https://github.com/caiopizzol/keypin/blob/main/docs/notes.md): `wrangler dev`

@@ -38,7 +38,6 @@ interface KeyResult {
   key: string;
   environment: Environment;
   from: ItemResult;
-  rotateAdmin: ItemResult | null;
   destinations: DestinationResult[];
 }
 
@@ -114,9 +113,7 @@ async function build(folder: string, deps: Deps): Promise<Report> {
   const users = new Map<string, string[]>();
   const use = (id: string, label: string) => users.set(id, [...(users.get(id) ?? []), label]);
 
-  const refs = distinctRefs(
-    entries.flatMap(({ entry }) => (entry.rotate ? [entry.ref, entry.rotate.admin] : [entry.ref])),
-  );
+  const refs = distinctRefs(entries.map(({ entry }) => entry.ref));
   announce(
     deps.stderr,
     "each value to check that its item and field exist (none is printed)",
@@ -153,21 +150,13 @@ async function build(folder: string, deps: Deps): Promise<Report> {
     const from = items.get(refKey(entry.ref));
     if (!from) throw new Error(`no item check for ${formatReference(entry.ref)}`);
     use(`item ${refKey(entry.ref)}`, label);
-    const admin = entry.rotate ? items.get(refKey(entry.rotate.admin)) : undefined;
-    if (entry.rotate) use(`item ${refKey(entry.rotate.admin)}`, `${label} rotate admin`);
     const reached = entry.publish.map((target) => {
       use(`place ${placeOf(target)}`, label);
       const result = destinations.get(placeOf(target));
       if (!result) throw new Error(`no account check for ${placeOf(target)}`);
       return { ...result, destination: secretKey(target, key) };
     });
-    report.keys.push({
-      key,
-      environment,
-      from,
-      rotateAdmin: admin ?? null,
-      destinations: reached,
-    });
+    report.keys.push({ key, environment, from, destinations: reached });
   }
 
   const usedBy = (id: string) => ` (${users.get(id)?.join(", ") ?? "unused"})`;
@@ -242,8 +231,6 @@ function render(report: Report): string {
   for (const row of report.keys) {
     lines.push("", `${row.key} (${row.environment})`);
     lines.push(`  ${mark(row.from.ok)} from ${row.from.reference}`);
-    if (row.rotateAdmin)
-      lines.push(`  ${mark(row.rotateAdmin.ok)} rotate admin ${row.rotateAdmin.reference}`);
     for (const d of row.destinations) {
       lines.push(
         `  ${mark(d.ok)} ${d.destination}: login ${d.login}, publisher ${d.publisher ?? "unknown"}, pinned account ${d.pinned}, reaches ${d.reached ?? "unknown"}`,

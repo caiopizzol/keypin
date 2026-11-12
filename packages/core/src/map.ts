@@ -2,7 +2,7 @@ import { parse as parseToml, TomlError } from "smol-toml";
 import type { Environment, KeyId, KeyRef } from "./contracts";
 import { DEFAULT_ENVIRONMENTS } from "./contracts";
 import { isRecord } from "./record";
-import { parseReference, sameItem } from "./reference";
+import { parseReference } from "./reference";
 import { periodDays } from "./rotation";
 
 export type PublishTarget =
@@ -11,18 +11,9 @@ export type PublishTarget =
 
 const DESTINATION_KINDS = ["cloudflare-worker", "github-actions"] as const;
 
-const PROVIDER_KINDS = ["cloudflare-account-token"] as const;
-
-export interface RotateSpec {
-  provider: (typeof PROVIDER_KINDS)[number];
-  account: string;
-  admin: KeyRef;
-}
-
 export interface EnvEntry {
   ref: KeyRef;
   publish: PublishTarget[];
-  rotate?: RotateSpec;
 }
 
 export interface KeyEntry {
@@ -271,12 +262,12 @@ function validateEnv(
     failed = true;
     fail(message);
   };
-  unknownFields(raw, ["from", "publish", "rotate"], (field) =>
+  unknownFields(raw, ["from", "publish"], (field) =>
     err(
       field === "vault" || field === "item"
         ? `"vault" and "item" are from keypin 0.4; use from = "op://<vault>/<item>/<field>" (${OLD_FORMAT})`
-        : field === "issue"
-          ? `the "issue" section is from keypin 0.5; rename it to "rotate" (${OLD_FORMAT})`
+        : field === "rotate" || field === "issue"
+          ? `the "${field}" section is no longer supported, because keypin rotate is gone; delete it. To rotate the key by hand, replace the value in 1Password, set the item's rotated date to today, then run keypin publish`
           : `unknown field "${field}"`,
     ),
   );
@@ -299,12 +290,8 @@ function validateEnv(
       });
     }
   }
-  const rotate =
-    raw.rotate === undefined || !ref
-      ? undefined
-      : validateRotate(raw.rotate, ref, account, (m) => err(`rotate: ${m}`));
   if (failed || !ref) return undefined;
-  return { ref, publish, ...(rotate ? { rotate } : {}) };
+  return { ref, publish };
 }
 
 function reference(
@@ -328,36 +315,6 @@ function reference(
 }
 
 const ACCOUNT_ID = /^[0-9a-f]{32}$/;
-
-function validateRotate(
-  raw: unknown,
-  own: KeyRef,
-  vaultAccount: string | undefined,
-  fail: (message: string) => void,
-): RotateSpec | undefined {
-  if (!isRecord(raw)) {
-    fail("must be a table");
-    return undefined;
-  }
-  let failed = false;
-  const err = (message: string) => {
-    failed = true;
-    fail(message);
-  };
-  unknownFields(raw, ["provider", "account", "admin"], (field) => err(`unknown field "${field}"`));
-  const provider = requiredString(raw, "provider", err);
-  const account = requiredString(raw, "account", err);
-  const admin = reference(raw, "admin", vaultAccount, err);
-  const kind = PROVIDER_KINDS.find((known) => known === provider);
-  if (provider !== undefined && !kind)
-    err(`field "provider" must be one of: ${PROVIDER_KINDS.join(", ")}`);
-  if (account !== undefined && !ACCOUNT_ID.test(account))
-    err(`field "account" must be a Cloudflare account ID (32 hex characters)`);
-  if (admin && sameItem(admin, own))
-    err(`field "admin" names the key's own item; the admin token needs its own item`);
-  if (failed || !kind || account === undefined || admin === undefined) return undefined;
-  return { provider: kind, account, admin };
-}
 
 function destination(raw: unknown, fail: (message: string) => void): PublishTarget | undefined {
   if (typeof raw === "string") {

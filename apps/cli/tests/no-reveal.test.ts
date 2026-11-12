@@ -27,7 +27,6 @@ const allowed = [
   "packages/vault-1password/src/backend.ts",
   "packages/destination-github/src/github.ts",
   "packages/destination-cloudflare/src/cloudflare.ts",
-  "packages/provider-cloudflare/src/tokens.ts",
   "packages/core/src/secret.ts",
   "apps/cli/src/commands/run.ts",
   "apps/cli/tests/fakes.ts",
@@ -35,7 +34,8 @@ const allowed = [
 ];
 
 const forbidden = [
-  "apps/cli/src/commands/rotate.ts",
+  "apps/cli/src/commands/publish.ts",
+  "packages/provider-cloudflare/src/tokens.ts",
   "apps/cli/src/publishing.ts",
   "packages/core/src/plan.ts",
   "packages/vault-1password/scripts/dump.ts",

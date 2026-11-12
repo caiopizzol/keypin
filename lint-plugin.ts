@@ -21,7 +21,7 @@ export function repoPath(file: string, plugin: string = import.meta.url): string
 }
 
 const REVEAL_ALLOWED = [
-  /^packages\/(vault|destination|provider)-[^/]+\/src\//,
+  /^packages\/(vault|destination)-[^/]+\/src\//,
   /^packages\/core\/src\/secret\.ts$/,
   /^apps\/cli\/src\/commands\/run\.ts$/,
   /^(apps|packages)\/[^/]+\/tests\//,
@@ -38,7 +38,7 @@ const noReveal = defineRule({
   meta: {
     messages: {
       reveal:
-        "Don't read a Secret's raw value here. Compare it with secret.equals(), secret.isEmpty() or secret.includes(), or keep the value inside a vault, destination or provider package, which hands it to the account it belongs to.",
+        "Don't read a Secret's raw value here. Compare it with secret.equals(), secret.isEmpty() or secret.includes(), or keep the value inside a vault or destination package, which hands it to the account it belongs to.",
     },
   },
   create(context) {

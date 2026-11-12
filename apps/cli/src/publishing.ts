@@ -50,12 +50,12 @@ export async function locked(deps: Deps, body: (path: string) => Promise<number>
 
 function lockedMessage(file: string, holder: LockHolder): string {
   if (holder.pid === null) {
-    return `keypin: ${file} exists but names no process. If no publish or rotate is running, delete that file and try again.`;
+    return `keypin: ${file} exists but names no process. If no publish is running, delete that file and try again.`;
   }
   if (holder.running === false) {
     return `keypin: ${file} was left by process ${holder.pid}, which isn't running any more. Delete that file and try again.`;
   }
-  return `keypin: another publish or rotate (process ${holder.pid}) holds ${file} and is still running. Wait for it to finish.`;
+  return `keypin: another publish (process ${holder.pid}) holds ${file} and is still running. Wait for it to finish.`;
 }
 
 export async function checkAccounts(

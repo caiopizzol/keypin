@@ -93,11 +93,6 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
         );
       }
       const sdk = await client(ref.account);
-      if (options.item) {
-        const item = await sdk.items.get(options.item.vault, options.item.item);
-        await sdk.items.put(withValue(item, ref, secret, rotated));
-        return;
-      }
       const id = await vaultId(sdk, ref);
       const found = await find(sdk, id, ref);
       if (found && options.newItem) {

@@ -250,31 +250,6 @@ describe("names in a reference", () => {
 });
 
 describe("write", () => {
-  test("with item, writes that item and not a newer one with the same title", async () => {
-    const replacement = item(
-      "demo dev token",
-      [field("password", "Concealed", "keep-this")],
-      "new",
-    );
-    const { client, calls } = fake([replacement]);
-    const { backend } = backendFor(client);
-    await expect(
-      backend.write(ref, new Secret(VALUE), { item: { vault: "vault-1", item: "old" } }),
-    ).rejects.toThrow("not found");
-    expect(calls.put).toEqual([]);
-    expect(calls.create).toEqual([]);
-
-    await backend.write(ref, new Secret(VALUE), {
-      rotated: "2026-11-10",
-      item: { vault: "vault-1", item: "new" },
-    });
-    expect(calls.put[0]?.id).toBe("new");
-    expect(calls.put[0]?.fields).toEqual([
-      field("password", "Concealed", VALUE),
-      { id: "rotated", title: "rotated", fieldType: "Date", value: "2026-11-10" },
-    ]);
-  });
-
   test("writes the field the reference names, and won't create an item for another field", async () => {
     const existing = item("demo dev token", [
       field("password", "Concealed", "keep-this"),

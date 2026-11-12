@@ -1,7 +1,7 @@
 import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline/promises";
-import type { Destination, RotateSpec, PublishTarget, Secret, VaultBackend } from "@keypin/core";
+import type { Destination, PublishTarget, VaultBackend } from "@keypin/core";
 import {
   CloudflareReader,
   currentWranglerToken,
@@ -9,7 +9,6 @@ import {
   wranglerConfigFile,
 } from "@keypin/destination-cloudflare";
 import { ghToken, GitHubSecretDestination, listRepoSecrets } from "@keypin/destination-github";
-import { CloudflareAccountTokens } from "@keypin/provider-cloudflare";
 import { type Connect, desktopConnect, onePasswordBackend } from "@keypin/vault-1password";
 import { cli } from "./cli";
 import type { Publisher } from "./deps";
@@ -47,17 +46,6 @@ export function destination(target: PublishTarget, publisher: Publisher): Destin
     default: {
       const unknown: never = target;
       throw new Error(`unknown destination ${JSON.stringify(unknown)}`);
-    }
-  }
-}
-
-function provider(spec: RotateSpec, admin: Secret) {
-  switch (spec.provider) {
-    case "cloudflare-account-token":
-      return new CloudflareAccountTokens({ account: spec.account, admin });
-    default: {
-      const unknown: never = spec.provider;
-      throw new Error(`unknown provider ${JSON.stringify(unknown)}`);
     }
   }
 }
@@ -104,7 +92,6 @@ export function main(): Promise<number> {
     launch,
     onSignals,
     destination,
-    provider,
     wranglerLoginFile: async () => {
       try {
         const file = wranglerConfigFile();

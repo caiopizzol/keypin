@@ -29,9 +29,8 @@ output or writing anything.
    skipped.
 3. **Approval:** you type `yes`. The first write to a destination, a changed account, and a changed vault item
    always need a typed `yes` in a terminal. `--yes` can approve only ordinary updates. Without a terminal,
-   `publish` and `rotate` stop, print the command to run in one, and exit 3, unless `--yes` covers every step.
-   When a step needs approval, they stop before reading the value, so the plan isn't shown; add `--plan` to
-   see it (see [Rotation](rotation.md) for `rotate --plan`).
+   `publish` stops, prints the command to run in one, and exits 3, unless `--yes` covers every step. When a
+   step needs approval, it stops before reading the value, so the plan isn't shown; add `--plan` to see it.
 4. **Receipts:** each write that keypin confirms gets a receipt, with the pinned account and the login that wrote.
    Receipts stay on the machine that wrote them. A rerun there skips those destinations and writes the rest. On
    a teammate's machine, which has no receipts, the first publish is a first write and needs a typed `yes`.
@@ -46,8 +45,7 @@ differ, so an item you delete and create again with the same title needs a typed
 doesn't. Another field or section of the same item, or another 1Password account, is still a changed item. Without
 a terminal, `--yes` first looks up the item's IDs from the vault's item list, which holds no values, so a replaced
 item stops the run before any value is read. A receipt without IDs, which keypin 0.7 and older write (state
-version 3 or older), keeps comparing the reference until keypin writes that destination again. `rotate` stores the new token in the item it read, by its IDs, so an item replaced while it runs is left
-as it is and the run stops.
+version 3 or older), keeps comparing the reference until keypin writes that destination again.
 
 ## See the plan first
 

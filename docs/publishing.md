@@ -29,7 +29,8 @@ keypin publish API_TOKEN --plan      # show the plan, write nothing
    When a step needs approval, they stop before reading the value, so the plan isn't shown; add `--plan` to
    see it (see [Rotation](rotation.md) for `rotate --plan`).
 4. **Receipts:** each write that keypin confirms gets a receipt, with the pinned account and the login that wrote.
-   A rerun skips those destinations and writes the rest, whoever runs it.
+   Receipts stay on the machine that wrote them. A rerun there skips those destinations and writes the rest. On
+   a teammate's machine, which has no receipts, the first publish is a first write and needs a typed `yes`.
 
 A keypin 0.6 map could pin a GitHub login as a destination's `account`, and its receipts recorded that login as
 the pinned account. The account is now the repo's owner, so the first publish after you delete `account` reports

@@ -41,7 +41,7 @@ Exit codes:
   1  failed, or status found a problem
   2  usage error
   3  stopped for approval: run the printed command in a terminal and type yes;
-     --plan exits 3 when there's something to approve, 0 when there's nothing to write
+     --plan exits 3 whenever the plan would write (routine or not), 0 when there's nothing to write
   keypin run exits 1 if it can't start the command, then with the command's own code.
 `;
 

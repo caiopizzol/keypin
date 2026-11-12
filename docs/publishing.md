@@ -39,8 +39,8 @@ show you the plan before you approve it. It prints:
 - each step that needs a typed `yes`, and whether `--yes` could approve the plan;
 - the command that writes it.
 
-It never writes to a destination, the vault or keypin's state, and never prints the value. It exits 3 when
-there's something to approve and 0 when there's nothing to write.
+It never writes to a destination, the vault or keypin's state, and never prints the value. It exits 3 whenever
+the plan would write, even a routine plan that `--yes` could approve, and 0 when there's nothing to write.
 
 It reads the value, so 1Password asks you to approve the command, as it does for a publish. Without `--plan`,
 a publish that needs approval stops before reading anything, so you approve the 1Password read only once, in

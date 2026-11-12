@@ -165,7 +165,8 @@ export function finishAll(state: State, owner: KeyOwner): State {
 }
 
 export function rerun(deps: Deps, command: string, args: readonly string[]): string {
-  const approve = args.filter((arg) => arg !== "--plan");
+  const end = args.includes("--") ? args.indexOf("--") : args.length;
+  const approve = [...args.slice(0, end).filter((arg) => arg !== "--plan"), ...args.slice(end)];
   const words = [...deps.self, command, ...approve].map(shellWord).join(" ");
   return `To approve, run this in a terminal:\n  cd ${shellWord(deps.cwd)} && ${words}`;
 }

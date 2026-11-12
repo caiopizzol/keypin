@@ -3,7 +3,7 @@ import { generationOf, loadState, type Receipt, Secret } from "@keypin/core";
 import { GitHubSecretDestination } from "@keypin/destination-github";
 import { type FullItem, onePasswordBackend } from "@keypin/vault-1password";
 import { cli } from "../src/cli";
-import { NEEDS_APPROVAL } from "../src/publishing";
+import { NEEDS_APPROVAL, rerun } from "../src/publishing";
 import {
   fakeDeps,
   type FakeDestinationOptions,
@@ -103,6 +103,16 @@ describe("keypin publish", () => {
     );
     expect(beforeRead).toContain(`to: ${WORKER} (account 11111111111111111111111111111111)`);
     expect(beforeRead).toContain(`to: ${GITHUB} (account acme)`);
+  });
+
+  test("the approval command drops --plan, but keeps one after the -- separator", () => {
+    const { deps } = setup();
+    expect(rerun(deps, "publish", ["API_TOKEN", "--plan", "--yes"])).toContain(
+      "main.ts publish API_TOKEN --yes",
+    );
+    expect(rerun(deps, "import", ["--vault", "v", "--plan", "--", "--plan"])).toContain(
+      "main.ts import --vault v -- --plan",
+    );
   });
 
   test("a confirmed first publish writes every destination and saves receipts", async () => {

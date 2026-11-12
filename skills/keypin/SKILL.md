@@ -9,29 +9,38 @@ keypin maps each project's keys in `keypin.toml` (variable names and 1Password r
 from 1Password only while a command runs.
 
 - Run `keypin --help` first. It lists the commands and exit codes. Use only what it lists.
-- New project: run `keypin discover --write`. It saves the draft as `keypin.toml` and registers the project,
-  but only when there's no map yet, or it's still the `keypin init` template. Show the user the file. Its
-  `op://` references are placeholders; ask the user for each field's secret reference (1Password: the field's
-  menu, **Copy Secret Reference**) and replace them. The user creates vault items; you never write a value.
-  If a real map exists, `--write` exits 1: run `keypin discover` and copy the `[keys.*]` tables by hand.
-- Project with a `.env` or `.dev.vars`: suggest `keypin import <file> [NAME...] --vault <vault>` (plus `--account
-  <sign-in address>` when there's no map). Ask the user which vault, and which variables are keys; plain settings
-  such as `PORT` can stay in the file. keypin reads the file locally and creates new 1Password items; never read,
-  print or pass a value yourself. It needs the user's typed `yes`: run it without `--yes`, and it exits 3 with the
-  plan and the command for the user to run. It never changes the file; the user removes the lines it names, or
-  deletes the file when it says nothing else is set in it. A `.dev.vars` must go entirely: while it exists,
-  `wrangler dev` ignores the keys `keypin run` provides. Suggest importing every secret in it. For a plain setting
-  left in it, tell the user by name that it needs a new home before they delete the file; don't read or move its
-  value yourself.
+- Start with `keypin check --json` in the project's folder, before anything else and again after each change. It
+  works with no map and on the `keypin init` template, writes nothing, and prints no value. `problems` lists one
+  line per gap, each naming what to run or add; `unknown` lists reads it couldn't make (unknown never means
+  missing). No `keypin.toml` yet: run `keypin init` first.
+- Production gap: when `add` isn't null, show the user that TOML. It adds a `[keys.X.prod]` table and its
+  `[[keys.X.prod.publish]]` destination for each secret a workflow or Worker needs that the map doesn't publish
+  there. Paste it into `keypin.toml` only when the user agrees, and ask the user for every `<...>` value: the
+  1Password account's sign-in address, each field's secret reference (1Password: the field's menu, **Copy
+  Secret Reference**), and any `<owner>/<repo>`, `<Cloudflare account ID>` or `<Worker name>` check couldn't
+  find. keypin rejects a map that still has a `<...>`. The user creates vault items; you never write a value.
+- Local gap: per env file, `local.unmapped` lists the names the map doesn't have, and `notes` names the
+  `keypin import` command. Suggest `keypin import <file> [NAME...] --vault <vault>`, plus `--account <sign-in
+  address>` when the map has no `[1password]` account (the `init` template has none). Ask the user which vault,
+  and which variables are keys; plain settings such as `PORT` can stay in the file, and don't fail check.
+  `local.elsewhere` lists names the map has only in another environment: `import` skips those, so ask the user
+  for each one's reference and add it by hand. keypin reads the file locally and creates new 1Password items;
+  never read, print or pass a value yourself.
+  It needs the user's typed `yes`: run it without `--yes`, and it exits 3 with the plan and the command for the
+  user to run. It never changes the file; the user removes the lines it names, or deletes the file when it says
+  nothing else is set in it. A `.dev.vars` must go entirely: while it exists, `wrangler dev` ignores the keys
+  `keypin run` provides. Suggest importing every secret in it. For a plain setting left in it, tell the user by
+  name that it needs a new home before they delete the file; don't read or move its value yourself.
 - A key is named after its variable: `keypin publish API_TOKEN`. If keypin says a map is from keypin 0.4,
   rewrite it in the current format (see Configuration) and show the user the diff.
-- Before you publish, or say a setup is done, run `keypin check --json`. It checks that the map parses, that
-  each item and field exists, and that each login reaches the pinned account, and gives a `fix` for each mismatch. It writes nothing and prints no value, but reads each value, so
-  1Password asks the user to approve it. It exits 1 with one line per problem in `problems`.
-- Check a project's keys over time: `keypin status --json` for due dates and receipts, and `keypin discover` for the names
-  each repo and Worker holds. `cloud unknown` means discover couldn't read it, not that the name is missing.
-  `status` exits 1 when it finds a problem; the JSON still prints. Notices, such as `never-published`, exit 0
-  and name the next step.
+- Before you publish, or say a setup is done, run `keypin check --json` and get it to exit 0: nothing left to
+  fix. If `unknown` isn't empty, tell the user what check couldn't verify. It also checks that
+  the map parses, that each item exists, and that each login reaches the pinned account, with a `fix` for each
+  mismatch. It finds items in the vault's item list without reading a value, so it doesn't check the field
+  inside; 1Password still asks the user to approve the command.
+- Over time: `keypin status --json` lists every registered project's due dates and receipts, and names a project
+  with no keys. For one project's gaps, use `keypin check`. `status` exits 1 when it finds a problem; the JSON
+  still prints. Notices, such as `never-published`, exit 0 and name the next step.
 - Run with dev keys: `keypin run -- <command>`. If it warns that an env file still holds a key, tell the user to
   remove that variable from the file; don't edit the file yourself.
 - 1Password asks the user to approve each command. If a command waits, tell the user to approve it.

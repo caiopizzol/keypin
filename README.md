@@ -48,41 +48,18 @@ npx skills add caiopizzol/keypin -g    # all your projects
 
 ## Quick start
 
-Register a project. `keypin init` writes a commented `keypin.toml` for you to fill in:
+Register a project, then ask keypin what it uses:
 
 ```sh
 cd ~/code/my-project
-keypin init
+keypin init    # write a commented keypin.toml and register the project
+keypin check   # every key the project uses, what's missing, and the TOML to add
 ```
 
-A key looks like this:
+`keypin check` reads the project's env files, its workflows and wrangler configs, and the secret names its GitHub
+repo and Worker hold. It never prints a value. Each problem is one line that says what to run or add.
 
-```toml
-[1password]
-account = "my.1password.com"
-
-[keys.API_TOKEN] # the variable your program reads
-rotate_every = "90d"
-dev = "op://Private/my-project dev api token/credential" # read by keypin run
-
-[keys.API_TOKEN.prod] # read by keypin publish
-from = "op://Private/my-project prod api token/credential"
-
-[[keys.API_TOKEN.prod.publish]] # where publish writes it
-to = "github-actions"
-repo = "me/my-project"
-```
-
-Each `op://` reference is a 1Password secret reference: in the item, open the field's menu and select **Copy Secret
-Reference**. Add a `rotated` date to the item. Now use it:
-
-```sh
-keypin status               # every key, when it's due, and any problem
-keypin run -- npm run dev   # run a command with the dev keys
-keypin publish API_TOKEN    # write the prod value to the GitHub secret
-```
-
-### Coming from a .env
+### Local: from a .env to keypin run
 
 `keypin import` moves a `.env` file's keys into new 1Password items and maps them. Name the keys, and plain
 settings such as `PORT` stay in the file:
@@ -92,19 +69,50 @@ keypin import .env STRIPE_KEY DATABASE_URL --vault Private --account my.1passwor
 ```
 
 Without names, it imports every variable. It shows each item it will create and waits for you to type `yes`. It
-never overwrites an item, and it never changes the `.env` file: it tells you which lines to remove from it, and
-`keypin run -- <command>` provides those values.
+never overwrites an item, and it never changes the `.env` file: it tells you which lines to remove from it. Then run
+your commands with the dev keys:
+
+```sh
+keypin run -- npm run dev
+```
+
 See [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md).
+
+### Production: from check to keypin publish
+
+For every secret a workflow uses or a Worker's `secrets.required` lists that `keypin.toml` doesn't publish there,
+`keypin check` prints the TOML to add. It fills in what it knows: the repo from the git `origin`, and the Worker
+and its account from the wrangler config.
+
+```toml
+[keys.STRIPE_API_KEY] # the variable your program reads
+rotate_every = "90d"
+
+[keys.STRIPE_API_KEY.prod] # read by keypin publish
+from = "op://<vault>/<item>/<field>"
+
+[[keys.STRIPE_API_KEY.prod.publish]] # where publish writes it
+to = "github-actions"
+repo = "me/my-project"
+```
+
+Paste it into `keypin.toml` and replace each `<...>`; keypin rejects a map that still has one. The `from` value is
+a 1Password secret reference: create the item, open the field's menu and select **Copy Secret Reference**. Add a
+`rotated` date to the item. Then:
+
+```sh
+keypin check                 # each item exists, and each login reaches the pinned account
+keypin publish --all         # write every prod key, with one plan and one approval
+keypin status                # every project's keys, when each is due, and any problem
+```
 
 ## Commands
 
 ```sh
 keypin init [folder]         # register a project and write a keypin.toml
 keypin unregister [folder]   # stop listing a project (its keypin.toml stays)
-keypin status [--json]       # every key, when it's due, and any problem
-keypin check [folder]        # check the map, vault items and logins, and write nothing
-keypin discover [folder]     # every key name a project uses, where it's set, and a draft map
-                             # (--write saves the draft as keypin.toml and registers the project)
+keypin check [folder]        # one project: what it uses, what's missing, and the TOML to add
+keypin status [--json]       # every registered project's keys, when each is due, and any problem
 keypin import <env-file> [NAME...] --vault <vault>
                              # move an env file's values into 1Password and map them
 keypin run -- <command>      # run a command with the project's dev keys (--env for another)
@@ -113,18 +121,27 @@ keypin publish --all         # publish every key, with one plan and one approval
 keypin publish --all --plan  # show that plan without a terminal, and write nothing
 ```
 
-### Check a setup
+### Check a project
 
-`keypin check` checks a project before you publish, and changes nothing:
+`keypin check` reports one project and changes nothing. It works without a map, and on the untouched `init`
+template, so it's the first command after `init`. It reports:
 
-- the map parses;
-- each `op://` reference's item and field exist;
-- for each destination, the login keypin would use, who it acts as, the account it reaches, and how to fix a
-  mismatch.
+- **The map:** it parses, and each `op://` reference's item exists.
+- **Logins:** for each destination, the login keypin would use, who it acts as, the account it reaches, and how to
+  fix a mismatch. It notes a login stored in plain text, such as wrangler's.
+- **Production:** each secret a workflow references (`secrets.NAME`) or a wrangler config lists under
+  `secrets.required`, whether the repo or Worker has it, and whether `keypin.toml` publishes it there. For each
+  one the map doesn't publish there, it prints the TOML to add, with `<...>` for what it can't know.
+- **Local:** each name an env file (`.env*`, `.dev.vars*`) sets that `keypin.toml` doesn't map, as a note with
+  the `keypin import` command (a plain setting can stay), each one the map has only in another environment, and
+  any env file tracked by git.
 
-It reads each value to check its field, so 1Password asks you to approve it, and it never prints a value. It
-also notes a login stored in plain text, such as wrangler's. It exits 0 when everything checks out, and 1 with
-one line per problem. `--json` prints the same as JSON.
+It checks that each item exists from its vault's item list, which holds no values, so it never reads a value. It
+doesn't check the field inside the item: `keypin run` and `keypin publish --plan` read it. Listing items still signs
+in to 1Password, so 1Password asks you to approve the command when the map has keys; with no keys, check doesn't
+use 1Password at all. It reads the repo's and Worker's secret names with your `gh` and `wrangler` logins. A read it
+can't make is listed as unknown, never as missing. It exits 1 with one line per problem, and 0 when there's
+nothing to fix; anything under unknown is still unverified. `--json` prints the same as JSON.
 
 Add `--plan` to `publish` to see the plan without a terminal. It changes nothing, and prints the command that
 does.
@@ -144,8 +161,6 @@ new one.
 
 - [Configuration](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md): every field in
   `keypin.toml` and in the vault items.
-- [Discover](https://github.com/caiopizzol/keypin/blob/main/docs/discover.md): what `discover` reads, the problems
-  it reports, and its draft map.
 - [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md): moving a `.env` file's values into
   1Password.
 - [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md): destinations, account checks and

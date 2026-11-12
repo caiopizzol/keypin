@@ -52,9 +52,7 @@ export {
   type StatusRow,
 } from "./status";
 export {
-  buildDiscovery,
   draftItemName,
-  draftMap,
   envFileKind,
   envNames,
   envValues,
@@ -62,10 +60,9 @@ export {
   WRANGLER_FILES,
   workflowRefs,
   wranglerWorkers,
-  type DiscoverInput,
-  type Discovery,
-  type NameRow,
-  type Source,
+  type EnvFileKind,
   type StoreRead,
-  type Unknown,
-} from "./discover";
+  type WorkerDeclaration,
+  type WorkflowRefs,
+} from "./scan";
+export { findGaps, type Gaps, type LocalFile, type Need, type ProjectScan } from "./gaps";

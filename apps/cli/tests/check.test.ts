@@ -68,9 +68,9 @@ describe("keypin check", () => {
     const run = setup();
     expect(await cli(["check"], run.deps)).toBe(0);
     expect(run.stderr.text).toContain(
-      "keypin: reading each value to check that its item and field exist (none is printed) from 1Password account my.1password.com: op://Private/billing stripe api key/password\n",
+      "keypin: reading the item IDs, not the values, from 1Password account my.1password.com: op://Private/billing stripe api key/password\n",
     );
-    expect(run.calls).toEqual(["read billing stripe api key"]);
+    expect(run.calls).toEqual(["ids billing stripe api key"]);
     expect(run.log).toEqual([
       `check cloudflare-worker:billing-worker`,
       `check github-actions:acme/billing`,
@@ -129,7 +129,7 @@ describe("keypin check", () => {
     run.unchanged();
   });
 
-  test("a missing field, through the real 1Password backend, is a problem", async () => {
+  test("through the real 1Password backend, check lists items and never gets one", async () => {
     const stored: FullItem = {
       id: "item-1",
       title: "billing stripe api key",
@@ -145,35 +145,44 @@ describe("keypin check", () => {
       createdAt: new Date("2026-11-01T00:00:00Z"),
       updatedAt: new Date("2026-11-09T12:00:00Z"),
     };
-    const writes: string[] = [];
+    const sdk: string[] = [];
+    const titles = ["billing stripe api key"];
     const backend = onePasswordBackend(async () => ({
       vaults: { list: async () => [{ id: "vault-1", title: "Private" }] },
       items: {
-        list: async () => [{ id: stored.id, title: stored.title, tags: [], updatedAt: new Date() }],
-        get: async () => stored,
+        list: async () => {
+          sdk.push("list");
+          return titles.map((title) => ({ id: stored.id, title, tags: [], updatedAt: new Date() }));
+        },
+        get: async () => {
+          sdk.push("get");
+          return stored;
+        },
         create: async () => {
-          writes.push("create");
+          sdk.push("create");
           return stored;
         },
         put: async () => {
-          writes.push("put");
+          sdk.push("put");
           return stored;
         },
       },
     }));
     const run = setup({ deps: { vault: () => backend } });
-    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(await cli(["check"], run.deps)).toBe(0);
+    expect(sdk).toEqual(["list"]);
     expect(run.stdout.text).toContain(
-      `  op://Private/billing stripe api key/password (1Password account my.1password.com): the item has no field "password" (STRIPE_API_KEY (dev), STRIPE_API_KEY (prod))`,
+      "items are looked up in each vault's item list, which holds no values, so no field is checked",
     );
-    expect(writes).toEqual([]);
-    expect(leaks(...run.everything())).toBe(false);
-  });
 
-  test("an empty field is a problem, and its value is never shown", async () => {
-    const run = setup({ values: { "billing stripe api key": "" } });
-    expect(await cli(["check"], run.deps)).toBe(1);
-    expect(run.stdout.text).toContain(`the field "password" is empty`);
+    titles.pop();
+    const missing = setup({ deps: { vault: () => backend } });
+    expect(await cli(["check"], missing.deps)).toBe(1);
+    expect(missing.stdout.text).toContain(
+      `  op://Private/billing stripe api key/password (1Password account my.1password.com): no such item (STRIPE_API_KEY (dev), STRIPE_API_KEY (prod))`,
+    );
+    expect(sdk).not.toContain("get");
+    expect(leaks(...run.everything(), ...missing.everything())).toBe(false);
   });
 
   test("an account mismatch names the login, publisher, account reached, and the fix", async () => {
@@ -257,7 +266,10 @@ describe("keypin check", () => {
   test("an empty map is a problem, not a healthy setup", async () => {
     const run = setup({ map: "" });
     expect(await cli(["check"], run.deps)).toBe(1);
-    expect(run.stdout.text).toContain(`${MAP_FILE} maps no keys yet`);
+    expect(run.stdout.text).toContain(
+      `${MAP_FILE} maps no keys yet; run keypin import for an env file, and add the TOML below for production`,
+    );
+    expect(run.calls).toEqual([]);
   });
 
   test("no map anywhere above the folder is a problem", async () => {
@@ -282,7 +294,13 @@ describe("keypin check", () => {
       "folder",
       "map",
       "registered",
+      "read",
+      "github",
       "keys",
+      "production",
+      "local",
+      "add",
+      "unknown",
       "notes",
       "problems",
       "ok",

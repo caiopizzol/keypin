@@ -18,8 +18,10 @@ keypin publish API_TOKEN --plan      # show the plan, write nothing
   macOS and Linux, where keypin reads wrangler's login file the way wrangler finds it (see
   [Notes](notes.md#the-wrangler-login)), but not yet on Windows.
 
-Run `keypin check` first: it checks every vault item and every login's account without reading a value into the
-output or writing anything.
+Run `keypin check` first. It finds each item in its vault's item list without reading a value, checks every
+login's account, and writes nothing. For each secret a workflow or a Worker's `secrets.required` needs that the map
+doesn't publish there, it prints the TOML to add. For one the map publishes there but the place doesn't have yet,
+it says to run `keypin publish`.
 
 ## What happens
 

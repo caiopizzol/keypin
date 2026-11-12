@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { cli } from "../src/cli";
+import { TEMPLATE } from "../src/commands/init";
 import {
   fakeDeps,
   fakeVault,
@@ -191,6 +192,21 @@ describe("keypin status", () => {
     expect(await cli(["status"], deps)).toBe(1);
     expect(stdout.text).toContain("no-map: /work/billing has no readable keypin.toml");
     expect(stdout.text).toContain("bad-map:");
+  });
+
+  test("a project still on the init template, or with no keys, is a problem that points at check", async () => {
+    for (const map of [TEMPLATE, `[1password]\naccount = "my.1password.com"\n`]) {
+      const files = memoryFiles({
+        [REGISTRY]: registryWith("/work/billing"),
+        "/work/billing/keypin.toml": map,
+      });
+      const { deps, stdout, stderr } = fakeDeps({ disk: files });
+      expect(await cli(["status"], deps)).toBe(1);
+      expect(stdout.text).toContain(
+        "no-keys: /work/billing/keypin.toml maps no keys yet (it's empty, or still the keypin init template); run keypin check in /work/billing for what to add",
+      );
+      expect(stderr.text).toBe("");
+    }
   });
 
   test("an unreadable keypin.toml is reported for its project, and the others still show", async () => {

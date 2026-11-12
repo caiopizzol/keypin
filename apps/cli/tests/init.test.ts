@@ -22,11 +22,21 @@ function uncomment(template: string): string {
 }
 
 describe("keypin init", () => {
-  test("registers the current folder and writes the template", async () => {
-    const { deps, disk } = fakeDeps();
+  test("registers the current folder, writes the template, and points at check", async () => {
+    const { deps, disk, stderr } = fakeDeps();
     expect(await cli(["init"], deps)).toBe(0);
+    expect(stderr.text).toContain(
+      "keypin: next, run keypin check for what this project uses and the TOML to add\n",
+    );
     expect(disk.contents.get("/work/billing/keypin.toml")).toBe(TEMPLATE);
     expect((await loadRegistry(disk.files, REGISTRY)).projects).toEqual(["/work/billing"]);
+  });
+
+  test("quotes a folder with a space in the check command it suggests", async () => {
+    const { deps, disk, stderr } = fakeDeps();
+    disk.folders.add("/work/my project");
+    expect(await cli(["init", "/work/my project"], deps)).toBe(0);
+    expect(stderr.text).toContain("keypin: next, run keypin check '/work/my project' for");
   });
 
   test("the template is comments only and parses as an empty map", () => {

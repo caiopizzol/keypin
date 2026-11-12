@@ -4,6 +4,9 @@ Found by testing [the keypin skill](../skills/keypin/SKILL.md) with seven subage
 ran the real CLI code in a sandbox where 1Password, GitHub and Cloudflare were fakes backed by a JSON file. Every
 item below was checked against the code or reproduced; sandbox-only artifacts are left out.
 
+To run a round again, use the [run-friction-round](../.claude/skills/run-friction-round/SKILL.md) skill and its
+driver in `verification/agents/`.
+
 Scenarios: set up a new project, finish setup after the user names the items, run with dev keys, publish a first
 write, republish after a change (`--yes` allowed), rotate an overdue token, and finish (revoke) a rotation.
 

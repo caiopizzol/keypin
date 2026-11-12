@@ -1,9 +1,11 @@
+import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline/promises";
 import type { Destination, RotateSpec, PublishTarget, Secret, VaultBackend } from "@keypin/core";
 import {
   CloudflareReader,
   currentWranglerToken,
+  WRANGLER_CONFIG,
   WorkerSecretDestination,
 } from "@keypin/destination-cloudflare";
 import { ghToken, GitHubSecretDestination, listRepoSecrets } from "@keypin/destination-github";
@@ -28,12 +30,20 @@ import { selfCommand } from "./runtime";
 let vault: VaultBackend | undefined;
 let cloudflare: CloudflareReader | undefined;
 
-function destination(target: PublishTarget, publisher: Publisher): Destination {
+export function destination(target: PublishTarget, publisher: Publisher): Destination {
   switch (target.to) {
     case "cloudflare-worker":
-      return new WorkerSecretDestination({ account: target.account, worker: target.worker });
+      return new WorkerSecretDestination({
+        account: target.account,
+        worker: target.worker,
+        ...(publisher.refreshLogins ? {} : { token: () => currentWranglerToken() }),
+      });
     case "github-actions":
-      return new GitHubSecretDestination({ repo: target.repo, login: publisher.githubLogin });
+      return new GitHubSecretDestination({
+        repo: target.repo,
+        login: publisher.githubLogin,
+        refresh: publisher.refreshLogins,
+      });
     default: {
       const unknown: never = target;
       throw new Error(`unknown destination ${JSON.stringify(unknown)}`);
@@ -95,6 +105,11 @@ export function main(): Promise<number> {
     onSignals,
     destination,
     provider,
+    wranglerLoginFile: () =>
+      access(WRANGLER_CONFIG).then(
+        () => WRANGLER_CONFIG,
+        () => null,
+      ),
     lock: diskLock,
     isTerminal: Boolean(process.stdin.isTTY),
     ask,

@@ -1,3 +1,4 @@
+import { check } from "./commands/check";
 import { discover } from "./commands/discover";
 import { importEnv } from "./commands/import";
 import { init } from "./commands/init";
@@ -19,6 +20,9 @@ export const USAGE = `Usage:
                            every key name a project uses, local and in the cloud, and a draft map;
                            --write saves the draft as keypin.toml (only when there's none, or the
                            untouched init template) and registers the project
+  keypin check [folder] [--json]
+                           check a project's map, vault items and logins without writing anything:
+                           each item and field exists, each login reaches the pinned account
   keypin import <env-file> --vault <vault> [--account <sign-in address>] [--yes]
                            move an env file's values into new 1Password items and map them; the
                            account is the map's, or --account when there's no map yet. It never
@@ -39,7 +43,7 @@ export const USAGE = `Usage:
 
 Exit codes:
   0  done
-  1  failed, or status found a problem
+  1  failed, or status or check found a problem
   2  usage error
   3  stopped for approval: run the printed command in a terminal and type yes;
      --plan exits 3 whenever the plan would write (routine or not), 0 when there's nothing to write
@@ -51,6 +55,7 @@ const COMMANDS = new Map<string, (args: string[], deps: Deps) => Promise<number>
   ["unregister", unregister],
   ["status", status],
   ["discover", discover],
+  ["check", check],
   ["import", importEnv],
   ["run", run],
   ["publish", publish],

@@ -53,13 +53,15 @@ export class WorkerSecretDestination implements Destination {
     const accounts = await this.#accountIds();
     if (!accounts.includes(this.#account)) {
       const reason = `the login can reach ${accounts.join(", ") || "no account"}, not ${this.#account}`;
-      return { ...facts, destinationAccount: null, ok: false, reason };
+      const fix = `run wrangler login as a Cloudflare user who is a member of account ${this.#account}`;
+      return { ...facts, destinationAccount: null, ok: false, reason, fix };
     }
 
     const settings = await this.#request("GET", `${this.#base()}/settings`);
     if (settings.status === 404) {
       const reason = `account ${this.#account} has no Worker ${this.#worker}`;
-      return { ...facts, destinationAccount: null, ok: false, reason };
+      const fix = `deploy the Worker first, or fix worker in keypin.toml`;
+      return { ...facts, destinationAccount: null, ok: false, reason, fix };
     }
     if (settings.status !== 200) throw failure("GET", `${this.#base()}/settings`, settings);
 

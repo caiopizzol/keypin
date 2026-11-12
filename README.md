@@ -101,6 +101,7 @@ See [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md).
 keypin init [folder]         # register a project and write a keypin.toml
 keypin unregister [folder]   # stop listing a project (its keypin.toml stays)
 keypin status [--json]       # every key, when it's due, and any problem
+keypin check [folder]        # check the map, vault items and logins, and write nothing
 keypin discover [folder]     # every key name a project uses, where it's set, and a draft map
                              # (--write saves the draft as keypin.toml and registers the project)
 keypin import <env-file> --vault <vault>
@@ -111,6 +112,19 @@ keypin publish --all         # publish every key, with one plan and one approval
 keypin publish --all --plan  # show that plan without a terminal, and write nothing
 keypin rotate <VARIABLE>     # replace a Cloudflare API token, then revoke the old one
 ```
+
+### Check a setup
+
+`keypin check` checks a project before you publish, and changes nothing:
+
+- the map parses;
+- each `op://` reference's item and field exist, including a `rotate` section's admin item;
+- for each destination, the login keypin would use, who it acts as, the account it reaches, and how to fix a
+  mismatch.
+
+It reads each value to check its field, so 1Password asks you to approve it, and it never prints a value. It
+also notes a login stored in plain text, such as wrangler's. It exits 0 when everything checks out, and 1 with
+one line per problem. `--json` prints the same as JSON.
 
 Add `--plan` to `publish` or `rotate` to see the plan without a terminal. It changes nothing, and prints the
 command that does.

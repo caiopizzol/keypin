@@ -17,6 +17,9 @@ keypin publish API_TOKEN --plan      # show the plan, write nothing
 - **Cloudflare Worker secrets**, written with your `wrangler` login. The Worker must already exist. This works on
   macOS only for now, because keypin reads wrangler's login from its macOS path.
 
+Run `keypin check` first: it checks every vault item and every login's account without reading a value into the
+output or writing anything.
+
 ## What happens
 
 1. **Account check:** keypin checks that each login reaches the account the map pins. If one doesn't, it stops

@@ -15,6 +15,9 @@ import { fakeId, fakeValue, type Item, type StoredSecret, type Token, type World
 
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
+const WORKER = /^[A-Za-z0-9_-]+$/;
+const GITHUB_SECRET = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
 export function githubPlace(repo: string): string {
   return `github-actions:${repo.toLowerCase()}`;
 }
@@ -37,18 +40,17 @@ export function fakeVault(world: World): VaultBackend {
       (item) => same(item.vault, ref.vault) && same(item.title, ref.item),
     );
   };
-  const field = (item: Item, ref: KeyRef): string => {
+  const fieldName = (item: Item, ref: KeyRef): string => {
     const name = Object.keys(item.fields).find((key) => same(key, fieldKey(ref)));
-    const value = name === undefined ? undefined : item.fields[name];
-    if (value === undefined) throw new Error(`${where(ref)}: the item has no field "${ref.field}"`);
-    return value;
+    if (name === undefined) throw new Error(`${where(ref)}: the item has no field "${ref.field}"`);
+    return name;
   };
   return {
     capabilities: { read: true, write: true, list: true, metadata: true },
     async read(ref) {
       const item = find(ref);
       if (!item) throw new Error(`${where(ref)}: no such item`);
-      return new Secret(field(item, ref));
+      return new Secret(item.fields[fieldName(item, ref)] ?? "");
     },
     async write(ref, secret, options = {}) {
       const item = find(ref);
@@ -65,8 +67,7 @@ export function fakeVault(world: World): VaultBackend {
         });
         return;
       }
-      field(item, ref);
-      item.fields[fieldKey(ref)] = secret.reveal();
+      item.fields[fieldName(item, ref)] = secret.reveal();
       if (options.rotated) item.rotated = options.rotated;
     },
     async list(scope) {
@@ -126,10 +127,13 @@ export function fakeDestination(world: World, target: PublishTarget, now: () => 
       },
       async write(name, secret) {
         if (!passed) throw new Error(`refusing to write to ${place}: checkAccount hasn't passed`);
+        if (!GITHUB_SECRET.test(name) || /^GITHUB_/i.test(name))
+          throw new Error(`"${name}" isn't a valid GitHub secret name`);
         return store(world.github.secrets, place, name.toUpperCase(), secret);
       },
     };
   }
+  if (!WORKER.test(target.worker)) throw new Error(`"${target.worker}" isn't a Worker name`);
   const place = workerPlace(target.account, target.worker);
   return {
     capabilities: { write: true, accountCheck: true, evidence: true },
@@ -176,6 +180,7 @@ export function fakeGithubSecrets(world: World, repo: string, login: string): St
 }
 
 export function fakeWorkerSecrets(world: World, account: string, worker: string): StoreRead {
+  if (!WORKER.test(worker)) return { ok: false, reason: `"${worker}" isn't a Worker name` };
   if (!world.cloudflare.accounts.includes(account))
     return { ok: false, reason: `the wrangler login can't reach account ${account}` };
   if (!world.cloudflare.workers.includes(`${account}/${worker}`))

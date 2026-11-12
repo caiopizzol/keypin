@@ -107,7 +107,7 @@ export function parseWorld(text: string, where: string): World {
         expiresOn: textOrNull(token.expiresOn, "expiresOn", fail),
         lastUsedOn: textOrNull(token.lastUsedOn, "lastUsedOn", fail),
         permissions: texts(token.permissions, "permissions", fail),
-        admin: token.admin === true,
+        admin: flag(token.admin, "admin", fail),
         value: text_(token.value, "value", fail),
       };
     }),
@@ -127,6 +127,10 @@ function list(value: unknown, name: string, fail: Fail): unknown[] {
 
 function text_(value: unknown, name: string, fail: Fail): string {
   return typeof value === "string" ? value : fail(`${name} isn't a string`);
+}
+
+function flag(value: unknown, name: string, fail: Fail): boolean {
+  return typeof value === "boolean" ? value : fail(`${name} isn't true or false`);
 }
 
 function textOrNull(value: unknown, name: string, fail: Fail): string | null {

@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { chmod, mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import type { Files } from "@keypin/core";
 import { cli } from "../../../apps/cli/src/cli";
 import type { Deps, Lock, Writer } from "../../../apps/cli/src/deps";
@@ -22,8 +22,10 @@ import {
   fakeWorkerSecrets,
 } from "./fakes";
 import { emptyWorld, parseWorld, type World } from "./world";
+import { errorCode } from "../../../apps/cli/src/errors";
 
 const WORLD = "world.json";
+const GIT_OUTPUT = 64 * 1024 * 1024;
 const PASSED_ENV = ["TERM", "LANG", "LC_ALL", "SHELL", "USER", "TMPDIR"];
 export const SHADOWED = ["op", "gh", "wrangler", "npx", "bunx", "keypin"];
 
@@ -46,6 +48,8 @@ export function sandboxAt(root: string): Sandbox {
 export async function createSandbox(folder: string, driver: string): Promise<Sandbox> {
   await mkdir(folder, { recursive: true });
   const box = sandboxAt(await realpath(folder));
+  if ((await readFile(box.world, "utf8").catch(() => null)) !== null)
+    throw new Error(`${box.root} is already a sandbox; make a new one in another folder`);
   await mkdir(box.home, { recursive: true });
   await mkdir(dirname(box.bin), { recursive: true });
   await writeFile(
@@ -107,15 +111,16 @@ export async function runKeypin(
 ): Promise<number> {
   const stderr = options.stderr ?? process.stderr;
   const cwd = await realpath(options.cwd).catch(() => resolve(options.cwd));
-  if (!inside(box, cwd)) {
+  if (!(await contained(box, cwd))) {
     stderr.write(`sandbox: run keypin from inside ${box.root}, not ${cwd}\n`);
     return 2;
   }
   const world = await loadWorld(box);
+  const before = JSON.stringify(world);
   try {
     return await cli(args, sandboxDeps(box, world, { ...options, cwd, stderr }));
   } finally {
-    await saveWorld(box, world);
+    if (JSON.stringify(world) !== before) await saveWorld(box, world);
   }
 }
 
@@ -128,17 +133,18 @@ function sandboxDeps(box: Sandbox, world: World, options: RunOptions & { stderr:
     env: sandboxEnv(box),
     home: box.home,
     files: guardedFiles(box),
-    isFolder: async (path) => inside(box, path) && isFolder(path),
+    isFolder: async (path) => (await contained(box, path)) && isFolder(path),
     listFolder: async (path) => {
-      if (!inside(box, path)) throw new Error(`ENOENT: ${path} is outside the sandbox`);
+      if (!(await contained(box, path))) throw new Error(`ENOENT: ${path} is outside the sandbox`);
       return listFolder(path);
     },
     git: (folder, args) => sandboxGit(box, folder, args),
     githubSecrets: async (repo, login) => fakeGithubSecrets(world, repo, login),
     workerSecrets: async (account, worker) => fakeWorkerSecrets(world, account, worker),
-    createFile: async (path, text) => createFile(writable(box, path), text),
-    replaceFile: async (path, expected, text) => replaceFile(writable(box, path), expected, text),
-    isLink: async (path) => inside(box, path) && isLink(path),
+    createFile: async (path, text) => createFile(await writable(box, path), text),
+    replaceFile: async (path, expected, text) =>
+      replaceFile(await writable(box, path), expected, text),
+    isLink: async (path) => (await contained(box, dirname(path))) && isLink(path),
     vault: () => fakeVault(world),
     now,
     stdout: options.stdout ?? process.stdout,
@@ -183,37 +189,52 @@ export function inside(box: Sandbox, path: string): boolean {
   return full === box.root || full.startsWith(`${box.root}${sep}`);
 }
 
-function writable(box: Sandbox, path: string): string {
-  if (!inside(box, path))
+export async function contained(box: Sandbox, path: string): Promise<boolean> {
+  return inside(box, path) && inside(box, await realLocation(resolve(path)));
+}
+
+async function realLocation(path: string): Promise<string> {
+  try {
+    return await realpath(path);
+  } catch (error) {
+    const parent = dirname(path);
+    if (errorCode(error) !== "ENOENT" || parent === path) throw error;
+    return join(await realLocation(parent), basename(path));
+  }
+}
+
+async function writable(box: Sandbox, path: string): Promise<string> {
+  if (!(await contained(box, path)))
     throw new Error(`sandbox: refusing to write ${path}, outside ${box.root}`);
   return path;
 }
 
 function guardedFiles(box: Sandbox): Files {
   return {
-    read: async (path) => (inside(box, path) ? diskFiles.read(path) : null),
-    write: async (path, text) => diskFiles.write(writable(box, path), text),
-    rename: async (from, to) => diskFiles.rename(writable(box, from), writable(box, to)),
+    read: async (path) => ((await contained(box, path)) ? diskFiles.read(path) : null),
+    write: async (path, text) => diskFiles.write(await writable(box, path), text),
+    rename: async (from, to) =>
+      diskFiles.rename(await writable(box, from), await writable(box, to)),
   };
 }
 
 function guardedLock(box: Sandbox): Lock {
-  return async (path) => diskLock(writable(box, path));
+  return async (path) => diskLock(await writable(box, path));
 }
 
-export function sandboxGit(
+export async function sandboxGit(
   box: Sandbox,
   folder: string,
   args: readonly string[],
 ): Promise<string | null> {
-  if (!inside(box, folder)) return Promise.resolve(null);
+  if (!(await contained(box, folder))) return null;
   const env = {
     ...sandboxEnv(box),
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_CEILING_DIRECTORIES: dirname(box.root),
   };
   return new Promise((done) => {
-    execFile("git", ["-C", folder, ...args], { env }, (error, stdout) => {
+    execFile("git", ["-C", folder, ...args], { env, maxBuffer: GIT_OUTPUT }, (error, stdout) => {
       done(error ? null : String(stdout));
     });
   });

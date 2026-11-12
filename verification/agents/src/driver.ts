@@ -4,6 +4,7 @@ import { parseArgs } from "node:util";
 import type { Writer } from "../../../apps/cli/src/deps";
 import { messageOf } from "../../../apps/cli/src/errors";
 import {
+  contained,
   createSandbox,
   editWorld,
   inside,
@@ -104,7 +105,7 @@ async function approve(args: string[], io: Io): Promise<number> {
   if (folder === undefined) throw new Error("approve needs the sandbox folder");
   const box = await openSandbox(folder);
   const command = parseApproval(args.slice(split + 1).join(" "));
-  if (!inside(box, command.cwd))
+  if (!(await contained(box, command.cwd)))
     throw new Error(`the approval command runs in ${command.cwd}, outside ${box.root}`);
   const [program, ...rest] = command.words;
   if (program !== box.bin)
@@ -164,7 +165,7 @@ async function envFile(args: string[], io: Io): Promise<number> {
     throw new Error("env-file takes a sandbox, a path and at least one variable name");
   const box = await openSandbox(folder);
   const file = resolve(io.cwd, path);
-  if (!inside(box, file)) throw new Error(`${file} is outside ${box.root}`);
+  if (!(await contained(box, file))) throw new Error(`${file} is outside ${box.root}`);
   const bad = names.find((name) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name));
   if (bad !== undefined) throw new Error(`"${bad}" isn't a variable name`);
   const lines = names.map(
@@ -345,7 +346,7 @@ export async function findLeaks(box: Sandbox, transcripts: string[] = []): Promi
   const found: string[] = [];
   const pattern = new RegExp(`${FAKE}[\\w-]+`, "g");
   for (const file of files) {
-    const text = await readFile(file, "utf8").catch(() => "");
+    const text = await readFile(file, "utf8");
     for (const match of new Set(text.match(pattern) ?? [])) found.push(`${name(file)}: ${match}`);
   }
   return found;
@@ -356,7 +357,7 @@ async function filesIn(folder: string, box: Sandbox): Promise<string[]> {
   const files: string[] = [];
   for (const entry of entries) {
     const path = join(folder, entry.name);
-    if (path === box.world || entry.name === ".git") continue;
+    if (path === box.world) continue;
     if (entry.isDirectory()) files.push(...(await filesIn(path, box)));
     else if (entry.isFile()) files.push(path);
   }

@@ -1,10 +1,23 @@
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { driver } from "../src/driver";
-import { loadWorld, type Sandbox, sandboxAt } from "../src/sandbox";
+import { fakeDestination, fakeVault } from "../src/fakes";
+import { loadWorld, type Sandbox, sandboxAt, sandboxGit } from "../src/sandbox";
+import { emptyWorld, parseWorld } from "../src/world";
+import { Secret } from "@keypin/core";
 import { FAKE } from "../src/world";
 
 const MAIN = fileURLToPath(new URL("../src/main.ts", import.meta.url));
@@ -270,6 +283,114 @@ describe("the agent sandbox", () => {
     expect((await sandbox(["leaks", box.root])).code).toBe(0);
     await writeFile(join(app, "copy.txt"), text);
     expect((await sandbox(["leaks", box.root])).code).toBe(1);
+  });
+});
+
+describe("the sandbox's edges", () => {
+  test("a symlink inside the sandbox doesn't reach a file outside it", async () => {
+    const away = join(outside, "away");
+    await mkdir(away);
+    await writeFile(join(away, "keypin.toml"), PUBLISH_MAP);
+    await symlink(away, join(box.root, "escape"));
+    const read = await keypin(join(box.root, "escape"), "status");
+    expect(read.code).toBe(2);
+    await mkdir(join(box.root, "app"));
+    await symlink(away, join(box.root, "app", "linked"));
+    const write = await keypin(join(box.root, "app"), "init", "linked");
+    expect(write.code).not.toBe(0);
+    expect(await readdir(away)).toEqual(["keypin.toml"]);
+    expect(await sandboxGit(box, join(box.root, "escape"), ["status"])).toBeNull();
+  });
+
+  test("new refuses a folder that is already a sandbox, and keeps its world", async () => {
+    await sandbox(["repo", box.root, "acme/app"]);
+    const again = await sandbox(["new", box.root]);
+    expect(again.code).toBe(1);
+    expect(again.stderr).toContain("already a sandbox");
+    expect((await loadWorld(box)).github.repos).toEqual(["acme/app"]);
+  });
+
+  test("a keypin run that changes nothing doesn't rewrite the world", async () => {
+    const app = await publishWorld();
+    const before = (await stat(box.world)).mtimeMs;
+    await keypin(app, "status", "--json");
+    expect((await stat(box.world)).mtimeMs).toBe(before);
+  });
+
+  test("leaks fails on a transcript it can't read, and scans .git", async () => {
+    const missing = await sandbox(["leaks", box.root, join(outside, "missing.txt")]);
+    expect(missing.code).toBe(1);
+    expect(missing.stderr).toContain("ENOENT");
+    await mkdir(join(box.root, "app", ".git", "logs"), { recursive: true });
+    await writeFile(join(box.root, "app", ".git", "logs", "HEAD"), `commit: ${FAKE}copied-1\n`);
+    const found = await sandbox(["leaks", box.root]);
+    expect(found.code).toBe(1);
+    expect(found.stdout).toContain(`app/.git/logs/HEAD: ${FAKE}copied-1`);
+  });
+
+  test("the fakes reject Worker and secret names the real destinations reject", async () => {
+    const world = emptyWorld();
+    expect(() =>
+      fakeDestination(
+        world,
+        { to: "cloudflare-worker", account: ACCOUNT, worker: "my.app" },
+        () => new Date(),
+      ),
+    ).toThrow("isn't a Worker name");
+    world.github.repos.push("acme/app");
+    const github = fakeDestination(
+      world,
+      { to: "github-actions", repo: "acme/app", account: "acme" },
+      () => new Date(),
+    );
+    expect((await github.checkAccount()).ok).toBe(true);
+    await expect(github.write("GITHUB_TOKEN", new Secret(`${FAKE}x`))).rejects.toThrow(
+      "valid GitHub secret name",
+    );
+  });
+
+  test("a vault write updates the field it reads, whatever its case", async () => {
+    const world = emptyWorld();
+    world.onePassword.items.push({
+      vault: "Private",
+      title: "t",
+      fields: { Password: `${FAKE}old` },
+      rotated: null,
+    });
+    const vault = fakeVault(world);
+    const ref = {
+      kind: "1password" as const,
+      account: "my.1password.com",
+      vault: "Private",
+      item: "t",
+      section: null,
+      field: "password",
+    };
+    await vault.write(ref, new Secret(`${FAKE}new`));
+    expect((await vault.read(ref)).equals(new Secret(`${FAKE}new`))).toBe(true);
+    expect(Object.keys(world.onePassword.items[0]?.fields ?? {})).toEqual(["Password"]);
+  });
+
+  test("a token's admin flag must be true or false", () => {
+    const world = {
+      ...emptyWorld(),
+      tokens: [
+        {
+          id: "a",
+          account: ACCOUNT,
+          name: "n",
+          status: "active",
+          expiresOn: null,
+          lastUsedOn: null,
+          permissions: [],
+          admin: "true",
+          value: `${FAKE}v`,
+        },
+      ],
+    };
+    expect(() => parseWorld(JSON.stringify(world), "world.json")).toThrow(
+      "admin isn't true or false",
+    );
   });
 });
 

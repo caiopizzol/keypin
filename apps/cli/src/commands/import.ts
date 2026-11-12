@@ -3,9 +3,12 @@ import { parseArgs } from "node:util";
 import {
   DEFAULT_ENVIRONMENTS,
   draftItemName,
+  type Environment,
   envFileKind,
+  envFlag,
   envValues,
   formatReference,
+  isEnvironmentName,
   isVariableName,
   type KeyRef,
   type KeysMap,
@@ -27,6 +30,7 @@ interface Request {
   names: string[];
   vault: string;
   account: string | undefined;
+  env: string | undefined;
   yes: boolean;
   args: string[];
 }
@@ -35,7 +39,10 @@ interface Import {
   name: string;
   ref: KeyRef;
   value: Secret;
+  existing: boolean;
 }
+
+type Entry = Pick<Import, "name" | "ref" | "existing">;
 
 interface Skip {
   name: string;
@@ -65,7 +72,9 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
   if (text === null) throw new Error(`${envPath} doesn't exist`);
 
   const target = await readTarget(deps, request);
-  const environment = runEnvironment(target.map ?? { environments: DEFAULT_ENVIRONMENTS });
+  const environments = target.map?.environments ?? DEFAULT_ENVIRONMENTS;
+  const runs = runEnvironment({ environments });
+  const environment = chosenEnvironment(request.env, environments, runs, target);
   const project = basename(deps.cwd);
   const file = envValues(text);
   const values = selected(file, request.names, envPath);
@@ -104,10 +113,10 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
         onlyInFile: false,
         mapped: { ref: mapped.environments[environment].ref, value },
       });
-    else if (mapped)
+    else if (mapped && !extendsKey(target, name, request.vault, item, environment))
       skips.push({
         name,
-        reason: `mapped in ${target.file} without ${environment}; left as it is, so add its ${environment} reference by hand`,
+        reason: `mapped in ${target.file} without ${environment}, in a form keypin can't add a table to; add its ${environment} reference by hand`,
         onlyInFile: true,
       });
     else if (value.includes("$"))
@@ -124,7 +133,12 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
       });
     else {
       items.set(item.toLowerCase(), name);
-      planned.push({ name, value, ref: refFor(target.account, request.vault, item) });
+      planned.push({
+        name,
+        value,
+        ref: refFor(target.account, request.vault, item),
+        existing: mapped !== undefined,
+      });
     }
   }
 
@@ -177,10 +191,20 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
     for (const skip of skips) say(`  ${skip.name}: ${skip.reason}`);
   }
   const existed = skips.some((skip) => skip.exists);
-  if (!imports.length && !stored.length) return existed ? 1 : 0;
+  if (!imports.length && !stored.length) {
+    say(`Nothing was imported, and ${target.file} wasn't changed.`);
+    return existed ? 1 : 0;
+  }
+  const adding = [...imports, ...stored];
+  const fresh = adding.filter((entry) => !entry.existing).length;
+  const existing = adding.filter((entry) => entry.existing).map((entry) => entry.name);
+  const additions = [
+    fresh ? count(fresh, "key") : "",
+    existing.length ? `${environment} for ${names(existing)}` : "",
+  ].filter(Boolean);
   say(
     target.map
-      ? `Map: add ${count(imports.length + stored.length, "key")} at the end of ${target.file}`
+      ? `Map: add ${additions.join(", and ")} at the end of ${target.file}`
       : `Map: write ${target.file} and register ${deps.cwd}`,
   );
 
@@ -229,7 +253,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
     ([name, value]) => !remove.includes(name) && (left.includes(name) || !value.isEmpty()),
   );
   say(
-    `The imported values are now in 1Password, and keypin run -- <command> provides them. keypin left ${envPath} as it is.`,
+    `The imported values are now in 1Password, and keypin run${envFlag(environment, runs)} -- <command> provides them. keypin left ${envPath} as it is.`,
   );
   if (left.length)
     say(
@@ -314,6 +338,7 @@ function parseRequest(args: string[]): Request {
     options: {
       vault: { type: "string" },
       account: { type: "string" },
+      env: { type: "string" },
       yes: { type: "boolean", default: false },
     },
     allowPositionals: true,
@@ -328,7 +353,38 @@ function parseRequest(args: string[]): Request {
   const account = values.account?.trim();
   if (values.account !== undefined && !account)
     throw new UsageError("--account is your 1Password sign-in address, such as my.1password.com");
-  return { envFile, names: [...new Set(names)], vault, account, yes: values.yes, args };
+  return {
+    envFile,
+    names: [...new Set(names)],
+    vault,
+    account,
+    env: values.env,
+    yes: values.yes,
+    args,
+  };
+}
+
+function chosenEnvironment(
+  requested: string | undefined,
+  environments: readonly Environment[],
+  runs: Environment,
+  target: Target,
+): Environment {
+  if (requested === undefined || environments.includes(requested)) return requested ?? runs;
+  if (!isEnvironmentName(requested))
+    throw new UsageError(
+      `--env is an environment name: a lowercase letter, then lowercase letters, digits and dashes`,
+    );
+  const last = environments.at(-1);
+  const listed =
+    environments.length > 1 && last !== undefined
+      ? [...environments.slice(0, -1), requested, last]
+      : [...environments, requested];
+  const known = environments.map((name) => `"${name}"`).join(", ");
+  const line = `environments = [${listed.map(str).join(", ")}]`;
+  throw new UsageError(
+    `--env ${requested} isn't ${target.map ? `one of ${target.file}'s environments` : "a default environment"} (${known}). To add it, ${target.found === null ? `create ${target.file} with the line ${line}` : `put ${line} at the top of ${target.file}`}`,
+  );
 }
 
 async function readTarget(deps: Deps, request: Request): Promise<Target> {
@@ -355,16 +411,30 @@ async function readTarget(deps: Deps, request: Request): Promise<Target> {
   return { file, found, map: parsed.map, account };
 }
 
+function extendsKey(
+  target: Target,
+  name: string,
+  vault: string,
+  item: string,
+  environment: string,
+): boolean {
+  const entry: Entry = { name, ref: refFor(target.account, vault, item), existing: true };
+  return parseMap(mapText(target, [entry], environment), target.file).ok;
+}
+
 function refFor(account: string, vault: string, item: string): KeyRef {
   return { kind: "1password", account, vault, item, section: null, field: "password" };
 }
 
-function keyTables(imports: readonly Import[], environment: string): string {
+function keyTables(target: Target, imports: readonly Entry[], environment: string): string {
+  const runs = runEnvironment(target.map ?? { environments: DEFAULT_ENVIRONMENTS });
   return imports
-    .map(
-      ({ name, ref }) =>
-        `\n[keys.${name}]\nrotate_every = ${str(ROTATE_EVERY)}\n${environment} = ${str(formatReference(ref))}\n`,
-    )
+    .map(({ name, ref, existing }) => {
+      const key = `\n[keys.${name}]\nrotate_every = ${str(ROTATE_EVERY)}\n`;
+      const from = str(formatReference(ref));
+      if (!existing && environment === runs) return `${key}${environment} = ${from}\n`;
+      return `${existing ? "" : key}\n[keys.${name}.${environment}]\nfrom = ${from}\n`;
+    })
     .join("");
 }
 
@@ -373,15 +443,15 @@ function mapBase(target: Target): string {
   return target.found.endsWith("\n") || !target.found ? target.found : `${target.found}\n`;
 }
 
-function mapAddition(target: Target, imports: readonly Import[], environment: string): string {
+function mapAddition(target: Target, imports: readonly Entry[], environment: string): string {
   const account = `[1password]\naccount = ${str(target.account)}\n`;
-  const tables = keyTables(imports, environment);
+  const tables = keyTables(target, imports, environment);
   if (!target.map)
     return `# Written by keypin import. The values are in 1Password; this file holds only references.\n\n${account}${tables}`;
   return `${target.map.account ? "" : `\n${account}`}${tables}`;
 }
 
-function mapText(target: Target, imports: readonly Import[], environment: string): string {
+function mapText(target: Target, imports: readonly Entry[], environment: string): string {
   return `${mapBase(target)}${mapAddition(target, imports, environment)}`;
 }
 

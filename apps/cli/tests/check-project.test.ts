@@ -249,11 +249,37 @@ worker = "billing-worker"
       },
     ]);
     expect(data.problems).toEqual([
-      ".env sets RESEND_API_KEY, which keypin.toml maps with no dev entry; add a dev reference to each by hand",
+      ".env sets RESEND_API_KEY, which keypin.toml maps with no dev entry; for a key run keypin import .env RESEND_API_KEY --vault <vault>",
     ]);
     expect(data.notes).toContain(
       ".env sets DATABASE_URL, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env NAME... --vault <vault>",
     );
+  });
+
+  test("an env file named for an environment suggests importing it with --env", async () => {
+    const run = setup({
+      files: {
+        [MAP]: MAPPED,
+        [`${ROOT}/.env.prod`]: `DATABASE_URL=${SENTINEL}\nSTRIPE_API_KEY=${SENTINEL}\n`,
+        [`${ROOT}/.dev.vars.prod`]: `RESEND_API_KEY=${SENTINEL}\n`,
+        [`${ROOT}/.env.production`]: `OTHER_KEY=${SENTINEL}\n`,
+      },
+    });
+    await cli(["check", "--json"], run.deps);
+    const data = json(run.stdout.text);
+    expect(data.notes).toContain(
+      ".env.prod sets STRIPE_API_KEY, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env.prod NAME... --env prod --vault <vault>",
+    );
+    expect(data.problems).toContain(
+      ".env.prod sets DATABASE_URL, which keypin.toml maps with no prod entry; for a key run keypin import .env.prod DATABASE_URL --env prod --vault <vault>",
+    );
+    expect(data.problems).toContain(
+      ".dev.vars.prod sets RESEND_API_KEY, which keypin.toml maps with no prod entry; for a key run keypin import .dev.vars.prod RESEND_API_KEY --env prod --vault <vault>",
+    );
+    expect(data.notes).toContain(
+      ".env.production sets OTHER_KEY, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env.production NAME... --vault <vault>",
+    );
+    expect(leaks(...run.everything())).toBe(false);
   });
 
   test("a plain setting left in an env file is a note, and check still exits 0", async () => {

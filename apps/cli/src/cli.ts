@@ -19,11 +19,12 @@ export const USAGE = `Usage:
                            each login reaches the pinned account, every secret a workflow or
                            Worker needs is published there (with the TOML to add when it isn't),
                            and every name an env file sets is mapped
-  keypin import <env-file> [NAME...] --vault <vault> [--account <sign-in address>] [--yes]
-                           move an env file's values into new 1Password items and map them: only
-                           the named variables, or every one; the account is the map's, or --account
-                           when there's no map yet. It never overwrites an item, so --yes is enough
-                           to approve it. The file stays.
+  keypin import <env-file> [NAME...] [--env <name>] --vault <vault> [--account <sign-in address>] [--yes]
+                           move an env file's values into new 1Password items and map them for one
+                           environment (default: the first, dev): only the named variables, or every
+                           one; the account is the map's, or --account when there's no map yet. It
+                           never overwrites an item or a reference, so --yes is enough to approve it.
+                           The file stays.
   keypin run [--env <name>] -- <command>
                            run a command with one environment's keys (default: the first, dev)
   keypin publish <VARIABLE> [--env <name>] [--yes | --plan]

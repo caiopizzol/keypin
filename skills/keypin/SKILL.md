@@ -24,8 +24,10 @@ values from 1Password only while a command runs.
    - `unknown`: what check couldn't read. Tell the user it's unverified; it never means missing.
 3. Local keys: for each name in `local.unmapped`, ask the user whether it's a secret and which vault. Suggest
    `keypin import <file> NAME... --vault <vault>`, plus `--account <sign-in address>` when `keypin.toml` has no
-   `[1password]` account. Run it without `--yes`; it exits 3 with the command for the user to run. For names in
-   `local.elsewhere`, ask the user for the reference and add it by hand.
+   `[1password]` account, and `--env <name>` when check's suggestion has it. Run it without `--yes`; it exits 3
+   with the command for the user to run. Names in `local.elsewhere` are keys mapped for another environment;
+   import adds this environment's entry to each. If it says it can't add a table to a key, ask the user for that
+   reference and add it by hand.
 4. Production keys: when `add` isn't null, show the user that TOML. With their agreement, paste it into
    `keypin.toml` and ask them for every `<...>` value: the account's sign-in address, each field's secret
    reference (1Password: the field's menu, **Copy Secret Reference**), and any repo, Cloudflare account ID or

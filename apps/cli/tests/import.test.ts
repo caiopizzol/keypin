@@ -399,18 +399,168 @@ describe("keypin import", () => {
     expect(leaks(stdout.text, stderr.text)).toBe(false);
   });
 
-  test("a key mapped only in another environment stays in the file, and the file isn't called done", async () => {
+  test("a key mapped only in another environment gets this one added, and the rest is kept", async () => {
     const map = `${REAL_MAP.replace('dev = "op://App Secrets/billing dev stripe/password"', '[keys.STRIPE_KEY.prod]\nfrom = "op://App Secrets/billing prod stripe/password"')}`;
     const { deps, disk, fake, text } = setup({ files: { [MAP]: map } });
     expect(await cli(["import", ".env", "--vault", "App Secrets", "--yes"], deps)).toBe(0);
-    expect(fake.created.map((c) => c.ref.item)).toEqual(["billing dev webhook secret"]);
-    expect(disk.contents.get(MAP)?.startsWith(map)).toBe(true);
-    expect(text()).toContain(
-      `STRIPE_KEY: mapped in ${MAP} without dev; left as it is, so add its dev reference by hand`,
+    expect(fake.created.map((c) => c.ref.item)).toEqual([
+      "billing dev stripe key",
+      "billing dev webhook secret",
+    ]);
+    const written = disk.contents.get(MAP) ?? "";
+    expect(written.startsWith(map)).toBe(true);
+    expect(written.slice(map.length)).toContain(
+      `\n[keys.STRIPE_KEY.dev]\nfrom = "op://App Secrets/billing dev stripe key/password"\n`,
     );
-    expect(text()).toContain("STRIPE_KEY, app.key are still only in that file");
-    expect(text()).not.toContain("Delete it and stop loading it");
-    expect(leaks(text(), disk.contents.get(MAP) ?? "")).toBe(false);
+    const parsed = parseMap(written, MAP);
+    assert(parsed.ok, JSON.stringify(parsed));
+    const stripe = parsed.map.keys.find((k) => k.name === "STRIPE_KEY");
+    expect(stripe?.rotateEvery).toBe("30d");
+    expect(Object.keys(stripe?.environments ?? {}).sort()).toEqual(["dev", "prod"]);
+    expect(text()).toContain("Map: add 1 key, and dev for STRIPE_KEY at the end of");
+    expect(text()).not.toContain("by hand");
+    expect(leaks(text(), written)).toBe(false);
+  });
+
+  describe("--env", () => {
+    const PROD_ENV = `${ROOT}/.env.production`;
+    const PROD_TEXT = `STRIPE_KEY=${SENTINEL}-prod-stripe\nNEW_KEY=${SENTINEL}-prod-new\n`;
+    const args = (...more: string[]) => [
+      "import",
+      ".env.production",
+      "--env",
+      "prod",
+      "--vault",
+      "App Secrets",
+      ...more,
+    ];
+
+    test("with no map, names the items for that environment and writes its entries as tables", async () => {
+      const { deps, disk, fake, text } = setup({ files: { [PROD_ENV]: PROD_TEXT } });
+      expect(await cli([...args("--account", ACCOUNT), "--yes"], deps)).toBe(0);
+      expect(fake.created.map((c) => c.ref.item)).toEqual([
+        "billing prod stripe key",
+        "billing prod new key",
+      ]);
+      const written = disk.contents.get(MAP) ?? "";
+      expect(written).toContain(
+        `[keys.STRIPE_KEY]\nrotate_every = "90d"\n\n[keys.STRIPE_KEY.prod]\nfrom = "op://App Secrets/billing prod stripe key/password"\n`,
+      );
+      const parsed = parseMap(written, MAP);
+      assert(parsed.ok, JSON.stringify(parsed));
+      expect(parsed.map.keys.map((k) => [k.name, Object.keys(k.environments)])).toEqual([
+        ["STRIPE_KEY", ["prod"]],
+        ["NEW_KEY", ["prod"]],
+      ]);
+      expect(text()).toContain("keypin run --env prod -- <command> provides them");
+      expect(leaks(text(), written)).toBe(false);
+    });
+
+    test("adds the environment to a key mapped only for dev, keeps the key as it is, and destinations can follow", async () => {
+      const { deps, disk, fake, text } = setup({
+        files: { [MAP]: REAL_MAP, [PROD_ENV]: PROD_TEXT },
+      });
+      expect(await cli([...args(), "--yes"], deps)).toBe(0);
+      expect(fake.created.map((c) => c.ref.item)).toEqual([
+        "billing prod stripe key",
+        "billing prod new key",
+      ]);
+      const written = disk.contents.get(MAP) ?? "";
+      expect(written.startsWith(REAL_MAP)).toBe(true);
+      expect(written.match(/^\[keys\.STRIPE_KEY\]/gm)).toHaveLength(1);
+      const parsed = parseMap(written, MAP);
+      assert(parsed.ok, JSON.stringify(parsed));
+      const stripe = parsed.map.keys.find((k) => k.name === "STRIPE_KEY");
+      expect(stripe?.rotateEvery).toBe("30d");
+      expect(stripe?.environments.dev && formatReference(stripe.environments.dev.ref)).toBe(
+        "op://App Secrets/billing dev stripe/password",
+      );
+      expect(stripe?.environments.prod && formatReference(stripe.environments.prod.ref)).toBe(
+        "op://App Secrets/billing prod stripe key/password",
+      );
+      expect(text()).toContain("Map: add 1 key, and prod for STRIPE_KEY at the end of");
+
+      const withDestination = `${written}\n[[keys.STRIPE_KEY.prod.publish]]\nto = "github-actions"\nrepo = "acme/billing"\n`;
+      const later = parseMap(withDestination, MAP);
+      assert(later.ok, JSON.stringify(later));
+      expect(
+        later.map.keys.find((k) => k.name === "STRIPE_KEY")?.environments.prod?.publish,
+      ).toEqual([{ to: "github-actions", repo: "acme/billing", account: "acme" }]);
+    });
+
+    test("never replaces an environment the key already has, even one with destinations", async () => {
+      const map = `${REAL_MAP}
+[keys.STRIPE_KEY.prod]
+from = "op://App Secrets/billing prod stripe/password"
+
+[[keys.STRIPE_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`;
+      const { deps, disk, fake, text } = setup({
+        files: { [MAP]: map, [PROD_ENV]: `STRIPE_KEY=${SENTINEL}-prod-stripe\n` },
+        values: { "billing prod stripe": "another value" },
+      });
+      expect(await cli([...args(), "--yes"], deps)).toBe(0);
+      expect(fake.created).toEqual([]);
+      expect(disk.contents.get(MAP)).toBe(map);
+      expect(text()).toContain(
+        `STRIPE_KEY: already mapped in ${MAP}; left as it is, and it differs from the vault`,
+      );
+      expect(text()).toContain(`Nothing was imported, and ${MAP} wasn't changed.`);
+      expect(leaks(text())).toBe(false);
+    });
+
+    test("a key written as an inline table is skipped, since a table can't be added to it", async () => {
+      const map = `[1password]\naccount = "${ACCOUNT}"\n\n[keys]\nSTRIPE_KEY = { dev = "op://V/s/password" }\n`;
+      const { deps, disk, fake, text } = setup({ files: { [MAP]: map, [PROD_ENV]: PROD_TEXT } });
+      expect(await cli([...args(), "--yes"], deps)).toBe(0);
+      expect(fake.created.map((c) => c.ref.item)).toEqual(["billing prod new key"]);
+      expect(text()).toContain(
+        `STRIPE_KEY: mapped in ${MAP} without prod, in a form keypin can't add a table to; add its prod reference by hand`,
+      );
+      const parsed = parseMap(disk.contents.get(MAP) ?? "", MAP);
+      assert(parsed.ok, JSON.stringify(parsed));
+      expect(parsed.map.keys.map((k) => [k.name, Object.keys(k.environments)])).toEqual([
+        ["STRIPE_KEY", ["dev"]],
+        ["NEW_KEY", ["prod"]],
+      ]);
+    });
+
+    test("an environment the map doesn't list is a usage error that shows the line to add", async () => {
+      const { deps, fake, stderr } = setup({
+        files: { [MAP]: REAL_MAP, [PROD_ENV]: PROD_TEXT },
+      });
+      const staging = ["import", ".env.production", "--env", "staging", "--vault", "V"];
+      expect(await cli(staging, deps)).toBe(2);
+      expect(stderr.text).toContain(
+        `--env staging isn't one of ${MAP}'s environments ("dev", "prod"). To add it, put environments = ["dev", "staging", "prod"] at the top of ${MAP}`,
+      );
+      expect(fake.calls).toEqual([]);
+
+      const bad = setup({ files: { [PROD_ENV]: PROD_TEXT } });
+      const upper = ["import", ".env.production", "--env", "Prod", "--vault", "V"];
+      expect(await cli([...upper, "--account", ACCOUNT], bad.deps)).toBe(2);
+      expect(bad.stderr.text).toContain("--env is an environment name");
+      expect(bad.fake.calls).toEqual([]);
+    });
+
+    test("a listed environment works with a custom list, and without --env the first one is used", async () => {
+      const map = `environments = ["dev", "staging", "prod"]\n\n${REAL_MAP}`;
+      const staging = setup({ files: { [MAP]: map, [PROD_ENV]: PROD_TEXT } });
+      const run = ["import", ".env.production", "--env", "staging", "--vault", "V", "--yes"];
+      expect(await cli(run, staging.deps)).toBe(0);
+      expect(staging.fake.created.map((c) => c.ref.item)).toEqual([
+        "billing staging stripe key",
+        "billing staging new key",
+      ]);
+      expect(staging.text()).toContain("keypin run --env staging -- <command>");
+
+      const plain = setup({ files: { [MAP]: map, [PROD_ENV]: `NEW_KEY=${SENTINEL}\n` } });
+      const noFlag = ["import", ".env.production", "--vault", "V", "--yes"];
+      expect(await cli(noFlag, plain.deps)).toBe(0);
+      expect(plain.fake.created.map((c) => c.ref.item)).toEqual(["billing dev new key"]);
+    });
   });
 
   test("a value with a $ is left in the file, since loaders differ on expanding it", async () => {

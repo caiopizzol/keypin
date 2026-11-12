@@ -14,7 +14,11 @@ const noComments = defineRule({
   },
 });
 
-const REPO = decodeURIComponent(new URL(".", import.meta.url).pathname);
+export function repoPath(file: string, plugin: string = import.meta.url): string {
+  const repo = decodeURIComponent(new URL(".", plugin).pathname).replace(/^\/(?=[A-Za-z]:)/, "");
+  const path = file.replaceAll("\\", "/");
+  return path.startsWith(repo) ? path.slice(repo.length) : path;
+}
 
 const REVEAL_ALLOWED = [
   /^packages\/(vault|destination|provider)-[^/]+\/src\//,
@@ -39,8 +43,7 @@ const noReveal = defineRule({
     },
   },
   create(context) {
-    const file = context.physicalFilename;
-    const path = file.startsWith(REPO) ? file.slice(REPO.length) : file;
+    const path = repoPath(context.physicalFilename);
     if (REVEAL_ALLOWED.some((allowed) => allowed.test(path))) return {};
     return {
       MemberExpression(node) {

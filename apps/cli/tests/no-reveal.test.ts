@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, expect, test } from "vite-plus/test";
+import { repoPath } from "../../../lint-plugin";
 
 const REPO = fileURLToPath(new URL("../../..", import.meta.url));
 const SECRET = "type Secret = { reveal(): string };\ndeclare const secret: Secret;\n";
@@ -97,4 +98,14 @@ test.each(forbidden)("%s may not reveal", (path) => {
 
 test("Secret's own comparisons pass", () => {
   expect(flagged.get(COMPARES)).toBeUndefined();
+});
+
+test("a Windows path is taken from the same repo root", () => {
+  const plugin = "file:///C:/work/my%20keys/keypin/lint-plugin.ts";
+  expect(repoPath("C:\\work\\my keys\\keypin\\apps\\cli\\tests\\fakes.ts", plugin)).toBe(
+    "apps/cli/tests/fakes.ts",
+  );
+  expect(repoPath("C:\\tests\\keypin\\apps\\cli\\src\\main.ts", plugin)).toBe(
+    "C:/tests/keypin/apps/cli/src/main.ts",
+  );
 });

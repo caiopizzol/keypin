@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { closeSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { chmod, mkdir, readFile, readlink, realpath, rename, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import type { Files } from "@keypin/core";
 import { cli } from "../../../apps/cli/src/cli";
@@ -27,7 +27,6 @@ import { errorCode } from "../../../apps/cli/src/errors";
 
 const WORLD = "world.json";
 const GIT_OUTPUT = 64 * 1024 * 1024;
-const MAX_LINKS = 40;
 const LOCK_WAIT_MS = 10_000;
 const pause = new Int32Array(new SharedArrayBuffer(4));
 const PASSED_ENV = ["TERM", "LANG", "LC_ALL", "SHELL", "USER", "TMPDIR"];
@@ -228,21 +227,27 @@ export function inside(box: Sandbox, path: string): boolean {
 }
 
 export async function contained(box: Sandbox, path: string): Promise<boolean> {
-  return inside(box, path) && inside(box, await realLocation(resolve(path)));
+  const real = await realLocation(resolve(path));
+  return inside(box, path) && real !== null && inside(box, real);
 }
 
-async function realLocation(path: string, hops = 0): Promise<string> {
+async function realLocation(path: string): Promise<string | null> {
   try {
     return await realpath(path);
   } catch (error) {
     const parent = dirname(path);
     if (errorCode(error) !== "ENOENT" || parent === path) throw error;
-    const folder = await realLocation(parent, hops);
-    const target = await readlink(path).catch(() => null);
-    if (target === null) return join(folder, basename(path));
-    if (hops >= MAX_LINKS) throw new Error(`sandbox: ${path} has too many symlinks`);
-    return realLocation(resolve(folder, target), hops + 1);
+    if (await exists(path)) return null;
+    const folder = await realLocation(parent);
+    return folder === null ? null : join(folder, basename(path));
   }
+}
+
+async function exists(path: string): Promise<boolean> {
+  return lstat(path).then(
+    () => true,
+    () => false,
+  );
 }
 
 async function writable(box: Sandbox, path: string): Promise<string> {

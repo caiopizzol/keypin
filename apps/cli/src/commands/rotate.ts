@@ -474,7 +474,9 @@ async function revokeOld(run: Run, data: Rotations, rotation: Rotation): Promise
   const old = await provider.details(rotation.old.id);
   if (!old) {
     say(`The old token ${rotation.old.id} is already gone.`);
-    return run.plan ? planOnly(deps, "rotate", run.args, true) : finish(run, data, rotation);
+    if (!run.plan) return finish(run, data, rotation);
+    say("The next run records this rotation as finished, and asks nothing.");
+    return planOnly(deps, "rotate", run.args, true);
   }
   say(`\nOld token: ${old.id} "${old.name}", ${old.status}, expires ${old.expiresOn ?? "never"}`);
   say(`  last used: ${old.lastUsedOn ?? "not reported"}`);

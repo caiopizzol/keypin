@@ -34,7 +34,8 @@ The same seven scenarios, run again against these fixes:
 - **1. Without a terminal, `publish` and `rotate` stopped before showing the evidence.** `--plan` reads the
   value, runs the account checks and prints the full plan without a terminal: the generation read from the item,
   what would be written where, and which steps need a typed `yes`. For a revoke run, it adds the old token's
-  last-used time. It writes nothing and exits 3 with the command to approve. It's a flag, not the default,
+  last-used time. It writes nothing, and exits 3 with the command to run, or 0 when a publish has nothing to
+  write. It's a flag, not the default,
   because reading a value makes 1Password ask the user to approve the command, and a plain run without a
   terminal stops before reading so the user approves only once. The note to coordinate with a separate revoke
   change was stale: that change was #19, which merged minutes before this list did.

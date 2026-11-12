@@ -540,6 +540,17 @@ describe("keypin rotate: the next run", () => {
     expect(run.leaked()).toBe(false);
   });
 
+  test("--plan when the old token is already gone says the next run only records it", async () => {
+    const disk = await published();
+    const before = new Map(disk.contents);
+    const run = await next(disk);
+    run.provider.tokens.delete(OLD_ID);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN", "--plan"], run.deps)).toBe(NEEDS_APPROVAL);
+    expect(run.stderr.text).toContain(`The old token ${OLD_ID} is already gone.`);
+    expect(run.stderr.text).toContain("The next run records this rotation as finished");
+    expect(disk.contents).toEqual(before);
+  });
+
   test("anything but yes keeps the old token", async () => {
     const disk = await published();
     const run = await next(disk, ["y"]);

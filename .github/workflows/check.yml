@@ -20,3 +20,16 @@ jobs:
       - run: bun run check
       - run: bun run test
       - run: bun run typecheck
+
+  binary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      - run: bun run compile linux-x64
+        working-directory: apps/cli
+      - run: bun run check-binary binaries/keypin-linux-x64
+        working-directory: apps/cli

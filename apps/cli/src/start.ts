@@ -70,7 +70,9 @@ async function ask(question: string): Promise<string> {
 export function main(): Promise<number> {
   return cli(process.argv.slice(2), {
     cwd: process.cwd(),
-    self: selfCommand(process.argv[0] ?? "bun", process.argv[1] ?? "keypin"),
+    self: Bun.isStandaloneExecutable
+      ? [process.execPath]
+      : selfCommand(process.argv[0] ?? "bun", process.argv[1] ?? "keypin"),
     env: process.env,
     home: homedir(),
     files: diskFiles,

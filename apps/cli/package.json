@@ -7,6 +7,8 @@
   "type": "module",
   "scripts": {
     "build": "bun ./build.ts",
+    "compile": "bun ./compile.ts",
+    "check-binary": "bun ./check-binary.ts",
     "typecheck": "tsc"
   },
   "dependencies": {

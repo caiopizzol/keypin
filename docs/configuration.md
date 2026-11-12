@@ -3,6 +3,10 @@
 Each project has a `keypin.toml` at its root. It holds names and places, never values. keypin rejects any field it
 doesn't know, so a typo shows up as an error.
 
+A value in angle brackets, such as `<Cloudflare account ID>` or `op://<your vault>/...`, is a placeholder for you
+to fill in. keypin rejects one in the 1Password `account`, any part of an `op://` reference, a `repo`, or a
+Cloudflare `account` or `worker`, and says what to put there.
+
 A `keypin.toml` from keypin 0.4 (with `[vaults]`, `env`, `vault` and `item`) doesn't parse any more. Rewrite it in
 the format below. A keypin 0.6 `account` on a `github-actions`
 destination is gone: delete it (see [Who publishes](#who-publishes)). Shared `[targets]` from keypin 0.6 are gone

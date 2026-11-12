@@ -593,3 +593,106 @@ describe("shared targets from keypin 0.6", () => {
     expect(errors.toLowerCase()).not.toContain("sentinel");
   });
 });
+
+describe("<...> placeholders", () => {
+  const CF = "11111111111111111111111111111111";
+  const REFERENCE_HINT =
+    "replace it with the field's secret reference (in 1Password, open the field's menu and select Copy Secret Reference)";
+  const withPublish = (publish: string) =>
+    `${VAULTS}[keys.API_TOKEN]\nprod = { from = "op://Private/i/password", publish = [${publish}] }\n`;
+
+  test("the 1Password account", () => {
+    expect(
+      errorsOf(
+        `[1password]\naccount = "<your 1Password account>"\n[keys.API_TOKEN]\ndev = "op://Private/i/password"\n`,
+      ),
+    ).toEqual([
+      `${MAP_FILE}: [1password]: field "account" is a <...> placeholder: replace it with your 1Password account's sign-in address (such as my.1password.com, at the top left of the 1Password app) or its account ID`,
+    ]);
+  });
+
+  test.each([
+    ["vault", `op://<your vault>/i/password`],
+    ["item", `op://Private/<item>/password`],
+    ["section", `op://Private/i/<section>/password`],
+    ["field", `op://Private/i/<field>`],
+    ["vault and item", `op://<vault>/<item>/password`],
+  ])("a reference's %s", (parts, ref) => {
+    expect(errorsOf(`${VAULTS}[keys.API_TOKEN]\ndev = "${ref}"\n`)).toEqual([
+      `${MAP_FILE}: key "API_TOKEN" dev: field "from" has a <...> placeholder for its ${parts}: ${REFERENCE_HINT}`,
+    ]);
+  });
+
+  test("a reference in a table's from", () => {
+    expect(
+      errorsOf(`${VAULTS}[keys.API_TOKEN.prod]\nfrom = "op://Private/<your item>/password"\n`),
+    ).toEqual([
+      `${MAP_FILE}: key "API_TOKEN" prod: field "from" has a <...> placeholder for its item: ${REFERENCE_HINT}`,
+    ]);
+  });
+
+  test("a GitHub repo", () => {
+    expect(errorsOf(withPublish(`{ to = "github-actions", repo = "<owner>/<repo>" }`))).toEqual([
+      `${MAP_FILE}: key "API_TOKEN" prod: publish[0]: field "repo" is a <...> placeholder: replace it with the GitHub repository as "owner/name", such as "acme/billing"`,
+    ]);
+  });
+
+  test("a Cloudflare account", () => {
+    expect(
+      errorsOf(
+        withPublish(
+          `{ to = "cloudflare-worker", account = "<Cloudflare account ID>", worker = "api" }`,
+        ),
+      ),
+    ).toEqual([
+      `${MAP_FILE}: key "API_TOKEN" prod: publish[0]: field "account" is a <...> placeholder: replace it with the Cloudflare account ID the Worker belongs to (32 hex characters; wrangler whoami lists it)`,
+    ]);
+  });
+
+  test("a Cloudflare Worker", () => {
+    expect(
+      errorsOf(
+        withPublish(`{ to = "cloudflare-worker", account = "${CF}", worker = "<worker name>" }`),
+      ),
+    ).toEqual([
+      `${MAP_FILE}: key "API_TOKEN" prod: publish[0]: field "worker" is a <...> placeholder: replace it with the Worker's name, the "name" in its wrangler config`,
+    ]);
+  });
+
+  test("every placeholder is its own error", () => {
+    const errors = errorsOf(`[1password]
+account = "<account>"
+
+[keys.A]
+dev = "op://<vault>/a/password"
+
+[keys.A.prod]
+from = "op://Private/<item>/password"
+
+[[keys.A.prod.publish]]
+to = "github-actions"
+repo = "<owner/repo>"
+
+[[keys.A.prod.publish]]
+to = "cloudflare-worker"
+account = "<account ID>"
+worker = "<worker>"
+`);
+    expect(errors.map((e) => e.replace(/ is a .*| has a .*/, ""))).toEqual([
+      `${MAP_FILE}: [1password]: field "account"`,
+      `${MAP_FILE}: key "A" dev: field "from"`,
+      `${MAP_FILE}: key "A" prod: field "from"`,
+      `${MAP_FILE}: key "A" prod: publish[0]: field "repo"`,
+      `${MAP_FILE}: key "A" prod: publish[1]: field "account"`,
+      `${MAP_FILE}: key "A" prod: publish[1]: field "worker"`,
+    ]);
+  });
+
+  test("angle brackets that aren't a placeholder still parse", () => {
+    const result = parseMap(
+      `${VAULTS}[keys.A]\ndev = "op://Private/a > b/password"\nprod = { from = "op://Private/c/password", publish = [{ to = "cloudflare-worker", account = "${CF}", worker = "w<1" }] }\n`,
+      MAP_FILE,
+    );
+    assert(result.ok, JSON.stringify(result));
+  });
+});

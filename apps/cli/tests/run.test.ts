@@ -105,6 +105,29 @@ prod = "op://Private/ci cloudflare token/credential"
       }
     });
 
+    test("selects any key, and joins repeated --only flags", async () => {
+      const second = twoKeys();
+      expect(
+        await cli(
+          ["run", "--env", "prod", "--only", "CLOUDFLARE_API_TOKEN", "--", "true"],
+          second.deps,
+        ),
+      ).toBe(0);
+      expect(second.launcher.launches[0]?.env).toEqual({
+        PATH: "/usr/bin",
+        CLOUDFLARE_API_TOKEN: "ci-token",
+      });
+
+      const both = twoKeys();
+      const args = ["--only", "SESSION_SECRET", "--only", "CLOUDFLARE_API_TOKEN"];
+      expect(await cli(["run", "--env", "prod", ...args, "--", "true"], both.deps)).toBe(0);
+      expect(both.launcher.launches[0]?.env).toEqual({
+        PATH: "/usr/bin",
+        SESSION_SECRET: PROD_VALUE,
+        CLOUDFLARE_API_TOKEN: "ci-token",
+      });
+    });
+
     test("a name the environment doesn't have is a usage error listing the ones it has", async () => {
       for (const name of ["CLOUDFLARE_API_TOKEN", "NOPE"]) {
         const { deps, launcher, calls, stderr } = twoKeys();

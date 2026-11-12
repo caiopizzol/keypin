@@ -276,7 +276,8 @@ function tomlToAdd(
     const found = all.filter(({ place }) => {
       const worker = fieldOf(place, "worker");
       const account = fieldOf(place, "account");
-      if (place.to !== "cloudflare-worker" || worker === null) return true;
+      if (place.to !== "cloudflare-worker" || worker === null || worker === PLACEHOLDER.worker)
+        return true;
       const taken = workers.get(worker);
       if (taken === undefined) {
         workers.set(worker, account ?? "");

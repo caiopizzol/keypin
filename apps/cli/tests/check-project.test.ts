@@ -500,6 +500,24 @@ worker = "billing-worker"
     expect(parseMap(map, MAP).ok).toBe(true);
   });
 
+  test("two unnamed Workers that need one secret each get their own TOML", async () => {
+    const run = setup({
+      files: {
+        [MAP]: MAPPED,
+        [`${ROOT}/.env`]: null,
+        [`${ROOT}/.github/workflows/deploy.yml`]: null,
+        [`${ROOT}/wrangler.toml`]: `[secrets]\nrequired = ["RESEND_API_KEY"]\n`,
+        [`${ROOT}/staging/wrangler.toml`]: `[secrets]\nrequired = ["RESEND_API_KEY"]\n`,
+      },
+    });
+    run.disk.folders.add(`${ROOT}/staging`);
+    expect(await cli(["check", "--json"], run.deps)).toBe(1);
+    const data = json(run.stdout.text);
+    assert(typeof data.add === "string");
+    expect(data.add.match(/worker = "<Worker name>"/g)).toHaveLength(2);
+    expect(JSON.stringify(data.problems)).not.toContain("can't publish");
+  });
+
   test("two accounts' Workers with one name, neither mapped, get TOML that parses", async () => {
     const other = "22222222222222222222222222222222";
     const run = setup({

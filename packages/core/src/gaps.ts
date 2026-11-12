@@ -253,7 +253,7 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
     const flag = envFlag(env, run);
     const other =
       suffix !== undefined &&
-      env === run &&
+      !environments.includes(suffix) &&
       isEnvironmentName(suffix) &&
       !/^(local|dev|development)$/.test(suffix)
         ? `, which maps them as ${run}; if they're the values of another environment, list it in environments and add --env <name>`
@@ -276,7 +276,7 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
     }
     if (elsewhere.length)
       problems.push(
-        `${file.path} sets ${elsewhere.join(", ")}, which keypin.toml maps with no ${env} entry; for a key run keypin import ${file.path} ${elsewhere.join(" ")}${flag} --vault ${PLACEHOLDER.vault}`,
+        `${file.path} sets ${elsewhere.join(", ")}, which keypin.toml maps with no ${env} entry; for a key run keypin import ${file.path} ${elsewhere.join(" ")}${flag} --vault ${PLACEHOLDER.vault}${other}`,
       );
   }
 

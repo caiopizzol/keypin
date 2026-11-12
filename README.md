@@ -66,8 +66,8 @@ It never changes the file: it tells you which lines to remove. See
 
 First, get each prod value into 1Password. Where it is now decides how:
 
-- **In a file**, such as `.env.production`: `keypin import .env.production STRIPE_KEY --env prod --vault Private`.
-  It creates the item and maps it, as for local keys.
+- **In a file**, such as `.env.production`: `keypin import .env.production STRIPE_KEY --env prod --vault Private`,
+  plus `--account` while `keypin.toml` has no account. It creates the item and maps it, as for local keys.
 - **Already in 1Password**: you'll paste its reference below. Open the field's menu and select **Copy Secret
   Reference**.
 - **Only in GitHub or Cloudflare**: keypin can't read it back, and neither can you. Make a new key at the provider

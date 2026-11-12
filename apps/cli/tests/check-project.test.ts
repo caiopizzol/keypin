@@ -282,6 +282,52 @@ worker = "billing-worker"
     expect(leaks(...run.everything())).toBe(false);
   });
 
+  test("an env file named for an environment the map doesn't list says it would import as the first", async () => {
+    const note =
+      ", which maps them as dev; if they're the values of another environment, list it in environments and add --env <name>";
+    const mapped = setup({
+      files: {
+        [MAP]: MAPPED,
+        [`${ROOT}/.env.production`]: `DATABASE_URL=${SENTINEL}\nNEW_KEY=${SENTINEL}\n`,
+      },
+    });
+    await cli(["check", "--json"], mapped.deps);
+    const data = json(mapped.stdout.text);
+    expect(data.notes).toContain(
+      `.env.production sets NEW_KEY, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env.production NAME... --vault <vault>${note}`,
+    );
+
+    const first = setup({
+      files: {
+        [MAP]: `environments = ["production", "staging"]\n${MAPPED.replaceAll("dev =", "production =")}`,
+        [`${ROOT}/.env.production`]: `NEW_KEY=${SENTINEL}\n`,
+      },
+    });
+    await cli(["check", "--json"], first.deps);
+    const listed = json(first.stdout.text);
+    expect(JSON.stringify(listed.notes)).not.toContain("which maps them as");
+    expect(listed.notes).toContain(
+      ".env.production sets NEW_KEY, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env.production NAME... --vault <vault>",
+    );
+    expect(leaks(...mapped.everything(), ...first.everything())).toBe(false);
+  });
+
+  test("an env file named for an unlisted environment flags an already-mapped key too", async () => {
+    const run = setup({
+      files: {
+        [MAP]: `environments = ["dev", "staging", "prod"]\n${MAPPED.replace(
+          'dev = "op://Private/billing dev database url/password"',
+          'staging = "op://Private/billing staging database url/password"',
+        )}`,
+        [`${ROOT}/.env.production`]: `DATABASE_URL=${SENTINEL}\n`,
+      },
+    });
+    await cli(["check", "--json"], run.deps);
+    expect(json(run.stdout.text).problems).toContain(
+      ".env.production sets DATABASE_URL, which keypin.toml maps with no dev entry; for a key run keypin import .env.production DATABASE_URL --vault <vault>, which maps them as dev; if they're the values of another environment, list it in environments and add --env <name>",
+    );
+  });
+
   test("a plain setting left in an env file is a note, and check still exits 0", async () => {
     const run = setup({
       files: { [MAP]: PUBLISHED, [`${ROOT}/.env`]: `PORT=3000\n` },

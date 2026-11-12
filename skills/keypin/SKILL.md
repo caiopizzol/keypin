@@ -26,14 +26,17 @@ values from 1Password only while a command runs.
 3. Ask the user once, in one message, not name by name:
    - which names in `local.unmapped` and `local.elsewhere` are secrets (plain settings such as `PORT` stay);
    - the vault, and the 1Password sign-in address when `keypin.toml` has no `[1password]` account;
-   - whether they use staging. If so, and `keypin.toml` has no `environments` line, add
-     `environments = ["dev", "staging", "prod"]` at the top before importing;
+   - whether they use staging. If so, make sure `environments` lists it before importing: add
+     `environments = ["dev", "staging", "prod"]` at the top, or add `"staging"` before the last name in the line
+     that's there;
    - for each prod or staging secret that no env file sets: is it already in 1Password, or only in GitHub or
      Cloudflare? keypin can't read a value back from those, so it has to be made again at the provider and put in
      1Password by the user.
 4. Import before you paste any TOML, because keypin won't import into a map with a `<...>`. For each env file, run
-   check's suggested `keypin import <file> NAME... --vault <vault>`, adding `--env <name>` for a file such as
-   `.env.staging` and `--account` when check's suggestion has it. Run each without `--yes`; it exits 3 with a
+   check's suggested `keypin import <file> NAME... --vault <vault>`, with `--account` when check's suggestion has
+   it. Add `--env <name>` for every file that holds another environment's values: `.env.staging` gets
+   `--env staging`, and `.env.production` gets `--env prod` when the map calls it `prod`. Without it, import maps
+   the values as the first environment; check's note says when that would happen. Run each without `--yes`; it exits 3 with a
    command for the user. Give the user all of these commands together, and say that each one also asks for a
    1Password approval. If import can't add a table to a key, ask the user for that reference and add it by hand.
 5. Run `keypin check --json` again. When `add` isn't null, show the user that TOML and, with their agreement, paste

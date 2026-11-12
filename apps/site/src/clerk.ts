@@ -1,6 +1,19 @@
 import { createClerkClient, verifyToken } from "@clerk/backend";
-import { TokenVerificationError } from "@clerk/backend/errors";
+import { TokenVerificationError, TokenVerificationErrorReason } from "@clerk/backend/errors";
 import type { Auth } from "./signup";
+
+const OUR_SIDE: readonly string[] = [
+  TokenVerificationErrorReason.InvalidSecretKey,
+  TokenVerificationErrorReason.LocalJWKMissing,
+  TokenVerificationErrorReason.RemoteJWKFailedToLoad,
+  TokenVerificationErrorReason.RemoteJWKInvalid,
+  TokenVerificationErrorReason.RemoteJWKMissing,
+  TokenVerificationErrorReason.JWKFailedToResolve,
+];
+
+export function isBadToken(error: unknown): boolean {
+  return error instanceof TokenVerificationError && !OUR_SIDE.includes(error.reason);
+}
 
 export function clerkAuth(secretKey: string, siteOrigin: string): Auth {
   const clerk = createClerkClient({ secretKey });
@@ -10,8 +23,7 @@ export function clerkAuth(secretKey: string, siteOrigin: string): Auth {
         const claims = await verifyToken(token, { secretKey, authorizedParties: [siteOrigin] });
         return claims.sub;
       } catch (error) {
-        if (error instanceof TokenVerificationError && error.reason.startsWith("token-"))
-          return null;
+        if (isBadToken(error)) return null;
         throw error;
       }
     },

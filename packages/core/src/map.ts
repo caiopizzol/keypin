@@ -418,8 +418,10 @@ function destination(raw: unknown, fail: (message: string) => void): PublishTarg
       "the name of a GitHub environment of the repository, such as production",
       err,
     );
-    if (environment !== undefined && environment.length > 255)
-      err(`field "environment" must be a GitHub environment name, at most 255 characters`);
+    if (environment !== undefined && (environment.length > 255 || /^\.\.?$/.test(environment)))
+      err(
+        `field "environment" must be a GitHub environment name, at most 255 characters and not . or ..`,
+      );
     if (failed || repo === undefined) return undefined;
     const target: PublishTarget = { to, repo, account: repo.split("/")[0] };
     return environment === undefined ? target : { ...target, environment };

@@ -100,8 +100,8 @@ export class GitHubSecretDestination implements Destination {
         this.#login === null
           ? "run gh auth refresh --hostname github.com --scopes repo"
           : `run gh auth switch --hostname github.com --user ${this.#login}, then gh auth refresh --hostname github.com --scopes repo, then switch back to your usual login`;
-    } else if (this.#environment !== null && !(await this.#environmentExists())) {
-      check.reason = `${this.#repo} has no environment named ${this.#environment}`;
+    } else if (this.#environment !== null && (await this.#environmentKey()) === 404) {
+      check.reason = `${this.#repo} has no environment named ${this.#environment}, or ${publisher} can't see its secrets`;
       check.fix = `create it in the repository's Settings > Environments, or fix environment in keypin.toml`;
     } else {
       check.ok = true;
@@ -140,12 +140,12 @@ export class GitHubSecretDestination implements Destination {
     };
   }
 
-  async #environmentExists(): Promise<boolean> {
-    const path = `/repos/${this.#repo}/environments/${encodeURIComponent(this.#environment ?? "")}`;
-    const found = await this.#get(path);
-    if (found.status === 404) return false;
-    if (found.status !== 200) throw new Error(`GitHub GET ${path} returned HTTP ${found.status}`);
-    return true;
+  async #environmentKey(): Promise<number> {
+    const path = `${this.#secrets}/public-key`;
+    const key = await this.#get(path);
+    if (key.status !== 200 && key.status !== 404)
+      throw new Error(`GitHub GET ${path} returned HTTP ${key.status}`);
+    return key.status;
   }
 
   #get(path: string) {

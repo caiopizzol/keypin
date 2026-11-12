@@ -171,6 +171,7 @@ describe("keypin publish", () => {
 
     const again = setup({ terminal: "yes", disk: first.disk });
     expect(await cli(["publish", "STRIPE_API_KEY"], again.deps)).toBe(0);
+    expect(again.asked).toEqual(["Type yes to write (this plan needs approval): "]);
     expect(again.stderr.text).toContain(
       `needs approval: first write to ${environment}:STRIPE_API_KEY (account acme)`,
     );

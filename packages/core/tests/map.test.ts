@@ -293,8 +293,12 @@ describe("unknown fields are errors that name the file, the key and the field", 
       `${MAP_FILE}: key "A" prod: publish[0]: field "environment" is a <...> placeholder: replace it with the name of a GitHub environment of the repository, such as production`,
     ]);
     expect(errorsOf(target(`"${"e".repeat(256)}"`))).toEqual([
-      `${MAP_FILE}: key "A" prod: publish[0]: field "environment" must be a GitHub environment name, at most 255 characters`,
+      `${MAP_FILE}: key "A" prod: publish[0]: field "environment" must be a GitHub environment name, at most 255 characters and not . or ..`,
     ]);
+    for (const dots of ['"."', '".."'])
+      expect(errorsOf(target(dots))).toEqual([
+        `${MAP_FILE}: key "A" prod: publish[0]: field "environment" must be a GitHub environment name, at most 255 characters and not . or ..`,
+      ]);
   });
 
   test("a keypin 0.4 key with env says to name the table after the variable", () => {

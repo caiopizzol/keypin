@@ -113,27 +113,29 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
   };
 
   const repo = githubPlace(scan, null);
-  const jobs = new Map<string, { usedBy: Set<string>; environments: Set<string | null> }>();
-  for (const workflow of scan.workflows) {
-    for (const use of workflow.refs.uses) {
-      for (const name of use.secrets) {
-        if (name.startsWith("GITHUB_")) continue;
-        const job = jobs.get(name) ?? { usedBy: new Set(), environments: new Set() };
-        jobs.set(name, job);
-        job.usedBy.add(workflow.path);
-        job.environments.add(use.environment);
-      }
-    }
-  }
-  const declared = new Map<string, string[]>();
-  for (const [name, job] of jobs) {
-    const place = jobPlace(scan, keys, name, job.environments) ?? repo;
-    if (place === repo)
-      declared.set(
-        name,
-        [...job.environments].filter((e): e is string => e !== null),
-      );
-    for (const path of job.usedBy) need(name, place, path);
+  const uses = scan.workflows.flatMap((workflow) =>
+    workflow.refs.uses.flatMap(({ environment, secrets }) =>
+      secrets
+        .filter((name) => !name.startsWith("GITHUB_"))
+        .map((name) => ({ name, path: workflow.path, environment })),
+    ),
+  );
+  const declared = new Map<string, Set<string>>();
+  for (const use of uses) {
+    const literal = literalEnvironment(use.environment);
+    const environment = literal === null ? null : githubPlace(scan, literal);
+    const alone = uses
+      .filter((u) => u.name === use.name)
+      .every((u) => literalEnvironment(u.environment)?.toLowerCase() === literal?.toLowerCase());
+    const place =
+      environment !== null &&
+      (publishes(keys, use.name, environment) ||
+        (alone && !publishes(keys, use.name, repo) && repo.holds(use.name) === false))
+        ? environment
+        : repo;
+    if (place === repo && use.environment !== null)
+      declared.set(use.name, (declared.get(use.name) ?? new Set()).add(use.environment));
+    need(use.name, place, use.path);
   }
   const accounts = new Map<string, Set<string | null>>();
   for (const worker of scan.workers)
@@ -162,7 +164,7 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
       n.holds === true
         ? `${place.label} has it, but keypin.toml doesn't publish it there`
         : n.holds === false
-          ? `${place.label} doesn't have it${maybeEnvironment(place === repo ? (declared.get(n.name) ?? []) : [])}, and keypin.toml doesn't publish it there`
+          ? `${place.label} doesn't have it${maybeEnvironment(place === repo ? [...(declared.get(n.name) ?? [])] : [])}, and keypin.toml doesn't publish it there`
           : `keypin.toml doesn't publish it to ${place.label}`;
     const edit = add.edits.get(`${n.name} ${place.id}`);
     problems.push(`${n.name}: ${uses}; ${held}. ${edit ?? "Add the TOML below"}`);
@@ -230,22 +232,14 @@ function mappedIn(map: KeysMap | null, key: KeyEntry | null, place: Place): Envi
   return null;
 }
 
-function jobPlace(
-  scan: ProjectScan,
-  map: KeysMap | null,
-  name: string,
-  environments: ReadonlySet<string | null>,
-): Place | null {
-  const literal = [...environments].filter((e): e is string => e !== null && !e.includes("${{"));
-  const key = map?.keys.filter((k) => k.name.toUpperCase() === name) ?? [];
-  const mapped = (place: Place) => key.some((k) => mappedIn(map, k, place) !== null);
-  for (const environment of literal) {
-    const place = githubPlace(scan, environment);
-    if (mapped(place)) return place;
-  }
-  const repo = githubPlace(scan, null);
-  if (mapped(repo) || repo.holds(name) === true) return null;
-  return environments.size === 1 && literal.length === 1 ? githubPlace(scan, literal[0]) : null;
+function literalEnvironment(environment: string | null): string | null {
+  return environment === null || environment.includes("${{") ? null : environment;
+}
+
+function publishes(map: KeysMap | null, name: string, place: Place): boolean {
+  return (map?.keys ?? []).some(
+    (k) => k.name.toUpperCase() === name && mappedIn(map, k, place) !== null,
+  );
 }
 
 function githubPlace(scan: ProjectScan, environment: string | null): Place & { hidden: boolean } {

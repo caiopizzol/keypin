@@ -141,8 +141,13 @@ function jobEnvironments(workflows: ProjectScan["workflows"]): string[] {
   const names = new Map<string, string>();
   for (const workflow of workflows)
     for (const use of workflow.refs.uses)
-      if (use.environment !== null && !use.environment.includes("${{"))
-        names.set(use.environment.toLowerCase(), use.environment);
+      if (
+        use.environment !== null &&
+        !use.environment.includes("${{") &&
+        use.secrets.some((name) => !name.startsWith("GITHUB_"))
+      )
+        if (!names.has(use.environment.toLowerCase()))
+          names.set(use.environment.toLowerCase(), use.environment);
   return [...names.values()];
 }
 

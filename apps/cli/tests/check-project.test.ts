@@ -719,15 +719,107 @@ environment = "production"
     expect(added(run.stdout.text)).not.toContain("environment =");
   });
 
+  const JOBS = (...jobs: [string, string | null, string][]) =>
+    `on: push\njobs:\n${jobs
+      .map(
+        ([job, environment, secret]) =>
+          `  ${job}:\n${environment === null ? "" : `    environment: ${environment}\n`}    runs-on: ubuntu-latest\n    steps:\n      - run: echo \${{ secrets.${secret} }}\n`,
+      )
+      .join("")}`;
+  const PRODUCTION_ONLY = PUBLISHED.replace(
+    'repo = "acme/billing"\n',
+    'repo = "acme/billing"\nenvironment = "production"\n',
+  );
+  const readsBy = (held: Record<string, string[]>, reads: string[]) => ({
+    githubSecrets: async (_repo: string, _login: string | null, environment?: string) => {
+      reads.push(environment ?? "repo");
+      const names = held[environment ?? "repo"] ?? [];
+      return { ok: true as const, secrets: names.map((name) => ({ name, updatedAt: null })) };
+    },
+  });
+
+  test.each([
+    ["another environment", "staging"],
+    ["no environment", null],
+  ])("a secret mapped to one job's environment still fails for a job with %s", async (_, other) => {
+    const reads: string[] = [];
+    const run = setup({
+      files: {
+        [MAP]: PRODUCTION_ONLY,
+        [`${ROOT}/.github/workflows/deploy.yml`]: JOBS(
+          ["deploy", "production", "STRIPE_API_KEY"],
+          ["other", other, "STRIPE_API_KEY"],
+        ),
+      },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+      deps: readsBy({ production: ["STRIPE_API_KEY"] }, reads),
+    });
+    expect(await cli(["check", "--json"], run.deps)).toBe(1);
+    const data = json(run.stdout.text);
+    expect(data.production).toContainEqual(
+      expect.objectContaining({ place: "acme/billing (environment production)", ok: true }),
+    );
+    expect(data.production).toContainEqual(
+      expect.objectContaining({ name: "STRIPE_API_KEY", place: "acme/billing", ok: false }),
+    );
+  });
+
+  test("case variants of one environment are one place", async () => {
+    const reads: string[] = [];
+    const run = setup({
+      files: {
+        [MAP]: MAPPED,
+        [`${ROOT}/.github/workflows/deploy.yml`]: JOBS(
+          ["a", "Production", "STRIPE_API_KEY"],
+          ["b", "production", "STRIPE_API_KEY"],
+        ),
+      },
+      deps: readsBy({}, reads),
+    });
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(reads).toEqual(["repo", "Production"]);
+    expect(added(run.stdout.text)).toContain('environment = "Production"');
+  });
+
+  test("a repo whose secrets couldn't be read gets no environment suggestion", async () => {
+    const run = setup({
+      files: {
+        [MAP]: MAPPED,
+        [`${ROOT}/.github/workflows/deploy.yml`]: ENV_WORKFLOW("production"),
+      },
+      github: { ok: false, reason: "HTTP 403" },
+    });
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(added(run.stdout.text)).not.toContain("environment =");
+  });
+
+  test("an environment whose jobs use only GITHUB_ secrets isn't read", async () => {
+    const reads: string[] = [];
+    const run = setup({
+      files: {
+        [MAP]: MAPPED,
+        [`${ROOT}/.github/workflows/deploy.yml`]: JOBS(
+          ["test", null, "STRIPE_API_KEY"],
+          ["pages", "github-pages", "GITHUB_TOKEN"],
+        ),
+      },
+      deps: readsBy({}, reads),
+    });
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(reads).toEqual(["repo"]);
+  });
+
   test("a job whose environment is an expression keeps the repo-secret note", async () => {
+    const reads: string[] = [];
     const run = setup({
       files: {
         [MAP]: MAPPED,
         [`${ROOT}/.github/workflows/deploy.yml`]: ENV_WORKFLOW("${{ inputs.target }}"),
       },
+      deps: readsBy({}, reads),
     });
     expect(await cli(["check"], run.deps)).toBe(1);
-    expect(run.calls).toEqual(expect.not.arrayContaining([expect.stringMatching(/ in /)]));
+    expect(reads).toEqual(["repo"]);
     expect(run.stdout.text).toContain(
       "acme/billing doesn't have it as a repo secret (it may be a secret of the environment ${{ inputs.target }}, which check doesn't read)",
     );

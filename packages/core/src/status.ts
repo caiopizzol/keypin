@@ -10,7 +10,6 @@ import {
 import { latestPerSecret } from "./plan";
 import { sameRef } from "./reference";
 import type { Registry } from "./registry";
-import { type Rotation, ROTATIONS_VERSION, rotateCommand, unfinishedRotation } from "./rotations";
 import { ownedBy } from "./state";
 import { addDays, DUE_SOON_DAYS, isDay, periodDays } from "./rotation";
 import type { Generation } from "./secret";
@@ -25,8 +24,7 @@ export type ProblemKind =
   | "due-soon"
   | "never-published"
   | "missing-receipt"
-  | "stale-receipt"
-  | "rotation-unfinished";
+  | "stale-receipt";
 
 export interface Problem {
   kind: ProblemKind;
@@ -62,7 +60,6 @@ export interface StatusInput {
   receipts: readonly Receipt[];
   metadata(ref: KeyRef): VaultMetadata | null;
   generation?(keyId: KeyId, environment: Environment): Generation | undefined;
-  rotations?: readonly Rotation[];
   today: string;
 }
 
@@ -71,7 +68,7 @@ export interface Status {
   problems: Problem[];
 }
 
-const NOTICES: readonly ProblemKind[] = ["due-soon", "never-published", "rotation-unfinished"];
+const NOTICES: readonly ProblemKind[] = ["due-soon", "never-published"];
 
 export function buildStatus(input: StatusInput): Status {
   if (!isDay(input.today)) throw new Error(`today must be YYYY-MM-DD, got "${input.today}"`);
@@ -170,18 +167,6 @@ export function buildStatus(input: StatusInput): Status {
           add(
             "never-published",
             `${label}: not published yet to ${unpublished.join(", ")}; run ${publish}`,
-          );
-        }
-
-        const rotation = unfinishedRotation(
-          { version: ROTATIONS_VERSION, rotations: [...(input.rotations ?? [])] },
-          owner,
-          entry.ref,
-        );
-        if (rotation) {
-          add(
-            "rotation-unfinished",
-            `${label}: a rotation started ${rotation.startedAt} is at stage "${rotation.stage}"; run ${rotateCommand(key.name, environment, publishEnvironment(result.map))} to continue`,
           );
         }
 

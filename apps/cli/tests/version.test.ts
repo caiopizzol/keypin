@@ -29,7 +29,7 @@ describe("help", () => {
   test("--help after any command prints the usage and runs nothing", async () => {
     for (const args of [
       ["publish", "--help"],
-      ["rotate", "x", "-h"],
+      ["status", "-h"],
       ["run", "--help", "--", "sh"],
     ]) {
       const { deps, stdout, stderr } = fakeDeps();

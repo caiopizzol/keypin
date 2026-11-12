@@ -105,7 +105,7 @@ describe("ghToken", () => {
     );
   });
 
-  test("refreshing is the default, so publish and rotate ask gh without --no-refresh", async () => {
+  test("refreshing is the default, so publish asks gh without --no-refresh", async () => {
     process.env.PATH = `${bin}:/usr/bin:/bin`;
     expect(await asked(() => ghToken("someone"))).toEqual([
       "auth token --hostname github.com --user someone",

@@ -26,27 +26,6 @@ const ACCOUNT = "11111111111111111111111111111111";
 const MAP_FILE = "/work/billing/keypin.toml";
 const WRANGLER = "/home/me/Library/Preferences/.wrangler/config/default.toml";
 
-const ROTATE_MAP = `
-[1password]
-account = "my.1password.com"
-
-[keys.CLOUDFLARE_API_TOKEN]
-rotate_every = "90d"
-
-[keys.CLOUDFLARE_API_TOKEN.prod]
-from = "op://Private/billing cloudflare token/credential"
-
-[[keys.CLOUDFLARE_API_TOKEN.prod.publish]]
-to = "cloudflare-worker"
-account = "${ACCOUNT}"
-worker = "billing-worker"
-
-[keys.CLOUDFLARE_API_TOKEN.prod.rotate]
-provider = "cloudflare-account-token"
-account = "${ACCOUNT}"
-admin = "op://Private/cloudflare token admin/credential"
-`;
-
 function setup(
   options: {
     map?: string;
@@ -253,37 +232,6 @@ describe("keypin check", () => {
     ]);
   });
 
-  test("a rotate section's missing admin item is a problem", async () => {
-    const run = setup({
-      map: ROTATE_MAP,
-      values: { "billing cloudflare token": SENTINEL },
-    });
-    expect(await cli(["check"], run.deps)).toBe(1);
-    expect(run.calls).toEqual(["read billing cloudflare token", "read cloudflare token admin"]);
-    const text = run.stdout.text;
-    expect(text).toContain("  ok     from op://Private/billing cloudflare token/credential");
-    expect(text).toContain("  FAILED rotate admin op://Private/cloudflare token admin/credential");
-    expect(text).toContain(
-      `  no item "cloudflare token admin" (CLOUDFLARE_API_TOKEN (prod) rotate admin)`,
-    );
-  });
-
-  test("a rotate section whose admin item exists checks out", async () => {
-    const run = setup({
-      map: ROTATE_MAP,
-      values: {
-        "billing cloudflare token": SENTINEL,
-        "cloudflare token admin": `${SENTINEL}-admin`,
-      },
-    });
-    expect(await cli(["check", "--json"], run.deps)).toBe(0);
-    const data = report(run.stdout.text);
-    expect(data.keys[0]).toMatchObject({
-      rotateAdmin: { reference: "op://Private/cloudflare token admin/credential", ok: true },
-    });
-    expect(leaks(...run.everything())).toBe(false);
-  });
-
   test("a failed account check is a problem; nothing is read twice or written", async () => {
     const run = setup({ badAccount: ["cloudflare-worker:billing-worker"] });
     expect(await cli(["check"], run.deps)).toBe(1);
@@ -350,7 +298,6 @@ describe("keypin check", () => {
       key: "STRIPE_API_KEY",
       environment: "prod",
       from: { reference: "op://Private/billing stripe api key/password", ok: true, problem: null },
-      rotateAdmin: null,
       destinations: [
         {
           destination: `cloudflare-worker:${ACCOUNT}:billing-worker:STRIPE_API_KEY`,
@@ -428,7 +375,7 @@ describe("keypin check", () => {
       expect(await asked()).toEqual(["auth token --hostname github.com --user alice --no-refresh"]);
     });
 
-    test("publish and rotate's publisher still lets gh refresh", async () => {
+    test("publish's publisher still lets gh refresh", async () => {
       const asked = await fakeGh();
       const target: PublishTarget = { to: "github-actions", repo: "acme/billing", account: "acme" };
       const check = await realDestination(target, {

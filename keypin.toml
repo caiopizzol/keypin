@@ -10,8 +10,3 @@ from = "op://App Secrets/keypin-dev prod cloudflare deploy token/password"
 [[keys.CLOUDFLARE_API_TOKEN.prod.publish]]
 to = "github-actions"
 repo = "caiopizzol/keypin"
-
-[keys.CLOUDFLARE_API_TOKEN.prod.rotate]
-provider = "cloudflare-account-token"
-account = "e48c9afabc4ff0cda321d0cf69b8943f"
-admin = "op://App Secrets/shared cloudflare token admin/password"

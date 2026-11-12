@@ -5,7 +5,8 @@ ran the real CLI code in a sandbox where 1Password, GitHub and Cloudflare were f
 item below was checked against the code or reproduced; sandbox-only artifacts are left out.
 
 Scenarios: set up a new project, finish setup after the user names the items, run with dev keys, publish a first
-write, republish after a change (`--yes` allowed), rotate an overdue token, and finish (revoke) a rotation.
+write, republish after a change (`--yes` allowed), rotate an overdue token, and finish (revoke) a rotation. keypin
+has since removed `rotate`; the items below that concerned only `rotate` are gone from this list.
 
 All seven agents stayed safe: none used `--yes` where it can't approve, none printed a value, and each handed the
 approval command back to the user.
@@ -33,20 +34,16 @@ The same seven scenarios, run again against these fixes:
 
 - **`discover` didn't say where the GitHub login came from.** It now says `as <login> (git config
   github.account)` or `as the active gh login`, and `publish` picks its GitHub login the same way.
-- **1. Without a terminal, `publish` and `rotate` stopped before showing the evidence.** `--plan` reads the
-  value, runs the account checks and prints the full plan without a terminal: the generation read from the item,
-  what would be written where, and which steps need a typed `yes`. For a revoke run, it adds the old token's
-  last-used time. It writes nothing, and exits 3 with the command to run, or 0 when a publish has nothing to
-  write. It's a flag, not the default,
-  because reading a value makes 1Password ask the user to approve the command, and a plain run without a
-  terminal stops before reading so the user approves only once. The note to coordinate with a separate revoke
-  change was stale: that change was #19, which merged minutes before this list did.
+- **1. Without a terminal, `publish` stopped before showing the evidence.** `--plan` reads the value, runs the
+  account checks and prints the full plan without a terminal: the generation read from the item, what would be
+  written where, and which steps need a typed `yes`. It writes nothing, and exits 3 with the command to run, or 0
+  when there's nothing to write. It's a flag, not the default, because reading a value makes 1Password ask the
+  user to approve the command, and a plain run without a terminal stops before reading so the user approves only
+  once.
 - **5. No way to check vault items before publishing.** `keypin check` checks that the map parses, that each
   referenced item and field exists, and that each login reaches the pinned account, with a fix for each
   mismatch. It writes nothing, prints no value, and exits 1 with one line per problem. It doesn't report
   `rotated` dates or whether a key is due for rotation; `status` does.
-- **10. Rotation's admin token wasn't checked.** `keypin check` checks that each `rotate` section's admin item
-  and field exist. It doesn't check the admin token's `rotated` date or whether Cloudflare still accepts it.
 - **3. (part) An empty map looked healthy.** `keypin check` reports a map with no keys as a problem, and an
   unregistered project as a note. `status` still shows an empty map with no problem.
 - **2. `init` and `discover` didn't connect.** `keypin discover --write` saves the draft as `keypin.toml` and
@@ -64,7 +61,7 @@ The same seven scenarios, run again against these fixes:
   always `"unknown"`.
 - **11. "Nothing to write" trusted the receipt.** keypin can't read a destination's secret, only its own
   receipts. `publish` now says "the receipts on this machine show every destination already got this
-  generation", and `rotate`'s revoke run says the same of the new generation.
+  generation".
 
 ## Getting started
 
@@ -94,10 +91,8 @@ problems in `status` for registered projects, or a single `keypin doctor`.
 - "Generation" is never defined in the docs. Say it's a fingerprint of the value.
 - `status --json` fields such as `stale: null` aren't documented.
 - Timestamps are UTC while `status`'s `today` is local, so "started today" can read as a different day.
-- Rotation stages (`issued`, `published`, …) aren't explained.
 - Without a terminal, a plan with no approvals stops with "Add --yes, or confirm in a terminal", but the message
   doesn't say this plan is one `--yes` can approve. Label each plan "routine" or "needs a typed yes".
-- `rotate`'s first-run stop doesn't say it's run 1 of 2.
 - `keypin run` warns "no dev entry, not added" on every run for prod-only keys, which reads like a problem.
 - The approval command uses the resolved path (`/private/tmp/...` on macOS), not the folder the user is in.
 - Install: this Mac had Bun 1.3.12 and keypin needs 1.4.4. The runtime message names the fix, but the README

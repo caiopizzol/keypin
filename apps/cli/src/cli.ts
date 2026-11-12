@@ -3,7 +3,6 @@ import { discover } from "./commands/discover";
 import { importEnv } from "./commands/import";
 import { init } from "./commands/init";
 import { publish } from "./commands/publish";
-import { rotate } from "./commands/rotate";
 import { run } from "./commands/run";
 import { status } from "./commands/status";
 import { unregister } from "./commands/unregister";
@@ -35,10 +34,6 @@ export const USAGE = `Usage:
                            the plan and the command to approve it, and writes nothing
   keypin publish --all [--env <name>] [--yes | --plan]
                            the same for every key with destinations, with one plan and one approval
-  keypin rotate <VARIABLE> [--env <name>] [--yes | --plan]
-                           replace a token with a new one that has the same permissions, publish it,
-                           and revoke the old one on the next run; --plan reads and checks the tokens,
-                           prints this run's plan and the command to approve it, and changes nothing
   keypin --version         print the version
 
 Exit codes:
@@ -59,7 +54,6 @@ const COMMANDS = new Map<string, (args: string[], deps: Deps) => Promise<number>
   ["import", importEnv],
   ["run", run],
   ["publish", publish],
-  ["rotate", rotate],
 ]);
 
 export async function cli(argv: string[], deps: Deps): Promise<number> {

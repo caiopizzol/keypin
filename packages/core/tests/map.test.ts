@@ -518,85 +518,41 @@ describe("wrong kinds and values", () => {
   });
 });
 
-describe("a rotate section", () => {
-  const ACCOUNT = "e48c9afabc4ff0cda321d0cf69b8943f";
-  const mapWith = (fields: string, section = "rotate") => `${VAULTS}
+describe("a rotate section, from before keypin rotate was removed", () => {
+  const mapWith = (section: string) => `${VAULTS}
 [keys.CLOUDFLARE_API_TOKEN]
+rotate_every = "90d"
 
 [keys.CLOUDFLARE_API_TOKEN.prod]
 from = "op://Private/site deploy token/password"
 
 [keys.CLOUDFLARE_API_TOKEN.prod.${section}]
-${fields}
+provider = "cloudflare-account-token"
+account = "e48c9afabc4ff0cda321d0cf69b8943f"
+admin = "op://Private/shared cloudflare token admin/password"
 `;
+  const gone = (section: string) =>
+    `${MAP_FILE}: key "CLOUDFLARE_API_TOKEN" prod: the "${section}" section is no longer supported, because keypin rotate is gone; delete it. To rotate the key by hand, replace the value in 1Password, set the item's rotated date to today, then run keypin publish`;
 
-  test("names the provider, the account and the admin token's reference", () => {
+  test("says to delete it and how to rotate by hand", () => {
+    expect(errorsOf(mapWith("rotate"))).toEqual([gone("rotate")]);
+  });
+
+  test("the keypin 0.5 issue section says the same", () => {
+    expect(errorsOf(mapWith("issue"))).toEqual([gone("issue")]);
+  });
+
+  test("rotate_every and the key still parse once the section is deleted", () => {
     const result = parseMap(
-      mapWith(
-        `provider = "cloudflare-account-token"\naccount = "${ACCOUNT}"\nadmin = "op://Private/shared cloudflare token admin/password"`,
-      ),
+      mapWith("rotate").replace(/\n\[keys\.CLOUDFLARE_API_TOKEN\.prod\.rotate\][^]*$/, "\n"),
       MAP_FILE,
     );
-    if (!result.ok) throw new Error(result.errors.join("\n"));
-    expect(result.map.keys[0]?.environments.prod?.rotate).toEqual({
-      provider: "cloudflare-account-token",
-      account: ACCOUNT,
-      admin: {
-        kind: "1password",
-        account: "my.1password.com",
-        vault: "Private",
-        item: "shared cloudflare token admin",
-        section: null,
-        field: "password",
-      },
+    assert(result.ok, JSON.stringify(result));
+    expect(result.map.keys[0]).toMatchObject({ name: "CLOUDFLARE_API_TOKEN", rotateEvery: "90d" });
+    expect(result.map.keys[0]?.environments.prod).toEqual({
+      ref: expect.objectContaining({ item: "site deploy token" }),
+      publish: [],
     });
-  });
-
-  test("an entry without one has no rotate", () => {
-    const result = parseMap(VALID_MAP, MAP_FILE);
-    if (!result.ok) throw new Error(result.errors.join("\n"));
-    expect(result.map.keys[0]?.environments.prod).not.toHaveProperty("rotate");
-  });
-
-  test("the keypin 0.5 issue section says to rename it to rotate", () => {
-    expect(
-      errorsOf(
-        mapWith(
-          `provider = "cloudflare-account-token"\naccount = "${ACCOUNT}"\nadmin = "op://Private/a/password"`,
-          "issue",
-        ),
-      ),
-    ).toEqual([
-      `${MAP_FILE}: key "CLOUDFLARE_API_TOKEN" prod: the "issue" section is from keypin 0.5; rename it to "rotate" (see docs/configuration.md for the current format)`,
-    ]);
-  });
-
-  test.each([
-    [`account = "${ACCOUNT}"\nadmin = "op://Private/a/password"`, `missing field "provider"`],
-    [
-      `provider = "aws-iam-key"\naccount = "${ACCOUNT}"\nadmin = "op://Private/a/password"`,
-      `field "provider" must be one of: cloudflare-account-token`,
-    ],
-    [
-      `provider = "cloudflare-account-token"\naccount = "personal"\nadmin = "op://Private/a/password"`,
-      `field "account" must be a Cloudflare account ID (32 hex characters)`,
-    ],
-    [
-      `provider = "cloudflare-account-token"\naccount = "${ACCOUNT}"\nadmin = "op://Private/site deploy token/credential"`,
-      `field "admin" names the key's own item; the admin token needs its own item`,
-    ],
-    [
-      `provider = "cloudflare-account-token"\naccount = "${ACCOUNT}"\nadmin = "op://private/Site Deploy Token/credential"`,
-      `field "admin" names the key's own item; the admin token needs its own item`,
-    ],
-    [
-      `provider = "cloudflare-account-token"\naccount = "${ACCOUNT}"\nadmin = "op://Private/a/password"\npermissions = []`,
-      `unknown field "permissions"`,
-    ],
-  ])("%s is refused", (fields, message) => {
-    expect(errorsOf(mapWith(fields))).toEqual([
-      `${MAP_FILE}: key "CLOUDFLARE_API_TOKEN" prod: rotate: ${message}`,
-    ]);
   });
 });
 

@@ -1,13 +1,4 @@
-import type {
-  Destination,
-  Files,
-  RotateSpec,
-  PublishTarget,
-  Secret,
-  StoreRead,
-  TokenProvider,
-  VaultBackend,
-} from "@keypin/core";
+import type { Destination, Files, PublishTarget, StoreRead, VaultBackend } from "@keypin/core";
 
 export interface Child {
   exited: Promise<number>;
@@ -69,7 +60,6 @@ export interface Deps {
   launch: Launch;
   onSignals: OnSignals;
   destination(target: PublishTarget, publisher: Publisher): Destination;
-  provider(spec: RotateSpec, admin: Secret): TokenProvider;
   wranglerLoginFile(): Promise<string | null>;
   lock: Lock;
   isTerminal: boolean;

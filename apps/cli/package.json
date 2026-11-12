@@ -15,7 +15,6 @@
     "@keypin/core": "workspace:*",
     "@keypin/destination-cloudflare": "workspace:*",
     "@keypin/destination-github": "workspace:*",
-    "@keypin/provider-cloudflare": "workspace:*",
     "@keypin/vault-1password": "workspace:*"
   },
   "devDependencies": {

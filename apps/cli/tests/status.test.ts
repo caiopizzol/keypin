@@ -226,55 +226,18 @@ describe("keypin status", () => {
   });
 });
 
-describe("keypin status: rotations", () => {
-  test("an unfinished rotation is a notice that says how to continue", async () => {
+describe("keypin status: a rotations.json left by keypin rotate", () => {
+  test("is ignored, even when it isn't valid JSON", async () => {
     const files = memoryFiles({
       [REGISTRY]: registryWith("/work/web"),
       "/work/web/keypin.toml": WEB_MAP,
-      "/home/me/.local/state/keypin/rotations.json": JSON.stringify({
-        version: 2,
-        rotations: [
-          {
-            id: "r1",
-            keyId: "SESSION_SECRET",
-            environment: "prod",
-            mapFile: "/work/web/keypin.toml",
-            item: {
-              kind: "1password",
-              account: "my.1password.com",
-              vault: "Private",
-              item: "web prod session secret",
-              section: null,
-              field: "password",
-            },
-            provider: "cloudflare-account-token",
-            account: "11111111111111111111111111111111",
-            stage: "published",
-            startedAt: "2026-11-10T12:00:00.000Z",
-            updatedAt: "2026-11-10T12:00:05.000Z",
-            old: {
-              id: "a".repeat(32),
-              name: "old",
-              expiresOn: null,
-              generation: "0123456789abcdef",
-            },
-            new: {
-              id: "b".repeat(32),
-              name: "new",
-              expiresOn: null,
-              generation: "fedcba9876543210",
-            },
-          },
-        ],
-      }),
+      "/home/me/.local/state/keypin/rotations.json": "{ not json",
     });
     const fake = fakeVault({ metadata: METADATA });
     const { deps, stdout } = fakeDeps({ disk: files, backend: fake.vault });
-    await cli(["status"], deps);
-    expect(stdout.text).toContain(
-      `rotation-unfinished: SESSION_SECRET (prod): a rotation started 2026-11-10T12:00:00.000Z is at stage "published"; run keypin rotate SESSION_SECRET to continue`,
-    );
-    expect(stdout.text).toMatch(/Notices \(2\):/);
+    expect(await cli(["status"], deps)).toBe(0);
+    expect(stdout.text).not.toContain("rotation");
     expect(stdout.text).toContain("never-published: SESSION_SECRET (prod)");
+    expect(files.contents.get("/home/me/.local/state/keypin/rotations.json")).toBe("{ not json");
   });
 });

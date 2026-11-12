@@ -20,8 +20,8 @@
 </p>
 
 Each project lists its keys in a `keypin.toml`: names, vault items and destinations, never values. keypin runs your
-commands with dev keys, publishes keys to GitHub Actions and Cloudflare Workers, and rotates Cloudflare API tokens.
-It reads values from 1Password only while a command runs, and never writes them to disk.
+commands with dev keys, publishes keys to GitHub Actions and Cloudflare Workers, and reminds you when a key is due
+for rotation. It reads values from 1Password only while a command runs, and never writes them to disk.
 
 ## Install
 
@@ -110,7 +110,6 @@ keypin run -- <command>      # run a command with the project's dev keys (--env 
 keypin publish <VARIABLE>    # check each destination's account, then write the key
 keypin publish --all         # publish every key, with one plan and one approval
 keypin publish --all --plan  # show that plan without a terminal, and write nothing
-keypin rotate <VARIABLE>     # replace a Cloudflare API token, then revoke the old one
 ```
 
 ### Check a setup
@@ -118,7 +117,7 @@ keypin rotate <VARIABLE>     # replace a Cloudflare API token, then revoke the o
 `keypin check` checks a project before you publish, and changes nothing:
 
 - the map parses;
-- each `op://` reference's item and field exist, including a `rotate` section's admin item;
+- each `op://` reference's item and field exist;
 - for each destination, the login keypin would use, who it acts as, the account it reaches, and how to fix a
   mismatch.
 
@@ -126,12 +125,19 @@ It reads each value to check its field, so 1Password asks you to approve it, and
 also notes a login stored in plain text, such as wrangler's. It exits 0 when everything checks out, and 1 with
 one line per problem. `--json` prints the same as JSON.
 
-Add `--plan` to `publish` or `rotate` to see the plan without a terminal. It changes nothing, and prints the
-command that does.
+Add `--plan` to `publish` to see the plan without a terminal. It changes nothing, and prints the command that
+does.
 
-`import`, `publish` and `rotate` show a plan and wait for you to type `yes`. `--yes` approves `import`, which only
-creates new items. For `publish` and `rotate`, it skips that only for routine updates: it never approves a first
-write, a changed account or vault item, or a revoke. `keypin --help` lists the exit codes.
+`import` and `publish` show a plan and wait for you to type `yes`. `--yes` approves `import`, which only creates
+new items. For `publish`, it skips that only for routine updates: it never approves a first write, or a changed
+account or vault item. `keypin --help` lists the exit codes.
+
+### Rotate a key
+
+`keypin status` shows when each key is due, from its `rotate_every` and its item's `rotated` date. To rotate one,
+make a new value where the key comes from (the provider's dashboard, for example), paste it into the 1Password
+field, set `rotated` to today, then run `keypin publish <VARIABLE>`. Revoke the old value once everything uses the
+new one.
 
 ## Docs
 
@@ -143,8 +149,6 @@ write, a changed account or vault item, or a revoke. `keypin --help` lists the e
   1Password.
 - [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md): destinations, account checks and
   approvals.
-- [Rotation](https://github.com/caiopizzol/keypin/blob/main/docs/rotation.md): how `rotate` works, and the admin
-  token it needs.
 - [Notes](https://github.com/caiopizzol/keypin/blob/main/docs/notes.md): `wrangler dev`, and the files keypin keeps.
 - [Development](https://github.com/caiopizzol/keypin/blob/main/docs/development.md): install from source, checks and
   releases.

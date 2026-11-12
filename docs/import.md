@@ -76,4 +76,6 @@ reads `.dev.vars` (see [Notes](notes.md)).
 Among the variables it was asked to import, it also names each one it left only in the file, with the reason under
 **Skipped**: one that isn't a variable name, has a `$`, is mapped only in another environment, shares an item with
 another, whose item exists with another value or can't be read, or that is mapped with a value the vault doesn't
-match or that can't be read. Move those by hand. An empty value needs nothing.
+match or that can't be read. Move those by hand. An empty value isn't imported. If the map already has that
+variable, its empty line is one to remove too: `keypin run` warns about it, and a tool that reads the file, such as
+`wrangler dev`, would use the empty value instead of the vault's.

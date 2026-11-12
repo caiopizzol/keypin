@@ -43,6 +43,7 @@ interface Skip {
   onlyInFile: boolean;
   exists?: boolean;
   mapped?: { ref: KeyRef; value: Secret };
+  mappedEmpty?: boolean;
 }
 
 interface Target {
@@ -67,8 +68,8 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
   const environment = runEnvironment(target.map ?? { environments: DEFAULT_ENVIRONMENTS });
   const project = basename(deps.cwd);
   const file = envValues(text);
-  if (!file.size) throw new Error(`${envPath} sets no variables; nothing to import`);
   const values = selected(file, request.names, envPath);
+  if (!file.size) throw new Error(`${envPath} sets no variables; nothing to import`);
 
   const planned: Import[] = [];
   let skips: Skip[] = [];
@@ -83,7 +84,13 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
         reason: "not a variable name (letters, digits and _, not a digit first)",
         onlyInFile: true,
       });
-    else if (value.isEmpty()) skips.push({ name, reason: "the value is empty", onlyInFile: false });
+    else if (value.isEmpty())
+      skips.push({
+        name,
+        reason: "the value is empty",
+        onlyInFile: false,
+        mappedEmpty: Boolean(mapped?.environments[environment]),
+      });
     else if (mapped?.environments[environment] && value.includes("$"))
       skips.push({
         name,
@@ -215,6 +222,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
   const done = new Set([
     ...mapped.map((entry) => entry.name),
     ...skips.filter((skip) => skip.mapped && !skip.onlyInFile).map((skip) => skip.name),
+    ...skips.filter((skip) => skip.mappedEmpty).map((skip) => skip.name),
   ]);
   const remove = [...file.keys()].filter((name) => done.has(name));
   const rest = [...file].filter(

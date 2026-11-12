@@ -483,6 +483,29 @@ describe("keypin import", () => {
     expect(disk.contents.has(MAP)).toBe(false);
   });
 
+  test("with names, an empty or comment-only file is the same usage error", async () => {
+    const { deps, fake, stderr } = setup({ files: { [ENV]: "# nothing set yet\n" } });
+    const args = ["import", ".env", "STRIPE_KEY", "--vault", "V", "--account", ACCOUNT, "--yes"];
+    expect(await cli(args, deps)).toBe(2);
+    expect(stderr.text).toContain(`${ENV} doesn't set STRIPE_KEY`);
+    expect(fake.calls).toEqual([]);
+  });
+
+  test("an empty line for a mapped variable is one to remove, not a reason to keep the file", async () => {
+    const { deps, text } = setup({
+      files: {
+        [MAP]: REAL_MAP,
+        [ENV]: `STRIPE_KEY=\nWEBHOOK_SECRET=${SENTINEL}-hook\nPUBLIC_URL=http://localhost:3000\n`,
+      },
+    });
+    const args = ["import", ".env", "STRIPE_KEY", "WEBHOOK_SECRET", "--vault", "App Secrets"];
+    expect(await cli([...args, "--yes"], deps)).toBe(0);
+    expect(text()).toContain("STRIPE_KEY: the value is empty");
+    expect(text()).toContain("Remove the STRIPE_KEY, WEBHOOK_SECRET lines from it");
+    expect(text()).not.toContain("Delete it");
+    expect(leaks(text())).toBe(false);
+  });
+
   test("when nothing else is set in the file, says it can be deleted", async () => {
     const env = `STRIPE_KEY=${SENTINEL}-stripe\nEMPTY=\n`;
     const named = setup({ files: { [ENV]: env } });

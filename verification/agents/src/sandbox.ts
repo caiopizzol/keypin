@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { closeSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { chmod, mkdir, readFile, realpath, rename, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, readlink, realpath, rename, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import type { Files } from "@keypin/core";
 import { cli } from "../../../apps/cli/src/cli";
@@ -27,6 +27,7 @@ import { errorCode } from "../../../apps/cli/src/errors";
 
 const WORLD = "world.json";
 const GIT_OUTPUT = 64 * 1024 * 1024;
+const MAX_LINKS = 40;
 const LOCK_WAIT_MS = 10_000;
 const pause = new Int32Array(new SharedArrayBuffer(4));
 const PASSED_ENV = ["TERM", "LANG", "LC_ALL", "SHELL", "USER", "TMPDIR"];
@@ -230,13 +231,17 @@ export async function contained(box: Sandbox, path: string): Promise<boolean> {
   return inside(box, path) && inside(box, await realLocation(resolve(path)));
 }
 
-async function realLocation(path: string): Promise<string> {
+async function realLocation(path: string, hops = 0): Promise<string> {
   try {
     return await realpath(path);
   } catch (error) {
     const parent = dirname(path);
     if (errorCode(error) !== "ENOENT" || parent === path) throw error;
-    return join(await realLocation(parent), basename(path));
+    const folder = await realLocation(parent, hops);
+    const target = await readlink(path).catch(() => null);
+    if (target === null) return join(folder, basename(path));
+    if (hops >= MAX_LINKS) throw new Error(`sandbox: ${path} has too many symlinks`);
+    return realLocation(resolve(folder, target), hops + 1);
   }
 }
 

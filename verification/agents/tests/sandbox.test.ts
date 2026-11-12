@@ -302,6 +302,26 @@ describe("the sandbox's edges", () => {
     expect(await sandboxGit(box, join(box.root, "escape"), ["status"])).toBeNull();
   });
 
+  test("a dangling symlink to a file outside isn't followed, and a new file inside still works", async () => {
+    const away = join(outside, "away");
+    await mkdir(away);
+    await symlink(join(away, "missing.env"), join(box.root, "dangling.env"));
+    await symlink(join(box.root, "dangling.env"), join(box.root, "chained.env"));
+    for (const name of ["dangling.env", "chained.env"]) {
+      const run = await sandbox(["env-file", box.root, join(box.root, name), "API_KEY"]);
+      expect(run.code).toBe(1);
+      expect(run.stderr).toContain("outside");
+    }
+    expect(await readdir(away)).toEqual([]);
+    await symlink(join(box.root, "real.env"), join(box.root, "inside.env"));
+    expect(
+      (await sandbox(["env-file", box.root, join(box.root, "inside.env"), "API_KEY"])).code,
+    ).toBe(0);
+    expect(
+      (await sandbox(["env-file", box.root, join(box.root, "new", ".env"), "API_KEY"])).code,
+    ).toBe(0);
+  });
+
   test("new refuses a folder that is already a sandbox, and keeps its world", async () => {
     await sandbox(["repo", box.root, "acme/app"]);
     const again = await sandbox(["new", box.root]);

@@ -35,7 +35,7 @@ jobs:
       - name: keypin.dev serves the page
         run: |
           curl -sf --retry 10 --retry-delay 15 --retry-all-errors https://keypin.dev/ -o page.html
-          grep -q "Every key, pinned" page.html
+          grep -q "<title>keypin · a map of every app key across your projects</title>" page.html
       - name: www.keypin.dev redirects to keypin.dev
         run: |
           result=$(curl -s --retry 10 --retry-delay 15 --retry-all-errors -o /dev/null -w '%{http_code} %{redirect_url}' https://www.keypin.dev/)

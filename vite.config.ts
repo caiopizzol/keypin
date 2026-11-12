@@ -25,6 +25,7 @@ export default defineConfig({
         files: ["packages/core/src/**"],
         rules: { "no-restricted-imports": ["error", { paths: ["bun"], patterns: ["bun:*"] }] },
       },
+      { files: ["apps/site/src/worker.ts"], rules: { "no-console": "off" } },
     ],
     options: { typeAware: true, typeCheck: true, denyWarnings: true },
   },

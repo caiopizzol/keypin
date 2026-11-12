@@ -51,5 +51,6 @@ export function fakeApi(): Api {
     }),
     store: memoryStore(),
     now: () => new Date(Date.UTC(2026, 10, 12, 12, 0, tick++)).toISOString(),
+    log: () => {},
   };
 }

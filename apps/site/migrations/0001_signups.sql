@@ -6,5 +6,6 @@ CREATE TABLE signups (
   team_size TEXT CHECK (team_size IN ('2-10', '11-50', '51+')),
   note TEXT,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
+  updated_at TEXT NOT NULL,
+  CHECK ((use = 'team') = (team_size IS NOT NULL))
 );

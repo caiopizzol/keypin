@@ -6,6 +6,7 @@ export interface Api {
   auth: Auth;
   store: SignupStore;
   now(): string;
+  log(message: string, cause: unknown): void;
 }
 
 export const API_PATHS = ["/api/config", "/api/signup"];
@@ -57,8 +58,8 @@ export function parseAnswers(body: unknown): Answers | string {
 async function readAnswers(request: Request): Promise<Answers | Response> {
   if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY)
     return error(413, "The request body is over 4 KB.");
-  const bytes = await request.arrayBuffer();
-  if (bytes.byteLength > MAX_BODY) return error(413, "The request body is over 4 KB.");
+  const bytes = await readLimited(request);
+  if (!bytes) return error(413, "The request body is over 4 KB.");
   let body: unknown;
   try {
     body = JSON.parse(new TextDecoder().decode(bytes));
@@ -67,6 +68,23 @@ async function readAnswers(request: Request): Promise<Answers | Response> {
   }
   const answers = parseAnswers(body);
   return typeof answers === "string" ? error(400, answers) : answers;
+}
+
+async function readLimited(request: Request): Promise<Uint8Array | null> {
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of request.body ?? []) {
+    size += chunk.byteLength;
+    if (size > MAX_BODY) return null;
+    chunks.push(chunk);
+  }
+  const bytes = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return bytes;
 }
 
 function bearer(request: Request): string | null {
@@ -103,7 +121,8 @@ export async function handleApi(request: Request, api: Api): Promise<Response> {
   }
   try {
     return await signup(request, api);
-  } catch {
+  } catch (cause) {
+    api.log("/api/signup failed", cause);
     return error(500, "Something went wrong on our side. Try again.");
   }
 }

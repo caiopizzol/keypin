@@ -1,4 +1,5 @@
 import { createClerkClient, verifyToken } from "@clerk/backend";
+import { TokenVerificationError } from "@clerk/backend/errors";
 import type { Auth } from "./signup";
 
 export function clerkAuth(secretKey: string, siteOrigin: string): Auth {
@@ -8,8 +9,10 @@ export function clerkAuth(secretKey: string, siteOrigin: string): Auth {
       try {
         const claims = await verifyToken(token, { secretKey, authorizedParties: [siteOrigin] });
         return claims.sub;
-      } catch {
-        return null;
+      } catch (error) {
+        if (error instanceof TokenVerificationError && error.reason.startsWith("token-"))
+          return null;
+        throw error;
       }
     },
     async profile(userId) {

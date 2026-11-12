@@ -156,6 +156,33 @@ describe("PUT, GET and DELETE /api/signup", () => {
     expect((await call(fakeApi(), "/api/signup", { method: "DELETE" })).status).toBe(204);
   });
 
+  test("413 for a body over 4 KB with no Content-Length", async () => {
+    const big = new TextEncoder().encode(JSON.stringify({ use: "solo", note: "a".repeat(5000) }));
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(big.slice(0, 3000));
+        controller.enqueue(big.slice(3000));
+        controller.close();
+      },
+    });
+    const headers = new Headers({ authorization: "Bearer good-token", origin: ORIGIN });
+    const init: RequestInit & { duplex: "half" } = { method: "PUT", headers, body, duplex: "half" };
+    const request = new Request(`${ORIGIN}/api/signup`, init);
+    expect(request.headers.get("content-length")).toBeNull();
+    expect((await handleApi(request, fakeApi())).status).toBe(413);
+  });
+
+  test("500, not 401, when token verification itself fails", async () => {
+    const api = fakeApi();
+    const logged: unknown[] = [];
+    api.log = (_message, cause) => logged.push(cause);
+    api.auth.verify = async () => {
+      throw new Error("Clerk is unreachable");
+    };
+    expect((await call(api, "/api/signup")).status).toBe(500);
+    expect(logged).toEqual([new Error("Clerk is unreachable")]);
+  });
+
   test("500 with a plain sentence when storage fails", async () => {
     const api = fakeApi();
     api.store.get = async () => {

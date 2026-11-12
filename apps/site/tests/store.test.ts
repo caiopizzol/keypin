@@ -26,6 +26,17 @@ describe("d1Store against the migration's SQL", () => {
     db.run(migration);
   });
 
+  test("the table rejects a use and team size that don't go together", () => {
+    const insert = (use: string, size: string | null) =>
+      db
+        .query("INSERT INTO signups VALUES (?1, NULL, NULL, ?2, ?3, NULL, 't', 't')")
+        .run(`u_${use}_${size}`, use, size);
+    expect(() => insert("team", null)).toThrow();
+    expect(() => insert("solo", "2-10")).toThrow();
+    expect(() => insert("team", "2-10")).not.toThrow();
+    expect(() => insert("solo", null)).not.toThrow();
+  });
+
   test("put, get, upsert keeping created_at, delete", async () => {
     const store = d1Store(sqliteD1(db));
     expect(await store.get("user_1")).toBeNull();

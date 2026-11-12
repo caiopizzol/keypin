@@ -28,6 +28,7 @@ export default {
         auth: clerkAuth(env.CLERK_SECRET_KEY, env.SITE_ORIGIN),
         store: d1Store(env.DB),
         now: () => new Date().toISOString(),
+        log: (message, cause) => console.error(message, cause),
       });
     }
     return env.ASSETS.fetch(request);

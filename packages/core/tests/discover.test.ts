@@ -155,6 +155,13 @@ jobs:
     ).toBe(true);
   });
 
+  test("an alias that refers to itself is read once instead of recursing forever", () => {
+    const refs = workflowRefs(
+      "loop: &x\n  again: *x\njobs:\n  a:\n    steps:\n      - run: echo ${{ secrets.TOKEN }}\n",
+    );
+    expect(refs).toMatchObject({ secrets: ["TOKEN"], hidesUses: false });
+  });
+
   test("strings inside an expression neither end it nor count as references", () => {
     const refs = workflowRefs(`
 jobs:

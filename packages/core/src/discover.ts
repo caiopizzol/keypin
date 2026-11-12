@@ -108,12 +108,17 @@ export function workflowRefs(text: string): WorkflowRefs | null {
       (match[1] === "secrets" ? refs.secrets : refs.vars).add(name);
     }
   };
+  const seen = new Set<object>();
   const visit = (value: unknown, key: string | null) => {
     if (typeof value === "string") {
       if (key === "if" && !value.includes("${{")) scan(withoutStrings(value));
       for (const expression of expressions(value)) scan(expression);
       if (key === "secrets" && value.trim() === "inherit") refs.hidesUses = true;
-    } else if (Array.isArray(value)) {
+      return;
+    }
+    if (typeof value !== "object" || value === null || seen.has(value)) return;
+    seen.add(value);
+    if (Array.isArray(value)) {
       for (const item of value) visit(item, null);
     } else if (isRecord(value)) {
       for (const [k, v] of Object.entries(value)) visit(v, k);

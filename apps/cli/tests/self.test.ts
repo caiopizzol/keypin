@@ -121,4 +121,32 @@ describe("selfFor on disk", () => {
     await writeFile(join(root, "lib/other.js"), "");
     expect(selfFor({ ...disk, running: [join(root, "lib/other.js")] }).command).toEqual(FULL);
   });
+
+  test("a relative PATH entry before it that finds another keypin prints the full command", async () => {
+    const disk = await onDisk();
+    await mkdir(join(root, "project/bin"));
+    await writeFile(join(root, "project/bin/keypin"), "");
+    await chmod(join(root, "project/bin/keypin"), 0o755);
+    const shadowed = { ...disk, env: { ...disk.env, PATH: `bin:${join(root, "bin")}:/usr/bin` } };
+    expect(selfFor(shadowed).command).toEqual(FULL);
+  });
+
+  test("a node_modules/.bin entry before it that finds another keypin prints the full command", async () => {
+    const disk = await onDisk();
+    const local = join(root, "project/node_modules/.bin");
+    await mkdir(local, { recursive: true });
+    await writeFile(join(local, "keypin"), "");
+    await chmod(join(local, "keypin"), 0o755);
+    const shadowed = {
+      ...disk,
+      env: { ...disk.env, PATH: `${local}:${join(root, "bin")}:/usr/bin` },
+    };
+    expect(selfFor(shadowed).command).toEqual(FULL);
+  });
+
+  test("a relative PATH entry with no keypin in it leaves keypin", async () => {
+    const disk = await onDisk();
+    const clear = { ...disk, env: { ...disk.env, PATH: `bin:${join(root, "bin")}:/usr/bin` } };
+    expect(selfFor(clear).command).toEqual(["keypin"]);
+  });
 });

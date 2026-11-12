@@ -1,4 +1,4 @@
-import { delimiter, isAbsolute, sep } from "node:path";
+import { delimiter, isAbsolute, resolve, sep } from "node:path";
 
 export interface Self {
   folder: string;
@@ -27,11 +27,25 @@ export function selfFor(here: Here): Self {
   return { folder: shownFolder(here), command: isOnPath(here) ? ["keypin"] : here.full };
 }
 
-function isOnPath({ running, env, which, real }: Here): boolean {
+function isOnPath({ running, env, which, real, cwd }: Here): boolean {
   const found = which("keypin", terminalPath(env.PATH));
   const target = found === null ? null : real(found);
   if (target === null) return false;
-  return running.some((path) => isAbsolute(path) && real(path) === target);
+  if (!running.some((path) => isAbsolute(path) && real(path) === target)) return false;
+  return firstKeypin(env.PATH, cwd, which, real) === target;
+}
+
+function firstKeypin(
+  path: string | undefined,
+  cwd: string,
+  which: Here["which"],
+  real: Here["real"],
+): string | null {
+  for (const dir of (path ?? "").split(delimiter)) {
+    const found = which("keypin", resolve(cwd, dir || "."));
+    if (found !== null) return real(found);
+  }
+  return null;
 }
 
 function shownFolder({ cwd, env, real }: Here): string {

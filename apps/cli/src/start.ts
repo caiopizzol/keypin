@@ -10,6 +10,7 @@ import { ghToken, GitHubSecretDestination, listRepoSecrets } from "@keypin/desti
 import { CloudflareAccountTokens } from "@keypin/provider-cloudflare";
 import { type Connect, desktopConnect, onePasswordBackend } from "@keypin/vault-1password";
 import { cli } from "./cli";
+import type { Publisher } from "./deps";
 import {
   createFile,
   diskFiles,
@@ -27,12 +28,12 @@ import { selfCommand } from "./runtime";
 let vault: VaultBackend | undefined;
 let cloudflare: CloudflareReader | undefined;
 
-function destination(target: PublishTarget): Destination {
+function destination(target: PublishTarget, publisher: Publisher): Destination {
   switch (target.to) {
     case "cloudflare-worker":
       return new WorkerSecretDestination({ account: target.account, worker: target.worker });
     case "github-actions":
-      return new GitHubSecretDestination({ repo: target.repo, account: target.account });
+      return new GitHubSecretDestination({ repo: target.repo, login: publisher.githubLogin });
     default: {
       const unknown: never = target;
       throw new Error(`unknown destination ${JSON.stringify(unknown)}`);

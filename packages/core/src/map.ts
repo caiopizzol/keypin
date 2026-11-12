@@ -442,15 +442,16 @@ function validateTarget(raw: unknown, fail: (message: string) => void): PublishT
       : { to, account, worker };
   }
   if (to === "github-actions") {
-    unknownFields(raw, ["to", "repo", "account"], (field) =>
-      err(`unknown field "${field}" for ${to}`),
+    unknownFields(raw, ["to", "repo"], (field) =>
+      err(
+        field === "account"
+          ? `field "account" is from keypin 0.6; the map pins only repo = "owner/name", and each machine publishes as its own GitHub login (git config github.account, else the active gh login). Delete it (${OLD_FORMAT})`
+          : `unknown field "${field}" for ${to}`,
+      ),
     );
     const repo = requiredString(raw, "repo", err);
-    const account = optionalString(raw, "account", err);
     if (repo !== undefined && !REPO.test(repo)) err(`field "repo" must be "owner/name"`);
-    return failed || repo === undefined
-      ? undefined
-      : { to, repo, account: account ?? repo.split("/")[0] };
+    return failed || repo === undefined ? undefined : { to, repo, account: repo.split("/")[0] };
   }
   err(`field "to" must be one of: ${DESTINATION_KINDS.join(", ")}`);
   return undefined;

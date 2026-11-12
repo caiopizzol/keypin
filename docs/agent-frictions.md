@@ -31,6 +31,8 @@ The same seven scenarios, run again against these fixes:
 
 ## Fixed since
 
+- **`discover` didn't say where the GitHub login came from.** It now says `as <login> (git config
+  github.account)` or `as the active gh login`, and `publish` picks its GitHub login the same way.
 - **1. Without a terminal, `publish` and `rotate` stopped before showing the evidence.** `--plan` reads the
   value, runs the account checks and prints the full plan without a terminal: the generation read from the item,
   what would be written where, and which steps need a typed `yes`. For a revoke run, it adds the old token's
@@ -96,7 +98,6 @@ can't, for secrets). The output should say "receipt matches", not imply the dest
 
 - "Generation" is never defined in the docs. Say it's a fingerprint of the value.
 - `status --json` fields such as `stale: null` aren't documented.
-- `discover` doesn't say where the GitHub login came from (`github.account` or the repo owner).
 - Timestamps are UTC while `status`'s `today` is local, so "started today" can read as a different day.
 - Rotation stages (`issued`, `published`, …) aren't explained.
 - Without a terminal, a plan with no approvals stops with "Add --yes, or confirm in a terminal", but the message

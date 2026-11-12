@@ -7,9 +7,11 @@ import { ghToken } from "../src/index";
 
 const USER_TOKEN = "sentinel-user-token-5d1e";
 const ENV_TOKEN = "sentinel-env-token-9a7c";
+const ACTIVE_TOKEN = "sentinel-active-token-3e8f";
 const SAVED = { ...process.env };
 
 const FAKE_GH = `#!/bin/sh
+if [ "$*" = "auth token --hostname github.com" ]; then echo "${ACTIVE_TOKEN}"; exit 0; fi
 if [ "$*" != "auth token --hostname github.com --user someone" ]; then echo "unexpected args: $*" >&2; exit 3; fi
 if [ -n "$FAKE_GH_EMPTY" ]; then exit 0; fi
 if [ -n "$GH_TOKEN" ] || [ -n "$GITHUB_TOKEN" ]; then echo "${ENV_TOKEN}"; else echo "${USER_TOKEN}"; fi
@@ -49,6 +51,11 @@ describe("ghToken", () => {
     expect(await ghToken("someone")).toBe(USER_TOKEN);
     expect(process.env.GH_TOKEN).toBe(ENV_TOKEN);
     expect(process.env.GITHUB_TOKEN).toBe(ENV_TOKEN);
+  });
+
+  test("with no login chosen, asks gh for the active login's token", async () => {
+    process.env.PATH = `${bin}:/usr/bin:/bin`;
+    expect(await ghToken(null)).toBe(ACTIVE_TOKEN);
   });
 
   test("a failing gh that printed a token leaves the token out of the error", async () => {

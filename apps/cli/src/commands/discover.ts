@@ -21,6 +21,7 @@ import {
 import { type Deps, UsageError } from "../deps";
 import { errorCode, messageOf } from "../errors";
 import { MAP_FILE } from "../project";
+import { describeLogin, githubLogin } from "../publisher";
 import { registerProject, TEMPLATE } from "./init";
 
 interface Scan {
@@ -114,13 +115,13 @@ export async function discover(args: string[], deps: Deps): Promise<number> {
       cloud: true,
     });
   } else {
-    login = (await deps.git(folder, ["config", "--get", "github.account"]))?.trim() || origin.owner;
+    login = await githubLogin(deps, folder);
     const read = await deps
       .githubSecrets(origin.repo, login)
       .catch((error: unknown) => ({ ok: false as const, reason: messageOf(error) }));
     github = {
       repo: origin.repo,
-      read: read.ok ? read : { ok: false, reason: `as ${login}: ${read.reason}` },
+      read: read.ok ? read : { ok: false, reason: `as ${describeLogin(login)}: ${read.reason}` },
     };
   }
 
@@ -139,7 +140,6 @@ export async function discover(args: string[], deps: Deps): Promise<number> {
   const discovery = buildDiscovery({ envFiles, workflows, workers, github, map, unknowns });
   const draft = draftMap(discovery.names, {
     project: basename(folder),
-    githubAccount: login,
     map: map ? { account: map.account, vault: firstVault(map) } : null,
     environments: map?.environments ?? DEFAULT_ENVIRONMENTS,
     written: values.write,
@@ -345,7 +345,7 @@ function render(
 ): string {
   const lines = [`keypin discover ${report.folder}`];
   lines.push(
-    `  GitHub: ${report.repository ? `${report.repository} as ${report.login}` : "no GitHub origin"}`,
+    `  GitHub: ${report.repository ? `${report.repository} as ${describeLogin(report.login)}` : "no GitHub origin"}`,
   );
   lines.push(
     `  read: ${count(report.files.env.length, "env file")}, ${count(report.files.wrangler.length, "wrangler config")}, ${count(report.files.workflows.length, "workflow")}`,

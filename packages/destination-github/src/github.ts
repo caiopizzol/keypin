@@ -19,7 +19,7 @@ export type Fetch = (
 
 export interface GitHubSecretOptions {
   repo: string;
-  account?: string;
+  login?: string | null;
   token?: () => Promise<string>;
   fetch?: Fetch;
 }
@@ -28,7 +28,7 @@ export class GitHubSecretDestination implements Destination {
   readonly capabilities = { write: true, accountCheck: true, evidence: true } as const;
   readonly #repo: string;
   readonly #owner: string;
-  readonly #expected: string;
+  readonly #login: string | null;
   readonly #tokenSource: () => Promise<string>;
   readonly #fetch: Fetch;
   #token: Promise<string> | undefined;
@@ -39,8 +39,8 @@ export class GitHubSecretDestination implements Destination {
       throw new Error(`"${options.repo}" isn't a GitHub repository in the form owner/name`);
     this.#repo = options.repo;
     this.#owner = options.repo.split("/")[0];
-    this.#expected = options.account ?? this.#owner;
-    this.#tokenSource = options.token ?? (() => ghToken(this.#expected));
+    this.#login = options.login ?? null;
+    this.#tokenSource = options.token ?? (() => ghToken(this.#login));
     this.#fetch = options.fetch ?? globalThis.fetch;
   }
 
@@ -56,7 +56,7 @@ export class GitHubSecretDestination implements Destination {
     const scopes = user.headers.get("x-oauth-scopes");
 
     const repo = await this.#get(`/repos/${this.#repo}`);
-    const facts = { publisher, expected: this.#expected };
+    const facts = { publisher, expected: this.#owner };
     if (repo.status === 404) {
       return {
         ...facts,
@@ -68,15 +68,15 @@ export class GitHubSecretDestination implements Destination {
     if (repo.status !== 200)
       throw new Error(`GitHub GET /repos/${this.#repo} returned HTTP ${repo.status}`);
     const owner = stringField(objectField(repo.body, "owner"), "login");
-    const admin = objectField(repo.body, "permissions").admin === true;
+    const write = objectField(repo.body, "permissions").push === true;
 
     const check: AccountCheck = { ...facts, destinationAccount: owner, ok: false };
     if (!sameLogin(owner, this.#owner)) {
       check.reason = `${this.#repo} is owned by ${owner}, not ${this.#owner} (moved or renamed?)`;
-    } else if (!sameLogin(publisher, this.#expected)) {
-      check.reason = `the token acts as ${publisher}, not ${this.#expected}`;
-    } else if (!admin) {
-      check.reason = `${publisher} isn't an admin of ${this.#repo}, so it can't write secrets`;
+    } else if (this.#login !== null && !sameLogin(publisher, this.#login)) {
+      check.reason = `the token acts as ${publisher}, not ${this.#login}`;
+    } else if (!write) {
+      check.reason = `${publisher} has no write access to ${this.#repo}, so GitHub won't let it set Actions secrets; ask an admin of ${this.#owner} for the Write role, or publish as another login`;
     } else if (scopes !== null && !scopes.split(",").some((s) => s.trim() === "repo")) {
       check.reason = `the token lacks the repo scope (it has: ${scopes || "none"})`;
     } else {

@@ -52,7 +52,7 @@ export async function listRepoSecrets(options: {
 }
 
 function refusal(status: number, repo: string): string {
-  if (status === 404) return `HTTP 404: the login can't see ${repo}, or it isn't an admin of it`;
+  if (status === 404) return `HTTP 404: the login can't see ${repo}, or isn't a collaborator on it`;
   if (status === 403) return `HTTP 403: the login isn't allowed to list ${repo}'s secrets`;
   if (status === 401) return "HTTP 401: the gh login's token was refused";
   return `GitHub returned HTTP ${status}`;

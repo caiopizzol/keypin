@@ -1,8 +1,17 @@
-import { describe, expect, test } from "vite-plus/test";
-import { generationOf, loadState, type Receipt, Secret } from "@keypin/core";
+import { assert, describe, expect, test } from "vite-plus/test";
+import {
+  generationOf,
+  loadState,
+  type PublishTarget,
+  type Receipt,
+  recordReceipt,
+  saveState,
+  Secret,
+} from "@keypin/core";
 import { GitHubSecretDestination } from "@keypin/destination-github";
 import { type FullItem, onePasswordBackend } from "@keypin/vault-1password";
 import { cli } from "../src/cli";
+import type { Publisher } from "../src/deps";
 import { NEEDS_APPROVAL, rerun } from "../src/publishing";
 import {
   fakeDeps,
@@ -407,46 +416,97 @@ describe("keypin publish", () => {
     expect(renamed.log.some((l) => l.startsWith("delete"))).toBe(false);
   });
 
-  test("an organization repo with another publisher skips on rerun with the real GitHub destination", async () => {
+  test("an organization repo: a teammate publishes as their own login, and another teammate's rerun skips", async () => {
     const disk = memoryFiles({ "/work/billing/keypin.toml": ORG_MAP });
     const requests: string[] = [];
+    let actingAs = "alice";
     const respond = async (input: string | URL | Request, init?: RequestInit) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
       const method = init?.method ?? "GET";
       requests.push(`${method} ${url.pathname}`);
-      const reply = ORG_ROUTES.get(`${method} ${url.pathname}`) ?? { status: 404, body: {} };
+      const reply =
+        url.pathname === "/user"
+          ? { status: 200, body: { login: actingAs } }
+          : (ORG_ROUTES.get(`${method} ${url.pathname}`) ?? { status: 404, body: {} });
       return new Response(JSON.stringify(reply.body), {
         status: reply.status,
         headers: { "x-oauth-scopes": "repo" },
       });
     };
     const fetch = Object.assign(respond, { preconnect: globalThis.fetch.preconnect });
-    const github = () =>
-      new GitHubSecretDestination({
-        repo: "acme/billing",
-        account: "alice",
+    const logins: (string | null)[] = [];
+    const github = (target: PublishTarget, publisher: Publisher) => {
+      logins.push(publisher.githubLogin);
+      assert(target.to === "github-actions");
+      return new GitHubSecretDestination({
+        repo: target.repo,
+        login: publisher.githubLogin,
         token: async () => "token",
         fetch,
       });
-    const deps = (terminal: boolean) =>
+    };
+    const deps = (terminal: boolean, configured: string | null) =>
       fakeDeps({
         disk,
         backend: fakeVault({ values: { "billing stripe api key": SENTINEL } }).vault,
-        deps: { destination: github, isTerminal: terminal, ask: async () => "yes" },
+        deps: {
+          destination: github,
+          isTerminal: terminal,
+          ask: async () => "yes",
+          git: async (_folder, args) =>
+            args.join(" ") === "config --get github.account" && configured
+              ? `${configured}\n`
+              : null,
+        },
       });
-    const first = deps(true);
+    const first = deps(true, "alice");
     expect(await cli(["publish", "STRIPE_API_KEY"], first.deps)).toBe(0);
+    expect(first.stderr.text).toContain(
+      "ok github-actions:acme/billing:STRIPE_API_KEY (account acme): publisher alice, destination account acme",
+    );
     const saved = await loadState(disk.files, STATE);
     expect(saved.receipts).toMatchObject([
-      { account: { pinned: "alice", publisher: "alice", destinationAccount: "acme" } },
+      { account: { pinned: "acme", publisher: "alice", destinationAccount: "acme" } },
     ]);
 
-    const again = deps(false);
+    actingAs = "bob";
+    const again = deps(false, null);
     requests.length = 0;
     expect(await cli(["publish", "STRIPE_API_KEY"], again.deps)).toBe(0);
+    expect(again.stderr.text).toContain("publisher bob, destination account acme");
     expect(again.stderr.text).toContain("receipt already has this generation");
     expect(again.stderr.text).not.toContain("account changed");
     expect(requests.some((r) => r.startsWith("PUT"))).toBe(false);
+    expect(logins).toEqual(["alice", null]);
+  });
+
+  test("a receipt from a 0.6 map that pinned a login asks once for approval", async () => {
+    const disk = memoryFiles({ "/work/billing/keypin.toml": ORG_MAP });
+    const generation = await generationOf(new Secret(SENTINEL));
+    const old: Receipt = {
+      keyId: "STRIPE_API_KEY",
+      environment: "prod",
+      mapFile: "/work/billing/keypin.toml",
+      source: {
+        kind: "1password",
+        account: "my.1password.com",
+        vault: "Private",
+        item: "billing stripe api key",
+        section: null,
+        field: "password",
+      },
+      destinationId: "github-actions:acme/billing:STRIPE_API_KEY",
+      generation,
+      account: { pinned: "alice", publisher: "alice", destinationAccount: "acme" },
+      at: "2026-11-01T00:00:00.000Z",
+      evidence: {},
+    };
+    await saveState(disk.files, STATE, recordReceipt(await loadState(disk.files, STATE), old));
+    const run = setup({ disk });
+    expect(await cli(["publish", "STRIPE_API_KEY"], run.deps)).toBe(NEEDS_APPROVAL);
+    expect(run.stderr.text).toContain(
+      "github-actions:acme/billing:STRIPE_API_KEY account changed from alice to acme",
+    );
   });
 });
 
@@ -463,7 +523,7 @@ account = "my.1password.com"
 
 [keys.STRIPE_API_KEY]
 prod = { from = "op://Private/billing stripe api key/password", publish = [
-  { to = "github-actions", repo = "acme/billing", account = "alice" },
+  { to = "github-actions", repo = "acme/billing" },
 ] }
 `;
 
@@ -471,7 +531,7 @@ const ORG_ROUTES = new Map<string, { status: number; body: unknown }>([
   ["GET /user", { status: 200, body: { login: "alice" } }],
   [
     "GET /repos/acme/billing",
-    { status: 200, body: { owner: { login: "acme" }, permissions: { admin: true } } },
+    { status: 200, body: { owner: { login: "acme" }, permissions: { admin: false, push: true } } },
   ],
   [
     "GET /repos/acme/billing/actions/secrets/public-key",

@@ -27,7 +27,7 @@ function happyRoutes(): Routes {
     },
     [`GET /repos/${REPO}`]: {
       status: 200,
-      body: { owner: { login: "acme" }, permissions: { admin: true } },
+      body: { owner: { login: "acme" }, permissions: { admin: true, push: true } },
     },
     [`GET /repos/${REPO}/actions/secrets/public-key`]: {
       status: 200,
@@ -67,7 +67,7 @@ function fakeFetch(routes: Routes) {
   return { fetch, requests };
 }
 
-function destination(routes: Routes, options: { account?: string } = {}) {
+function destination(routes: Routes, options: { login?: string | null } = {}) {
   const fake = fakeFetch(routes);
   const github = new GitHubSecretDestination({
     repo: REPO,
@@ -102,7 +102,7 @@ describe("sealed box", () => {
 });
 
 describe("checkAccount", () => {
-  test("passes when the owner, publisher, admin and scope match", async () => {
+  test("passes when the owner, write access and scope match", async () => {
     const { github, requests } = destination(happyRoutes());
     const check = await github.checkAccount();
     expect(check).toEqual({
@@ -119,7 +119,7 @@ describe("checkAccount", () => {
     const routes = happyRoutes();
     routes[`GET /repos/${REPO}`] = {
       status: 200,
-      body: { owner: { login: "someone-else" }, permissions: { admin: true } },
+      body: { owner: { login: "someone-else" }, permissions: { push: true } },
     };
     const { github, requests } = destination(routes);
     const check = await github.checkAccount();
@@ -132,25 +132,80 @@ describe("checkAccount", () => {
     expect(requests.some((r) => r.method === "PUT")).toBe(false);
   });
 
-  test("a token for another login fails", async () => {
+  test("an organization teammate with write access, not admin, passes as themselves", async () => {
+    const routes = happyRoutes();
+    routes["GET /user"] = {
+      status: 200,
+      body: { login: "alice" },
+      headers: { "x-oauth-scopes": "repo" },
+    };
+    routes[`GET /repos/${REPO}`] = {
+      status: 200,
+      body: {
+        owner: { login: "acme" },
+        permissions: { admin: false, maintain: false, push: true },
+      },
+    };
+    const { github } = destination(routes, { login: "alice" });
+    expect(await github.checkAccount()).toEqual({
+      publisher: "alice",
+      destinationAccount: "acme",
+      expected: "acme",
+      ok: true,
+    });
+    await github.write("API_KEY", new Secret(SENTINEL));
+  });
+
+  test("a personal repo published as its owner from git config passes, as before", async () => {
+    const check = await destination(happyRoutes(), { login: "acme" }).github.checkAccount();
+    expect(check).toEqual({
+      publisher: "acme",
+      destinationAccount: "acme",
+      expected: "acme",
+      ok: true,
+    });
+  });
+
+  test("a token for another login than the chosen one fails", async () => {
     const routes = happyRoutes();
     routes["GET /user"] = {
       status: 200,
       body: { login: "acme-ops" },
       headers: { "x-oauth-scopes": "repo" },
     };
-    const check = await destination(routes).github.checkAccount();
+    const check = await destination(routes, { login: "alice" }).github.checkAccount();
     expect(check).toMatchObject({ publisher: "acme-ops", expected: "acme", ok: false });
+    expect(check.reason).toBe("the token acts as acme-ops, not alice");
   });
 
-  test("without admin, or without the repo scope, it fails", async () => {
-    const noAdmin = happyRoutes();
-    noAdmin[`GET /repos/${REPO}`] = {
+  test("with no chosen login, any publisher with write access passes", async () => {
+    const routes = happyRoutes();
+    routes["GET /user"] = {
       status: 200,
-      body: { owner: { login: "acme" }, permissions: { admin: false } },
+      body: { login: "acme-ops" },
+      headers: { "x-oauth-scopes": "repo" },
     };
-    expect((await destination(noAdmin).github.checkAccount()).reason).toMatch(/admin/);
+    const check = await destination(routes, { login: null }).github.checkAccount();
+    expect(check).toMatchObject({ publisher: "acme-ops", destinationAccount: "acme", ok: true });
+  });
 
+  test("read or triage access fails, and write then refuses", async () => {
+    const readOnly = happyRoutes();
+    readOnly[`GET /repos/${REPO}`] = {
+      status: 200,
+      body: { owner: { login: "acme" }, permissions: { admin: false, push: false, pull: true } },
+    };
+    const { github, requests } = destination(readOnly);
+    const check = await github.checkAccount();
+    expect(check).toMatchObject({ publisher: "acme", destinationAccount: "acme", ok: false });
+    expect(check.reason).toBe(
+      "acme has no write access to acme/billing, so GitHub won't let it set Actions secrets; ask an admin of acme for the Write role, or publish as another login",
+    );
+    await expect(github.write("API_KEY", new Secret(SENTINEL))).rejects.toThrow(/checkAccount/);
+    expect(requests.some((r) => r.method === "PUT")).toBe(false);
+  });
+
+  test("without the repo scope it fails", async () => {
     const noScope = happyRoutes();
     noScope["GET /user"] = {
       status: 200,
@@ -172,7 +227,7 @@ describe("checkAccount", () => {
     const routes = happyRoutes();
     routes[`GET /repos/${REPO}`] = () => ({
       status: 200,
-      body: { owner: { login: owner }, permissions: { admin: true } },
+      body: { owner: { login: owner }, permissions: { push: true } },
     });
     const { github } = destination(routes);
     expect((await github.checkAccount()).ok).toBe(true);

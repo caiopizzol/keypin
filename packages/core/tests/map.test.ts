@@ -63,7 +63,7 @@ describe("a valid map", () => {
     });
   });
 
-  test("tables instead of inline tables, an explicit GitHub account, and no rotate_every", () => {
+  test("tables instead of inline tables, and no rotate_every", () => {
     const result = parseMap(
       `${VAULTS}
 [keys.STRIPE_API_KEY]
@@ -74,7 +74,6 @@ from = "op://Private/billing stripe api key/password"
 [[keys.STRIPE_API_KEY.prod.publish]]
 to = "github-actions"
 repo = "acme/billing"
-account = "acme-ops"
 `,
       MAP_FILE,
     );
@@ -83,7 +82,7 @@ account = "acme-ops"
     expect(key?.rotateEvery).toBeNull();
     expect(key?.environments.dev).toBeUndefined();
     expect(key?.environments.prod?.publish).toEqual([
-      { to: "github-actions", repo: "acme/billing", account: "acme-ops" },
+      { to: "github-actions", repo: "acme/billing", account: "acme" },
     ]);
   });
 
@@ -245,6 +244,26 @@ describe("unknown fields are errors that name the file, the key and the field", 
     expect(errorsOf(text)).toEqual([`${MAP_FILE}: ${message}`]);
   });
 
+  test("a keypin 0.6 github-actions account says the map pins only the repo", () => {
+    const old = `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [{ to = "github-actions", repo = "acme/billing", account = "alice" }] }\n[targets.ci]\nto = "github-actions"\nrepo = "acme/web"\naccount = "acme"\n[keys.B]\nprod = { from = "op://Private/j/password", publish = ["ci"] }\n`;
+    const hint = `field "account" is from keypin 0.6; the map pins only repo = "owner/name", and each machine publishes as its own GitHub login (git config github.account, else the active gh login). Delete it (see docs/configuration.md for the current format)`;
+    expect(errorsOf(old)).toEqual([
+      `${MAP_FILE}: target "ci": ${hint}`,
+      `${MAP_FILE}: key "A" prod: publish[0]: ${hint}`,
+    ]);
+  });
+
+  test("a github-actions destination pins the repo's owner as its account", () => {
+    const result = parseMap(
+      `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [{ to = "github-actions", repo = "Acme/billing" }] }\n`,
+      MAP_FILE,
+    );
+    if (!result.ok) throw new Error(result.errors.join("\n"));
+    expect(result.map.keys[0]?.environments.prod?.publish).toEqual([
+      { to: "github-actions", repo: "Acme/billing", account: "Acme" },
+    ]);
+  });
+
   test("a keypin 0.4 key with env says to name the table after the variable", () => {
     expect(errorsOf(`${VAULTS}[keys.A]\nenv = "A"\ndev = "op://Private/i/password"\n`)).toEqual([
       `${MAP_FILE}: key "A": field "env" is from keypin 0.4; name the table after the variable, such as [keys.API_TOKEN] (see docs/configuration.md for the current format)`,
@@ -275,7 +294,7 @@ describe("wrong kinds and values", () => {
     ],
     [
       "duplicate destination",
-      `{ to = "github-actions", repo = "a/b" }, { to = "github-actions", repo = "a/b", account = "c" }`,
+      `{ to = "github-actions", repo = "a/b" }, { to = "github-actions", repo = "a/b" }`,
       `key "A" prod: publish[1]: the same destination as publish[0]`,
     ],
     [
@@ -654,13 +673,9 @@ repo = "acme/api"
   });
 
   test("a name and an inline table for the same destination are caught", () => {
-    expect(
-      errorsOf(
-        withPublish(CI, `"ci", { to = "github-actions", repo = "acme/api", account = "x" }`),
-      ),
-    ).toEqual([
-      `${MAP_FILE}: key "API_TOKEN" prod: publish[1]: the same destination as publish[0]`,
-    ]);
+    expect(errorsOf(withPublish(CI, `"ci", { to = "github-actions", repo = "acme/api" }`))).toEqual(
+      [`${MAP_FILE}: key "API_TOKEN" prod: publish[1]: the same destination as publish[0]`],
+    );
     expect(
       errorsOf(
         `${VAULTS}${CI}\n[keys.TOKEN]\nprod = { from = "op://Private/a/password", publish = ["ci"] }\n[keys.token]\nprod = { from = "op://Private/b/password", publish = [{ to = "github-actions", repo = "Acme/API" }] }\n`,

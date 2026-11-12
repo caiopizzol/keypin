@@ -11,7 +11,9 @@ keypin publish API_TOKEN --plan      # show the plan, write nothing
 
 ## Destinations
 
-- **GitHub Actions secrets**, written with your `gh` login. That login must be an admin of the repository.
+- **GitHub Actions secrets**, written with your `gh` login: the one in `git config github.account` when it's set,
+  or else the active one. That login needs write access to the repository; GitHub doesn't let read or triage
+  access set secrets. See [Who publishes](configuration.md#who-publishes).
 - **Cloudflare Worker secrets**, written with your `wrangler` login. The Worker must already exist. This works on
   macOS only for now, because keypin reads wrangler's login from its macOS path.
 
@@ -26,7 +28,14 @@ keypin publish API_TOKEN --plan      # show the plan, write nothing
    `publish` and `rotate` stop, print the command to run in one, and exit 3, unless `--yes` covers every step.
    When a step needs approval, they stop before reading the value, so the plan isn't shown; add `--plan` to
    see it (see [Rotation](rotation.md) for `rotate --plan`).
-4. **Receipts:** each write that keypin confirms gets a receipt. A rerun skips those destinations and writes the rest.
+4. **Receipts:** each write that keypin confirms gets a receipt, with the pinned account and the login that wrote.
+   Receipts stay on the machine that wrote them. A rerun there skips those destinations and writes the rest. On
+   a teammate's machine, which has no receipts, the first publish is a first write and needs a typed `yes`.
+
+A keypin 0.6 map could pin a GitHub login as a destination's `account`, and its receipts recorded that login as
+the pinned account. The account is now the repo's owner, so the first publish after you delete `account` reports
+"account changed" once for those destinations and needs a typed `yes`. Receipts from maps that set only `repo`
+already pinned the owner and don't change.
 
 ## See the plan first
 

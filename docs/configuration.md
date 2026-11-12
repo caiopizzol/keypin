@@ -4,7 +4,8 @@ Each project has a `keypin.toml` at its root. It holds names and places, never v
 doesn't know, so a typo shows up as an error.
 
 A `keypin.toml` from keypin 0.4 (with `[vaults]`, `env`, `vault` and `item`) doesn't parse any more. Rewrite it in
-the format below. A keypin 0.5 `issue` section is now `rotate`.
+the format below. A keypin 0.5 `issue` section is now `rotate`. A keypin 0.6 `account` on a `github-actions`
+destination is gone: delete it (see [Who publishes](#who-publishes)).
 
 ## 1Password account
 
@@ -56,8 +57,7 @@ Under an environment, list every place `publish` writes the key:
 ```toml
 [[keys.API_TOKEN.prod.publish]]
 to = "github-actions"
-repo = "owner/repo"
-account = "owner" # optional: the GitHub login that writes; defaults to the repo's owner
+repo = "owner/repo" # its owner is the account keypin checks
 
 [[keys.API_TOKEN.prod.publish]]
 to = "cloudflare-worker"
@@ -85,6 +85,18 @@ A target takes the same fields as a destination. Its name starts with a lowercas
 letters, digits and dashes. Some key must publish to it, so a typo shows up as an error.
 
 GitHub reserves secret names that start with `GITHUB_`, so a key with such a name can't publish to GitHub Actions.
+
+### Who publishes
+
+The map pins where a key goes, not who writes it, so every teammate can publish from the same map. Each machine
+picks its own publisher:
+
+- **GitHub:** the login in `git config github.account` when it's set (`git config github.account alice`), or else
+  the active `gh` login. The account check passes when the repo's owner is the one in `repo` and that login has
+  write access to the repo. For an organization's repo, that's anyone with the Write, Maintain or Admin role.
+- **Cloudflare:** the `wrangler` login. The account check passes when it reaches the pinned `account`.
+
+Receipts record both the pinned account and the login that wrote.
 
 To let `rotate` replace the key, add a `rotate` section. See [Rotation](rotation.md).
 

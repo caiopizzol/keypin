@@ -112,6 +112,9 @@ keypin publish --all --plan  # show that plan without a terminal, and write noth
 keypin rotate <VARIABLE>     # replace a Cloudflare API token, then revoke the old one
 ```
 
+Add `--plan` to `publish` or `rotate` to see the plan without a terminal. It changes nothing, and prints the
+command that does.
+
 `import`, `publish` and `rotate` show a plan and wait for you to type `yes`. `--yes` approves `import`, which only
 creates new items. For `publish` and `rotate`, it skips that only for routine updates: it never approves a first
 write, a changed account or vault item, or a revoke. `keypin --help` lists the exit codes.

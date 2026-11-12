@@ -31,9 +31,10 @@ export const USAGE = `Usage:
                            the plan and the command to approve it, and writes nothing
   keypin publish --all [--env <name>] [--yes | --plan]
                            the same for every key with destinations, with one plan and one approval
-  keypin rotate <VARIABLE> [--env <name>] [--yes]
+  keypin rotate <VARIABLE> [--env <name>] [--yes | --plan]
                            replace a token with a new one that has the same permissions, publish it,
-                           and revoke the old one on the next run
+                           and revoke the old one on the next run; --plan reads and checks the tokens,
+                           prints this run's plan and the command to approve it, and changes nothing
   keypin --version         print the version
 
 Exit codes:

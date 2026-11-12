@@ -49,6 +49,7 @@ import {
   describeTarget,
   locked,
   NEEDS_APPROVAL,
+  planOnly,
   rerun,
   type Say,
   shellWord,
@@ -66,6 +67,7 @@ interface Run {
   spec: RotateSpec;
   environment: Environment;
   yes: boolean;
+  plan: boolean;
   args: string[];
   statePath: string;
   rotationsPath: string;
@@ -79,6 +81,7 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
     options: {
       env: { type: "string" },
       yes: { type: "boolean", default: false },
+      plan: { type: "boolean", default: false },
     },
     allowPositionals: true,
   });
@@ -108,6 +111,7 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
       spec,
       environment,
       yes: values.yes,
+      plan: values.plan,
       args,
       statePath,
       rotationsPath: rotationsPath(deps),
@@ -170,7 +174,7 @@ async function start(run: Run, data: Rotations): Promise<number> {
     return 1;
   }
   const approvals = approvalsFor({ ...planFor(run), receipts: state.receipts });
-  if (!deps.isTerminal && (approvals.length || !run.yes)) {
+  if (!deps.isTerminal && !run.plan && (approvals.length || !run.yes)) {
     for (const approval of approvals) say(`  needs approval: ${approval.approval}`);
     say(
       approvals.length
@@ -234,6 +238,7 @@ async function start(run: Run, data: Rotations): Promise<number> {
   }
   for (const approval of approvals) say(`    needs approval: ${approval.approval}`);
   say(`  then stop: the old token stays active until you run ${again(run)} again.`);
+  if (run.plan) return planOnly(deps, "rotate", run.args, approvals.length > 0);
 
   if (!(await confirmed(run, approvals.length > 0, "make the new token"))) return NEEDS_APPROVAL;
 
@@ -328,7 +333,8 @@ async function publishNew(
       return 1;
     }
     checked = found;
-    if (!deps.isTerminal && approvalsFor({ ...planFor(run), receipts: state.receipts }).length) {
+    const approvals = approvalsFor({ ...planFor(run), receipts: state.receipts });
+    if (!deps.isTerminal && !run.plan && approvals.length) {
       say("Stopped before reading the value: publishing needs approval, and --yes can't give it.");
       say(rerun(deps, "rotate", run.args));
       return NEEDS_APPROVAL;
@@ -363,6 +369,7 @@ async function publishNew(
     if (step.approval) say(`    needs approval: ${step.approval}`);
   }
   const writes = writesFor(plan.steps, checked);
+  if (run.plan) return planOnly(deps, "rotate", run.args, plan.needsApproval);
   if (resuming && writes.length && !(await confirmed(run, plan.needsApproval, "publish"))) {
     return NEEDS_APPROVAL;
   }
@@ -437,7 +444,7 @@ async function revokeOld(run: Run, data: Rotations, rotation: Rotation): Promise
     }
     return 1;
   }
-  if (!deps.isTerminal) {
+  if (!deps.isTerminal && !run.plan) {
     say(
       "Stopped: revoking needs yes typed in a terminal, and --yes can't give it. Nothing was revoked.",
     );
@@ -467,13 +474,16 @@ async function revokeOld(run: Run, data: Rotations, rotation: Rotation): Promise
   const old = await provider.details(rotation.old.id);
   if (!old) {
     say(`The old token ${rotation.old.id} is already gone.`);
-    return finish(run, data, rotation);
+    if (!run.plan) return finish(run, data, rotation);
+    say("The next run records this rotation as finished, and asks nothing.");
+    return planOnly(deps, "rotate", run.args, true);
   }
   say(`\nOld token: ${old.id} "${old.name}", ${old.status}, expires ${old.expiresOn ?? "never"}`);
   say(`  last used: ${old.lastUsedOn ?? "not reported"}`);
   say(
     `New token: ${current.id} "${current.name}", ${current.status}, expires ${current.expiresOn ?? "never"}`,
   );
+  if (run.plan) return planOnly(deps, "rotate", run.args, true);
   const answer = await deps.ask(`Type yes to revoke the old token ${old.id}: `);
   if (answer.trim() !== "yes") {
     say("Not confirmed. Nothing was revoked.");
@@ -504,7 +514,7 @@ async function abandon(run: Run, data: Rotations, rotation: Rotation): Promise<n
         updatedAt: deps.now().toISOString(),
       };
       const next = putRotation(data, stored);
-      await saveRotations(deps.files, run.rotationsPath, next);
+      if (!run.plan) await saveRotations(deps.files, run.rotationsPath, next);
       say(`${formatReference(entry.ref)} already holds the new value (generation ${holds}).`);
       return publishNew(run, next, stored, null);
     }
@@ -536,6 +546,14 @@ async function abandon(run: Run, data: Rotations, rotation: Rotation): Promise<n
   say(
     `It stopped before the new value was stored, so the old token ${rotation.old.id} still works everywhere.`,
   );
+  if (run.plan) {
+    say(
+      rotation.new.id
+        ? `The next run deletes the new token ${rotation.new.id} and forgets this rotation.`
+        : `Cloudflare may have made a token named "${rotation.new.name}". The next run can't delete it: find it under Account API tokens and delete it, then the next run forgets this rotation.`,
+    );
+    return planOnly(deps, "rotate", run.args, true);
+  }
   if (!deps.isTerminal) {
     say("Stopped: cleaning it up needs yes typed in a terminal. Nothing was changed.");
     say(rerun(deps, "rotate", run.args));

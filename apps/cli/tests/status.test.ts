@@ -56,7 +56,7 @@ describe("keypin status", () => {
       "metadata web prod session secret",
     ]);
     expect(stderr.text).toContain(
-      "from 1Password account my.1password.com: op://Private/billing stripe api key/password,",
+      "keypin: reading rotated dates; no values are shown from 1Password account my.1password.com: op://Private/billing stripe api key/password,",
     );
     expect(stderr.text).toContain("op://Private/web prod session secret/password");
   });

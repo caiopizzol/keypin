@@ -51,7 +51,7 @@ export async function status(args: string[], deps: Deps): Promise<number> {
   );
   const metadata = new Map<string, VaultMetadata | null>();
   if (refs.length) {
-    announce(deps.stderr, "rotated dates (no values)", refs);
+    announce(deps.stderr, "rotated dates; no values are shown", refs);
     const vault = deps.vault();
     for (const ref of refs) {
       try {

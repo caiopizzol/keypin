@@ -41,7 +41,8 @@ from 1Password only while a command runs.
   and prints the command without `--plan`; the user runs that in a terminal and types `yes` once for the
   combined plan of every key. Exit 0 means `publish` has nothing to write; `rotate --plan` always exits 3. Use `--yes` only when the user asks and the plan
   says it's routine. Nothing else approves a first write, a changed account or item, or a revoke.
-- "Nothing to write" means keypin's receipt matches the value, not that it checked the destination.
+- "Nothing to write" means the receipts on this machine match the value, not that keypin checked the
+  destination.
 - `rotate` takes two runs. After the first, the user checks that the new token works; the second revokes
   the old one. Its `--plan` shows the old token's last-used time; that shows whether something still uses
   it, not that the new one works.

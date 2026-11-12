@@ -252,7 +252,9 @@ async function publishLocked(
 
   const pending = planned.filter((job) => job.writes.length);
   if (!pending.length) {
-    say("Nothing to write: every destination already has this generation.");
+    say(
+      "Nothing to write: the receipts on this machine show every destination already got this generation.",
+    );
     return 0;
   }
   if (request.plan) return planOnly(deps, "publish", request.args, needsApproval);

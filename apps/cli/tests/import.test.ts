@@ -114,7 +114,10 @@ describe("keypin import", () => {
   });
 
   test("into a real map, adds only new keys after the existing text, byte for byte", async () => {
-    const { deps, disk, fake, text } = setup({ files: { [MAP]: REAL_MAP } });
+    const { deps, disk, fake, text } = setup({
+      files: { [MAP]: REAL_MAP },
+      values: { "billing dev stripe": `${SENTINEL}-stripe` },
+    });
     expect(await cli(["import", ".env", "--vault", "App Secrets", "--yes"], deps)).toBe(0);
     expect(fake.created.map((c) => c.ref.item)).toEqual(["billing dev webhook secret"]);
     const written = disk.contents.get(MAP);
@@ -126,8 +129,50 @@ describe("keypin import", () => {
     const parsed = parseMap(written, MAP);
     assert(parsed.ok);
     expect(parsed.map.keys.find((k) => k.name === "STRIPE_KEY")?.rotateEvery).toBe("30d");
-    expect(text()).toContain(`STRIPE_KEY: already mapped in ${MAP}; left as it is`);
+    expect(text()).toContain(
+      `STRIPE_KEY: already mapped in ${MAP}; left as it is, and it matches the vault`,
+    );
+    expect(text()).toContain(
+      `keypin: reading the mapped values, to compare with the file from 1Password account ${ACCOUNT}: op://App Secrets/billing dev stripe/password`,
+    );
+    expect(text()).toContain("app.key is still only in that file");
+    expect(text()).not.toContain("STRIPE_KEY, app.key");
     expect(disk.contents.has(REGISTRY)).toBe(false);
+  });
+
+  test("a mapped variable whose vault value differs, or can't be read, is still only in the file", async () => {
+    const env = `STRIPE_KEY=${SENTINEL}-stripe\nWEBHOOK_SECRET=${SENTINEL}-webhook\n`;
+    const map = `${REAL_MAP}\n[keys.WEBHOOK_SECRET]\ndev = "op://App Secrets/billing dev webhook/password"\n`;
+    const { deps, disk, fake, text } = setup({
+      files: { [ENV]: env, [MAP]: map },
+      values: { "billing dev stripe": `${SENTINEL}-rotated` },
+      failing: ["billing dev webhook"],
+    });
+    expect(await cli(["import", ".env", "--vault", "App Secrets", "--yes"], deps)).toBe(0);
+    expect(fake.created).toEqual([]);
+    expect(fake.calls).toEqual(["read billing dev stripe", "read billing dev webhook"]);
+    expect(disk.contents.get(MAP)).toBe(map);
+    expect(text()).toContain(
+      `STRIPE_KEY: already mapped in ${MAP}; left as it is, and it differs from the vault`,
+    );
+    expect(text()).toContain(
+      `WEBHOOK_SECRET: already mapped in ${MAP}; left as it is, and op://App Secrets/billing dev webhook/password couldn't be read to compare`,
+    );
+    expect(text()).not.toContain("Delete it");
+    expect(leaks(text(), disk.contents.get(MAP) ?? "")).toBe(false);
+  });
+
+  test("a mapped variable that differs keeps the file from being called safe to delete", async () => {
+    const { deps, disk, text } = setup({
+      files: { [MAP]: REAL_MAP },
+      values: { "billing dev stripe": `${SENTINEL}-rotated` },
+    });
+    expect(await cli(["import", ".env", "--vault", "App Secrets", "--yes"], deps)).toBe(0);
+    expect(text()).toContain("STRIPE_KEY, app.key are still only in that file");
+    expect(text()).not.toContain("Delete it and stop loading it");
+    expect(leaks(text(), disk.contents.get(MAP) ?? "", disk.contents.get(REGISTRY) ?? "")).toBe(
+      false,
+    );
   });
 
   test("uses the map's first environment, and refuses an --account the map doesn't use", async () => {

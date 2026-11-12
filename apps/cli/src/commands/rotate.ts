@@ -447,7 +447,9 @@ async function revokeOld(run: Run, data: Rotations, rotation: Rotation): Promise
     );
     return 1;
   }
-  say(`Every destination of ${key.name} (${environment}) has generation ${generation}.`);
+  say(
+    `The receipts on this machine show every destination of ${key.name} (${environment}) got generation ${generation}.`,
+  );
   for (const removed of retired) {
     say(
       `  ${removed.destinationId} left the map and its receipt has the old token (generation ${removed.lastReceipt.generation}); revoking breaks it unless that secret is gone`,

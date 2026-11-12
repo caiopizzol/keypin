@@ -195,7 +195,9 @@ describe("keypin publish", () => {
     const again = setup({ disk: first.disk });
     expect(await cli(["publish", "STRIPE_API_KEY"], again.deps)).toBe(0);
     expect(again.log.some((l) => l.startsWith("write"))).toBe(false);
-    expect(again.stderr.text).toContain("Nothing to write");
+    expect(again.stderr.text).toContain(
+      "Nothing to write: the receipts on this machine show every destination already got this generation.",
+    );
     expect(again.disk.contents.get(STATE)).toBe(saved);
   });
 

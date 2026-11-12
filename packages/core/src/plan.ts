@@ -1,4 +1,4 @@
-import type { Environment, KeyId, KeyRef, Receipt } from "./contracts";
+import type { Environment, ItemIds, KeyId, KeyRef, Receipt } from "./contracts";
 import {
   destinationId,
   type KeyEntry,
@@ -6,7 +6,7 @@ import {
   receiptSecretKey,
   secretKey,
 } from "./map";
-import { formatReference, sameRef } from "./reference";
+import { formatReference, sameField, sameRef } from "./reference";
 import type { Generation } from "./secret";
 import { type KeyOwner, ownedBy } from "./state";
 
@@ -56,21 +56,29 @@ export interface PlanInput {
   receipts: readonly Receipt[];
 }
 
+export interface ReadPlanInput extends PlanInput {
+  generation: Generation;
+  ids: ItemIds | null;
+}
+
 const ownerOf = ({ key, environment, mapFile }: PlanInput): KeyOwner => ({
   keyId: key.name,
   environment,
   mapFile,
 });
 
-export function approvalsFor(input: PlanInput): (Approval & { destinationId: string })[] {
-  return judge(input).flatMap(({ id, approval }) =>
+export function approvalsFor(
+  input: PlanInput,
+  ids: ItemIds | null = null,
+): (Approval & { destinationId: string })[] {
+  return judge(input, ids).flatMap(({ id, approval }) =>
     approval ? [{ destinationId: id, ...approval }] : [],
   );
 }
 
-export function planPublish(input: PlanInput & { generation: Generation }): PublishPlan {
+export function planPublish(input: ReadPlanInput): PublishPlan {
   const { key, environment, generation } = input;
-  const steps = judge(input).map(({ id, target, receipt, approval }): PlanStep => {
+  const steps = judge(input, input.ids).map(({ id, target, receipt, approval }): PlanStep => {
     if (approval) {
       return { action: "write", destinationId: id, target, ...approval };
     }
@@ -115,7 +123,7 @@ export function planPublish(input: PlanInput & { generation: Generation }): Publ
   };
 }
 
-function judge(input: PlanInput) {
+function judge(input: PlanInput, ids: ItemIds | null) {
   const { key, environment } = input;
   const entry = key.environments[environment];
   if (!entry) throw new Error(`key "${key.name}" has no ${environment} entry in the map`);
@@ -147,17 +155,22 @@ function judge(input: PlanInput) {
         `${id} account changed from ${receipt.account.pinned} to ${target.account}`,
       );
     }
-    if (!receipt.source || !sameRef(receipt.source, entry.ref)) {
-      const before = receipt.source
-        ? describeRef(receipt.source)
-        : "an item its receipt doesn't record";
-      return needs(
-        "item changed",
-        `${id} was last published from ${before}, and now from ${describeRef(entry.ref)}`,
-      );
-    }
+    const changed = itemChange(receipt, entry.ref, ids);
+    if (changed) return needs("item changed", `${id} was last published from ${changed}`);
     return { id, target, receipt, approval: null };
   });
+}
+
+function itemChange(receipt: Receipt, ref: KeyRef, ids: ItemIds | null): string | null {
+  const { source, sourceIds } = receipt;
+  const now = `and now from ${describeRef(ref)}`;
+  if (!source) return `an item its receipt doesn't record, ${now}`;
+  const before = `${describeRef(source)}, ${now}`;
+  if (!sourceIds) return sameRef(source, ref) ? null : before;
+  if (source.kind !== ref.kind || source.account !== ref.account || !sameField(source, ref))
+    return before;
+  if (ids === null || (ids.vault === sourceIds.vault && ids.item === sourceIds.item)) return null;
+  return `${describeRef(source)} (item ${sourceIds.item} in vault ${sourceIds.vault}), and now from ${describeRef(ref)} (item ${ids.item} in vault ${ids.vault})`;
 }
 
 export function latestPerSecret(receipts: readonly Receipt[]): Receipt[] {

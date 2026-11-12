@@ -1,5 +1,5 @@
-import { formatReference, type KeyRef } from "@keypin/core";
-import type { Writer } from "./deps";
+import { formatReference, type ItemIds, type KeyRef } from "@keypin/core";
+import type { Deps, Writer } from "./deps";
 
 export function announce(stderr: Writer, what: string, refs: readonly KeyRef[]): void {
   const groups = new Map<string, Set<string>>();
@@ -10,6 +10,14 @@ export function announce(stderr: Writer, what: string, refs: readonly KeyRef[]):
   for (const [where, references] of groups) {
     stderr.write(`keypin: reading ${what} from ${where}: ${[...references].join(", ")}\n`);
   }
+}
+
+export async function lookUpIds(deps: Deps, refs: readonly KeyRef[]): Promise<ItemIds[]> {
+  announce(deps.stderr, "the item IDs, not the values,", refs);
+  const vault = deps.vault();
+  const ids: ItemIds[] = [];
+  for (const ref of refs) ids.push(await vault.itemIds(ref));
+  return ids;
 }
 
 export function distinctRefs(refs: readonly KeyRef[]): KeyRef[] {

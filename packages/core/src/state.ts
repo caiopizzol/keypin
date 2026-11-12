@@ -5,7 +5,7 @@ import { isRecord } from "./record";
 import { storedRefWithPasswordDefault } from "./reference";
 import type { Generation } from "./secret";
 
-const STATE_VERSION = 3;
+const STATE_VERSION = 4;
 
 export interface Operation {
   id: string;
@@ -27,17 +27,18 @@ export interface State {
 export const emptyState = (): State => ({ version: STATE_VERSION, receipts: [], operations: [] });
 
 export async function loadState(files: Files, path: string): Promise<State> {
-  const data = await readVersionedJson(files, path, [1, 2, STATE_VERSION], "state file");
+  const data = await readVersionedJson(files, path, [1, 2, 3, STATE_VERSION], "state file");
   if (!data) return emptyState();
-  const mapFile = (r: Record<string, unknown>) =>
-    data.version === STATE_VERSION ? r.mapFile : null;
+  const version = Number(data.version);
+  const mapFile = (r: Record<string, unknown>) => (version >= 3 ? r.mapFile : null);
   const receipts = Array.isArray(data.receipts)
     ? data.receipts.map((r: unknown) =>
         isRecord(r)
           ? {
               ...r,
               mapFile: mapFile(r),
-              source: data.version === 1 ? null : storedSource(r.source),
+              source: version === 1 ? null : storedSource(r.source),
+              sourceIds: version === STATE_VERSION ? r.sourceIds : null,
             }
           : r,
       )
@@ -116,6 +117,8 @@ function isReceipt(r: unknown): r is Receipt {
     isText(r.account.publisher) &&
     isText(r.account.destinationAccount) &&
     (r.source === null || storedRefWithPasswordDefault(r.source) !== null) &&
+    (r.sourceIds === null ||
+      (isRecord(r.sourceIds) && isText(r.sourceIds.vault) && isText(r.sourceIds.item))) &&
     typeof r.evidence === "object" &&
     r.evidence !== null
   );

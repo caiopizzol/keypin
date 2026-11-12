@@ -56,6 +56,7 @@ export function receipt(
     environment: "prod",
     mapFile: KEY_MAP,
     source: KEY.environments.prod?.ref ?? null,
+    sourceIds: null,
     destinationId,
     generation,
     account: { pinned: destinationAccount, publisher: "acme", destinationAccount },

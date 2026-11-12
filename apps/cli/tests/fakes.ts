@@ -48,6 +48,7 @@ export interface FakeVaultOptions {
   metadata?: Record<string, VaultMetadata>;
   failing?: string[];
   items?: string[];
+  ids?: Record<string, string>;
 }
 
 interface CreatedItem {
@@ -64,16 +65,35 @@ export function fakeVault(options: FakeVaultOptions = {}) {
     if (options.failing?.includes(ref.item))
       throw new Error(`1Password: "${ref.item}" isn't readable`);
   };
+  const stored = (ref: KeyRef) => {
+    const made = created.find((c) => c.ref.item.toLowerCase() === ref.item.toLowerCase());
+    if (made) return made.value;
+    const found = options.values?.[ref.item];
+    if (found === undefined) throw new Error(`no item "${ref.item}"`);
+    return new Secret(found);
+  };
+  const value = (ref: KeyRef) => {
+    calls.push(`read ${ref.item}`);
+    fail(ref);
+    return stored(ref);
+  };
+  const idsOf = (ref: KeyRef) => ({
+    vault: `id-${ref.vault.toLowerCase()}`,
+    item: options.ids?.[ref.item] ?? `id-${ref.item.toLowerCase()}`,
+  });
   const vault: VaultBackend = {
     capabilities: { read: true, write: false, list: false, metadata: true },
     async read(ref) {
-      calls.push(`read ${ref.item}`);
+      return value(ref);
+    },
+    async readItem(ref) {
+      return { secret: value(ref), ids: idsOf(ref) };
+    },
+    async itemIds(ref) {
+      calls.push(`ids ${ref.item}`);
       fail(ref);
-      const stored = created.find((c) => c.ref.item.toLowerCase() === ref.item.toLowerCase());
-      if (stored) return stored.value;
-      const value = options.values?.[ref.item];
-      if (value === undefined) throw new Error(`no item "${ref.item}"`);
-      return new Secret(value);
+      stored(ref);
+      return idsOf(ref);
     },
     async write(ref, secret, writeOptions = {}) {
       if (!options.items) throw new Error("the fake vault doesn't write");

@@ -77,7 +77,7 @@ guards=(
   "apps/cli/src/commands/rotate.ts|  await saveRotations(deps.files, run.rotationsPath, data);
 
   const made = await provider.issue({ name, like: old, expiresOn });|Start saves \"issuing\" before Issue"
-  "apps/cli/src/commands/rotate.ts|    await vault.write(entry.ref, made.value, { rotated: today });|Store"
+  "apps/cli/src/commands/rotate.ts|    await vault.write(entry.ref, made.value, { rotated: today, item: ids });|Store"
   "apps/cli/src/commands/rotate.ts|  rotation = { ...rotation, stage: \"stored\", updatedAt: deps.now().toISOString() };|SaveStored after Store"
   "apps/cli/src/commands/rotate.ts|    if (generation !== rotation.new.generation) {|ResumeStored: vault = rot.new"
   "apps/cli/src/commands/rotate.ts|  if (!written.ok) {|SavePublished only after every write"

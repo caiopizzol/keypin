@@ -38,13 +38,20 @@ export interface VaultMetadata {
   rotated: string | null;
 }
 
+export interface ItemIds {
+  vault: string;
+  item: string;
+}
+
 export interface VaultBackend {
   readonly capabilities: VaultCapabilities;
   read(ref: KeyRef): Promise<Secret>;
+  readItem(ref: KeyRef): Promise<{ secret: Secret; ids: ItemIds }>;
+  itemIds(ref: KeyRef): Promise<ItemIds>;
   write(
     ref: KeyRef,
     secret: Secret,
-    options?: { rotated?: string; newItem?: boolean },
+    options?: { rotated?: string; newItem?: boolean; item?: ItemIds },
   ): Promise<void>;
   list(scope: VaultScope): Promise<VaultItem[]>;
   metadata(ref: KeyRef): Promise<VaultMetadata>;
@@ -121,6 +128,7 @@ export interface Receipt {
   environment: Environment;
   mapFile: string | null;
   source: KeyRef | null;
+  sourceIds: ItemIds | null;
   destinationId: string;
   generation: Generation;
   account: { pinned: string; publisher: string; destinationAccount: string };

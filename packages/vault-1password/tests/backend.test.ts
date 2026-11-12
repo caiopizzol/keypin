@@ -120,6 +120,30 @@ describe("read", () => {
     expect(inspect(secret)).toBe("[secret]");
   });
 
+  test("readItem returns the value with the item's vault and item IDs", async () => {
+    const { client, calls } = fake([
+      item("demo dev token", [field("password", "Concealed", VALUE)], "item-7"),
+    ]);
+    const read = await backendFor(client).backend.readItem({ ...ref, item: "DEMO DEV TOKEN" });
+    expect(read.secret.reveal()).toBe(VALUE);
+    expect(read.ids).toEqual({ vault: "vault-1", item: "item-7" });
+    expect(JSON.stringify(read)).not.toContain(VALUE);
+    expect(calls.get).toBe(1);
+  });
+
+  test("itemIds finds the item's vault and item IDs without fetching its fields", async () => {
+    const { client, calls } = fake([
+      item("demo dev token", [field("password", "Concealed", VALUE)], "item-7"),
+    ]);
+    const { backend } = backendFor(client);
+    expect(await backend.itemIds({ ...ref, item: "DEMO DEV TOKEN" })).toEqual({
+      vault: "vault-1",
+      item: "item-7",
+    });
+    expect(calls.get).toBe(0);
+    await expect(backend.itemIds({ ...ref, item: "gone" })).rejects.toThrow("no such item");
+  });
+
   test("fails clearly when the item has no such field", async () => {
     const { client } = fake([item("demo dev token", [field("rotated", "Date", "2026-11-09")])]);
     await expect(backendFor(client).backend.read(ref)).rejects.toThrow(
@@ -226,6 +250,31 @@ describe("names in a reference", () => {
 });
 
 describe("write", () => {
+  test("with item, writes that item and not a newer one with the same title", async () => {
+    const replacement = item(
+      "demo dev token",
+      [field("password", "Concealed", "keep-this")],
+      "new",
+    );
+    const { client, calls } = fake([replacement]);
+    const { backend } = backendFor(client);
+    await expect(
+      backend.write(ref, new Secret(VALUE), { item: { vault: "vault-1", item: "old" } }),
+    ).rejects.toThrow("not found");
+    expect(calls.put).toEqual([]);
+    expect(calls.create).toEqual([]);
+
+    await backend.write(ref, new Secret(VALUE), {
+      rotated: "2026-11-10",
+      item: { vault: "vault-1", item: "new" },
+    });
+    expect(calls.put[0]?.id).toBe("new");
+    expect(calls.put[0]?.fields).toEqual([
+      field("password", "Concealed", VALUE),
+      { id: "rotated", title: "rotated", fieldType: "Date", value: "2026-11-10" },
+    ]);
+  });
+
   test("writes the field the reference names, and won't create an item for another field", async () => {
     const existing = item("demo dev token", [
       field("password", "Concealed", "keep-this"),

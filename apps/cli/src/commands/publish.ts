@@ -5,6 +5,7 @@ import {
   type Environment,
   formatReference,
   type Generation,
+  type ItemIds,
   type KeyEntry,
   type KeyOwner,
   type KeysMap,
@@ -34,7 +35,7 @@ import {
   writeAll,
   writesFor,
 } from "../publishing";
-import { announce } from "../vault";
+import { announce, lookUpIds } from "../vault";
 
 interface Request {
   keyId: string | null;
@@ -56,6 +57,7 @@ interface Checks extends Job {
 
 interface Planned extends Checks {
   secret: Secret;
+  ids: ItemIds;
   generation: Generation;
   writes: Write[];
 }
@@ -159,10 +161,29 @@ async function publishLocked(
     return 1;
   }
 
-  const approvals = jobs.flatMap(({ key, owner }) =>
-    approvalsFor({ key, environment, mapFile: owner.mapFile, receipts: state.receipts }),
-  );
-  if (approvals.length && !deps.isTerminal && !request.plan) {
+  const approvalsOf = (ids: (ItemIds | null)[]) =>
+    jobs.flatMap(({ key, owner }, index) =>
+      approvalsFor(
+        { key, environment, mapFile: owner.mapFile, receipts: state.receipts },
+        ids[index] ?? null,
+      ),
+    );
+  const unattended = !deps.isTerminal && !request.plan;
+  let approvals = approvalsOf([]);
+  if (unattended && !approvals.length) {
+    try {
+      approvals = approvalsOf(
+        await lookUpIds(
+          deps,
+          jobs.map((job) => job.entry.ref),
+        ),
+      );
+    } catch (error) {
+      say(`Stopped: couldn't find the item: ${messageOf(error)}. Nothing was written.`);
+      return 1;
+    }
+  }
+  if (approvals.length && unattended) {
     say("\nNeeds approval:");
     for (const approval of approvals) say(`  ${approval.approval}`);
     say(
@@ -182,8 +203,9 @@ async function publishLocked(
   for (const job of checks) {
     const { key, entry, owner, checked } = job;
     let secret: Secret;
+    let ids: ItemIds;
     try {
-      secret = await deps.vault().read(entry.ref);
+      ({ secret, ids } = await deps.vault().readItem(entry.ref));
     } catch (error) {
       say(
         `Stopped: couldn't read ${key.name} (${formatReference(entry.ref)}): ${messageOf(error)}`,
@@ -197,6 +219,7 @@ async function publishLocked(
       mapFile: owner.mapFile,
       receipts: state.receipts,
       generation,
+      ids,
     });
     const writes = writesFor(plan.steps, checked);
     say(
@@ -216,7 +239,7 @@ async function publishLocked(
       );
     }
     needsApproval ||= plan.needsApproval;
-    planned.push({ ...job, secret, generation, writes });
+    planned.push({ ...job, secret, ids, generation, writes });
   }
 
   const finished = planned
@@ -243,6 +266,7 @@ async function publishLocked(
       mapFile: job.owner.mapFile,
       entry: job.entry,
       secret: job.secret,
+      ids: job.ids,
       generation: job.generation,
       writes: job.writes,
       state,

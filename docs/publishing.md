@@ -40,6 +40,14 @@ the pinned account. The account is now the repo's owner, so the first publish af
 "account changed" once for those destinations and needs a typed `yes`. Receipts from maps that set only `repo`
 already pinned the owner and don't change.
 
+A receipt records the vault item's 1Password IDs as well as its reference. The item has changed when the IDs
+differ, so an item you delete and create again with the same title needs a typed `yes`, and renaming an item
+doesn't. Another field or section of the same item, or another 1Password account, is still a changed item. Without
+a terminal, `--yes` first looks up the item's IDs from the vault's item list, which holds no values, so a replaced
+item stops the run before any value is read. A receipt without IDs, which keypin 0.7 and older write (state
+version 3 or older), keeps comparing the reference until keypin writes that destination again. `rotate` stores the new token in the item it read, by its IDs, so an item replaced while it runs is left
+as it is and the run stops.
+
 ## See the plan first
 
 `--plan` runs the account checks and the plan step, then stops. It works without a terminal, so an agent can

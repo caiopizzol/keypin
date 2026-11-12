@@ -136,12 +136,19 @@ function fakeProvider(options: ProviderOptions = {}) {
   return { build, log, tokens, admins };
 }
 
-function writableVault(options: { failWrite?: boolean; source?: string } = {}) {
+function writableVault(
+  options: { failWrite?: boolean; source?: string; replacedAfterRead?: boolean } = {},
+) {
   const values = new Map([
     [options.source ?? SOURCE, OLD_VALUE],
     [ADMIN_SOURCE, ADMIN_VALUE],
   ]);
   const calls: string[] = [];
+  const replaced = new Set<string>();
+  const idsOf = (ref: KeyRef) => ({
+    vault: "vault-1",
+    item: `id-${ref.item}${replaced.has(formatReference(ref)) ? " v2" : ""}`,
+  });
   const vault: VaultBackend = {
     capabilities: { read: true, write: true, list: false, metadata: true },
     async read(ref: KeyRef) {
@@ -150,10 +157,22 @@ function writableVault(options: { failWrite?: boolean; source?: string } = {}) {
       if (value === undefined) throw new Error(`no field ${formatReference(ref)}`);
       return new Secret(value);
     },
+    async readItem(ref: KeyRef) {
+      const read = { secret: await vault.read(ref), ids: idsOf(ref) };
+      if (options.replacedAfterRead) replaced.add(formatReference(ref));
+      return read;
+    },
+    async itemIds(ref: KeyRef) {
+      calls.push(`ids ${ref.item}`);
+      return idsOf(ref);
+    },
     async write(ref, secret, writeOptions) {
       calls.push(`write ${ref.item} rotated ${writeOptions?.rotated}`);
       if (options.failWrite) throw new Error("1Password is locked");
       if (!values.has(formatReference(ref))) throw new Error(`no field ${formatReference(ref)}`);
+      const expected = writeOptions?.item;
+      if (expected && expected.item !== idsOf(ref).item)
+        throw new Error(`no item ${expected.item}`);
       values.set(formatReference(ref), secret.reveal());
     },
     async list() {
@@ -164,7 +183,7 @@ function writableVault(options: { failWrite?: boolean; source?: string } = {}) {
       return { rotated: "2026-11-10" };
     },
   };
-  return { vault, calls, values };
+  return { vault, calls, values, replaced };
 }
 
 async function receiptFor(value: string, at = "2026-11-10T14:52:03.000Z"): Promise<Receipt> {
@@ -180,6 +199,7 @@ async function receiptFor(value: string, at = "2026-11-10T14:52:03.000Z"): Promi
       section: null,
       field: "password",
     },
+    sourceIds: null,
     destinationId: GITHUB,
     generation: await generationOf(new Secret(value)),
     account: { pinned: "acme", publisher: "acme", destinationAccount: "acme" },
@@ -205,7 +225,7 @@ async function setup(
     options.disk ??
     memoryFiles({
       "/work/billing/keypin.toml": options.map ?? MAP,
-      ...(receipts ? { [STATE]: JSON.stringify({ version: 3, receipts, operations: [] }) } : {}),
+      ...(receipts ? { [STATE]: JSON.stringify({ version: 4, receipts, operations: [] }) } : {}),
     });
   const provider = fakeProvider(options.provider);
   const vault = writableVault(options.vault);
@@ -353,6 +373,30 @@ describe("keypin rotate: the first run", () => {
     expect(run.leaked()).toBe(false);
   });
 
+  test("--yes can't approve publishing to a destination whose receipt names another item with the same title", async () => {
+    const replaced = {
+      ...(await receiptFor(OLD_VALUE)),
+      sourceIds: { vault: "vault-1", item: "id-deleted item" },
+    };
+    const run = await setup({ receipts: [replaced] });
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN", "--yes"], run.deps)).toBe(NEEDS_APPROVAL);
+    expect(run.stderr.text).toContain(
+      `needs approval: ${GITHUB} was last published from op://App Secrets/${ITEM}/password (1Password account my.1password.com) (item id-deleted item in vault vault-1)`,
+    );
+    expect(run.stderr.text).toContain("Stopped before reading anything");
+    expect(run.vault.calls).toEqual([`ids ${ITEM}`]);
+    expect(run.provider.log).toEqual([]);
+    expect(run.disk.contents.has(ROTATIONS)).toBe(false);
+
+    const same = await setup({
+      receipts: [{ ...replaced, sourceIds: { vault: "vault-1", item: `id-${ITEM}` } }],
+    });
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN", "--yes"], same.deps)).toBe(0);
+    const [receipt] = (await same.state()).receipts;
+    expect(receipt?.sourceIds).toEqual({ vault: "vault-1", item: `id-${ITEM}` });
+    expect(run.leaked() || same.leaked()).toBe(false);
+  });
+
   test("--yes can't approve a first write to a destination", async () => {
     const run = await setup({ receipts: null });
     expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN", "--yes"], run.deps)).toBe(NEEDS_APPROVAL);
@@ -462,6 +506,18 @@ describe("keypin rotate: the first run", () => {
     expect(second.provider.log).toContain(`revoke ${NEW_ID.slice(0, 4)}`);
     expect(second.provider.tokens.has(OLD_ID)).toBe(true);
     expect((await second.rotations()).rotations).toEqual([]);
+  });
+});
+
+describe("keypin rotate: an item replaced while it runs", () => {
+  test("the new value goes only to the item it read, so a replacement is left alone", async () => {
+    const run = await setup({ terminal: ["yes"], vault: { replacedAfterRead: true } });
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain(`couldn't store the new value: no item id-${ITEM}`);
+    expect(run.vault.values.get(SOURCE)).toBe(OLD_VALUE);
+    expect((await run.rotations()).rotations[0]?.stage).toBe("issued");
+    expect(run.destinations.log).toEqual(["check github-actions:acme/site"]);
+    expect(run.leaked()).toBe(false);
   });
 });
 
@@ -632,12 +688,12 @@ describe("keypin rotate: a reference to a field in a section", () => {
 });
 
 describe("keypin rotate: the files it saves name their project", () => {
-  test("state.json is version 3, so keypin 0.4 and older refuse it instead of mixing projects up", async () => {
+  test("state.json is version 4, so keypin 0.4 and older refuse it instead of mixing projects up", async () => {
     const run = await setup({ terminal: ["yes"] });
     expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(0);
     const state = JSON.parse(run.disk.contents.get(STATE) ?? "{}");
     expect(Object.keys(state).toSorted()).toEqual(["operations", "receipts", "version"]);
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(4);
     expect(state.receipts.map((r: Receipt) => r.mapFile)).toEqual([BILLING_MAP]);
     const rotations = JSON.parse(run.disk.contents.get(ROTATIONS) ?? "{}");
     expect(rotations.version).toBe(2);

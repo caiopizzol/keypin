@@ -37,5 +37,9 @@ entries name no project, so none counts as a project's own:
 - An unfinished publish isn't shown, and `publish` plans from the receipts anyway.
 - An unfinished rotation isn't picked up or shown. Finish it with the keypin that started it before upgrading.
 
-keypin 0.4 and older refuse the files this version writes, with a schema version error. The path is where the
+A `state.json` version 3 file, from keypin 0.5 or 0.6, loads too. Its receipts record no 1Password item IDs, so
+`publish` compares their references until the next write records the IDs (see
+[Publishing](publishing.md#what-happens)).
+
+keypin 0.6 and older refuse the files this version writes, with a schema version error. The path is where the
 project's `keypin.toml` is now, so finish a rotation before you move a project's folder.

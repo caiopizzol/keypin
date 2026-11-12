@@ -62,6 +62,9 @@ The same seven scenarios, run again against these fixes:
   and another item.
 - **9. `authority-unknown` appeared on every key.** It's gone, along with the row's `authority` field, which was
   always `"unknown"`.
+- **11. "Nothing to write" trusted the receipt.** keypin can't read a destination's secret, only its own
+  receipts. `publish` now says "the receipts on this machine show every destination already got this
+  generation", and `rotate`'s revoke run says the same of the new generation.
 
 ## Getting started
 
@@ -85,11 +88,6 @@ reference, so the draft fixes what discover found.
 `status` shows due dates and receipts; only `discover` shows what a repo or Worker actually holds. Agents that
 followed "check with `status`" missed a Worker without a required secret. Consider showing discover's cloud
 problems in `status` for registered projects, or a single `keypin doctor`.
-
-### 11. "Nothing to write" trusts the receipt
-
-`publish` skips a destination when its receipt has the same generation. It doesn't read the destination (it
-can't, for secrets). The output should say "receipt matches", not imply the destination holds the value.
 
 ## Smaller
 

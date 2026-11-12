@@ -21,8 +21,10 @@ It skips, and lists by name:
 
 - a name that isn't a variable name, such as `app.key`;
 - an empty value;
-- a variable the map already has in that environment. One the map has only in another environment, such as `prod`,
-  is left as it is too, and listed as still only in the file: add its reference by hand;
+- a variable the map already has in that environment. keypin reads its mapped value and says whether the file's
+  value matches the vault or differs from it. One that differs, can't be read, or has a `$` (which keypin doesn't
+  read to compare) is listed as still only in the file. One the map has only in another environment, such as `prod`, is left as it is too, and listed as still
+  only in the file: add its reference by hand;
 - a value with a `$`. Loaders differ: Bun expands `$OTHER` to another variable's value, and dotenv keeps it as it
   is, so keypin can't tell which value the program got. Move it by hand;
 - a variable whose item already exists in the vault with another value, or can't be read. keypin never overwrites
@@ -60,7 +62,7 @@ holds the same value. When there's nothing new to create, it maps those items wi
 
 keypin never changes or deletes the env file, and it never prints a value. It names every variable still only in
 the file: one that isn't a variable name, has a `$`, is mapped only in another environment, shares an item with
-another, or whose item exists with another value. Move those, then delete the file and stop loading it. An empty
-value or a variable the map already has in that environment needs nothing. For
-example, `wrangler dev` reads `.dev.vars` (see [Notes](notes.md)). Then `keypin run -- <command>` provides the values,
+another, whose item exists with another value or can't be read, or that is mapped with a value the vault doesn't
+match or that can't be read. Move those, then delete the file and stop loading it. An empty value or a mapped
+variable that matches the vault needs nothing. For example, `wrangler dev` reads `.dev.vars` (see [Notes](notes.md)). Then `keypin run -- <command>` provides the values,
 and warns while an env file still holds one of them.

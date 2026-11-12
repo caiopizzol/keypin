@@ -554,7 +554,7 @@ describe("keypin rotate: the next run", () => {
     const run = await next(disk, ["yes"]);
     expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(0);
     expect(run.stderr.text).toContain(
-      `Every destination of CLOUDFLARE_API_TOKEN (prod) has generation ${NEW_GENERATION}.`,
+      `The receipts on this machine show every destination of CLOUDFLARE_API_TOKEN (prod) got generation ${NEW_GENERATION}.`,
     );
     expect(run.stderr.text).toContain(`Old token: ${OLD_ID} "cicd-keypin", active`);
     expect(run.stderr.text).toContain("last used: 2026-11-10T14:54:43Z");
@@ -583,7 +583,7 @@ describe("keypin rotate: the next run", () => {
     const run = await next(disk);
     expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN", "--plan"], run.deps)).toBe(NEEDS_APPROVAL);
     expect(run.stderr.text).toContain(
-      `Every destination of CLOUDFLARE_API_TOKEN (prod) has generation ${NEW_GENERATION}.`,
+      `The receipts on this machine show every destination of CLOUDFLARE_API_TOKEN (prod) got generation ${NEW_GENERATION}.`,
     );
     expect(run.stderr.text).toContain(`Old token: ${OLD_ID} "cicd-keypin", active`);
     expect(run.stderr.text).toContain("last used: 2026-11-10T14:54:43Z");

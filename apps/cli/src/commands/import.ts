@@ -17,6 +17,7 @@ import { type Deps, localDay, UsageError } from "../deps";
 import { messageOf } from "../errors";
 import { MAP_FILE } from "../project";
 import { NEEDS_APPROVAL, rerun } from "../publishing";
+import { announce } from "../vault";
 import { registerProject, TEMPLATE } from "./init";
 
 const ROTATE_EVERY = "90d";
@@ -40,6 +41,7 @@ interface Skip {
   reason: string;
   onlyInFile: boolean;
   exists?: boolean;
+  mapped?: { ref: KeyRef; value: Secret };
 }
 
 interface Target {
@@ -48,6 +50,8 @@ interface Target {
   map: KeysMap | null;
   account: string;
 }
+
+const DOLLAR = "the value has a $, which some loaders expand to another variable's value";
 
 export async function importEnv(args: string[], deps: Deps): Promise<number> {
   const request = parseRequest(args);
@@ -65,7 +69,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
   if (!values.size) throw new Error(`${envPath} sets no variables; nothing to import`);
 
   const planned: Import[] = [];
-  const skips: Skip[] = [];
+  let skips: Skip[] = [];
   const items = new Map<string, string>();
   for (const [name, value] of values) {
     const item = draftItemName(project, environment, name);
@@ -78,11 +82,18 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
         onlyInFile: true,
       });
     else if (value.isEmpty()) skips.push({ name, reason: "the value is empty", onlyInFile: false });
+    else if (mapped?.environments[environment] && value.includes("$"))
+      skips.push({
+        name,
+        reason: `already mapped in ${target.file}; left as it is, but ${DOLLAR}, so keypin can't compare it with the vault`,
+        onlyInFile: true,
+      });
     else if (mapped?.environments[environment])
       skips.push({
         name,
         reason: `already mapped in ${target.file}; left as it is`,
         onlyInFile: false,
+        mapped: { ref: mapped.environments[environment].ref, value },
       });
     else if (mapped)
       skips.push({
@@ -93,7 +104,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
     else if (value.includes("$"))
       skips.push({
         name,
-        reason: "the value has a $, which some loaders expand to another variable's value",
+        reason: DOLLAR,
         onlyInFile: true,
       });
     else if (sameItem !== undefined)
@@ -140,6 +151,8 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
         });
     }
   }
+
+  skips = await compareMapped(deps, skips);
 
   const today = localDay(deps.now());
   say(`Import ${envPath} into 1Password account ${target.account}, vault ${request.vault}:`);
@@ -210,6 +223,35 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
       "Run keypin import again to create the rest. It maps an item it already stored, since that item holds the same value.",
     );
   return failed.length || existed ? 1 : 0;
+}
+
+async function compareMapped(deps: Deps, skips: readonly Skip[]): Promise<Skip[]> {
+  const refs = skips.flatMap((skip) => (skip.mapped ? [skip.mapped.ref] : []));
+  if (!refs.length) return [...skips];
+  announce(deps.stderr, "the mapped values, to compare with the file", refs);
+  const compared: Skip[] = [];
+  for (const skip of skips) {
+    if (!skip.mapped) {
+      compared.push(skip);
+      continue;
+    }
+    const { ref, value } = skip.mapped;
+    try {
+      const same = (await deps.vault().read(ref)).equals(value);
+      compared.push({
+        ...skip,
+        reason: `${skip.reason}, and it ${same ? "matches" : "differs from"} the vault`,
+        onlyInFile: !same,
+      });
+    } catch (error) {
+      compared.push({
+        ...skip,
+        reason: `${skip.reason}, and ${formatReference(ref)} couldn't be read to compare: ${messageOf(error)}`,
+        onlyInFile: true,
+      });
+    }
+  }
+  return compared;
 }
 
 async function existingProblem(deps: Deps, entry: Import): Promise<string | null> {

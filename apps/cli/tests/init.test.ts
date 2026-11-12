@@ -41,7 +41,7 @@ describe("keypin init", () => {
     expect(parseMap(uncomment(TEMPLATE), "keypin.toml")).toEqual({
       ok: false,
       errors: [
-        `keypin.toml: key "EXAMPLE_API_KEY" prod: publish[0]: field "account" must be a Cloudflare account ID (32 hex characters)`,
+        `keypin.toml: key "EXAMPLE_API_KEY" prod: publish[0]: field "account" is a <...> placeholder: replace it with the Cloudflare account ID the Worker belongs to (32 hex characters; wrangler whoami lists it)`,
       ],
     });
   });

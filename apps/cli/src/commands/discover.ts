@@ -144,10 +144,6 @@ export async function discover(args: string[], deps: Deps): Promise<number> {
     environments: map?.environments ?? DEFAULT_ENVIRONMENTS,
     written: values.write,
   });
-  if (draft !== null) {
-    const check = parseMap(draft, "draft");
-    if (!check.ok) throw new Error(`the draft doesn't parse: ${check.errors.join("; ")}`);
-  }
   if (values.write && draft === null) {
     deps.stderr.write(
       `keypin discover: found no unmapped name set locally or in the cloud, so there's no draft; nothing was written. Run keypin init for a template.\n`,

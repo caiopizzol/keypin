@@ -14,6 +14,10 @@ import {
 
 const SENTINEL = "sentinel-value-7f3a9c2e1d";
 const ACCOUNT = "11111111111111111111111111111111";
+const filled = (draft: string) =>
+  draft
+    .replace("<your 1Password account>", "my.1password.com")
+    .replaceAll("<your vault>", "Private");
 
 describe("env files", () => {
   test("names the files that set keys and the ones that only list them", () => {
@@ -515,7 +519,12 @@ describe("draftMap", () => {
     });
     assert(draft !== null);
     expect(draft).toContain("# Fill in your account and vault");
-    const parsed = parseMap(draft, "draft");
+    const unfilled = parseMap(draft, "draft");
+    assert(!unfilled.ok);
+    expect(unfilled.errors).toHaveLength(5);
+    expect(unfilled.errors[0]).toContain(`[1password]: field "account" is a <...> placeholder`);
+    expect(unfilled.errors[1]).toContain(`field "from" has a <...> placeholder for its vault`);
+    const parsed = parseMap(filled(draft), "draft");
     assert(parsed.ok, JSON.stringify(parsed));
     const keys = Object.fromEntries(parsed.map.keys.map((k) => [k.name, k]));
     expect(Object.keys(keys).toSorted()).toEqual(["DEPLOY_TOKEN", "LOCAL_ONLY", "STRIPE_KEY"]);
@@ -586,7 +595,7 @@ describe("draftMap", () => {
       environments: DEFAULT_ENVIRONMENTS,
     });
     assert(draft !== null);
-    const parsed = parseMap(draft, "draft");
+    const parsed = parseMap(filled(draft), "draft");
     assert(parsed.ok, JSON.stringify(parsed));
     const items = parsed.map.keys.flatMap((k) =>
       Object.values(k.environments).flatMap((e) => (e ? [e.ref.item] : [])),

@@ -99,6 +99,18 @@ const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 const REMOVED_KEY_FIELDS: readonly string[] = ["owner", "consumers"];
 const OLD_FORMAT = "see docs/configuration.md for the current format";
+const PLACEHOLDER = /<[^<>]*>/;
+
+function filledIn(
+  value: string | undefined,
+  field: string,
+  what: string,
+  fail: (message: string) => void,
+): string | undefined {
+  if (value === undefined || !PLACEHOLDER.test(value)) return value;
+  fail(`field "${field}" is a <...> placeholder: replace it with ${what}`);
+  return undefined;
+}
 
 function validateMap(data: unknown, file: string): MapResult {
   const errors: string[] = [];
@@ -144,7 +156,14 @@ function validateAccount(raw: unknown, fail: (message: string) => void): string 
     return undefined;
   }
   unknownFields(raw, ["account"], (field) => fail(`unknown field "${field}"`));
-  return requiredString(raw, "account", fail);
+  const account = requiredString(raw, "account", fail);
+  filledIn(
+    account,
+    "account",
+    "your 1Password account's sign-in address (such as my.1password.com, at the top left of the 1Password app) or its account ID",
+    fail,
+  );
+  return account;
 }
 
 function validateEnvironments(
@@ -307,6 +326,15 @@ function reference(
     fail(`field "${field}" ${parsed}`);
     return undefined;
   }
+  const parts = (["vault", "item", "section", "field"] as const).filter((part) =>
+    PLACEHOLDER.test(parsed[part] ?? ""),
+  );
+  if (parts.length) {
+    fail(
+      `field "${field}" has a <...> placeholder for its ${parts.join(" and ")}: replace it with the field's secret reference (in 1Password, open the field's menu and select Copy Secret Reference)`,
+    );
+    return undefined;
+  }
   if (account === undefined) {
     fail(`field "${field}" needs your 1Password account: add [1password] with account = "..."`);
     return undefined;
@@ -338,8 +366,18 @@ function destination(raw: unknown, fail: (message: string) => void): PublishTarg
     unknownFields(raw, ["to", "account", "worker"], (field) =>
       err(`unknown field "${field}" for ${to}`),
     );
-    const account = requiredString(raw, "account", err);
-    const worker = requiredString(raw, "worker", err);
+    const account = filledIn(
+      requiredString(raw, "account", err),
+      "account",
+      "the Cloudflare account ID the Worker belongs to (32 hex characters; wrangler whoami lists it)",
+      err,
+    );
+    const worker = filledIn(
+      requiredString(raw, "worker", err),
+      "worker",
+      `the Worker's name, the "name" in its wrangler config`,
+      err,
+    );
     if (account !== undefined && !ACCOUNT_ID.test(account))
       err(`field "account" must be a Cloudflare account ID (32 hex characters)`);
     return failed || account === undefined || worker === undefined
@@ -354,7 +392,12 @@ function destination(raw: unknown, fail: (message: string) => void): PublishTarg
           : `unknown field "${field}" for ${to}`,
       ),
     );
-    const repo = requiredString(raw, "repo", err);
+    const repo = filledIn(
+      requiredString(raw, "repo", err),
+      "repo",
+      `the GitHub repository as "owner/name", such as "acme/billing"`,
+      err,
+    );
     if (repo !== undefined && !REPO.test(repo)) err(`field "repo" must be "owner/name"`);
     return failed || repo === undefined ? undefined : { to, repo, account: repo.split("/")[0] };
   }

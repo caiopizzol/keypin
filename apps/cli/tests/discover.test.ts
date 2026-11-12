@@ -8,6 +8,10 @@ import { fakeDeps, leaks, memoryFiles, parseJson, REGISTRY, SENTINEL } from "./f
 
 const ACCOUNT = "11111111111111111111111111111111";
 const ROOT = "/work/billing";
+const filled = (draft: string) =>
+  draft
+    .replace("<your 1Password account>", "my.1password.com")
+    .replaceAll("<your vault>", "Private");
 
 const FILES: Record<string, string> = {
   [`${ROOT}/.dev.vars`]: `STRIPE_KEY=${SENTINEL}\nexport LOCAL_ONLY="${SENTINEL}"\n`,
@@ -128,7 +132,7 @@ describe("keypin discover", () => {
     expect(calls).toContain(`worker ${ACCOUNT} billing`);
 
     const draft = text.slice(text.indexOf("# Draft from keypin discover"));
-    const parsed = parseMap(draft, "draft");
+    const parsed = parseMap(filled(draft), "draft");
     assert(parsed.ok, JSON.stringify(parsed));
     expect(parsed.map.keys.map((k) => k.name).toSorted()).toEqual([
       "CLOUDFLARE_API_TOKEN",
@@ -258,7 +262,7 @@ account = "my.1password.com"
     const draft = stdout.text.slice(stdout.text.indexOf("# Draft from keypin discover"));
     expect(draft).not.toMatch(/\.(dev|prod)\]/);
     const tables = draft.slice(draft.indexOf("\n[keys."));
-    const parsed = parseMap(`${map}${tables}`, "keypin.toml");
+    const parsed = parseMap(`${map}${filled(tables)}`, "keypin.toml");
     assert(parsed.ok, JSON.stringify(parsed));
     const names = parsed.map.keys.flatMap((k) => Object.keys(k.environments));
     expect(new Set(names)).toEqual(new Set(["local", "production"]));
@@ -346,7 +350,7 @@ account = "my.1password.com"
     const draft = stdout.text.slice(stdout.text.indexOf("# Draft from keypin discover"));
     expect(draft).toContain(`account = "<your 1Password account>"`);
     expect(draft).toContain(`"op://<your vault>/billing `);
-    assert(parseMap(draft, "draft").ok);
+    assert(parseMap(filled(draft), "draft").ok);
   });
 
   test("a bad keypin.toml is unknown, and its text isn't echoed", async () => {
@@ -382,7 +386,7 @@ dev = "op://App Secrets/billing dev stripe/password"
     expect(await cli(["discover", "--write"], deps)).toBe(0);
     const written = disk.contents.get(MAP);
     assert(written !== undefined);
-    const parsed = parseMap(written, MAP);
+    const parsed = parseMap(filled(written), MAP);
     assert(parsed.ok, JSON.stringify(parsed));
     expect(parsed.map.keys.map((k) => k.name).toSorted()).toEqual([
       "CLOUDFLARE_API_TOKEN",
@@ -406,7 +410,7 @@ dev = "op://App Secrets/billing dev stripe/password"
     expect(await cli(["discover", "--write"], deps)).toBe(0);
     const written = disk.contents.get(MAP);
     assert(written !== undefined && written !== TEMPLATE);
-    assert(parseMap(written, MAP).ok);
+    assert(parseMap(filled(written), MAP).ok);
     expect((await loadRegistry(disk.files, REGISTRY)).projects).toEqual([ROOT]);
   });
 

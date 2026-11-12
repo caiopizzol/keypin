@@ -99,6 +99,7 @@ describe("keypin import", () => {
     expect(out).toContain(`keypin left ${ENV} as it is`);
     expect(out).toContain("app.key is still only in that file");
     expect(out).toContain("keypin run -- <command> provides them");
+    expect(out).toContain("Remove the STRIPE_KEY, WEBHOOK_SECRET lines from it");
     expect(leaks(out, written, disk.contents.get(REGISTRY) ?? "")).toBe(false);
   });
 
@@ -441,11 +442,122 @@ describe("keypin import", () => {
     expect(fake.calls).toEqual([]);
   });
 
+  test("with names, imports only those, and says which lines to remove, not that the rest is left", async () => {
+    const env = [
+      `STRIPE_KEY=${SENTINEL}-stripe`,
+      "PUBLIC_SITE_URL=http://localhost:3000",
+      `WEBHOOK_SECRET=${SENTINEL}-webhook`,
+      "DATABASE_URL=postgres://localhost/billing",
+      "",
+    ].join("\n");
+    const { deps, disk, fake, text } = setup({ files: { [ENV]: env } });
+    const args = ["import", ".env", "STRIPE_KEY", "WEBHOOK_SECRET"];
+    expect(
+      await cli([...args, "--vault", "App Secrets", "--account", ACCOUNT, "--yes"], deps),
+    ).toBe(0);
+
+    expect(fake.created.map((c) => c.ref.item)).toEqual([
+      "billing dev stripe key",
+      "billing dev webhook secret",
+    ]);
+    const parsed = parseMap(disk.contents.get(MAP) ?? "", MAP);
+    assert(parsed.ok);
+    expect(parsed.map.keys.map((k) => k.name)).toEqual(["STRIPE_KEY", "WEBHOOK_SECRET"]);
+    expect(disk.contents.get(ENV)).toBe(env);
+
+    const out = text();
+    expect(out).not.toContain("PUBLIC_SITE_URL");
+    expect(out).not.toContain("DATABASE_URL");
+    expect(out).not.toContain("still only in that file");
+    expect(out).not.toContain("Delete it");
+    expect(out).toContain("Remove the STRIPE_KEY, WEBHOOK_SECRET lines from it");
+    expect(leaks(out, disk.contents.get(MAP) ?? "")).toBe(false);
+  });
+
+  test("with names, a name the file doesn't set is a usage error before the vault", async () => {
+    const { deps, disk, fake, stderr } = setup();
+    const args = ["import", ".env", "STRIPE_KEY", "MISSING", "OTHER", "--vault", "V"];
+    expect(await cli([...args, "--account", ACCOUNT, "--yes"], deps)).toBe(2);
+    expect(stderr.text).toContain(`${ENV} doesn't set MISSING, OTHER`);
+    expect(fake.calls).toEqual([]);
+    expect(disk.contents.has(MAP)).toBe(false);
+  });
+
+  test("with names, an empty or comment-only file is the same usage error", async () => {
+    const { deps, fake, stderr } = setup({ files: { [ENV]: "# nothing set yet\n" } });
+    const args = ["import", ".env", "STRIPE_KEY", "--vault", "V", "--account", ACCOUNT, "--yes"];
+    expect(await cli(args, deps)).toBe(2);
+    expect(stderr.text).toContain(`${ENV} doesn't set STRIPE_KEY`);
+    expect(fake.calls).toEqual([]);
+  });
+
+  test("an empty line for a mapped variable is one to remove, not a reason to keep the file", async () => {
+    const { deps, text } = setup({
+      files: {
+        [MAP]: REAL_MAP,
+        [ENV]: `STRIPE_KEY=\nWEBHOOK_SECRET=${SENTINEL}-hook\nPUBLIC_URL=http://localhost:3000\n`,
+      },
+    });
+    const args = ["import", ".env", "STRIPE_KEY", "WEBHOOK_SECRET", "--vault", "App Secrets"];
+    expect(await cli([...args, "--yes"], deps)).toBe(0);
+    expect(text()).toContain("STRIPE_KEY: the value is empty");
+    expect(text()).toContain("Remove the STRIPE_KEY, WEBHOOK_SECRET lines from it");
+    expect(text()).not.toContain("Delete it");
+    expect(leaks(text())).toBe(false);
+  });
+
+  test("a .dev.vars with a setting left says to move it and delete the file, not to keep it", async () => {
+    const devVars = `${ROOT}/.dev.vars`;
+    const { deps, text } = setup({
+      files: { [devVars]: `API_TOKEN=${SENTINEL}-token\nPORT=8787\n` },
+    });
+    const args = ["import", ".dev.vars", "API_TOKEN", "--vault", "V", "--account", ACCOUNT];
+    expect(await cli([...args, "--yes"], deps)).toBe(0);
+    expect(text()).toContain(
+      "Delete it once PORT has a new home: while a .dev.vars file exists, wrangler dev reads secrets only from it and ignores the ones keypin run provides. Import a secret among them too. A plain setting that isn't secret can go to wrangler dev --var NAME:value; [vars] in the wrangler config also deploys.",
+    );
+    expect(text()).not.toContain("Remove the");
+    expect(leaks(text())).toBe(false);
+
+    const only = setup({ files: { [devVars]: `API_TOKEN=${SENTINEL}-token\n` } });
+    expect(await cli([...args, "--yes"], only.deps)).toBe(0);
+    expect(only.text()).toContain(
+      "Nothing else is set in it. Delete it: while a .dev.vars file exists, wrangler dev ignores the secrets keypin run provides.",
+    );
+  });
+
+  test("when nothing else is set in the file, says it can be deleted", async () => {
+    const env = `STRIPE_KEY=${SENTINEL}-stripe\nEMPTY=\n`;
+    const named = setup({ files: { [ENV]: env } });
+    const args = ["import", ".env", "STRIPE_KEY", "--vault", "V", "--account", ACCOUNT, "--yes"];
+    expect(await cli(args, named.deps)).toBe(0);
+    expect(named.text()).toContain("Nothing else is set in it. Delete it and stop loading it");
+    expect(named.text()).not.toContain("Remove the");
+
+    const all = setup({ files: { [ENV]: env } });
+    expect(await cli([...NEW, "--yes"], all.deps)).toBe(0);
+    expect(all.text()).toContain("Nothing else is set in it. Delete it and stop loading it");
+    expect(leaks(named.text(), all.text())).toBe(false);
+  });
+
+  test("a mapped variable that matches the vault is one of the lines to remove", async () => {
+    const env = `STRIPE_KEY=${SENTINEL}-stripe\nWEBHOOK_SECRET=${SENTINEL}-webhook\nPORT=3000\n`;
+    const { deps, text } = setup({
+      files: { [ENV]: env, [MAP]: REAL_MAP },
+      values: { "billing dev stripe": `${SENTINEL}-stripe` },
+    });
+    const args = ["import", ".env", "STRIPE_KEY", "WEBHOOK_SECRET", "--vault", "App Secrets"];
+    expect(await cli([...args, "--yes"], deps)).toBe(0);
+    expect(text()).toContain("Remove the STRIPE_KEY, WEBHOOK_SECRET lines from it");
+    expect(text()).not.toContain("PORT");
+    expect(leaks(text())).toBe(false);
+  });
+
   test("usage errors: no --vault, no --account without a map, no file, an example file", async () => {
     const cases: [string[], string][] = [
       [["import", ".env", "--account", ACCOUNT], "--vault is required"],
       [["import", ".env", "--vault", "V"], "--account is required"],
-      [["import", "--vault", "V", "--account", ACCOUNT], "takes one env file"],
+      [["import", "--vault", "V", "--account", ACCOUNT], "takes an env file"],
       [["import", ".env.example", "--vault", "V", "--account", ACCOUNT], "is an example file"],
     ];
     for (const [args, message] of cases) {

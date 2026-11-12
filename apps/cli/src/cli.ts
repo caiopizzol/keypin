@@ -22,10 +22,11 @@ export const USAGE = `Usage:
   keypin check [folder] [--json]
                            check a project's map, vault items and logins without writing anything:
                            each item and field exists, each login reaches the pinned account
-  keypin import <env-file> --vault <vault> [--account <sign-in address>] [--yes]
-                           move an env file's values into new 1Password items and map them; the
-                           account is the map's, or --account when there's no map yet. It never
-                           overwrites an item, so --yes is enough to approve it. The file stays.
+  keypin import <env-file> [NAME...] --vault <vault> [--account <sign-in address>] [--yes]
+                           move an env file's values into new 1Password items and map them: only
+                           the named variables, or every one; the account is the map's, or --account
+                           when there's no map yet. It never overwrites an item, so --yes is enough
+                           to approve it. The file stays.
   keypin run [--env <name>] -- <command>
                            run a command with one environment's keys (default: the first, dev)
   keypin publish <VARIABLE> [--env <name>] [--yes | --plan]

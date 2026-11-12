@@ -24,6 +24,7 @@ const ROTATE_EVERY = "90d";
 
 interface Request {
   envFile: string;
+  names: string[];
   vault: string;
   account: string | undefined;
   yes: boolean;
@@ -42,6 +43,7 @@ interface Skip {
   onlyInFile: boolean;
   exists?: boolean;
   mapped?: { ref: KeyRef; value: Secret };
+  mappedEmpty?: boolean;
 }
 
 interface Target {
@@ -65,8 +67,9 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
   const target = await readTarget(deps, request);
   const environment = runEnvironment(target.map ?? { environments: DEFAULT_ENVIRONMENTS });
   const project = basename(deps.cwd);
-  const values = envValues(text);
-  if (!values.size) throw new Error(`${envPath} sets no variables; nothing to import`);
+  const file = envValues(text);
+  const values = selected(file, request.names, envPath);
+  if (!file.size) throw new Error(`${envPath} sets no variables; nothing to import`);
 
   const planned: Import[] = [];
   let skips: Skip[] = [];
@@ -81,7 +84,13 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
         reason: "not a variable name (letters, digits and _, not a digit first)",
         onlyInFile: true,
       });
-    else if (value.isEmpty()) skips.push({ name, reason: "the value is empty", onlyInFile: false });
+    else if (value.isEmpty())
+      skips.push({
+        name,
+        reason: "the value is empty",
+        onlyInFile: false,
+        mappedEmpty: Boolean(mapped?.environments[environment]),
+      });
     else if (mapped?.environments[environment] && value.includes("$"))
       skips.push({
         name,
@@ -210,14 +219,34 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
   if (!target.map) await registerProject(deps, deps.cwd);
 
   const left = [...skips.filter((skip) => skip.onlyInFile).map((skip) => skip.name), ...failed];
+  const done = new Set([
+    ...mapped.map((entry) => entry.name),
+    ...skips.filter((skip) => skip.mapped && !skip.onlyInFile).map((skip) => skip.name),
+    ...skips.filter((skip) => skip.mappedEmpty).map((skip) => skip.name),
+  ]);
+  const remove = [...file.keys()].filter((name) => done.has(name));
+  const rest = [...file].filter(
+    ([name, value]) => !remove.includes(name) && (left.includes(name) || !value.isEmpty()),
+  );
   say(
     `The imported values are now in 1Password, and keypin run -- <command> provides them. keypin left ${envPath} as it is.`,
   );
-  say(
-    left.length
-      ? `${names(left)} ${left.length === 1 ? "is" : "are"} still only in that file. Move ${left.length === 1 ? "it" : "them"}, then delete the file and stop loading it (for example, wrangler dev reads .dev.vars).`
-      : "Delete it and stop loading it (for example, wrangler dev reads .dev.vars).",
-  );
+  if (left.length)
+    say(
+      `${names(left)} ${left.length === 1 ? "is" : "are"} still only in that file, for the reason under Skipped.`,
+    );
+  if (basename(envPath).startsWith(".dev.vars"))
+    say(
+      rest.length
+        ? `Delete it once ${names(rest.map(([name]) => name))} ${rest.length === 1 ? "has" : "have"} a new home: while a .dev.vars file exists, wrangler dev reads secrets only from it and ignores the ones keypin run provides. Import a secret among them too. A plain setting that isn't secret can go to wrangler dev --var NAME:value; [vars] in the wrangler config also deploys.`
+        : "Nothing else is set in it. Delete it: while a .dev.vars file exists, wrangler dev ignores the secrets keypin run provides.",
+    );
+  else
+    say(
+      rest.length
+        ? `Remove the ${names(remove)} ${remove.length === 1 ? "line" : "lines"} from it: keypin run warns while an env file holds a key it provides.`
+        : "Nothing else is set in it. Delete it and stop loading it.",
+    );
   if (failed.length)
     say(
       "Run keypin import again to create the rest. It maps an item it already stored, since that item holds the same value.",
@@ -263,6 +292,18 @@ async function existingProblem(deps: Deps, entry: Import): Promise<string | null
   }
 }
 
+function selected(
+  file: Map<string, Secret>,
+  wanted: readonly string[],
+  envPath: string,
+): Map<string, Secret> {
+  if (!wanted.length) return file;
+  const missing = wanted.filter((name) => !file.has(name));
+  if (missing.length)
+    throw new UsageError(`${envPath} doesn't set ${names(missing)}; name variables it sets`);
+  return new Map([...file].filter(([name]) => wanted.includes(name)));
+}
+
 function names(list: readonly string[]): string {
   return list.length ? list.join(", ") : "none";
 }
@@ -277,9 +318,9 @@ function parseRequest(args: string[]): Request {
     },
     allowPositionals: true,
   });
-  const [envFile, ...extra] = positionals;
-  if (envFile === undefined || extra.length)
-    throw new UsageError("keypin import takes one env file, such as .env or .dev.vars");
+  const [envFile, ...names] = positionals;
+  if (envFile === undefined)
+    throw new UsageError("keypin import takes an env file, such as .env or .dev.vars");
   const vault = values.vault?.trim();
   if (!vault)
     throw new UsageError("--vault is required: the 1Password vault to create the items in");
@@ -287,7 +328,7 @@ function parseRequest(args: string[]): Request {
   const account = values.account?.trim();
   if (values.account !== undefined && !account)
     throw new UsageError("--account is your 1Password sign-in address, such as my.1password.com");
-  return { envFile, vault, account, yes: values.yes, args };
+  return { envFile, names: [...new Set(names)], vault, account, yes: values.yes, args };
 }
 
 async function readTarget(deps: Deps, request: Request): Promise<Target> {

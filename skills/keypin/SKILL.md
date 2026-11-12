@@ -14,11 +14,15 @@ from 1Password only while a command runs.
   `op://` references are placeholders; ask the user for each field's secret reference (1Password: the field's
   menu, **Copy Secret Reference**) and replace them. The user creates vault items; you never write a value.
   If a real map exists, `--write` exits 1: run `keypin discover` and copy the `[keys.*]` tables by hand.
-- Project with a `.env` or `.dev.vars`: suggest `keypin import <file> --vault <vault>` (plus `--account
-  <sign-in address>` when there's no map). Ask the user which vault. keypin reads the file locally and creates new
-  1Password items; never read, print or pass a value yourself. It needs the user's typed `yes`: run it without
-  `--yes`, and it exits 3 with the plan and the command for the user to run. It never changes the file; once it names no
-  variable as still only in the file, the user deletes the file.
+- Project with a `.env` or `.dev.vars`: suggest `keypin import <file> [NAME...] --vault <vault>` (plus `--account
+  <sign-in address>` when there's no map). Ask the user which vault, and which variables are keys; plain settings
+  such as `PORT` can stay in the file. keypin reads the file locally and creates new 1Password items; never read,
+  print or pass a value yourself. It needs the user's typed `yes`: run it without `--yes`, and it exits 3 with the
+  plan and the command for the user to run. It never changes the file; the user removes the lines it names, or
+  deletes the file when it says nothing else is set in it. A `.dev.vars` must go entirely: while it exists,
+  `wrangler dev` ignores the keys `keypin run` provides. Suggest importing every secret in it. For a plain setting
+  left in it, tell the user by name that it needs a new home before they delete the file; don't read or move its
+  value yourself.
 - A key is named after its variable: `keypin publish API_TOKEN`. If keypin says a map is from keypin 0.4,
   rewrite it in the current format (see Configuration) and show the user the diff.
 - Before you publish, or say a setup is done, run `keypin check --json`. It checks that the map parses, that

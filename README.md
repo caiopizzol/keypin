@@ -84,15 +84,16 @@ keypin publish API_TOKEN    # write the prod value to the GitHub secret
 
 ### Coming from a .env
 
-`keypin import` moves a `.env` file's values into new 1Password items and maps them:
+`keypin import` moves a `.env` file's keys into new 1Password items and maps them. Name the keys, and plain
+settings such as `PORT` stay in the file:
 
 ```sh
-keypin import .env --vault Private --account my.1password.com
+keypin import .env STRIPE_KEY DATABASE_URL --vault Private --account my.1password.com
 ```
 
-It shows each item it will create and waits for you to type `yes`. It never overwrites an item, and it never changes
-the `.env` file. It names any variable it left only in the file; move those, then delete the file yourself, and
-`keypin run -- <command>` provides the values.
+Without names, it imports every variable. It shows each item it will create and waits for you to type `yes`. It
+never overwrites an item, and it never changes the `.env` file: it tells you which lines to remove from it, and
+`keypin run -- <command>` provides those values.
 See [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md).
 
 ## Commands
@@ -104,7 +105,7 @@ keypin status [--json]       # every key, when it's due, and any problem
 keypin check [folder]        # check the map, vault items and logins, and write nothing
 keypin discover [folder]     # every key name a project uses, where it's set, and a draft map
                              # (--write saves the draft as keypin.toml and registers the project)
-keypin import <env-file> --vault <vault>
+keypin import <env-file> [NAME...] --vault <vault>
                              # move an env file's values into 1Password and map them
 keypin run -- <command>      # run a command with the project's dev keys (--env for another)
 keypin publish <VARIABLE>    # check each destination's account, then write the key

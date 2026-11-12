@@ -251,6 +251,13 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
     const suffix = /^(?:\.env|\.dev\.vars)\.(.+)$/.exec(file.path.split("/").at(-1) ?? "")?.[1];
     const env = suffix !== undefined && environments.includes(suffix) ? suffix : run;
     const flag = envFlag(env, run);
+    const other =
+      suffix !== undefined &&
+      env === run &&
+      isEnvironmentName(suffix) &&
+      !/^(local|dev|development)$/.test(suffix)
+        ? `, which maps them as ${run}; if they're the values of another environment, list it in environments and add --env <name>`
+        : "";
     const names = file.names.filter(isVariableName);
     const key = (name: string) => keys?.keys.find((k) => k.name === name);
     const unmapped = names.filter((name) => !key(name));
@@ -264,7 +271,7 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
     if (unmapped.length) {
       const account = keys?.account ? "" : ` --account ${PLACEHOLDER.account}`;
       notes.push(
-        `${file.path} sets ${unmapped.join(", ")}, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import ${file.path} NAME...${flag} --vault ${PLACEHOLDER.vault}${account}`,
+        `${file.path} sets ${unmapped.join(", ")}, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import ${file.path} NAME...${flag} --vault ${PLACEHOLDER.vault}${account}${other}`,
       );
     }
     if (elsewhere.length)

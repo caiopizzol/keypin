@@ -277,7 +277,7 @@ worker = "billing-worker"
       ".dev.vars.prod sets RESEND_API_KEY, which keypin.toml maps with no prod entry; for a key run keypin import .dev.vars.prod RESEND_API_KEY --env prod --vault <vault>",
     );
     expect(data.notes).toContain(
-      ".env.production sets OTHER_KEY, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env.production NAME... --vault <vault>",
+      ".env.production sets OTHER_KEY, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env.production NAME... --vault <vault>, which maps them as dev; if they're the values of another environment, list it in environments and add --env <name>",
     );
     expect(leaks(...run.everything())).toBe(false);
   });

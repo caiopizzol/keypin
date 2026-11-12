@@ -51,6 +51,8 @@ interface Target {
   account: string;
 }
 
+const DOLLAR = "the value has a $, which some loaders expand to another variable's value";
+
 export async function importEnv(args: string[], deps: Deps): Promise<number> {
   const request = parseRequest(args);
   const say = (text: string) => deps.stderr.write(`${text}\n`);
@@ -80,6 +82,12 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
         onlyInFile: true,
       });
     else if (value.isEmpty()) skips.push({ name, reason: "the value is empty", onlyInFile: false });
+    else if (mapped?.environments[environment] && value.includes("$"))
+      skips.push({
+        name,
+        reason: `already mapped in ${target.file}; left as it is, but ${DOLLAR}, so keypin can't compare it with the vault`,
+        onlyInFile: true,
+      });
     else if (mapped?.environments[environment])
       skips.push({
         name,
@@ -96,7 +104,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
     else if (value.includes("$"))
       skips.push({
         name,
-        reason: "the value has a $, which some loaders expand to another variable's value",
+        reason: DOLLAR,
         onlyInFile: true,
       });
     else if (sameItem !== undefined)

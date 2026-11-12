@@ -162,6 +162,26 @@ describe("keypin import", () => {
     expect(leaks(text(), disk.contents.get(MAP) ?? "")).toBe(false);
   });
 
+  test("a mapped value with a $ is still only in the file, even when the vault holds the same text", async () => {
+    const dollar = `${SENTINEL}-$OTHER`;
+    const { deps, fake, text } = setup({
+      files: {
+        [ENV]: `STRIPE_KEY=${dollar}\nWEBHOOK_SECRET=${SENTINEL}-webhook\n`,
+        [MAP]: REAL_MAP,
+      },
+      values: { "billing dev stripe": dollar },
+    });
+    expect(await cli(["import", ".env", "--vault", "App Secrets", "--yes"], deps)).toBe(0);
+    expect(fake.calls).not.toContain("read billing dev stripe");
+    expect(fake.created.map((c) => c.ref.item)).toEqual(["billing dev webhook secret"]);
+    expect(text()).toContain(
+      `STRIPE_KEY: already mapped in ${MAP}; left as it is, but the value has a $, which some loaders expand to another variable's value, so keypin can't compare it with the vault`,
+    );
+    expect(text()).toContain("STRIPE_KEY is still only in that file");
+    expect(text()).not.toContain("Delete it and stop loading it");
+    expect(leaks(text())).toBe(false);
+  });
+
   test("a mapped variable that differs keeps the file from being called safe to delete", async () => {
     const { deps, disk, text } = setup({
       files: { [MAP]: REAL_MAP },

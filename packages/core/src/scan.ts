@@ -219,11 +219,35 @@ export function wranglerWorkers(
   const workers = [declaration(config, null, data, topName, topAccount)];
   const envs = isRecord(data.env) ? data.env : {};
   for (const [env, raw] of Object.entries(envs)) {
-    if (!isRecord(raw)) continue;
-    const name = stringOf(raw.name) ?? (topName ? `${topName}-${env}` : null);
+    const name = isRecord(raw)
+      ? (stringOf(raw.name) ?? (topName ? `${topName}-${env}` : null))
+      : null;
+    if (!isRecord(raw) || localOnly(data, raw, name)) continue;
     workers.push(declaration(config, env, raw, name, stringOf(raw.account_id) ?? topAccount));
   }
   return { ok: true, workers };
+}
+
+function localOnly(
+  top: Record<string, unknown>,
+  env: Record<string, unknown>,
+  worker: string | null,
+): boolean {
+  const inherit = (key: string) => env[key] ?? top[key];
+  const listed = (table: unknown, key: string) =>
+    isRecord(table) && Array.isArray(table[key]) && table[key].length > 0;
+  return (
+    Array.isArray(env.routes) &&
+    env.routes.length === 0 &&
+    inherit("workers_dev") === false &&
+    inherit("preview_urls") !== true &&
+    !listed(inherit("triggers"), "crons") &&
+    !listed(env.queues, "consumers") &&
+    !(
+      Array.isArray(env.workflows) &&
+      env.workflows.some((w) => !isRecord(w) || !w.script_name || w.script_name === worker)
+    )
+  );
 }
 
 function declaration(

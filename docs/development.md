@@ -59,3 +59,13 @@ create one. Before the first release, the owner does this once:
 3. Make `release.yml` each package's trusted publisher: `npm trust github @keypin/cli-<target> --repo
    caiopizzol/keypin --file release.yml --allow-publish` (npm 11.15 or later, with 2FA). Then merge the release PR
    within 2 days, or the trusted publisher expires.
+
+## Site
+
+keypin.dev is a Worker in `apps/site`. Before the first deploy with sign-up, the owner does this once:
+
+1. In Clerk, create an application with GitHub as the only sign-in method, allow the origin `https://keypin.dev`, and
+   put its publishable key in `CLERK_PUBLISHABLE_KEY` in `apps/site/wrangler.json`.
+2. Run `bunx wrangler@4.160.0 d1 create keypin-site` and put its id in `database_id` in `apps/site/wrangler.json`.
+3. In `apps/site`, run `bunx wrangler@4.160.0 secret put CLERK_SECRET_KEY` with Clerk's secret key.
+4. Give the `CLOUDFLARE_API_TOKEN` deploy token the D1 Edit permission.

@@ -12,5 +12,17 @@
   "routes": [
     { "pattern": "keypin.dev", "custom_domain": true },
     { "pattern": "www.keypin.dev", "custom_domain": true }
+  ],
+  "vars": {
+    "CLERK_PUBLISHABLE_KEY": "pk_live_REPLACE_ME",
+    "SITE_ORIGIN": "https://keypin.dev"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "keypin-site",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
   ]
 }

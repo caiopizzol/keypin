@@ -308,6 +308,12 @@ describe("wrangler configs", () => {
     );
     assert(previewUnset.ok);
     expect(previewUnset.workers.map((w) => w.env)).toEqual([null]);
+    const previewInherited = wranglerWorkers(
+      `{ "name": "api", "workers_dev": false, "preview_urls": true, "env": { "dev": { "routes": [] } } }`,
+      "wrangler.json",
+    );
+    assert(previewInherited.ok);
+    expect(previewInherited.workers.map((w) => w.env)).toEqual([null, "dev"]);
     const unset = wranglerWorkers(
       `name = "api"
 [env.dev]

@@ -278,6 +278,7 @@ describe("wrangler configs", () => {
   "name": "api",
   "routes": [{ "pattern": "api.example.com/*", "zone_name": "example.com" }],
   "workers_dev": false,
+  "preview_urls": false,
   "env": {
     "dev": { "routes": [] },
     "own": { "routes": [], "workers_dev": false },
@@ -285,12 +286,28 @@ describe("wrangler configs", () => {
     "url": { "routes": [], "workers_dev": true },
     "cron": { "routes": [], "triggers": { "crons": ["0 * * * *"] } },
     "queue": { "routes": [], "queues": { "consumers": [{ "queue": "jobs" }] } },
+    "preview": { "routes": [], "preview_urls": true },
+    "workflow": { "routes": [], "workflows": [{ "name": "jobs", "binding": "JOBS", "class_name": "Jobs" }] },
   },
 }`,
       "wrangler.json",
     );
     assert(parsed.ok);
-    expect(parsed.workers.map((w) => w.env)).toEqual([null, "inherited", "url", "cron", "queue"]);
+    expect(parsed.workers.map((w) => w.env)).toEqual([
+      null,
+      "inherited",
+      "url",
+      "cron",
+      "queue",
+      "preview",
+      "workflow",
+    ]);
+    const previewUnset = wranglerWorkers(
+      `{ "name": "api", "workers_dev": false, "env": { "dev": { "routes": [] } } }`,
+      "wrangler.json",
+    );
+    assert(previewUnset.ok);
+    expect(previewUnset.workers.map((w) => w.env)).toEqual([null]);
     const unset = wranglerWorkers(
       `name = "api"
 [env.dev]

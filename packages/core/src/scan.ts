@@ -234,8 +234,10 @@ function localOnly(top: Record<string, unknown>, env: Record<string, unknown>): 
     Array.isArray(env.routes) &&
     env.routes.length === 0 &&
     inherit("workers_dev") === false &&
+    inherit("preview_urls") !== true &&
     !listed(inherit("triggers"), "crons") &&
-    !listed(env.queues, "consumers")
+    !listed(env.queues, "consumers") &&
+    !(Array.isArray(env.workflows) && env.workflows.length > 0)
   );
 }
 

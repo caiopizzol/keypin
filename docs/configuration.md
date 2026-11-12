@@ -52,7 +52,8 @@ with a lowercase letter and uses lowercase letters, digits and dashes.
 
 List each place `publish` writes the key under its environment. `keypin check` prints these for each secret a
 workflow or Worker needs, with the Worker of a wrangler `[env.staging]` under the environment `staging`. It skips
-an env with `routes = []`, `workers_dev = false` and no crons or queue consumers, since only `wrangler dev` runs it.
+an env with `routes = []`, `workers_dev = false`, no preview URLs, and no crons, queue consumers or Workflows, since
+only `wrangler dev` runs it.
 
 ```toml
 [[keys.API_TOKEN.prod.publish]]

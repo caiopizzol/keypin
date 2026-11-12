@@ -289,6 +289,7 @@ describe("wrangler configs", () => {
     "preview": { "routes": [], "preview_urls": true },
     "workflow": { "routes": [], "workflows": [{ "name": "jobs", "binding": "JOBS", "class_name": "Jobs" }] },
     "bound": { "routes": [], "workflows": [{ "name": "jobs", "binding": "JOBS", "class_name": "Jobs", "script_name": "other" }] },
+    "self": { "routes": [], "workflows": [{ "name": "jobs", "binding": "JOBS", "class_name": "Jobs", "script_name": "api-self" }] },
   },
 }`,
       "wrangler.json",
@@ -302,6 +303,7 @@ describe("wrangler configs", () => {
       "queue",
       "preview",
       "workflow",
+      "self",
     ]);
     const previewUnset = wranglerWorkers(
       `{ "name": "api", "workers_dev": false, "env": { "dev": { "routes": [] } } }`,

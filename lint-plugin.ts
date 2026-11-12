@@ -14,19 +14,24 @@ const noComments = defineRule({
   },
 });
 
+export function repoPath(file: string, plugin: string = import.meta.url): string {
+  const repo = decodeURIComponent(new URL(".", plugin).pathname).replace(/^\/(?=[A-Za-z]:)/, "");
+  const path = file.replaceAll("\\", "/");
+  return path.startsWith(repo) ? path.slice(repo.length) : path;
+}
+
 const REVEAL_ALLOWED = [
-  /\/packages\/(vault|destination|provider)-[^/]+\/src\//,
-  /\/packages\/core\/src\/secret\.ts$/,
-  /\/apps\/cli\/src\/commands\/run\.ts$/,
-  /\/tests\//,
+  /^packages\/(vault|destination|provider)-[^/]+\/src\//,
+  /^packages\/core\/src\/secret\.ts$/,
+  /^apps\/cli\/src\/commands\/run\.ts$/,
+  /^(apps|packages)\/[^/]+\/tests\//,
 ];
 
 function namesReveal(key: ESTree.Node, computed: boolean): boolean {
-  if (!computed) return key.type === "Identifier" && key.name === "reveal";
   if (key.type === "Literal") return key.value === "reveal";
   if (key.type === "TemplateLiteral")
     return key.expressions.length === 0 && key.quasis[0]?.value.cooked === "reveal";
-  return false;
+  return !computed && key.type === "Identifier" && key.name === "reveal";
 }
 
 const noReveal = defineRule({
@@ -37,7 +42,7 @@ const noReveal = defineRule({
     },
   },
   create(context) {
-    const path = context.physicalFilename.replaceAll("\\", "/");
+    const path = repoPath(context.physicalFilename);
     if (REVEAL_ALLOWED.some((allowed) => allowed.test(path))) return {};
     return {
       MemberExpression(node) {

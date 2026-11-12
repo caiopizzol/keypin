@@ -159,6 +159,32 @@ describe("keypin publish", () => {
     expect(leaks(...run.everything())).toBe(false);
   });
 
+  test("moving a key from the repo to a GitHub environment is a first write, and the repo secret is left", async () => {
+    const first = setup({ terminal: "yes" });
+    expect(await cli(["publish", "STRIPE_API_KEY"], first.deps)).toBe(0);
+    const moved = BILLING_MAP.replace(
+      '{ to = "github-actions", repo = "acme/billing" }',
+      '{ to = "github-actions", repo = "acme/billing", environment = "production" }',
+    );
+    first.disk.contents.set("/work/billing/keypin.toml", moved);
+    const environment = `${GITHUB_PLACE}/environments/production`;
+
+    const again = setup({ terminal: "yes", disk: first.disk });
+    expect(await cli(["publish", "STRIPE_API_KEY"], again.deps)).toBe(0);
+    expect(again.stderr.text).toContain(
+      `needs approval: first write to ${environment}:STRIPE_API_KEY (account acme)`,
+    );
+    expect(again.stderr.text).toContain(`not in the map any more: ${GITHUB}`);
+    expect(again.log.filter((l) => l.startsWith("write"))).toEqual([
+      `write ${environment} STRIPE_API_KEY (${SENTINEL.length} chars)`,
+    ]);
+    expect((await again.state()).receipts.map((r) => r.destinationId)).toEqual([
+      WORKER,
+      GITHUB,
+      `${environment}:STRIPE_API_KEY`,
+    ]);
+  });
+
   test("anything but yes on the terminal writes nothing", async () => {
     const run = setup({ terminal: "y" });
     expect(await cli(["publish", "STRIPE_API_KEY"], run.deps)).toBe(NEEDS_APPROVAL);

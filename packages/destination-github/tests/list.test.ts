@@ -40,6 +40,33 @@ describe("listRepoSecrets", () => {
     );
   });
 
+  test("reads an environment's secrets, with its name escaped", async () => {
+    const fake = fakeFetch([{ status: 200, body: { total_count: 1, secrets: [secret(1)] } }]);
+    const read = await listRepoSecrets({
+      repo: "acme/billing",
+      environment: "prod/eu",
+      token: async () => TOKEN,
+      fetch: fake.fetch,
+    });
+    expect(read).toEqual({
+      ok: true,
+      secrets: [{ name: "KEY_1", updatedAt: "2026-11-01T00:00:00Z" }],
+    });
+    expect(fake.requests[0]?.url).toBe(
+      "https://api.github.com/repos/acme/billing/environments/prod%2Feu/secrets?per_page=100&page=1",
+    );
+    const missing = await listRepoSecrets({
+      repo: "acme/billing",
+      environment: "staging",
+      token: async () => TOKEN,
+      fetch: fakeFetch([{ status: 404 }]).fetch,
+    });
+    expect(missing).toEqual({
+      ok: false,
+      reason: "HTTP 404: acme/billing has no environment named staging, or the login can't see it",
+    });
+  });
+
   test("a refusal is a reason, not an empty list, and doesn't hold the token", async () => {
     for (const [status, reason] of [
       [403, "HTTP 403"],

@@ -19,6 +19,7 @@ export type Fetch = (
 
 export interface GitHubSecretOptions {
   repo: string;
+  environment?: string;
   login?: string | null;
   refresh?: boolean;
   token?: () => Promise<string>;
@@ -29,6 +30,8 @@ export class GitHubSecretDestination implements Destination {
   readonly capabilities = { write: true, accountCheck: true, evidence: true } as const;
   readonly #repo: string;
   readonly #owner: string;
+  readonly #environment: string | null;
+  readonly #secrets: string;
   readonly #login: string | null;
   readonly #tokenSource: () => Promise<string>;
   readonly #fetch: Fetch;
@@ -40,6 +43,8 @@ export class GitHubSecretDestination implements Destination {
       throw new Error(`"${options.repo}" isn't a GitHub repository in the form owner/name`);
     this.#repo = options.repo;
     this.#owner = options.repo.split("/")[0];
+    this.#environment = options.environment ?? null;
+    this.#secrets = secretsPath(options.repo, options.environment);
     this.#login = options.login ?? null;
     const refresh = options.refresh ?? true;
     this.#tokenSource = options.token ?? (() => ghToken(this.#login, { refresh }));
@@ -47,7 +52,9 @@ export class GitHubSecretDestination implements Destination {
   }
 
   describe(): string {
-    return `github ${this.#repo} (repo secret)`;
+    return this.#environment === null
+      ? `github ${this.#repo} (repo secret)`
+      : `github ${this.#repo} (secret of the environment ${this.#environment})`;
   }
 
   async checkAccount(): Promise<AccountCheck> {
@@ -93,6 +100,9 @@ export class GitHubSecretDestination implements Destination {
         this.#login === null
           ? "run gh auth refresh --hostname github.com --scopes repo"
           : `run gh auth switch --hostname github.com --user ${this.#login}, then gh auth refresh --hostname github.com --scopes repo, then switch back to your usual login`;
+    } else if (this.#environment !== null && !(await this.#environmentExists())) {
+      check.reason = `${this.#repo} has no environment named ${this.#environment}`;
+      check.fix = `create it in the repository's Settings > Environments, or fix environment in keypin.toml`;
     } else {
       check.ok = true;
       this.#passed = true;
@@ -106,12 +116,12 @@ export class GitHubSecretDestination implements Destination {
     if (!SECRET_NAME.test(name) || /^GITHUB_/i.test(name))
       throw new Error(`"${name}" isn't a valid GitHub secret name`);
 
-    const key = await this.#get(`/repos/${this.#repo}/actions/secrets/public-key`);
+    const key = await this.#get(`${this.#secrets}/public-key`);
     if (key.status !== 200)
-      throw new Error(`GitHub public key for ${this.#repo}: HTTP ${key.status}`);
+      throw new Error(`GitHub public key for ${this.describe()}: HTTP ${key.status}`);
     const encrypted = await sealedBox(secret.reveal(), stringField(key.body, "key"));
 
-    const path = `/repos/${this.#repo}/actions/secrets/${name}`;
+    const path = `${this.#secrets}/${name}`;
     const put = await this.#request("PUT", path, {
       encrypted_value: encrypted,
       key_id: stringField(key.body, "key_id"),
@@ -128,6 +138,14 @@ export class GitHubSecretDestination implements Destination {
       created: put.status === 201,
       updatedAt: stringField(after.body, "updated_at"),
     };
+  }
+
+  async #environmentExists(): Promise<boolean> {
+    const path = `/repos/${this.#repo}/environments/${encodeURIComponent(this.#environment ?? "")}`;
+    const found = await this.#get(path);
+    if (found.status === 404) return false;
+    if (found.status !== 200) throw new Error(`GitHub GET ${path} returned HTTP ${found.status}`);
+    return true;
   }
 
   #get(path: string) {
@@ -149,6 +167,12 @@ export class GitHubSecretDestination implements Destination {
     const text = await response.text();
     return { status: response.status, headers: response.headers, body: parseObject(text) };
   }
+}
+
+export function secretsPath(repo: string, environment?: string): string {
+  return environment === undefined
+    ? `/repos/${repo}/actions/secrets`
+    : `/repos/${repo}/environments/${encodeURIComponent(environment)}/secrets`;
 }
 
 export async function sealedBox(value: string, publicKey: string): Promise<string> {

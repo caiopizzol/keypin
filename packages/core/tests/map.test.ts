@@ -241,8 +241,8 @@ describe("unknown fields are errors that name the file, the key and the field", 
     ],
     [
       "GitHub target",
-      `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [{ to = "github-actions", repo = "x/y", environment = "production" }] }\n`,
-      `key "A" prod: publish[0]: unknown field "environment" for github-actions`,
+      `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [{ to = "github-actions", repo = "x/y", worker = "w" }] }\n`,
+      `key "A" prod: publish[0]: unknown field "worker" for github-actions`,
     ],
   ])("%s", (_, text, message) => {
     expect(errorsOf(text)).toEqual([`${MAP_FILE}: ${message}`]);
@@ -262,6 +262,38 @@ describe("unknown fields are errors that name the file, the key and the field", 
     if (!result.ok) throw new Error(result.errors.join("\n"));
     expect(result.map.keys[0]?.environments.prod?.publish).toEqual([
       { to: "github-actions", repo: "Acme/billing", account: "Acme" },
+    ]);
+  });
+
+  test("a github-actions destination may name an environment, a different place from the repo", () => {
+    const repo = `{ to = "github-actions", repo = "acme/billing" }`;
+    const env = `{ to = "github-actions", repo = "acme/billing", environment = "production" }`;
+    const result = parseMap(
+      `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [${repo}, ${env}] }\n`,
+      MAP_FILE,
+    );
+    if (!result.ok) throw new Error(result.errors.join("\n"));
+    expect(result.map.keys[0]?.environments.prod?.publish).toEqual([
+      { to: "github-actions", repo: "acme/billing", account: "acme" },
+      { to: "github-actions", repo: "acme/billing", account: "acme", environment: "production" },
+    ]);
+    const twice = `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [${env}, ${env.replace("production", "Production")}] }\n`;
+    expect(errorsOf(twice)).toEqual([
+      `${MAP_FILE}: key "A" prod publish[1]: writes the same destination secret as key "A" prod publish[0]`,
+    ]);
+  });
+
+  test("a GitHub environment must be a filled-in name", () => {
+    const target = (value: string) =>
+      `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [{ to = "github-actions", repo = "a/b", environment = ${value} }] }\n`;
+    expect(errorsOf(target('""'))).toEqual([
+      `${MAP_FILE}: key "A" prod: publish[0]: field "environment" must be a non-empty string`,
+    ]);
+    expect(errorsOf(target('"<environment>"'))).toEqual([
+      `${MAP_FILE}: key "A" prod: publish[0]: field "environment" is a <...> placeholder: replace it with the name of a GitHub environment of the repository, such as production`,
+    ]);
+    expect(errorsOf(target(`"${"e".repeat(256)}"`))).toEqual([
+      `${MAP_FILE}: key "A" prod: publish[0]: field "environment" must be a GitHub environment name, at most 255 characters`,
     ]);
   });
 

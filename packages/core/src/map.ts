@@ -7,7 +7,7 @@ import { periodDays } from "./rotation";
 
 export type PublishTarget =
   | { to: "cloudflare-worker"; account: string; worker: string }
-  | { to: "github-actions"; repo: string; account: string };
+  | { to: "github-actions"; repo: string; account: string; environment?: string };
 
 const DESTINATION_KINDS = ["cloudflare-worker", "github-actions"] as const;
 
@@ -48,22 +48,31 @@ export function destinationId(target: PublishTarget, secretName: string): string
 }
 
 export function secretKey(target: PublishTarget, secretName: string): string {
-  return target.to === "cloudflare-worker"
-    ? `cloudflare-worker:${target.account}:${target.worker}:${secretName}`
-    : `github-actions:${target.repo.toLowerCase()}:${secretName.toUpperCase()}`;
+  if (target.to === "cloudflare-worker")
+    return `cloudflare-worker:${target.account}:${target.worker}:${secretName}`;
+  const place = githubPlace(target.repo.toLowerCase(), target.environment?.toLowerCase());
+  return `github-actions:${place}:${secretName.toUpperCase()}`;
 }
+
+function githubPlace(repo: string, environment: string | undefined): string {
+  return environment === undefined ? repo : `${repo}/environments/${environment}`;
+}
+
+const GITHUB_PLACE = /^([^/]+\/[^/]+)(?:\/environments\/(.+))?$/;
 
 export function receiptSecretKey(receipt: {
   destinationId: string;
   account: { pinned: string };
 }): string {
-  const [to, place, name, ...rest] = receipt.destinationId.split(":");
-  if (rest.length || place === undefined || name === undefined) return receipt.destinationId;
-  if (to === "cloudflare-worker") {
-    return secretKey({ to, account: receipt.account.pinned, worker: place }, name);
+  const [to, ...parts] = receipt.destinationId.split(":");
+  const name = parts.pop();
+  if (to === "cloudflare-worker" && parts.length === 1 && parts[0] && name) {
+    return secretKey({ to, account: receipt.account.pinned, worker: parts[0] }, name);
   }
-  if (to === "github-actions") {
-    return secretKey({ to, repo: place, account: receipt.account.pinned }, name);
+  const github = GITHUB_PLACE.exec(parts.join(":"));
+  if (to === "github-actions" && github?.[1] && name) {
+    const [, repo, environment] = github;
+    return secretKey({ to, repo, account: receipt.account.pinned, environment }, name);
   }
   return receipt.destinationId;
 }
@@ -71,7 +80,7 @@ export function receiptSecretKey(receipt: {
 function placeId(target: PublishTarget): string {
   return target.to === "cloudflare-worker"
     ? `cloudflare-worker:${target.worker}`
-    : `github-actions:${target.repo}`;
+    : `github-actions:${githubPlace(target.repo, target.environment)}`;
 }
 
 export function isEnvironmentName(name: string): boolean {
@@ -389,7 +398,7 @@ function destination(raw: unknown, fail: (message: string) => void): PublishTarg
       : { to, account, worker };
   }
   if (to === "github-actions") {
-    unknownFields(raw, ["to", "repo"], (field) =>
+    unknownFields(raw, ["to", "repo", "environment"], (field) =>
       err(
         field === "account"
           ? `field "account" is from keypin 0.6; the map pins only repo = "owner/name", and each machine publishes as its own GitHub login (git config github.account, else the active gh login). Delete it (${OLD_FORMAT})`
@@ -403,7 +412,17 @@ function destination(raw: unknown, fail: (message: string) => void): PublishTarg
       err,
     );
     if (repo !== undefined && !REPO.test(repo)) err(`field "repo" must be "owner/name"`);
-    return failed || repo === undefined ? undefined : { to, repo, account: repo.split("/")[0] };
+    const environment = filledIn(
+      optionalString(raw, "environment", err),
+      "environment",
+      "the name of a GitHub environment of the repository, such as production",
+      err,
+    );
+    if (environment !== undefined && environment.length > 255)
+      err(`field "environment" must be a GitHub environment name, at most 255 characters`);
+    if (failed || repo === undefined) return undefined;
+    const target: PublishTarget = { to, repo, account: repo.split("/")[0] };
+    return environment === undefined ? target : { ...target, environment };
   }
   err(`field "to" must be one of: ${DESTINATION_KINDS.join(", ")}`);
   return undefined;

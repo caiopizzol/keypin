@@ -43,6 +43,7 @@ export function destination(target: PublishTarget, publisher: Publisher): Destin
     case "github-actions":
       return new GitHubSecretDestination({
         repo: target.repo,
+        ...(target.environment === undefined ? {} : { environment: target.environment }),
         login: publisher.githubLogin,
         refresh: publisher.refreshLogins,
       });
@@ -130,7 +131,8 @@ export function main(): Promise<number> {
     isFolder,
     listFolder,
     git,
-    githubSecrets: (repo, login) => listRepoSecrets({ repo, token: () => ghToken(login) }),
+    githubSecrets: (repo, login, environment) =>
+      listRepoSecrets({ repo, environment, token: () => ghToken(login) }),
     workerSecrets: (account, worker) =>
       (cloudflare ??= new CloudflareReader({
         token: () => currentWranglerToken(),

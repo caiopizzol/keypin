@@ -67,7 +67,10 @@ function fakeFetch(routes: Routes) {
   return { fetch, requests };
 }
 
-function destination(routes: Routes, options: { login?: string | null } = {}) {
+function destination(
+  routes: Routes,
+  options: { login?: string | null; environment?: string } = {},
+) {
   const fake = fakeFetch(routes);
   const github = new GitHubSecretDestination({
     repo: REPO,
@@ -305,6 +308,50 @@ describe("write", () => {
     await expect(github.write("1BAD", new Secret(SENTINEL))).rejects.toThrow(
       /valid GitHub secret name/,
     );
+  });
+});
+
+describe("an environment secret", () => {
+  const ENV = `/repos/${REPO}/environments/prod%2Feu`;
+  function environmentRoutes(): Routes {
+    const routes: Routes = {};
+    for (const [route, reply] of Object.entries(happyRoutes()))
+      routes[route.replace(`/repos/${REPO}/actions/secrets`, `${ENV}/secrets`)] = reply;
+    routes[`GET ${ENV}`] = { status: 200, body: { name: "prod/eu" } };
+    return routes;
+  }
+
+  test("writes to the environment, sealed with the environment's key", async () => {
+    const { github, requests } = destination(environmentRoutes(), { environment: "prod/eu" });
+    expect((await github.checkAccount()).ok).toBe(true);
+    const evidence = await github.write("API_KEY", new Secret(SENTINEL));
+    expect(evidence).toMatchObject({
+      destination: `github ${REPO} (secret of the environment prod/eu)`,
+      created: true,
+    });
+    expect(requests.map((r) => `${r.method} ${r.path}`)).toEqual([
+      "GET /user",
+      `GET /repos/${REPO}`,
+      `GET ${ENV}`,
+      `GET ${ENV}/secrets/public-key`,
+      `PUT ${ENV}/secrets/API_KEY`,
+      `GET ${ENV}/secrets/API_KEY`,
+    ]);
+    expect(requests.some((r) => r.path.includes("/actions/secrets"))).toBe(false);
+  });
+
+  test("an environment that doesn't exist fails the check, and nothing is written", async () => {
+    const routes = environmentRoutes();
+    delete routes[`GET ${ENV}`];
+    const { github, requests } = destination(routes, { environment: "prod/eu" });
+    const check = await github.checkAccount();
+    expect(check).toMatchObject({ ok: false, destinationAccount: "acme" });
+    expect(check.reason).toBe(`${REPO} has no environment named prod/eu`);
+    expect(check.fix).toBe(
+      "create it in the repository's Settings > Environments, or fix environment in keypin.toml",
+    );
+    await expect(github.write("API_KEY", new Secret(SENTINEL))).rejects.toThrow(/checkAccount/);
+    expect(requests.some((r) => r.method !== "GET")).toBe(false);
   });
 });
 

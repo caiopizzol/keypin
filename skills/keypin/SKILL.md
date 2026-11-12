@@ -25,7 +25,8 @@ from 1Password only while a command runs.
   each repo and Worker holds. `cloud unknown` means discover couldn't read it, not that the name is missing.
   `status` exits 1 when it finds a problem; the JSON still prints. Notices, such as `never-published`, exit 0
   and name the next step.
-- Run with dev keys: `keypin run -- <command>`.
+- Run with dev keys: `keypin run -- <command>`. If it warns that an env file still holds a key, tell the user to
+  remove that variable from the file; don't edit the file yourself.
 - 1Password asks the user to approve each command. If a command waits, tell the user to approve it.
 - `publish` and `rotate` need a typed `yes` in a terminal, which you don't have. Run them without `--yes`:
   they stop, exit 3, and print the command for the user to run. For a first setup, run `keypin publish --all`.

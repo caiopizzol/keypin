@@ -125,6 +125,22 @@ describe("diskFiles", () => {
     expect(await mode(join(folder, "keys"))).toBe(0o700);
   });
 
+  test("a read refuses a named pipe at once instead of waiting for a writer", async () => {
+    const pipe = join(folder, "keypin.toml");
+    const made = Bun.spawnSync(["mkfifo", pipe]);
+    assert(made.exitCode === 0);
+    const started = Date.now();
+    await expect(diskFiles.read(pipe)).rejects.toThrow("isn't a regular file");
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  test("a read returns a regular file's text and null for a missing one", async () => {
+    const path = join(folder, "keypin.toml");
+    await writeFile(path, "[1password]\n");
+    expect(await diskFiles.read(path)).toBe("[1password]\n");
+    expect(await diskFiles.read(join(folder, "missing.toml"))).toBeNull();
+  });
+
   test("a write never follows a symbolic link", async () => {
     const target = join(folder, "elsewhere");
     await symlink(target, join(folder, "state.json"));

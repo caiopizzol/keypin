@@ -15,6 +15,19 @@ holds a key it provides. It names the file and the keys, never a value, and stil
 `.dev.vars`, `wrangler dev` uses the file's value over keypin's. For `.env` files, which value wins depends on the
 tool, but the file still holds a plaintext copy.
 
+## The wrangler login
+
+To publish to Cloudflare, keypin reads the OAuth login `wrangler login` saves, in the same file wrangler uses:
+
+| Platform | File                                                  |
+| -------- | ----------------------------------------------------- |
+| macOS    | `~/Library/Preferences/.wrangler/config/default.toml` |
+| Linux    | `~/.config/.wrangler/config/default.toml`             |
+
+When `XDG_CONFIG_HOME` is set, the folder is `$XDG_CONFIG_HOME/.wrangler` on both. When a `~/.wrangler` folder
+exists, from an older wrangler, it wins over both, as it does for wrangler. keypin doesn't read a login wrangler
+keeps in the system keyring (`CLOUDFLARE_AUTH_USE_KEYRING`), and it doesn't find the login on Windows yet.
+
 ## Files on your machine
 
 | File                                   | Holds                                              |

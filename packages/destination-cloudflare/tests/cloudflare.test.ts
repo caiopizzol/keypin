@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assert, describe, expect, test } from "vite-plus/test";
@@ -7,6 +7,7 @@ import {
   currentWranglerToken,
   type Fetch,
   WorkerSecretDestination,
+  wranglerConfigFile,
   wranglerToken,
 } from "../src/index";
 
@@ -256,4 +257,73 @@ describe("currentWranglerToken", () => {
       await rm(dir, { recursive: true });
     }
   });
+});
+
+describe("wranglerConfigFile", () => {
+  async function withHome(run: (home: string) => Promise<void>): Promise<void> {
+    const home = await mkdtemp(join(tmpdir(), "keypin-home-"));
+    try {
+      await run(home);
+    } finally {
+      await rm(home, { recursive: true });
+    }
+  }
+
+  test("on macOS, uses ~/Library/Preferences/.wrangler, or XDG_CONFIG_HOME when set", () =>
+    withHome(async (home) => {
+      expect(wranglerConfigFile({}, "darwin", home)).toBe(
+        join(home, "Library/Preferences/.wrangler/config/default.toml"),
+      );
+      expect(wranglerConfigFile({ XDG_CONFIG_HOME: "" }, "darwin", home)).toBe(
+        join(home, "Library/Preferences/.wrangler/config/default.toml"),
+      );
+      const xdg = join(home, "xdg");
+      expect(wranglerConfigFile({ XDG_CONFIG_HOME: xdg }, "darwin", home)).toBe(
+        join(xdg, ".wrangler/config/default.toml"),
+      );
+    }));
+
+  test("on Linux, uses ~/.config/.wrangler, or XDG_CONFIG_HOME when set", () =>
+    withHome(async (home) => {
+      expect(wranglerConfigFile({}, "linux", home)).toBe(
+        join(home, ".config/.wrangler/config/default.toml"),
+      );
+      const xdg = join(home, "xdg");
+      expect(wranglerConfigFile({ XDG_CONFIG_HOME: xdg }, "linux", home)).toBe(
+        join(xdg, ".wrangler/config/default.toml"),
+      );
+    }));
+
+  test("a ~/.wrangler folder wins over the XDG path, as in wrangler; a file there doesn't", () =>
+    withHome(async (home) => {
+      const xdg = { XDG_CONFIG_HOME: join(home, "xdg") };
+      await writeFile(join(home, ".wrangler"), "");
+      expect(wranglerConfigFile(xdg, "linux", home)).toBe(
+        join(home, "xdg/.wrangler/config/default.toml"),
+      );
+      await rm(join(home, ".wrangler"));
+      await mkdir(join(home, ".wrangler"));
+      for (const platform of ["darwin", "linux"])
+        for (const env of [{}, xdg])
+          expect(wranglerConfigFile(env, platform, home)).toBe(
+            join(home, ".wrangler/config/default.toml"),
+          );
+    }));
+
+  test("on Windows, says it isn't supported", () =>
+    withHome(async (home) => {
+      expect(() => wranglerConfigFile({}, "win32", home)).toThrow(
+        "keypin doesn't find the wrangler login on Windows yet",
+      );
+    }));
+
+  test("the token reads from the resolved Linux path under a throwaway HOME", () =>
+    withHome(async (home) => {
+      const env = { XDG_CONFIG_HOME: join(home, ".config") };
+      const path = wranglerConfigFile(env, "linux", home);
+      await mkdir(join(home, ".config/.wrangler/config"), { recursive: true });
+      const future = new Date(Date.now() + 3_600_000).toISOString();
+      await writeFile(path, `oauth_token = "${TOKEN}"\nexpiration_time = "${future}"\n`);
+      expect(await currentWranglerToken(path)).toBe(TOKEN);
+    }));
 });

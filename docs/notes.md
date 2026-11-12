@@ -15,9 +15,10 @@ and only when there's no `.dev.vars` file. To use keypin's keys:
 keypin reads the login that `wrangler login` saves, from the same file wrangler uses:
 
 - macOS: `~/Library/Preferences/.wrangler/config/default.toml`
-- Linux: `~/.config/.wrangler/config/default.toml`, or `$XDG_CONFIG_HOME/.wrangler/...` when that's set
+- Linux: `~/.config/.wrangler/config/default.toml`
 
-An older `~/.wrangler` folder wins when it exists. keypin doesn't read a login kept in the system keyring, or find
+On both, `$XDG_CONFIG_HOME/.wrangler/config/default.toml` replaces these when `XDG_CONFIG_HOME` is set, and an older
+`~/.wrangler` folder wins over all of them. keypin doesn't read a login kept in the system keyring, or find
 one on Windows.
 
 ## Files keypin keeps

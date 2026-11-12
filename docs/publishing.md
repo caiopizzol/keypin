@@ -9,20 +9,21 @@ keypin publish --all                 # every key with destinations, with one app
 keypin publish --all --plan          # show the plan and write nothing
 ```
 
-It writes GitHub Actions secrets with your `gh` login and Cloudflare Worker secrets with your `wrangler` login. The
-Worker must already exist. Run `keypin check` first: it checks each login and lists what's missing.
+It writes GitHub Actions secrets with your `gh` login, and Cloudflare Worker secrets with your `wrangler` login on
+macOS or Linux (not Windows yet; see [Notes](notes.md#the-wrangler-login)). The Worker must already exist. Run
+`keypin check` first: it checks each login and lists what's missing.
 
 ## Steps
 
 1. **Accounts:** it checks that each login reaches the account the map pins, and stops if one doesn't.
-2. **Plan:** it reads the value and shows what it will write where. A destination that already has this value is
-   skipped.
+2. **Plan:** it reads the value and shows what it will write where. It skips a destination when this machine's
+   receipt shows it already got this value; keypin never reads a destination's secret.
 3. **Approval:** you type `yes`.
 4. **Receipts:** it records each write on this machine, so a rerun skips destinations that are done.
 
 A first write to a destination, a changed account and a changed vault item always need a typed `yes` in a terminal.
-`--yes` approves only routine updates. Without a terminal, `publish` stops before reading the value and prints the
-command to run in one.
+`--yes` approves only routine updates. Without a terminal, a publish that needs a typed `yes` stops before reading the
+value and prints the command to run in one.
 
 A teammate's machine has no receipts, so their first publish counts as a first write.
 

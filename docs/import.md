@@ -36,5 +36,5 @@ It never overwrites an item, and it skips, by name:
 keypin never changes the env file. It tells you which lines to remove, or to delete the file when nothing else is
 in it. `keypin run` warns while an env file still holds a key it provides.
 
-Delete a `.dev.vars` entirely: while it exists, `wrangler dev` ignores the keys `keypin run` provides. See
-[Notes](notes.md).
+A `.dev.vars` has to go entirely, because while it exists `wrangler dev` ignores the keys `keypin run` provides.
+Before you delete it, import every secret in it and give each plain setting a new home. See [Notes](notes.md).

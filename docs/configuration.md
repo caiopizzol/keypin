@@ -74,7 +74,13 @@ The map says where a key goes, not who writes it, so every teammate publishes fr
 
 ## Vault items
 
-Any field can hold the value, such as `password` or an API Credential's `credential`. Add a **`rotated`** Date field
-with the day the value last changed; `keypin status` adds `rotate_every` to it to show when the key is due.
+Any field except `rotated` can hold the value, such as `password` or an API Credential's `credential`. Add a
+**`rotated`** Date field with the day the value last changed; `keypin status` adds `rotate_every` to it to show when
+the key is due.
 
-To rotate a key, put the new value in the field, set `rotated` to today, then run `keypin publish <VARIABLE>`.
+To rotate a key:
+
+1. Make a new value where the key comes from, such as the provider's dashboard.
+2. Put it in the 1Password field, and set `rotated` to today.
+3. Run `keypin publish <VARIABLE>`.
+4. Once everything uses the new value, revoke the old one at the provider.

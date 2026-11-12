@@ -34,16 +34,18 @@ values from 1Password only while a command runs.
 ## Run
 
 `keypin run -- <command>` runs a command with the dev keys. If it warns that an env file still holds a key, tell
-the user to remove that line. A `.dev.vars` must be deleted entirely, because `wrangler dev` ignores keypin's keys
-while it exists.
+the user to remove that line. A `.dev.vars` must go entirely, because `wrangler dev` ignores keypin's keys while it
+exists. Before the user deletes it, every secret in it must be imported; name each plain setting left in it, so the
+user can give it a new home first.
 
 ## Publish
 
-1. Run `keypin publish --all --plan` (or `keypin publish NAME --plan`) and show the user the plan. It writes
+1. Run `keypin check --json` and fix what it reports until it exits 0.
+2. Run `keypin publish --all --plan` (or `keypin publish NAME --plan`) and show the user the plan. It writes
    nothing; 1Password asks the user to approve the read.
-2. Exit 3: give the user the printed command to run in a terminal, where they type `yes`. Exit 0: nothing to
+3. Exit 3: give the user the printed command to run in a terminal, where they type `yes`. Exit 0: nothing to
    write. Exit 1: show the problem.
-3. Use `--yes` only when the user asks and the plan says it's routine.
+4. Use `--yes` only when the user asks and the plan says it's routine.
 
 "Nothing to write" means this machine's receipts match, not that keypin checked the destination.
 
@@ -51,7 +53,7 @@ while it exists.
 
 - `keypin status --json`: every project's keys and when each is due.
 - To rotate a key: the user makes a new value at the provider, puts it in the 1Password field and sets `rotated` to
-  today; then publish it.
+  today; then publish it. Once everything uses the new value, remind the user to revoke the old one.
 
 Details: [Configuration](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md),
 [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md),

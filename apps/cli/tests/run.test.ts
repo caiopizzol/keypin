@@ -160,18 +160,49 @@ describe("keypin run", () => {
     expect(leaks(stdout.text, stderr.text)).toBe(false);
   });
 
-  describe("env files that still hold a mapped key", () => {
-    test(".dev.vars: names the file and key, says wrangler dev prefers it, and still starts", async () => {
+  describe("env files that still hold a mapped key, and any .dev.vars", () => {
+    const IGNORED =
+      "wrangler dev ignores the keys keypin provides. Give each setting in it a new home, then delete the file.\n";
+
+    test(".dev.vars with a mapped key: one warning names the file and key, and still starts", async () => {
       const { deps, launcher, stdout, stderr } = setup({
         files: { "/work/web/.dev.vars": `SESSION_SECRET=${SENTINEL}\nPORT=8787\n` },
       });
       expect(await cli(["run", "--", "wrangler", "dev"], deps)).toBe(0);
       expect(stderr.text).toContain(
-        "keypin: ../.dev.vars still sets SESSION_SECRET; wrangler dev uses the file's value over keypin's. Move it out of the file.\n",
+        `keypin: ../.dev.vars still sets SESSION_SECRET, and while it exists ${IGNORED}`,
       );
+      expect(stderr.text.split(".dev.vars")).toHaveLength(2);
       expect(stderr.text).not.toContain("PORT");
       expect(launcher.launches).toMatchObject([{ env: { SESSION_SECRET: SENTINEL } }]);
       expect(leaks(stdout.text, stderr.text)).toBe(false);
+    });
+
+    test(".dev.vars with only plain settings: says wrangler dev ignores keypin's keys", async () => {
+      const { deps, launcher, stdout, stderr } = setup({
+        files: {
+          "/work/web/.dev.vars": `PORT=8787\n`,
+          "/work/web/src/.dev.vars.staging": `DEBUG=1\n`,
+        },
+      });
+      expect(await cli(["run", "--", "wrangler", "dev"], deps)).toBe(0);
+      expect(stderr.text).toContain(`keypin: ../.dev.vars exists, so ${IGNORED}`);
+      expect(stderr.text).toContain(`keypin: .dev.vars.staging exists, so ${IGNORED}`);
+      expect(stderr.text).not.toContain("PORT");
+      expect(launcher.launches).toMatchObject([{ env: { SESSION_SECRET: SENTINEL } }]);
+      expect(leaks(stdout.text, stderr.text)).toBe(false);
+    });
+
+    test("no .dev.vars warning when the map provides no keys for this run", async () => {
+      const { deps, launcher, stderr } = setup({
+        files: {
+          "/work/web/keypin.toml": `[1password]\naccount = "my.1password.com"\n`,
+          "/work/web/.dev.vars": `PORT=8787\n`,
+        },
+      });
+      expect(await cli(["run", "--", "wrangler", "dev"], deps)).toBe(0);
+      expect(stderr.text).not.toContain(".dev.vars");
+      expect(launcher.launches).toHaveLength(1);
     });
 
     test(".env.local in the current folder: says the file holds a plaintext copy", async () => {
@@ -196,6 +227,7 @@ describe("keypin run", () => {
       for (const run of [setup({ files }), setup()]) {
         expect(await cli(["run", "--", "true"], run.deps)).toBe(0);
         expect(run.stderr.text).not.toContain("Move it out");
+        expect(run.stderr.text).not.toContain(".dev.vars");
         expect(run.launcher.launches).toHaveLength(1);
       }
     });

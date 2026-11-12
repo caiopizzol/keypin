@@ -98,17 +98,19 @@ async function warnAboutEnvFiles(deps: Deps, folders: string[], mapped: string[]
       if (text === null) continue;
       const names = new Set(envNames(text));
       const held = mapped.filter((name) => names.has(name));
-      if (held.length)
-        deps.stderr.write(envFileWarning(entry.name, relative(deps.cwd, path), held));
+      const file = relative(deps.cwd, path);
+      if (entry.name.startsWith(".dev.vars")) deps.stderr.write(devVarsWarning(file, held));
+      else if (held.length) deps.stderr.write(envFileWarning(file, held));
     }
   }
 }
 
-function envFileWarning(name: string, file: string, keys: string[]): string {
-  const list = keys.join(", ");
+function devVarsWarning(file: string, keys: string[]): string {
+  const found = keys.length ? `still sets ${keys.join(", ")}, and while it exists` : "exists, so";
+  return `keypin: ${file} ${found} wrangler dev ignores the keys keypin provides. Give each setting in it a new home, then delete the file.\n`;
+}
+
+function envFileWarning(file: string, keys: string[]): string {
   const it = keys.length === 1 ? "it" : "them";
-  const effect = name.startsWith(".dev.vars")
-    ? `still sets ${list}; wrangler dev uses the file's value over keypin's`
-    : `still holds a plaintext copy of ${list}; tools differ on which value wins`;
-  return `keypin: ${file} ${effect}. Move ${it} out of the file.\n`;
+  return `keypin: ${file} still holds a plaintext copy of ${keys.join(", ")}; tools differ on which value wins. Move ${it} out of the file.\n`;
 }

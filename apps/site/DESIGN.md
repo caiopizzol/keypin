@@ -62,7 +62,7 @@ components:
     textColor: "{colors.on-primary}"
     typography: "{typography.command}"
     rounded: "{rounded.md}"
-    padding: 12px
+    padding: 12px 12px 12px 18px
   install-prompt:
     backgroundColor: "{colors.primary}"
     textColor: "{colors.tertiary-on-primary}"

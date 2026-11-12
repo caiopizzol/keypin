@@ -30,7 +30,7 @@ GitHub and Cloudflare receive them; keypin knows the path between them.
 
 - The map holds names and places, never values.
 - It checks the account before every write.
-- It shows a plan and waits for `yes` before every first write.
+- It shows a plan before every publish, and a first write waits for you to type `yes`.
 - No server and no account to sign up for.
 
 ### Personality
@@ -45,7 +45,8 @@ The careful operator. Exact, plain, cautious, quiet. Not alarmist, not clever, n
 
 ### Promise
 
-Values stay in your vault. Nothing is written without a plan you approved.
+Values stay in your vault. Nothing is published without a plan, and a first write or a changed account waits for
+you to type `yes`.
 
 Base message: keypin knows where every key goes, never what it is.
 
@@ -72,13 +73,13 @@ Essence: names, never values.
 
 - **Map:** each project's keys, by name, in one committed file.
 - **Vault:** values stay in 1Password and are never written to disk.
-- **Approval:** a plan before every write, and a checked account behind it.
+- **Approval:** a plan before every publish, and a checked account behind it.
 
 ### Phrases
 
 - "Names, never values."
 - "Values stay in your vault."
-- "A plan before every write."
+- "A plan before every publish."
 
 ### Vocabulary
 
@@ -108,8 +109,8 @@ The name is always lowercase: keypin.
 ### Logo & Marks
 
 A key drawn on a pixel grid: an Ink ring and shaft whose tip rises in three Green steps, inside a Paper tile with a
-thin rule. A dark variant inverts the tile. Sources: `.github/assets/keypin.svg` and `keypin-dark.svg`. Never
-redraw it, smooth its pixels, or recolor it outside the core colors.
+thin rule. A dark variant inverts the tile. Sources: `.github/assets/keypin.svg` and `keypin-dark.svg`. Use them
+as they are: never redraw the mark, smooth its pixels, or recolor it.
 
 ### Core Colors
 

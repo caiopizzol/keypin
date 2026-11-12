@@ -132,15 +132,16 @@ template, so it's the first command after `init`. It reports:
 - **Production:** each secret a workflow references (`secrets.NAME`) or a wrangler config lists under
   `secrets.required`, whether the repo or Worker has it, and whether `keypin.toml` publishes it there. For each
   one the map doesn't publish there, it prints the TOML to add, with `<...>` for what it can't know.
-- **Local:** each name an env file (`.env*`, `.dev.vars*`) sets that `keypin.toml` doesn't map, with the
-  `keypin import` command for it, and any env file tracked by git.
+- **Local:** each name an env file (`.env*`, `.dev.vars*`) sets that `keypin.toml` doesn't map, as a note with
+  the `keypin import` command (a plain setting can stay), each one the map has only in another environment, and
+  any env file tracked by git.
 
 It checks that each item exists from its vault's item list, which holds no values, so it never reads a value. It
 doesn't check the field inside the item: `keypin run` and `keypin publish --plan` read it. Listing items still signs
 in to 1Password, so 1Password asks you to approve the command when the map has keys; with no keys, check doesn't
 use 1Password at all. It reads the repo's and Worker's secret names with your `gh` and `wrangler` logins. A read it
-can't make is listed as unknown, never as missing. It exits 0 when everything checks out, and 1 with one line per
-problem. `--json` prints the same as JSON.
+can't make is listed as unknown, never as missing. It exits 1 with one line per problem, and 0 when there's
+nothing to fix; anything under unknown is still unverified. `--json` prints the same as JSON.
 
 Add `--plan` to `publish` to see the plan without a terminal. It changes nothing, and prints the command that
 does.

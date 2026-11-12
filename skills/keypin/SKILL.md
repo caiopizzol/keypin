@@ -16,13 +16,16 @@ from 1Password only while a command runs.
 - Production gap: when `add` isn't null, show the user that TOML. It adds a `[keys.X.prod]` table and its
   `[[keys.X.prod.publish]]` destination for each secret a workflow or Worker needs that the map doesn't publish
   there. Paste it into `keypin.toml` only when the user agrees, and ask the user for every `<...>` value: the
-  1Password account's sign-in address, and each field's secret reference (1Password: the field's menu, **Copy
-  Secret Reference**). keypin rejects a map that still has a `<...>`. The user creates vault items; you never
-  write a value.
-- Local gap: `local` lists, per env file, the names the map doesn't have, and `problems` names the
-  `keypin import` command. Suggest `keypin import <file> [NAME...] --vault <vault>` (plus `--account <sign-in
-  address>` when there's no map). Ask the user which vault, and which variables are keys; plain settings such as `PORT` can stay in the
-  file. keypin reads the file locally and creates new 1Password items; never read, print or pass a value yourself.
+  1Password account's sign-in address, each field's secret reference (1Password: the field's menu, **Copy
+  Secret Reference**), and any `<owner>/<repo>`, `<Cloudflare account ID>` or `<Worker name>` check couldn't
+  find. keypin rejects a map that still has a `<...>`. The user creates vault items; you never write a value.
+- Local gap: per env file, `local.unmapped` lists the names the map doesn't have, and `notes` names the
+  `keypin import` command. Suggest `keypin import <file> [NAME...] --vault <vault>`, plus `--account <sign-in
+  address>` when the map has no `[1password]` account (the `init` template has none). Ask the user which vault,
+  and which variables are keys; plain settings such as `PORT` can stay in the file, and don't fail check.
+  `local.elsewhere` lists names the map has only in another environment: `import` skips those, so ask the user
+  for each one's reference and add it by hand. keypin reads the file locally and creates new 1Password items;
+  never read, print or pass a value yourself.
   It needs the user's typed `yes`: run it without `--yes`, and it exits 3 with the plan and the command for the
   user to run. It never changes the file; the user removes the lines it names, or deletes the file when it says
   nothing else is set in it. A `.dev.vars` must go entirely: while it exists, `wrangler dev` ignores the keys
@@ -30,7 +33,8 @@ from 1Password only while a command runs.
   name that it needs a new home before they delete the file; don't read or move its value yourself.
 - A key is named after its variable: `keypin publish API_TOKEN`. If keypin says a map is from keypin 0.4,
   rewrite it in the current format (see Configuration) and show the user the diff.
-- Before you publish, or say a setup is done, run `keypin check --json` and get it to exit 0. It also checks that
+- Before you publish, or say a setup is done, run `keypin check --json` and get it to exit 0: nothing left to
+  fix. If `unknown` isn't empty, tell the user what check couldn't verify. It also checks that
   the map parses, that each item exists, and that each login reaches the pinned account, with a `fix` for each
   mismatch. It finds items in the vault's item list without reading a value, so it doesn't check the field
   inside; 1Password still asks the user to approve the command.

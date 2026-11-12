@@ -20,8 +20,9 @@ from 1Password only while a command runs.
   print or pass a value yourself. It needs the user's typed `yes`: run it without `--yes`, and it exits 3 with the
   plan and the command for the user to run. It never changes the file; the user removes the lines it names, or
   deletes the file when it says nothing else is set in it. A `.dev.vars` must go entirely: while it exists,
-  `wrangler dev` ignores the keys `keypin run` provides. A dev-only setting from it goes to `wrangler dev --var
-  NAME:value`, not top-level `[vars]`, which deploy with the Worker.
+  `wrangler dev` ignores the keys `keypin run` provides. Suggest importing every secret in it. For a plain setting
+  left in it, tell the user by name that it needs a new home before they delete the file; don't read or move its
+  value yourself.
 - A key is named after its variable: `keypin publish API_TOKEN`. If keypin says a map is from keypin 0.4,
   rewrite it in the current format (see Configuration) and show the user the diff.
 - Before you publish or rotate, or say a setup is done, run `keypin check --json`. It checks that the map

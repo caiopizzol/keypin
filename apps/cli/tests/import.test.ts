@@ -514,7 +514,7 @@ describe("keypin import", () => {
     const args = ["import", ".dev.vars", "API_TOKEN", "--vault", "V", "--account", ACCOUNT];
     expect(await cli([...args, "--yes"], deps)).toBe(0);
     expect(text()).toContain(
-      "Delete it once PORT has a new home: while a .dev.vars file exists, wrangler dev reads secrets only from it and ignores the ones keypin run provides. Pass a dev-only setting to wrangler dev with --var NAME:value; [vars] in the wrangler config also deploys.",
+      "Delete it once PORT has a new home: while a .dev.vars file exists, wrangler dev reads secrets only from it and ignores the ones keypin run provides. Import a secret among them too. A plain setting that isn't secret can go to wrangler dev --var NAME:value; [vars] in the wrangler config also deploys.",
     );
     expect(text()).not.toContain("Remove the");
     expect(leaks(text())).toBe(false);

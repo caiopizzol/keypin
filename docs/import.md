@@ -73,9 +73,10 @@ doesn't have, such as a plain setting you didn't name, can stay in the file.
 When nothing else is set in the file, it says so: delete the file and stop loading it.
 
 `.dev.vars` is different: while it exists, `wrangler dev` reads secrets only from it and ignores the ones `keypin
-run` provides. So import says to delete it, after you move any setting still in it: pass a dev-only setting with
-`wrangler dev --var NAME:value`, since top-level `[vars]` in the wrangler config deploy with the Worker. See
-[Notes](notes.md).
+run` provides. So import says to delete it, after you move what's still in it. Import a secret too. A plain
+setting that isn't secret can go to `wrangler dev --var NAME:value`; never pass a secret that way, since the value
+ends up in the process list and shell history. Top-level `[vars]` in the wrangler config deploy with the Worker.
+See [Notes](notes.md).
 
 Among the variables it was asked to import, it also names each one it left only in the file, with the reason under
 **Skipped**: one that isn't a variable name, has a `$`, is mapped only in another environment, shares an item with

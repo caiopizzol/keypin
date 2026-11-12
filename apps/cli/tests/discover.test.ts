@@ -110,7 +110,7 @@ describe("keypin discover", () => {
     const { deps, stdout, stderr, calls } = setup();
     expect(await cli(["discover"], deps)).toBe(0);
     const text = stdout.text;
-    expect(text).toContain("GitHub: acme/billing as acme");
+    expect(text).toContain("GitHub: acme/billing as the active gh login");
     expect(text).toMatch(/STRIPE_KEY {2}\[local and cloud\]/);
     expect(text).toContain("cloud: Worker billing (account 11111111…)");
     expect(text).toMatch(/LOCAL_ONLY {2}\[local\]/);
@@ -124,7 +124,7 @@ describe("keypin discover", () => {
     expect(text).toContain("not scanned (own git repository): nested");
     expect(text).not.toContain("IGNORED");
     expect(text).not.toContain("NESTED");
-    expect(calls).toContain("github acme/billing as acme");
+    expect(calls).toContain("github acme/billing as null");
     expect(calls).toContain(`worker ${ACCOUNT} billing`);
 
     const draft = text.slice(text.indexOf("# Draft from keypin discover"));
@@ -160,9 +160,10 @@ describe("keypin discover", () => {
   });
 
   test("uses git config github.account as the GitHub login", async () => {
-    const { deps, calls } = setup({ git: { "config --get github.account": "me\n" } });
+    const { deps, calls, stdout } = setup({ git: { "config --get github.account": "me\n" } });
     expect(await cli(["discover"], deps)).toBe(0);
     expect(calls).toContain("github acme/billing as me");
+    expect(stdout.text).toContain("GitHub: acme/billing as me (git config github.account)");
   });
 
   test("says what's unknown when cloud reads fail, and doesn't call it none", async () => {
@@ -172,7 +173,9 @@ describe("keypin discover", () => {
     });
     expect(await cli(["discover"], deps)).toBe(0);
     const text = stdout.text;
-    expect(text).toContain("GitHub Actions secrets of acme/billing: as acme: HTTP 403");
+    expect(text).toContain(
+      "GitHub Actions secrets of acme/billing: as the active gh login: HTTP 403",
+    );
     expect(text).toContain(
       `Worker secrets of billing (wrangler.jsonc): the wrangler login reaches 2222`,
     );

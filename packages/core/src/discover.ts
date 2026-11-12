@@ -463,7 +463,6 @@ function workerLabel(worker: WorkerDeclaration): string {
 
 export interface DraftOptions {
   project: string;
-  githubAccount: string | null;
   map: { account: string | null; vault: string | null } | null;
   environments: readonly Environment[];
   written?: boolean;
@@ -500,17 +499,7 @@ export function draftMap(names: readonly NameRow[], options: DraftOptions): stri
         return [
           ['to = "cloudflare-worker"', `account = ${str(s.account)}`, `worker = ${str(s.worker)}`],
         ];
-      if (s.kind === "github-secret") {
-        const account = options.githubAccount;
-        const owner = s.repo.split("/")[0]?.toLowerCase();
-        return [
-          [
-            'to = "github-actions"',
-            `repo = ${str(s.repo)}`,
-            ...(account && account.toLowerCase() !== owner ? [`account = ${str(account)}`] : []),
-          ],
-        ];
-      }
+      if (s.kind === "github-secret") return [['to = "github-actions"', `repo = ${str(s.repo)}`]];
       return [];
     });
     if (!local && !publish.length) continue;

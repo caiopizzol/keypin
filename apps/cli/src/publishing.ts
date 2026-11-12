@@ -20,6 +20,7 @@ import {
 import type { Deps, LockHolder } from "./deps";
 import { messageOf } from "./errors";
 import { statePath } from "./paths";
+import { publisherFor } from "./publisher";
 
 export const NEEDS_APPROVAL = 3;
 
@@ -66,10 +67,11 @@ export async function checkAccounts(
   say(`\n${heading}:`);
   const checked = new Map<string, Checked>();
   let failed = false;
+  const publisher = await publisherFor(entry.publish, deps);
   for (const target of entry.publish) {
     const label = describeTarget(target, key.name);
     try {
-      const destination = deps.destination(target);
+      const destination = deps.destination(target, publisher);
       const check = await destination.checkAccount();
       checked.set(destinationId(target, key.name), { target, destination, check });
       say(

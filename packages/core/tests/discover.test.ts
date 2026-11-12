@@ -486,7 +486,6 @@ describe("draftMap", () => {
   test("drafts dev for local names and prod with every destination found, and it parses", () => {
     const draft = draftMap(discovery.names, {
       project: "billing",
-      githubAccount: "me",
       map: null,
       environments: DEFAULT_ENVIRONMENTS,
     });
@@ -498,17 +497,16 @@ describe("draftMap", () => {
     expect(Object.keys(keys).toSorted()).toEqual(["DEPLOY_TOKEN", "LOCAL_ONLY", "STRIPE_KEY"]);
     expect(keys.STRIPE_KEY?.environments.dev?.ref.item).toBe("billing dev stripe key");
     expect(keys.STRIPE_KEY?.environments.prod?.publish).toEqual([
-      { to: "github-actions", repo: "acme/billing", account: "me" },
+      { to: "github-actions", repo: "acme/billing", account: "acme" },
       { to: "cloudflare-worker", account: ACCOUNT, worker: "billing" },
     ]);
     expect(keys.LOCAL_ONLY?.environments.prod).toBeUndefined();
     expect(keys.DEPLOY_TOKEN?.environments.dev).toBeUndefined();
   });
 
-  test("reuses the map's vault and leaves out the account when it's the repo owner", () => {
+  test("reuses the map's vault, and a GitHub destination names only the repo", () => {
     const draft = draftMap(discovery.names, {
       project: "billing",
-      githubAccount: "acme",
       map: { account: "my.1password.com", vault: "App Secrets" },
       environments: DEFAULT_ENVIRONMENTS,
     });
@@ -525,14 +523,13 @@ describe("draftMap", () => {
       section: null,
       field: "password",
     });
-    expect(draft).not.toContain('account = "acme"');
+    expect(draft).not.toMatch(/repo = "acme\/billing"\naccount/);
   });
 
   test("a vault name with spaces or dots stays in the op:// reference", () => {
     for (const vault of ["App Secrets", "team.prod"]) {
       const draft = draftMap(discovery.names, {
         project: "billing",
-        githubAccount: null,
         map: { account: "my.1password.com", vault },
         environments: DEFAULT_ENVIRONMENTS,
       });
@@ -549,7 +546,6 @@ describe("draftMap", () => {
   test("keeps the map's account when it has no keys yet, with a vault placeholder", () => {
     const draft = draftMap(discovery.names, {
       project: "billing",
-      githubAccount: null,
       map: { account: "my.1password.com", vault: null },
       environments: DEFAULT_ENVIRONMENTS,
     });
@@ -562,7 +558,6 @@ describe("draftMap", () => {
   test("a folder name with characters a reference can't hold still drafts a map that parses", () => {
     const draft = draftMap(discovery.names, {
       project: "app#2?/x",
-      githubAccount: null,
       map: null,
       environments: DEFAULT_ENVIRONMENTS,
     });
@@ -581,7 +576,6 @@ describe("draftMap", () => {
     expect(
       draftMap(mapped, {
         project: "o",
-        githubAccount: null,
         map: null,
         environments: DEFAULT_ENVIRONMENTS,
       }),

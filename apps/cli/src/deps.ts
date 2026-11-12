@@ -57,7 +57,7 @@ export interface Deps {
   isFolder(path: string): Promise<boolean>;
   listFolder(path: string): Promise<FolderEntry[]>;
   git(folder: string, args: readonly string[]): Promise<string | null>;
-  githubSecrets(repo: string, login: string): Promise<StoreRead>;
+  githubSecrets(repo: string, login: string | null): Promise<StoreRead>;
   workerSecrets(account: string, worker: string): Promise<StoreRead>;
   createFile: CreateFile;
   replaceFile: ReplaceFile;
@@ -68,11 +68,15 @@ export interface Deps {
   stderr: Writer;
   launch: Launch;
   onSignals: OnSignals;
-  destination(target: PublishTarget): Destination;
+  destination(target: PublishTarget, publisher: Publisher): Destination;
   provider(spec: RotateSpec, admin: Secret): TokenProvider;
   lock: Lock;
   isTerminal: boolean;
   ask(question: string): Promise<string>;
+}
+
+export interface Publisher {
+  githubLogin: string | null;
 }
 
 export class UsageError extends Error {}

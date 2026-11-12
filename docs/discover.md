@@ -15,7 +15,7 @@ keypin discover [folder] --write    # also save the draft as keypin.toml and reg
 - **Wrangler config:** each Worker's name, `account_id`, `secrets.required` and `vars` names.
 - **Workflows:** every `secrets.NAME` and `vars.NAME` they reference.
 - **GitHub:** the Actions secrets of the `origin` repo, through the `gh` login in `git config github.account`, or
-  else the repo's owner.
+  else the active `gh` login. It says which.
 - **Cloudflare:** each Worker's secrets, through the `wrangler` login, only when it reaches the config's
   `account_id`. discover doesn't guess an account.
 - **`keypin.toml`:** names it already maps are marked `mapped`.

@@ -89,15 +89,16 @@ function showForm(focus) {
   show("form", focus);
 }
 
-async function run(button, work) {
-  button.disabled = true;
+async function run(work) {
+  const buttons = document.querySelectorAll("main button");
+  for (const button of buttons) button.disabled = true;
   say("Working…");
   try {
     say(await work());
   } catch (error) {
     say(error.message);
   } finally {
-    button.disabled = false;
+    for (const button of buttons) button.disabled = false;
   }
 }
 
@@ -105,7 +106,7 @@ form.addEventListener("change", syncSize);
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
-  void run(event.submitter ?? form.querySelector('[type="submit"]'), async () => {
+  void run(async () => {
     const use = form.elements.use.value;
     const note = form.elements.note.value.trim();
     const body = { use };
@@ -127,8 +128,8 @@ $("cancel").addEventListener("click", () => {
   showStored(true);
 });
 
-$("delete").addEventListener("click", (event) =>
-  run(event.currentTarget, async () => {
+$("delete").addEventListener("click", () =>
+  run(async () => {
     await api("DELETE");
     signup = null;
     showForm(true);
@@ -136,8 +137,8 @@ $("delete").addEventListener("click", (event) =>
   }),
 );
 
-$("sign-in").addEventListener("click", (event) =>
-  run(event.currentTarget, async () => {
+$("sign-in").addEventListener("click", () =>
+  run(async () => {
     await clerk.client.signIn.authenticateWithRedirect({
       strategy: "oauth_github",
       redirectUrl: CALLBACK_URL,
@@ -148,8 +149,8 @@ $("sign-in").addEventListener("click", (event) =>
 );
 
 for (const button of document.querySelectorAll(".sign-out")) {
-  button.addEventListener("click", (event) =>
-    run(event.currentTarget, async () => {
+  button.addEventListener("click", () =>
+    run(async () => {
       await clerk.signOut({ redirectUrl: TEAM_URL });
       return "Signed out.";
     }),

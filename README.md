@@ -98,7 +98,7 @@ keypin init [folder]                     # write keypin.toml and register the pr
 keypin check [folder]                    # report one project; writes nothing
 keypin import <env-file> [NAME...] [--env <name>] --vault <vault>
                                          # move an env file's values into 1Password and map them
-keypin run -- <command>                  # run a command with the dev keys
+keypin run [--only NAME] -- <command>    # run a command with the dev keys, or only the named ones
 keypin publish <VARIABLE> | --all        # write prod keys to their destinations
 keypin status                            # every project's keys, and when each is due for rotation
 keypin unregister [folder]               # stop listing a project

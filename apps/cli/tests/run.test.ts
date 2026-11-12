@@ -15,6 +15,7 @@ interface SetupOptions {
   code?: number;
   env?: Record<string, string>;
   files?: Record<string, string>;
+  values?: Record<string, string>;
 }
 
 function setup(options: SetupOptions = {}) {
@@ -24,6 +25,7 @@ function setup(options: SetupOptions = {}) {
     values: {
       "web dev session secret": SENTINEL,
       "web prod session secret": PROD_VALUE,
+      ...options.values,
     },
     failing: options.failing,
   });
@@ -67,6 +69,51 @@ describe("keypin run", () => {
       `--env is one of "dev", "prod" in /work/web/keypin.toml, got "staging"`,
     );
     expect(staging.launcher.launches).toHaveLength(0);
+  });
+
+  describe("--only", () => {
+    const TWO_KEYS = `${WEB_MAP}
+[keys.CLOUDFLARE_API_TOKEN]
+prod = "op://Private/ci cloudflare token/credential"
+`;
+    const twoKeys = () =>
+      setup({
+        files: { "/work/web/keypin.toml": TWO_KEYS },
+        values: { "ci cloudflare token": "ci-token" },
+      });
+
+    test("without it, every key the environment has is added", async () => {
+      const { deps, launcher, calls } = twoKeys();
+      expect(await cli(["run", "--env", "prod", "--", "true"], deps)).toBe(0);
+      expect(calls).toHaveLength(2);
+      expect(Object.keys(launcher.launches[0]?.env ?? {}).toSorted()).toEqual([
+        "CLOUDFLARE_API_TOKEN",
+        "PATH",
+        "SESSION_SECRET",
+      ]);
+    });
+
+    test("adds only the named keys and reads nothing else", async () => {
+      for (const only of [["--only", "SESSION_SECRET"], ["--only=SESSION_SECRET,SESSION_SECRET"]]) {
+        const { deps, launcher, calls, stderr } = twoKeys();
+        expect(await cli(["run", "--env", "prod", ...only, "--", "true"], deps)).toBe(0);
+        expect(calls).toEqual(["read web prod session secret"]);
+        expect(launcher.launches).toEqual([
+          { command: ["true"], env: { PATH: "/usr/bin", SESSION_SECRET: PROD_VALUE } },
+        ]);
+        expect(stderr.text).not.toContain("ci cloudflare token");
+      }
+    });
+
+    test("a name the environment doesn't have is a usage error listing the ones it has", async () => {
+      for (const name of ["CLOUDFLARE_API_TOKEN", "NOPE"]) {
+        const { deps, launcher, calls, stderr } = twoKeys();
+        expect(await cli(["run", "--only", name, "--", "true"], deps)).toBe(2);
+        expect(stderr.text).toContain(`--only names keys dev has (SESSION_SECRET), got "${name}"`);
+        expect(calls).toHaveLength(0);
+        expect(launcher.launches).toHaveLength(0);
+      }
+    });
   });
 
   test("the first declared environment is the default", async () => {

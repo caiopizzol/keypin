@@ -64,10 +64,14 @@ It never changes the file: it tells you which lines to remove. See
 
 ### Production keys
 
-First, get each prod value into 1Password. Where it is now decides how:
+For staging, first add `environments = ["dev", "staging", "prod"]` at the top of `keypin.toml`. `check` prints
+that line when a Worker's staging env needs a secret.
+
+Then get each prod and staging value into 1Password. Where it is now decides how:
 
 - **In a file**, such as `.env.production`: `keypin import .env.production STRIPE_KEY --env prod --vault Private`,
-  plus `--account` while `keypin.toml` has no account. It creates the item and maps it, as for local keys.
+  plus `--account` while `keypin.toml` has no account. For `.env.staging`, use `--env staging`. It creates the item
+  and maps it, as for local keys.
 - **Already in 1Password**: you'll paste its reference below. Open the field's menu and select **Copy Secret
   Reference**.
 - **Only in GitHub or Cloudflare**: keypin can't read it back, and neither can you. Make a new key at the provider
@@ -84,9 +88,6 @@ repo = "me/my-project"
 Paste it at the end of `keypin.toml`. A key you haven't imported also gets a `from = "op://<vault>/<item>/<field>"`
 line; replace each `<...>` with the real value. Import first, because keypin won't import into a map that still has
 a `<...>`.
-
-For staging, add `environments = ["dev", "staging", "prod"]` at the top of `keypin.toml` and import
-`.env.staging` with `--env staging`. `check` prints that line when a Worker's staging env needs a secret.
 
 Then publish:
 

@@ -38,11 +38,12 @@ values from 1Password only while a command runs.
 `keypin run -- <command>` runs a command with the dev keys. If it warns that an env file still holds a key, tell
 the user to remove that line. A `.dev.vars` must go entirely, because `wrangler dev` ignores keypin's keys while it
 exists. Before the user deletes it, every secret in it must be imported; name each plain setting left in it, so the
-user can give it a new home first.
+user can give it a new home first: `wrangler dev --var NAME:value`, not `[vars]`, which also deploys.
 
 ## Publish
 
-1. Run `keypin check --json` and fix every problem until the only ones left say to run `keypin publish`.
+1. Run `keypin check --json` and fix every problem you can. Problems that say to run `keypin publish`, or that
+   wait on a command you handed to the user, don't block the plan.
 2. Run `keypin publish --all --plan` (or `keypin publish NAME --plan`) and show the user the plan. It writes
    nothing; 1Password asks the user to approve the read.
 3. Exit 3: give the user the printed command to run in a terminal, where they type `yes`. Exit 0: nothing to

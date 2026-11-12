@@ -325,6 +325,14 @@ describe("the sandbox's edges", () => {
     expect(fresh.code).toBe(0);
   });
 
+  test("a symlink to an existing file inside the sandbox can be written", async () => {
+    await writeFile(join(box.root, "real.env"), "");
+    await symlink(join(box.root, "real.env"), join(box.root, "linked.env"));
+    const run = await sandbox(["env-file", box.root, join(box.root, "linked.env"), "API_KEY"]);
+    expect(run.code).toBe(0);
+    expect(await readFile(join(box.root, "real.env"), "utf8")).toContain(`API_KEY=${FAKE}`);
+  });
+
   test("new refuses a folder that is already a sandbox, and keeps its world", async () => {
     await sandbox(["repo", box.root, "acme/app"]);
     const again = await sandbox(["new", box.root]);

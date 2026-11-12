@@ -40,7 +40,7 @@ user can give it a new home first.
 
 ## Publish
 
-1. Run `keypin check --json` and fix what it reports until it exits 0.
+1. Run `keypin check --json` and fix every problem until the only ones left say to run `keypin publish`.
 2. Run `keypin publish --all --plan` (or `keypin publish NAME --plan`) and show the user the plan. It writes
    nothing; 1Password asks the user to approve the read.
 3. Exit 3: give the user the printed command to run in a terminal, where they type `yes`. Exit 0: nothing to

@@ -6,6 +6,7 @@ import {
   type Environment,
   finishOperation,
   type Generation,
+  type ItemIds,
   type KeyEntry,
   type KeyOwner,
   type PlanStep,
@@ -106,6 +107,7 @@ export async function writeAll(input: {
   mapFile: string;
   entry: EnvEntry;
   secret: Secret;
+  ids: ItemIds;
   generation: Generation;
   writes: Write[];
   state: State;
@@ -113,7 +115,8 @@ export async function writeAll(input: {
   deps: Deps;
   say: Say;
 }): Promise<{ ok: boolean; state: State }> {
-  const { key, environment, mapFile, entry, secret, generation, writes, path, deps, say } = input;
+  const { key, environment, mapFile, entry, secret, ids, generation, writes, path, deps, say } =
+    input;
   const id = crypto.randomUUID();
   let state = startOperation(input.state, {
     id,
@@ -137,6 +140,7 @@ export async function writeAll(input: {
           environment,
           mapFile,
           source: entry.ref,
+          sourceIds: ids,
           destinationId: written,
           generation,
           account: {

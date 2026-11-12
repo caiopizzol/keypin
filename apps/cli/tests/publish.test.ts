@@ -495,6 +495,7 @@ describe("keypin publish", () => {
         section: null,
         field: "password",
       },
+      sourceIds: null,
       destinationId: "github-actions:acme/billing:STRIPE_API_KEY",
       generation,
       account: { pinned: "alice", publisher: "alice", destinationAccount: "acme" },
@@ -551,12 +552,22 @@ describe("a destination only takes a value without approval when it came from th
   const deployMap = (item: string) =>
     `${VAULTS}\n[keys.DEPLOY_TOKEN]\nprod = { from = "op://Private/${item}/password", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
 
-  function publisher(disk: ReturnType<typeof memoryFiles>, cwd: string, terminal: boolean) {
+  function publisher(
+    disk: ReturnType<typeof memoryFiles>,
+    cwd: string,
+    terminal: boolean,
+    ids: Record<string, string> = {},
+  ) {
     const destinations = fakeDestinations();
     const fake = fakeDeps({
       disk,
       backend: fakeVault({
-        values: { "billing deploy token": ORDINARY, "cloudflare admin token": ADMIN },
+        values: {
+          "billing deploy token": ORDINARY,
+          "billing deploy token v2": ORDINARY,
+          "cloudflare admin token": ADMIN,
+        },
+        ids,
       }).vault,
       deps: { cwd, destination: destinations.build, isTerminal: terminal, ask: async () => "yes" },
     });
@@ -576,9 +587,11 @@ describe("a destination only takes a value without approval when it came from th
     expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], swapped.deps)).toBe(NEEDS_APPROVAL);
     expect(swapped.writes()).toEqual([]);
     expect(swapped.stderr.text).toContain(
-      `  github-actions:acme/billing:DEPLOY_TOKEN was last published from op://Private/billing deploy token/password`,
+      `    needs approval: github-actions:acme/billing:DEPLOY_TOKEN was last published from op://Private/billing deploy token/password`,
     );
-    expect(swapped.stderr.text).toContain("Stopped before reading the value");
+    expect(swapped.stderr.text).toContain(
+      "Stopped: this plan needs approval, and --yes can't give it. Nothing was written.",
+    );
     expect(disk.contents.get(STATE)).toBe(before);
 
     const approved = publisher(disk, "/work/billing", true);
@@ -594,6 +607,78 @@ describe("a destination only takes a value without approval when it came from th
       field: "password",
     });
     expect(leaks(...disk.contents.values(), swapped.stderr.text, approved.stderr.text)).toBe(false);
+  });
+
+  test("a new item with the same title needs approval, and the receipt records the item's IDs", async () => {
+    const disk = memoryFiles({ "/work/billing/keypin.toml": deployMap("billing deploy token") });
+    const first = { "billing deploy token": "item-1" };
+    expect(
+      await cli(["publish", "DEPLOY_TOKEN"], publisher(disk, "/work/billing", true, first).deps),
+    ).toBe(0);
+    const [saved] = (await loadState(disk.files, STATE)).receipts;
+    expect(saved?.sourceIds).toEqual({ vault: "id-private", item: "item-1" });
+
+    const same = publisher(disk, "/work/billing", false, first);
+    expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], same.deps)).toBe(0);
+    expect(same.stderr.text).toContain("receipt already has this generation");
+
+    const before = disk.contents.get(STATE);
+    const replaced = { "billing deploy token": "item-2" };
+    const unattended = publisher(disk, "/work/billing", false, replaced);
+    expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], unattended.deps)).toBe(NEEDS_APPROVAL);
+    expect(unattended.writes()).toEqual([]);
+    expect(unattended.stderr.text).toContain(
+      "needs approval: github-actions:acme/billing:DEPLOY_TOKEN was last published from op://Private/billing deploy token/password (1Password account my.1password.com) (item item-1 in vault id-private), and now from op://Private/billing deploy token/password (1Password account my.1password.com) (item item-2 in vault id-private)",
+    );
+    expect(disk.contents.get(STATE)).toBe(before);
+
+    const approved = publisher(disk, "/work/billing", true, replaced);
+    expect(await cli(["publish", "DEPLOY_TOKEN"], approved.deps)).toBe(0);
+    expect(approved.writes()).toHaveLength(1);
+    const [now] = (await loadState(disk.files, STATE)).receipts;
+    expect(now?.sourceIds).toEqual({ vault: "id-private", item: "item-2" });
+    expect(leaks(...disk.contents.values(), unattended.stderr.text)).toBe(false);
+  });
+
+  test("a renamed item that is still the same item stays routine", async () => {
+    const disk = memoryFiles({ "/work/billing/keypin.toml": deployMap("billing deploy token") });
+    const ids = { "billing deploy token": "item-1", "billing deploy token v2": "item-1" };
+    expect(
+      await cli(["publish", "DEPLOY_TOKEN"], publisher(disk, "/work/billing", true, ids).deps),
+    ).toBe(0);
+    disk.contents.set("/work/billing/keypin.toml", deployMap("billing deploy token v2"));
+    const renamed = publisher(disk, "/work/billing", false, ids);
+    expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], renamed.deps)).toBe(0);
+    expect(renamed.stderr.text).toContain("receipt already has this generation");
+    expect(renamed.stderr.text).not.toContain("needs approval");
+  });
+
+  test("a receipt without item IDs compares the reference, as before", async () => {
+    const disk = memoryFiles({ "/work/billing/keypin.toml": deployMap("billing deploy token") });
+    expect(
+      await cli(["publish", "DEPLOY_TOKEN"], publisher(disk, "/work/billing", true).deps),
+    ).toBe(0);
+    const current = await loadState(disk.files, STATE);
+    const v3 = JSON.stringify({
+      version: 3,
+      operations: [],
+      receipts: current.receipts.map(({ sourceIds: _ids, ...r }) => r),
+    });
+
+    disk.contents.set(STATE, v3);
+    const replaced = { "billing deploy token": "item-2" };
+    const same = publisher(disk, "/work/billing", false, replaced);
+    expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], same.deps)).toBe(0);
+    expect(same.stderr.text).toContain("receipt already has this generation");
+
+    disk.contents.set(STATE, v3);
+    disk.contents.set("/work/billing/keypin.toml", deployMap("billing deploy token v2"));
+    const renamed = publisher(disk, "/work/billing", false);
+    expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], renamed.deps)).toBe(NEEDS_APPROVAL);
+    expect(renamed.stderr.text).toContain(
+      "was last published from op://Private/billing deploy token/password",
+    );
+    expect(renamed.writes()).toEqual([]);
   });
 
   test("pointing a key at another field of the same item needs approval, and the receipt records it", async () => {
@@ -758,7 +843,7 @@ describe("a destination only takes a value without approval when it came from th
   });
 });
 
-function withoutSource(receipt: Receipt): Omit<Receipt, "source" | "mapFile"> {
+function withoutSource(receipt: Receipt): Omit<Receipt, "source" | "sourceIds" | "mapFile"> {
   const { keyId, environment, destinationId, generation, account, at, evidence } = receipt;
   return { keyId, environment, destinationId, generation, account, at, evidence };
 }

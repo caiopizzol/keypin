@@ -5,6 +5,7 @@ import {
   type Environment,
   formatReference,
   type Generation,
+  type ItemIds,
   type KeyEntry,
   type KeyOwner,
   type KeysMap,
@@ -56,6 +57,7 @@ interface Checks extends Job {
 
 interface Planned extends Checks {
   secret: Secret;
+  ids: ItemIds;
   generation: Generation;
   writes: Write[];
 }
@@ -182,8 +184,9 @@ async function publishLocked(
   for (const job of checks) {
     const { key, entry, owner, checked } = job;
     let secret: Secret;
+    let ids: ItemIds;
     try {
-      secret = await deps.vault().read(entry.ref);
+      ({ secret, ids } = await deps.vault().readItem(entry.ref));
     } catch (error) {
       say(
         `Stopped: couldn't read ${key.name} (${formatReference(entry.ref)}): ${messageOf(error)}`,
@@ -197,6 +200,7 @@ async function publishLocked(
       mapFile: owner.mapFile,
       receipts: state.receipts,
       generation,
+      ids,
     });
     const writes = writesFor(plan.steps, checked);
     say(
@@ -216,7 +220,7 @@ async function publishLocked(
       );
     }
     needsApproval ||= plan.needsApproval;
-    planned.push({ ...job, secret, generation, writes });
+    planned.push({ ...job, secret, ids, generation, writes });
   }
 
   const finished = planned
@@ -243,6 +247,7 @@ async function publishLocked(
       mapFile: job.owner.mapFile,
       entry: job.entry,
       secret: job.secret,
+      ids: job.ids,
       generation: job.generation,
       writes: job.writes,
       state,

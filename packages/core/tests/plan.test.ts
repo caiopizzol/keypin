@@ -1,5 +1,5 @@
 import { expect, test } from "vite-plus/test";
-import { approvalsFor, planPublish } from "../src/index";
+import { approvalsFor, type ItemIds, type KeyRef, planPublish } from "../src/index";
 import { GITHUB, KEY, KEY_MAP, receipt, WORKER } from "./fixtures";
 
 const NEW = "aaaaaaaaaaaaaaaa";
@@ -20,6 +20,7 @@ test("first publish writes every destination, and each needs approval", () => {
     mapFile: KEY_MAP,
     receipts: [],
     generation: NEW,
+    ids: null,
   });
   expect(summary(plan)).toEqual([
     {
@@ -46,6 +47,7 @@ test("resuming after one destination skips it and writes the rest", () => {
     mapFile: KEY_MAP,
     receipts: [receipt(WORKER, NEW)],
     generation: NEW,
+    ids: null,
   });
   expect(summary(plan)).toEqual([
     {
@@ -70,6 +72,7 @@ test("the same generation everywhere leaves nothing to do", () => {
     mapFile: KEY_MAP,
     receipts: [receipt(WORKER, NEW), receipt(GITHUB, NEW)],
     generation: NEW,
+    ids: null,
   });
   expect(plan.steps.every((s) => s.action === "skip")).toBe(true);
   expect(plan.needsApproval).toBe(false);
@@ -82,6 +85,7 @@ test("a new generation rewrites known destinations without approval", () => {
     mapFile: KEY_MAP,
     receipts: [receipt(WORKER, OLD), receipt(GITHUB, OLD)],
     generation: NEW,
+    ids: null,
   });
   expect(summary(plan).map((s) => [s.action, s.reason, s.approval])).toEqual([
     ["write", "different generation", null],
@@ -104,6 +108,7 @@ test("a destination whose account changed needs approval, even with the same gen
     mapFile: KEY_MAP,
     receipts: [moved, receipt(GITHUB, NEW)],
     generation: NEW,
+    ids: null,
   });
   expect(summary(plan)[0]).toEqual({
     action: "write",
@@ -126,6 +131,7 @@ test("a destination removed from the map is reported, not deleted", () => {
     mapFile: KEY_MAP,
     receipts,
     generation: NEW,
+    ids: null,
   });
   expect(plan.removed).toEqual([
     {
@@ -151,6 +157,7 @@ test("another project's destinations for the same variable and environment aren'
     mapFile: KEY_MAP,
     receipts,
     generation: NEW,
+    ids: null,
   });
   expect(plan.removed).toEqual([]);
 });
@@ -164,6 +171,7 @@ test("a receipt with no project, from state version 2 or older, isn't this key's
     mapFile: KEY_MAP,
     receipts: [old(WORKER), old(GITHUB), gone],
     generation: NEW,
+    ids: null,
   });
   expect(plan.removed).toEqual([]);
   expect(summary(plan).map((s) => [s.action, s.reason])).toEqual([
@@ -185,6 +193,7 @@ test("the newest receipt per destination decides, whichever key wrote it", () =>
     mapFile: KEY_MAP,
     receipts,
     generation: NEW,
+    ids: null,
   });
   expect(summary(plan).map((s) => s.reason)).toEqual([
     "different generation",
@@ -209,6 +218,7 @@ test("a destination last published from another item needs approval, even with t
       mapFile: KEY_MAP,
       receipts: [receipt(WORKER, NEW, { source: OTHER_ITEM }), receipt(GITHUB, NEW)],
       generation,
+      ids: null,
     });
     expect(summary(plan)[0]).toEqual({
       action: "write",
@@ -218,6 +228,32 @@ test("a destination last published from another item needs approval, even with t
     });
     expect(plan.needsApproval).toBe(true);
   }
+});
+
+test("a receipt with item IDs compares the item read now by ID, and still compares the field and account", () => {
+  const IDS = { vault: "vault-1", item: "item-1" };
+  const reasons = (source: KeyRef | undefined, ids: ItemIds | null) =>
+    summary(
+      planPublish({
+        key: KEY,
+        environment: "prod",
+        mapFile: KEY_MAP,
+        receipts: [receipt(WORKER, NEW, { sourceIds: IDS, ...(source ? { source } : {}) })],
+        generation: NEW,
+        ids,
+      }),
+    )[0]?.reason;
+
+  expect(reasons(undefined, IDS)).toBe("receipt already has this generation");
+  expect(reasons(OTHER_ITEM, IDS)).toBe("receipt already has this generation");
+  expect(reasons(undefined, { ...IDS, item: "item-2" })).toBe("item changed");
+  expect(reasons(undefined, { ...IDS, vault: "vault-2" })).toBe("item changed");
+  expect(reasons({ ...OTHER_ITEM, item: "billing stripe api key", field: "credential" }, IDS)).toBe(
+    "item changed",
+  );
+  expect(reasons({ ...OTHER_ITEM, account: "other.1password.com" }, IDS)).toBe("item changed");
+  expect(reasons(undefined, null)).toBe("receipt already has this generation");
+  expect(reasons(OTHER_ITEM, null)).toBe("receipt already has this generation");
 });
 
 test("a receipt that another project or key left, from another item, needs approval", () => {
@@ -230,6 +266,7 @@ test("a receipt that another project or key left, from another item, needs appro
       receipt(GITHUB, OLD, { environment: "dev", source: OTHER_ITEM }),
     ],
     generation: NEW,
+    ids: null,
   });
   expect(summary(plan).map((s) => s.reason)).toEqual(["item changed", "item changed"]);
 });
@@ -241,6 +278,7 @@ test("a receipt that doesn't record its item, from state version 1, needs approv
     mapFile: KEY_MAP,
     receipts: [receipt(WORKER, NEW, { source: null }), receipt(GITHUB, NEW)],
     generation: NEW,
+    ids: null,
   });
   expect(summary(plan)[0]).toMatchObject({
     action: "write",
@@ -262,6 +300,7 @@ test("a receipt for the same GitHub secret spelled in another case is the same d
     mapFile: KEY_MAP,
     receipts: [receipt(WORKER, NEW), receipt(GITHUB, OLD, { at: "2026-11-09T10:00:00Z" }), aliased],
     generation: NEW,
+    ids: null,
   });
   expect(summary(plan)[1]).toMatchObject({ action: "write", reason: "item changed" });
   expect(plan.removed).toEqual([]);
@@ -279,6 +318,7 @@ test("a Worker receipt from another Cloudflare account is another secret", () =>
     mapFile: KEY_MAP,
     receipts: [receipt(WORKER, NEW), receipt(GITHUB, NEW), elsewhere],
     generation: NEW,
+    ids: null,
   });
   expect(summary(plan).map((s) => s.action)).toEqual(["skip", "skip"]);
 });
@@ -296,7 +336,14 @@ test("approvals are known from the receipts alone, before any value is read", ()
 
 test("an environment the key doesn't have is an error", () => {
   expect(() =>
-    planPublish({ key: KEY, environment: "dev", mapFile: KEY_MAP, receipts: [], generation: NEW }),
+    planPublish({
+      key: KEY,
+      environment: "dev",
+      mapFile: KEY_MAP,
+      receipts: [],
+      generation: NEW,
+      ids: null,
+    }),
   ).toThrow('key "STRIPE_API_KEY" has no dev entry in the map');
 });
 
@@ -308,6 +355,7 @@ test("a renamed variable is a new key: every write needs approval, and nothing i
     mapFile: KEY_MAP,
     receipts: [receipt(WORKER, NEW), receipt(GITHUB, NEW)],
     generation: NEW,
+    ids: null,
   });
   expect(summary(plan).map((s) => [s.action, s.destinationId, s.reason])).toEqual([
     ["write", "cloudflare-worker:billing-worker:STRIPE_KEY", "no receipt"],
@@ -344,6 +392,7 @@ test("an organization repo published by another login compares the pin, not the 
       }),
     ],
     generation: NEW,
+    ids: null,
   });
   expect(summary(plan).map((s) => [s.action, s.reason])).toEqual([
     ["skip", "receipt already has this generation"],

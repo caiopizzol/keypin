@@ -64,27 +64,27 @@ describe("state", () => {
 
   test("another schema version gives a clear error", async () => {
     const fake = fakeFiles({
-      [STATE]: JSON.stringify({ version: 4, receipts: [], operations: [] }),
+      [STATE]: JSON.stringify({ version: 5, receipts: [], operations: [] }),
     });
     await expect(loadState(fake.files, STATE)).rejects.toThrow(
-      `${STATE}: the state file has schema version 4, and this keypin reads version 1 or 2 or 3`,
+      `${STATE}: the state file has schema version 5, and this keypin reads version 1 or 2 or 3 or 4`,
     );
   });
 
-  test("a version 1 file loads, with receipts that record neither item nor project, and saves as version 3", async () => {
+  test("a version 1 file loads, with receipts that record neither item nor project, and saves as version 4", async () => {
     const old = withoutSource(receipt(WORKER, "aaaaaaaaaaaaaaaa"));
     const fake = fakeFiles({
       [STATE]: JSON.stringify({ version: 1, receipts: [old], operations: [] }),
     });
     const state = await loadState(fake.files, STATE);
     expect(state).toEqual({
-      version: 3,
-      receipts: [{ ...old, mapFile: null, source: null }],
+      version: 4,
+      receipts: [{ ...old, mapFile: null, source: null, sourceIds: null }],
       operations: [],
     });
     await saveState(fake.files, STATE, state);
     expect(await loadState(fake.files, STATE)).toEqual(state);
-    expect(fake.contents.get(STATE)).toContain('"version": 3');
+    expect(fake.contents.get(STATE)).toContain('"version": 4');
   });
 
   test("a version 2 file loads with no project on its receipts and operations, so none is any project's own", async () => {
@@ -103,12 +103,33 @@ describe("state", () => {
     });
     const state = await loadState(fake.files, STATE);
     expect(state).toEqual({
-      version: 3,
+      version: 4,
       receipts: [{ ...old, mapFile: null }],
       operations: [{ ...operation, mapFile: null }],
     });
     expect(receiptsFor(state, OWNER)).toEqual([]);
     expect(unfinishedOperations(state, OWNER)).toEqual([]);
+  });
+
+  test("a version 3 file's receipts record no item IDs, and a version 4 file keeps them", async () => {
+    const ids = { vault: "vault-1", item: "item-1" };
+    const saved = receipt(WORKER, "aaaaaaaaaaaaaaaa", { sourceIds: ids });
+    const v3 = fakeFiles({
+      [STATE]: JSON.stringify({ version: 3, receipts: [saved], operations: [] }),
+    });
+    expect((await loadState(v3.files, STATE)).receipts[0]?.sourceIds).toBeNull();
+    const v4 = fakeFiles({
+      [STATE]: JSON.stringify({ version: 4, receipts: [saved], operations: [] }),
+    });
+    expect((await loadState(v4.files, STATE)).receipts[0]?.sourceIds).toEqual(ids);
+    const bad = JSON.stringify({
+      version: 4,
+      receipts: [{ ...saved, sourceIds: { vault: "vault-1" } }],
+      operations: [],
+    });
+    await expect(loadState(fakeFiles({ [STATE]: bad }).files, STATE)).rejects.toThrow(
+      '"receipts" must be a list',
+    );
   });
 
   test("one receipt per destination secret: a write from another key replaces the last one", () => {
@@ -229,7 +250,7 @@ describe("registry", () => {
   });
 });
 
-function withoutSource(receipt: Receipt): Omit<Receipt, "source" | "mapFile"> {
+function withoutSource(receipt: Receipt): Omit<Receipt, "source" | "sourceIds" | "mapFile"> {
   const { keyId, environment, destinationId, generation, account, at, evidence } = receipt;
   return { keyId, environment, destinationId, generation, account, at, evidence };
 }

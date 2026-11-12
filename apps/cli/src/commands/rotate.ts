@@ -11,6 +11,7 @@ import {
   envFlag,
   formatReference,
   generationOf,
+  type ItemIds,
   type RotateSpec,
   type KeyEntry,
   type KeyOwner,
@@ -173,11 +174,11 @@ async function start(run: Run, data: Rotations): Promise<number> {
     say("Stopped: an account check failed. Nothing was read and nothing was changed.");
     return 1;
   }
-  const approvals = approvalsFor({ ...planFor(run), receipts: state.receipts });
-  if (!deps.isTerminal && !run.plan && (approvals.length || !run.yes)) {
-    for (const approval of approvals) say(`  needs approval: ${approval.approval}`);
+  const unread = approvalsFor({ ...planFor(run), receipts: state.receipts });
+  if (!deps.isTerminal && !run.plan && (unread.length || !run.yes)) {
+    for (const approval of unread) say(`  needs approval: ${approval.approval}`);
     say(
-      approvals.length
+      unread.length
         ? "Stopped before reading anything: this rotation needs approval, and --yes can't give it. Nothing was changed."
         : "Stopped before reading anything: no terminal to confirm on. Nothing was changed. Add --yes, or confirm in a terminal.",
     );
@@ -188,9 +189,10 @@ async function start(run: Run, data: Rotations): Promise<number> {
   announce(deps.stderr, "the current value and the admin token", [entry.ref, spec.admin]);
   const vault = deps.vault();
   let current: Secret;
+  let ids: ItemIds;
   let admin: Secret;
   try {
-    current = await vault.read(entry.ref);
+    ({ secret: current, ids } = await vault.readItem(entry.ref));
     admin = await vault.read(spec.admin);
   } catch (error) {
     say(`Stopped: ${messageOf(error)}. Nothing was changed.`);
@@ -219,6 +221,7 @@ async function start(run: Run, data: Rotations): Promise<number> {
     return 1;
   }
 
+  const approvals = approvalsFor({ ...planFor(run), receipts: state.receipts }, ids);
   const today = localDay(deps.now());
   const name = nextName(old.name, today);
   const expiresOn = `${addDays(today, days + GRACE_DAYS)}T23:59:59Z`;
@@ -294,9 +297,12 @@ async function start(run: Run, data: Rotations): Promise<number> {
   say(`keypin: writing the new value to ${formatReference(entry.ref)}, with rotated ${today}`);
   try {
     await vault.write(entry.ref, made.value, { rotated: today });
-    const stored = await generationOf(await vault.read(entry.ref));
+    const readBack = await vault.readItem(entry.ref);
+    const stored = await generationOf(readBack.secret);
     if (stored !== generation)
       throw new Error(`the item reads back generation ${stored}, not ${generation}`);
+    if (readBack.ids.vault !== ids.vault || readBack.ids.item !== ids.item)
+      throw new Error(`it reads back as item ${readBack.ids.item}, not ${ids.item}`);
   } catch (error) {
     say(`Stopped: couldn't store the new value: ${messageOf(error)}.`);
     say(
@@ -309,22 +315,23 @@ async function start(run: Run, data: Rotations): Promise<number> {
   await saveRotations(deps.files, run.rotationsPath, data);
   say(`  stored generation ${generation}`);
 
-  return publishNew(run, data, rotation, { value: made.value, checked });
+  return publishNew(run, data, rotation, { value: made.value, ids, checked });
 }
 
 async function publishNew(
   run: Run,
   data: Rotations,
   rotation: Rotation,
-  fresh: { value: Secret; checked: Map<string, Checked> } | null,
+  fresh: { value: Secret; ids: ItemIds; checked: Map<string, Checked> } | null,
 ): Promise<number> {
   const { key, entry, environment, deps, say } = run;
   const state = await loadState(deps.files, run.statePath);
   let value: Secret;
+  let ids: ItemIds;
   let checked: Map<string, Checked>;
   const resuming = fresh === null;
   if (fresh) {
-    ({ value, checked } = fresh);
+    ({ value, ids, checked } = fresh);
   } else {
     say(`It stored the new value (generation ${rotation.new.generation}); this run publishes it.`);
     const found = await checkAccounts(key, entry, deps, say);
@@ -343,7 +350,7 @@ async function publishNew(
       entry.ref,
       run.spec.admin,
     ]);
-    value = await deps.vault().read(entry.ref);
+    ({ secret: value, ids } = await deps.vault().readItem(entry.ref));
     const generation = await generationOf(value);
     if (generation !== rotation.new.generation) {
       say(
@@ -362,7 +369,7 @@ async function publishNew(
   }
 
   const generation = rotation.new.generation ?? (await generationOf(value));
-  const plan = planPublish({ ...planFor(run), receipts: state.receipts, generation });
+  const plan = planPublish({ ...planFor(run), receipts: state.receipts, generation, ids });
   say(`\nPublishing generation ${generation}:`);
   for (const step of plan.steps) {
     say(`  ${step.action} ${describeTarget(step.target, key.name)}: ${step.reason}`);
@@ -379,6 +386,7 @@ async function publishNew(
     mapFile: run.map.file,
     entry,
     secret: value,
+    ids,
     generation,
     writes,
     state,
@@ -413,7 +421,7 @@ async function revokeOld(run: Run, data: Rotations, rotation: Rotation): Promise
     throw new Error(`rotation ${rotation.id} has no new generation or token IDs`);
   }
   const state = await loadState(deps.files, run.statePath);
-  const plan = planPublish({ ...planFor(run), receipts: state.receipts, generation });
+  const plan = planPublish({ ...planFor(run), receipts: state.receipts, generation, ids: null });
   const behind = plan.steps.filter((step) => step.action === "write");
   for (const step of behind) {
     say(`  ${step.destinationId} doesn't have generation ${generation}: ${step.reason}`);

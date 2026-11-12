@@ -5,6 +5,7 @@ export {
   type Destination,
   type Environment,
   type Evidence,
+  type ItemIds,
   type Json,
   type KeyRef,
   type ProviderToken,

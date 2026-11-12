@@ -61,6 +61,14 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
       return new Secret(valueField(item, ref).value);
     },
 
+    async readItem(ref) {
+      const item = await get(ref);
+      return {
+        secret: new Secret(valueField(item, ref).value),
+        ids: { vault: item.vaultId, item: item.id },
+      };
+    },
+
     async write(ref, secret, options = {}) {
       const rotated = options.rotated;
       if (rotated !== undefined && !isDay(rotated)) {

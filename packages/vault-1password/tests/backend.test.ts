@@ -120,6 +120,17 @@ describe("read", () => {
     expect(inspect(secret)).toBe("[secret]");
   });
 
+  test("readItem returns the value with the item's vault and item IDs", async () => {
+    const { client, calls } = fake([
+      item("demo dev token", [field("password", "Concealed", VALUE)], "item-7"),
+    ]);
+    const read = await backendFor(client).backend.readItem({ ...ref, item: "DEMO DEV TOKEN" });
+    expect(read.secret.reveal()).toBe(VALUE);
+    expect(read.ids).toEqual({ vault: "vault-1", item: "item-7" });
+    expect(JSON.stringify(read)).not.toContain(VALUE);
+    expect(calls.get).toBe(1);
+  });
+
   test("fails clearly when the item has no such field", async () => {
     const { client } = fake([item("demo dev token", [field("rotated", "Date", "2026-11-09")])]);
     await expect(backendFor(client).backend.read(ref)).rejects.toThrow(

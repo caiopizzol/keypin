@@ -38,8 +38,12 @@ export function sameItem(a: KeyRef, b: KeyRef): boolean {
   );
 }
 
+export function sameField(a: KeyRef, b: KeyRef): boolean {
+  return sameName(a.section, b.section) && sameName(a.field, b.field);
+}
+
 export function sameRef(a: KeyRef, b: KeyRef): boolean {
-  return sameItem(a, b) && sameName(a.section, b.section) && sameName(a.field, b.field);
+  return sameItem(a, b) && sameField(a, b);
 }
 
 export function storedRefWithPasswordDefault(value: unknown): KeyRef | null {

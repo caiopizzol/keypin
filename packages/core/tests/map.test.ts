@@ -14,6 +14,10 @@ function errorsOf(text: string): string[] {
 }
 
 describe("a valid map", () => {
+  test("a map saved with a byte order mark parses the same", () => {
+    expect(parseMap(`\uFEFF${VALID_MAP}`, MAP_FILE)).toEqual(parseMap(VALID_MAP, MAP_FILE));
+  });
+
   test("the design's example parses into typed entries", () => {
     const result = parseMap(VALID_MAP, MAP_FILE);
     expect(result).toEqual({

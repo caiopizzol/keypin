@@ -185,7 +185,9 @@ const ACCOUNT_ID = /^[0-9a-f]{32}$/;
 
 function jsonc(text: string): unknown {
   const errors: ParseError[] = [];
-  const data: unknown = parseJsonc(text, errors, { allowTrailingComma: true });
+  const data: unknown = parseJsonc(text.replace(/^\uFEFF/, ""), errors, {
+    allowTrailingComma: true,
+  });
   return errors.length ? undefined : data;
 }
 

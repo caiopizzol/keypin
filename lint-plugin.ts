@@ -14,11 +14,13 @@ const noComments = defineRule({
   },
 });
 
+const REPO = decodeURIComponent(new URL(".", import.meta.url).pathname);
+
 const REVEAL_ALLOWED = [
-  /\/packages\/(vault|destination|provider)-[^/]+\/src\//,
-  /\/packages\/core\/src\/secret\.ts$/,
-  /\/apps\/cli\/src\/commands\/run\.ts$/,
-  /\/tests\//,
+  /^packages\/(vault|destination|provider)-[^/]+\/src\//,
+  /^packages\/core\/src\/secret\.ts$/,
+  /^apps\/cli\/src\/commands\/run\.ts$/,
+  /^(apps|packages)\/[^/]+\/tests\//,
 ];
 
 function namesReveal(key: ESTree.Node, computed: boolean): boolean {
@@ -37,7 +39,8 @@ const noReveal = defineRule({
     },
   },
   create(context) {
-    const path = context.physicalFilename.replaceAll("\\", "/");
+    const file = context.physicalFilename;
+    const path = file.startsWith(REPO) ? file.slice(REPO.length) : file;
     if (REVEAL_ALLOWED.some((allowed) => allowed.test(path))) return {};
     return {
       MemberExpression(node) {

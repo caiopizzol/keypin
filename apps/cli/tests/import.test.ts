@@ -256,6 +256,16 @@ describe("keypin import", () => {
     expect(leaks(stderr.text)).toBe(false);
   });
 
+  test("when the keypin on PATH is this keypin, the rerun command is keypin import", async () => {
+    const { deps, stderr } = setup();
+    expect(await cli(NEW, { ...deps, self: { folder: "/tmp/billing", command: ["keypin"] } })).toBe(
+      3,
+    );
+    expect(stderr.text).toContain(
+      `cd /tmp/billing && keypin import .env --vault 'App Secrets' --account ${ACCOUNT}\n`,
+    );
+  });
+
   test("in a terminal, creates only after a typed yes", async () => {
     const no = setup({ terminal: true, answer: "y" });
     expect(await cli(NEW, no.deps)).toBe(3);

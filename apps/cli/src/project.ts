@@ -5,17 +5,24 @@ import { UsageError } from "./deps";
 export const MAP_FILE = "keypin.toml";
 
 export async function findMap(files: Files, cwd: string): Promise<KeysMap> {
+  const found = await locateMap(files, cwd);
+  if (!found) {
+    throw new Error(`no ${MAP_FILE} in ${cwd} or any folder above it; run "keypin init" first`);
+  }
+  const result = parseMap(found.text, found.file);
+  if (!result.ok) throw new Error(result.errors.join("\n"));
+  return result.map;
+}
+
+export async function locateMap(
+  files: Files,
+  cwd: string,
+): Promise<{ file: string; text: string } | null> {
   for (let folder = cwd; ; folder = dirname(folder)) {
     const file = join(folder, MAP_FILE);
     const text = await files.read(file);
-    if (text !== null) {
-      const result = parseMap(text, file);
-      if (!result.ok) throw new Error(result.errors.join("\n"));
-      return result.map;
-    }
-    if (dirname(folder) === folder) {
-      throw new Error(`no ${MAP_FILE} in ${cwd} or any folder above it; run "keypin init" first`);
-    }
+    if (text !== null) return { file, text };
+    if (dirname(folder) === folder) return null;
   }
 }
 

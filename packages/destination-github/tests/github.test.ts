@@ -199,7 +199,10 @@ describe("checkAccount", () => {
     const check = await github.checkAccount();
     expect(check).toMatchObject({ publisher: "acme", destinationAccount: "acme", ok: false });
     expect(check.reason).toBe(
-      "acme has no write access to acme/billing, so GitHub won't let it set Actions secrets; ask an admin of acme for the Write role, or publish as another login",
+      "acme has no write access to acme/billing, so GitHub won't let it set Actions secrets",
+    );
+    expect(check.fix).toBe(
+      "ask an admin of acme for the Write role, or publish as another login: git config github.account <login>",
     );
     await expect(github.write("API_KEY", new Secret(SENTINEL))).rejects.toThrow(/checkAccount/);
     expect(requests.some((r) => r.method === "PUT")).toBe(false);

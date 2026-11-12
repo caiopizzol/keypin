@@ -70,6 +70,7 @@ export interface Deps {
   onSignals: OnSignals;
   destination(target: PublishTarget, publisher: Publisher): Destination;
   provider(spec: RotateSpec, admin: Secret): TokenProvider;
+  wranglerLoginFile(): Promise<string | null>;
   lock: Lock;
   isTerminal: boolean;
   ask(question: string): Promise<string>;
@@ -77,6 +78,7 @@ export interface Deps {
 
 export interface Publisher {
   githubLogin: string | null;
+  refreshLogins: boolean;
 }
 
 export class UsageError extends Error {}

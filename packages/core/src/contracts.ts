@@ -62,6 +62,7 @@ export interface AccountCheck {
   expected: string;
   ok: boolean;
   reason?: string;
+  fix?: string;
 }
 
 export type Evidence = Readonly<Record<string, string | number | boolean | null>>;

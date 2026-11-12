@@ -6,8 +6,11 @@ export async function publisherFor(
   deps: Deps,
   folder = deps.cwd,
 ): Promise<Publisher> {
-  if (!targets.some((target) => target.to === "github-actions")) return { githubLogin: null };
-  return { githubLogin: await githubLogin(deps, folder) };
+  const github = targets.some((target) => target.to === "github-actions");
+  return {
+    githubLogin: github ? await githubLogin(deps, folder) : null,
+    refreshLogins: true,
+  };
 }
 
 export async function githubLogin(deps: Deps, folder: string): Promise<string | null> {

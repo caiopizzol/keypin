@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-const WRANGLER_CONFIG = join(homedir(), "Library/Preferences/.wrangler/config/default.toml");
+export const WRANGLER_CONFIG = join(homedir(), "Library/Preferences/.wrangler/config/default.toml");
 
 export async function wranglerToken(path = WRANGLER_CONFIG): Promise<string> {
   let login = await readLogin(path);

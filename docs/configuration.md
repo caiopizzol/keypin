@@ -96,7 +96,8 @@ picks its own publisher:
   write access to the repo. For an organization's repo, that's anyone with the Write, Maintain or Admin role.
 - **Cloudflare:** the `wrangler` login. The account check passes when it reaches the pinned `account`.
 
-Receipts record both the pinned account and the login that wrote.
+Receipts record both the pinned account and the login that wrote. `keypin check` shows, for each destination, the
+login this machine would use, who it acts as, and the account it reaches.
 
 To let `rotate` replace the key, add a `rotate` section. See [Rotation](rotation.md).
 

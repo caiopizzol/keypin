@@ -63,6 +63,7 @@ export class GitHubSecretDestination implements Destination {
         destinationAccount: null,
         ok: false,
         reason: `${publisher} can't see ${this.#repo}`,
+        fix: `check repo in keypin.toml, or publish as a login that can see it: git config github.account <login>`,
       };
     }
     if (repo.status !== 200)
@@ -73,12 +74,16 @@ export class GitHubSecretDestination implements Destination {
     const check: AccountCheck = { ...facts, destinationAccount: owner, ok: false };
     if (!sameLogin(owner, this.#owner)) {
       check.reason = `${this.#repo} is owned by ${owner}, not ${this.#owner} (moved or renamed?)`;
+      check.fix = `if the repository moved, set repo to its current owner/name in keypin.toml`;
     } else if (this.#login !== null && !sameLogin(publisher, this.#login)) {
       check.reason = `the token acts as ${publisher}, not ${this.#login}`;
+      check.fix = `run gh auth login as ${this.#login}, or change git config github.account`;
     } else if (!write) {
-      check.reason = `${publisher} has no write access to ${this.#repo}, so GitHub won't let it set Actions secrets; ask an admin of ${this.#owner} for the Write role, or publish as another login`;
+      check.reason = `${publisher} has no write access to ${this.#repo}, so GitHub won't let it set Actions secrets`;
+      check.fix = `ask an admin of ${this.#owner} for the Write role, or publish as another login: git config github.account <login>`;
     } else if (scopes !== null && !scopes.split(",").some((s) => s.trim() === "repo")) {
       check.reason = `the token lacks the repo scope (it has: ${scopes || "none"})`;
+      check.fix = "run gh auth refresh --hostname github.com --scopes repo";
     } else {
       check.ok = true;
       this.#passed = true;

@@ -232,6 +232,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
     provider: () => {
       throw new Error("this test rotates nothing");
     },
+    wranglerLoginFile: async () => null,
     lock: memoryLock(disk),
     isTerminal: false,
     ask: async () => {

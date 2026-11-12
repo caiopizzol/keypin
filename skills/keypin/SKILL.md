@@ -21,7 +21,11 @@ from 1Password only while a command runs.
   variable as still only in the file, the user deletes the file.
 - A key is named after its variable: `keypin publish API_TOKEN`. If keypin says a map is from keypin 0.4,
   rewrite it in the current format (see Configuration) and show the user the diff.
-- Check a project: `keypin status --json` for due dates and receipts, and `keypin discover` for the names
+- Before you publish or rotate, or say a setup is done, run `keypin check --json`. It checks that the map
+  parses, that each item and field exists (a `rotate` admin item too), and that each login reaches the pinned
+  account, and gives a `fix` for each mismatch. It writes nothing and prints no value, but reads each value, so
+  1Password asks the user to approve it. It exits 1 with one line per problem in `problems`.
+- Check a project's keys over time: `keypin status --json` for due dates and receipts, and `keypin discover` for the names
   each repo and Worker holds. `cloud unknown` means discover couldn't read it, not that the name is missing.
   `status` exits 1 when it finds a problem; the JSON still prints. Notices, such as `never-published`, exit 0
   and name the next step.

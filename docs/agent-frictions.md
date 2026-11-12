@@ -41,6 +41,14 @@ The same seven scenarios, run again against these fixes:
   because reading a value makes 1Password ask the user to approve the command, and a plain run without a
   terminal stops before reading so the user approves only once. The note to coordinate with a separate revoke
   change was stale: that change was #19, which merged minutes before this list did.
+- **5. No way to check vault items before publishing.** `keypin check` checks that the map parses, that each
+  referenced item and field exists, and that each login reaches the pinned account, with a fix for each
+  mismatch. It writes nothing, prints no value, and exits 1 with one line per problem. It doesn't check
+  `rotated` dates or `rotate_every`; `status` reports those.
+- **10. Rotation's admin token wasn't checked.** `keypin check` checks that each `rotate` section's admin item
+  and field exist. It doesn't check the admin token's `rotated` date or whether Cloudflare still accepts it.
+- **3. (part) An empty map looked healthy.** `keypin check` reports a map with no keys as a problem, and an
+  unregistered project as a note. `status` still shows an empty map with no problem.
 - **2. `init` and `discover` didn't connect.** `keypin discover --write` saves the draft as `keypin.toml` and
   registers the project, when there's no `keypin.toml` or it's still the untouched `init` template. It refuses
   to change a real map; copy the `[keys.*]` tables from the draft by hand.
@@ -61,6 +69,7 @@ The same seven scenarios, run again against these fixes:
 
 After `init`, `status --json` returns no rows and no problems, exactly as before `init`. Nothing says the project
 is registered with zero keys, or that `keypin.toml` is still the template. Report "registered, no keys mapped".
+`keypin check` now reports it; `status` doesn't yet.
 
 ### 4. The draft doesn't act on the problems it reports
 
@@ -69,13 +78,6 @@ that key no `prod` entry or Worker destination. It reports a workflow that uses 
 secret, but adds no GitHub destination. Draft a destination for each `secrets.required` name and each workflow
 reference, so the draft fixes what discover found.
 
-### 5. No way to check vault items before publishing
-
-There's no command to check that the map's vault items exist and have `password`, `rotated` and `rotate_every`.
-`status` reads only the rotation fields, and only after the map is saved. Agents had to ask the user for every
-item name. A `keypin check` (map valid, items exist, fields present, logins reach accounts) would let an agent
-finish setup and say "valid" with evidence.
-
 ## Day to day
 
 ### 7. `status` and `discover` each tell half the story
@@ -83,11 +85,6 @@ finish setup and say "valid" with evidence.
 `status` shows due dates and receipts; only `discover` shows what a repo or Worker actually holds. Agents that
 followed "check with `status`" missed a Worker without a required secret. Consider showing discover's cloud
 problems in `status` for registered projects, or a single `keypin doctor`.
-
-### 10. Rotation's admin token isn't checked
-
-`status` reads only each environment's item, not `rotate.admin`, though `docs/rotation.md` says the admin item
-has its own `rotated` and `rotate_every`. A missing or expired admin token shows up only when `rotate` fails.
 
 ### 11. "Nothing to write" trusts the receipt
 

@@ -30,7 +30,7 @@ import { selfCommand } from "./runtime";
 let vault: VaultBackend | undefined;
 let cloudflare: CloudflareReader | undefined;
 
-function destination(target: PublishTarget, publisher: Publisher): Destination {
+export function destination(target: PublishTarget, publisher: Publisher): Destination {
   switch (target.to) {
     case "cloudflare-worker":
       return new WorkerSecretDestination({
@@ -39,7 +39,11 @@ function destination(target: PublishTarget, publisher: Publisher): Destination {
         ...(publisher.refreshLogins ? {} : { token: () => currentWranglerToken() }),
       });
     case "github-actions":
-      return new GitHubSecretDestination({ repo: target.repo, login: publisher.githubLogin });
+      return new GitHubSecretDestination({
+        repo: target.repo,
+        login: publisher.githubLogin,
+        refresh: publisher.refreshLogins,
+      });
     default: {
       const unknown: never = target;
       throw new Error(`unknown destination ${JSON.stringify(unknown)}`);

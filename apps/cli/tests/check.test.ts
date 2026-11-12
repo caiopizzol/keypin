@@ -1,8 +1,12 @@
-import { assert, describe, expect, test } from "vite-plus/test";
-import { isRecord } from "@keypin/core";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, assert, describe, expect, test, vi } from "vite-plus/test";
+import { isRecord, type PublishTarget } from "@keypin/core";
 import { GitHubSecretDestination } from "@keypin/destination-github";
 import { type FullItem, onePasswordBackend } from "@keypin/vault-1password";
 import { cli } from "../src/cli";
+import { destination as realDestination } from "../src/start";
 import type { Deps } from "../src/deps";
 import {
   BILLING_MAP,
@@ -373,5 +377,66 @@ describe("keypin check", () => {
       ],
     });
     expect(leaks(...run.everything())).toBe(false);
+  });
+
+  describe("the real GitHub destination's gh token", () => {
+    let bin: string | undefined;
+    const path = process.env.PATH;
+
+    afterEach(async () => {
+      vi.unstubAllGlobals();
+      process.env.PATH = path;
+      if (bin) await rm(bin, { recursive: true, force: true });
+      bin = undefined;
+    });
+
+    async function fakeGh(): Promise<() => Promise<string[]>> {
+      bin = await mkdtemp(join(tmpdir(), "keypin-check-gh-"));
+      const log = join(bin, "log");
+      await writeFile(join(bin, "gh"), `#!/bin/sh\necho "$*" >> "${log}"\necho token\n`);
+      await chmod(join(bin, "gh"), 0o755);
+      process.env.PATH = `${bin}:/usr/bin:/bin`;
+      vi.stubGlobal(
+        "fetch",
+        async (input: string) =>
+          new Response(
+            JSON.stringify(
+              new URL(input).pathname === "/user"
+                ? { login: "alice" }
+                : { owner: { login: "acme" }, permissions: { push: true } },
+            ),
+            { status: 200, headers: { "x-oauth-scopes": "repo" } },
+          ),
+      );
+      return async () => (await readFile(log, "utf8")).trim().split("\n");
+    }
+
+    test("check asks gh with --no-refresh, so an expired gh token isn't refreshed", async () => {
+      const asked = await fakeGh();
+      const workers = fakeDestinations();
+      const run = setup({
+        deps: {
+          git: async (_folder, args) =>
+            args.join(" ") === "config --get github.account" ? "alice\n" : null,
+          destination: (target, publisher) =>
+            target.to === "github-actions"
+              ? realDestination(target, publisher)
+              : workers.build(target),
+        },
+      });
+      expect(await cli(["check"], run.deps)).toBe(0);
+      expect(await asked()).toEqual(["auth token --hostname github.com --user alice --no-refresh"]);
+    });
+
+    test("publish and rotate's publisher still lets gh refresh", async () => {
+      const asked = await fakeGh();
+      const target: PublishTarget = { to: "github-actions", repo: "acme/billing", account: "acme" };
+      const check = await realDestination(target, {
+        githubLogin: "alice",
+        refreshLogins: true,
+      }).checkAccount();
+      expect(check.ok).toBe(true);
+      expect(await asked()).toEqual(["auth token --hostname github.com --user alice"]);
+    });
   });
 });

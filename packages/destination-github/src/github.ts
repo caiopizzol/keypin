@@ -20,6 +20,7 @@ export type Fetch = (
 export interface GitHubSecretOptions {
   repo: string;
   login?: string | null;
+  refresh?: boolean;
   token?: () => Promise<string>;
   fetch?: Fetch;
 }
@@ -40,7 +41,8 @@ export class GitHubSecretDestination implements Destination {
     this.#repo = options.repo;
     this.#owner = options.repo.split("/")[0];
     this.#login = options.login ?? null;
-    this.#tokenSource = options.token ?? (() => ghToken(this.#login));
+    const refresh = options.refresh ?? true;
+    this.#tokenSource = options.token ?? (() => ghToken(this.#login, { refresh }));
     this.#fetch = options.fetch ?? globalThis.fetch;
   }
 
@@ -77,13 +79,16 @@ export class GitHubSecretDestination implements Destination {
       check.fix = `if the repository moved, set repo to its current owner/name in keypin.toml`;
     } else if (this.#login !== null && !sameLogin(publisher, this.#login)) {
       check.reason = `the token acts as ${publisher}, not ${this.#login}`;
-      check.fix = `run gh auth login as ${this.#login}, or change git config github.account`;
+      check.fix = `run gh auth login --hostname github.com and sign in as ${this.#login}, or change git config github.account`;
     } else if (!write) {
       check.reason = `${publisher} has no write access to ${this.#repo}, so GitHub won't let it set Actions secrets`;
       check.fix = `ask an admin of ${this.#owner} for the Write role, or publish as another login: git config github.account <login>`;
     } else if (scopes !== null && !scopes.split(",").some((s) => s.trim() === "repo")) {
       check.reason = `the token lacks the repo scope (it has: ${scopes || "none"})`;
-      check.fix = "run gh auth refresh --hostname github.com --scopes repo";
+      check.fix =
+        this.#login === null
+          ? "run gh auth refresh --hostname github.com --scopes repo"
+          : `run gh auth switch --hostname github.com --user ${this.#login}, then gh auth refresh --hostname github.com --scopes repo, then switch back to your usual login`;
     } else {
       check.ok = true;
       this.#passed = true;

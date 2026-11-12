@@ -176,6 +176,9 @@ describe("checkAccount", () => {
     const check = await destination(routes, { login: "alice" }).github.checkAccount();
     expect(check).toMatchObject({ publisher: "acme-ops", expected: "acme", ok: false });
     expect(check.reason).toBe("the token acts as acme-ops, not alice");
+    expect(check.fix).toBe(
+      "run gh auth login --hostname github.com and sign in as alice, or change git config github.account",
+    );
   });
 
   test("with no chosen login, any publisher with write access passes", async () => {
@@ -215,7 +218,23 @@ describe("checkAccount", () => {
       body: { login: "acme" },
       headers: { "x-oauth-scopes": "gist" },
     };
-    expect((await destination(noScope).github.checkAccount()).reason).toMatch(/repo scope/);
+    const check = await destination(noScope).github.checkAccount();
+    expect(check.reason).toBe("the token lacks the repo scope (it has: gist)");
+    expect(check.fix).toBe("run gh auth refresh --hostname github.com --scopes repo");
+  });
+
+  test("a chosen login without the repo scope is told to switch to it before refreshing", async () => {
+    const noScope = happyRoutes();
+    noScope["GET /user"] = {
+      status: 200,
+      body: { login: "acme" },
+      headers: { "x-oauth-scopes": "gist" },
+    };
+    const check = await destination(noScope, { login: "acme" }).github.checkAccount();
+    expect(check.reason).toBe("the token lacks the repo scope (it has: gist)");
+    expect(check.fix).toBe(
+      "run gh auth switch --hostname github.com --user acme, then gh auth refresh --hostname github.com --scopes repo, then switch back to your usual login",
+    );
   });
 
   test("an invisible repo fails with no destination account", async () => {

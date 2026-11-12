@@ -43,8 +43,8 @@ The same seven scenarios, run again against these fixes:
   change was stale: that change was #19, which merged minutes before this list did.
 - **5. No way to check vault items before publishing.** `keypin check` checks that the map parses, that each
   referenced item and field exists, and that each login reaches the pinned account, with a fix for each
-  mismatch. It writes nothing, prints no value, and exits 1 with one line per problem. It doesn't check
-  `rotated` dates or `rotate_every`; `status` reports those.
+  mismatch. It writes nothing, prints no value, and exits 1 with one line per problem. It doesn't report
+  `rotated` dates or whether a key is due for rotation; `status` does.
 - **10. Rotation's admin token wasn't checked.** `keypin check` checks that each `rotate` section's admin item
   and field exist. It doesn't check the admin token's `rotated` date or whether Cloudflare still accepts it.
 - **3. (part) An empty map looked healthy.** `keypin check` reports a map with no keys as a problem, and an

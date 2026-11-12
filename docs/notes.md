@@ -2,9 +2,10 @@
 
 ## `wrangler dev`
 
-`wrangler dev` passes environment variables to the Worker only for names in its config's `secrets.required`, and a
-`.dev.vars` file overrides them. To use keypin's dev keys, list the names under `secrets.required`, delete
-`.dev.vars`, then run:
+`wrangler dev` passes environment variables to the Worker only for names in its config's `secrets.required`, and
+only when there's no `.dev.vars` file: while one exists, it reads secrets from that file alone. To use keypin's dev
+keys, list the names under `secrets.required`, move any plain setting from `.dev.vars` to `[vars]` in the wrangler
+config, delete `.dev.vars`, then run:
 
 ```sh
 keypin run -- wrangler dev

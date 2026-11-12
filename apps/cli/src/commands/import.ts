@@ -235,11 +235,18 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
     say(
       `${names(left)} ${left.length === 1 ? "is" : "are"} still only in that file, for the reason under Skipped.`,
     );
-  say(
-    rest.length
-      ? `Remove the ${names(remove)} ${remove.length === 1 ? "line" : "lines"} from it: keypin run warns while an env file holds a key it provides.`
-      : "Nothing else is set in it. Delete it and stop loading it (for example, wrangler dev reads .dev.vars).",
-  );
+  if (basename(envPath).startsWith(".dev.vars"))
+    say(
+      rest.length
+        ? `Delete it once ${names(rest.map(([name]) => name))} ${rest.length === 1 ? "has" : "have"} a new home: while a .dev.vars file exists, wrangler dev reads secrets only from it and ignores the ones keypin run provides. Move a plain setting to [vars] in the wrangler config.`
+        : "Nothing else is set in it. Delete it: while a .dev.vars file exists, wrangler dev ignores the secrets keypin run provides.",
+    );
+  else
+    say(
+      rest.length
+        ? `Remove the ${names(remove)} ${remove.length === 1 ? "line" : "lines"} from it: keypin run warns while an env file holds a key it provides.`
+        : "Nothing else is set in it. Delete it and stop loading it.",
+    );
   if (failed.length)
     say(
       "Run keypin import again to create the rest. It maps an item it already stored, since that item holds the same value.",

@@ -506,6 +506,26 @@ describe("keypin import", () => {
     expect(leaks(text())).toBe(false);
   });
 
+  test("a .dev.vars with a setting left says to move it and delete the file, not to keep it", async () => {
+    const devVars = `${ROOT}/.dev.vars`;
+    const { deps, text } = setup({
+      files: { [devVars]: `API_TOKEN=${SENTINEL}-token\nPORT=8787\n` },
+    });
+    const args = ["import", ".dev.vars", "API_TOKEN", "--vault", "V", "--account", ACCOUNT];
+    expect(await cli([...args, "--yes"], deps)).toBe(0);
+    expect(text()).toContain(
+      "Delete it once PORT has a new home: while a .dev.vars file exists, wrangler dev reads secrets only from it and ignores the ones keypin run provides. Move a plain setting to [vars] in the wrangler config.",
+    );
+    expect(text()).not.toContain("Remove the");
+    expect(leaks(text())).toBe(false);
+
+    const only = setup({ files: { [devVars]: `API_TOKEN=${SENTINEL}-token\n` } });
+    expect(await cli([...args, "--yes"], only.deps)).toBe(0);
+    expect(only.text()).toContain(
+      "Nothing else is set in it. Delete it: while a .dev.vars file exists, wrangler dev ignores the secrets keypin run provides.",
+    );
+  });
+
   test("when nothing else is set in the file, says it can be deleted", async () => {
     const env = `STRIPE_KEY=${SENTINEL}-stripe\nEMPTY=\n`;
     const named = setup({ files: { [ENV]: env } });

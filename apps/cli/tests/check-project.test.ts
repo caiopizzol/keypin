@@ -916,6 +916,27 @@ worker = "billing-worker"
       },
     );
 
+    test("that has no routes and no workers.dev URL is local-only, and isn't checked", async () => {
+      const wrangler = `${STAGED}
+[env.dev]
+routes = []
+workers_dev = false
+
+[env.dev.secrets]
+required = ["RESEND_API_KEY"]
+`;
+      const run = setup({ files: files(MAPPED, wrangler) });
+      expect(await cli(["check", "--json"], run.deps)).toBe(1);
+      const data = json(run.stdout.text);
+      expect(run.calls.filter((c) => c.startsWith("worker "))).toEqual([
+        `worker ${ACCOUNT} billing-worker`,
+        `worker ${ACCOUNT} billing-worker-staging`,
+      ]);
+      expect(JSON.stringify(data)).not.toContain("billing-worker-dev");
+      assert(typeof data.add === "string");
+      expect(data.add.match(/worker = /g)).toHaveLength(2);
+    });
+
     test("whose env name isn't a keypin environment name stays under the publish environment, with a note", async () => {
       const run = setup({
         files: files(MAPPED, STAGED.replaceAll("env.staging", "env.Staging_EU")),

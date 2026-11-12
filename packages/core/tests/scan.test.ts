@@ -272,6 +272,36 @@ describe("wrangler configs", () => {
     expect(wranglerWorkers("name = ", "wrangler.toml")).toEqual({ ok: false });
   });
 
+  test("skips an env with no routes and no workers.dev URL that nothing triggers", () => {
+    const parsed = wranglerWorkers(
+      `{
+  "name": "api",
+  "routes": [{ "pattern": "api.example.com/*", "zone_name": "example.com" }],
+  "workers_dev": false,
+  "env": {
+    "dev": { "routes": [] },
+    "own": { "routes": [], "workers_dev": false },
+    "inherited": {},
+    "url": { "routes": [], "workers_dev": true },
+    "cron": { "routes": [], "triggers": { "crons": ["0 * * * *"] } },
+    "queue": { "routes": [], "queues": { "consumers": [{ "queue": "jobs" }] } },
+  },
+}`,
+      "wrangler.json",
+    );
+    assert(parsed.ok);
+    expect(parsed.workers.map((w) => w.env)).toEqual([null, "inherited", "url", "cron", "queue"]);
+    const unset = wranglerWorkers(
+      `name = "api"
+[env.dev]
+routes = []
+`,
+      "wrangler.toml",
+    );
+    assert(unset.ok);
+    expect(unset.workers.map((w) => w.env)).toEqual([null, "dev"]);
+  });
+
   test("reads a config saved with a byte order mark, as Wrangler does", () => {
     for (const config of ["wrangler.json", "wrangler.jsonc", "wrangler.toml"]) {
       const text = config.endsWith(".toml") ? 'name = "api"\n' : '{ "name": "api" }';

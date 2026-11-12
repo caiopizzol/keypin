@@ -569,6 +569,311 @@ worker = "billing-worker"
     assert(parsed.ok, parsed.ok ? "" : parsed.errors.join("\n"));
   });
 
+  describe("a wrangler env's Worker", () => {
+    const STAGED = `name = "billing-worker"
+account_id = "${ACCOUNT}"
+
+[secrets]
+required = ["RESEND_API_KEY"]
+
+[env.staging]
+name = "billing-worker-staging"
+
+[env.staging.secrets]
+required = ["RESEND_API_KEY"]
+`;
+    const files = (map: string, wrangler = STAGED) => ({
+      [MAP]: map,
+      [`${ROOT}/.env`]: null,
+      [`${ROOT}/.github/workflows/deploy.yml`]: null,
+      [`${ROOT}/wrangler.toml`]: wrangler,
+    });
+    const both = (
+      environments: string,
+      staging: string,
+      prod = "prod",
+    ) => `environments = ${environments}
+${MAPPED}
+[keys.RESEND_API_KEY.${prod}]
+from = "op://Private/billing prod resend api key/password"
+
+[[keys.RESEND_API_KEY.${prod}.publish]]
+to = "cloudflare-worker"
+account = "${ACCOUNT}"
+worker = "billing-worker"
+
+[keys.RESEND_API_KEY.${staging}]
+from = "op://Private/billing prod item/password"
+
+[[keys.RESEND_API_KEY.${staging}.publish]]
+to = "cloudflare-worker"
+account = "${ACCOUNT}"
+worker = "billing-worker-staging"
+`;
+    const held = { ok: true as const, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] };
+
+    test("is proposed under the keypin environment of the same name, with the line to list it", async () => {
+      const run = setup({ files: files(MAPPED) });
+      expect(await cli(["check", "--json"], run.deps)).toBe(1);
+      const data = json(run.stdout.text);
+      assert(typeof data.add === "string");
+      expect(data.add).toContain(`[[keys.RESEND_API_KEY.prod.publish]]
+to = "cloudflare-worker"
+account = "${ACCOUNT}"
+worker = "billing-worker"`);
+      expect(data.add).toContain(`[[keys.RESEND_API_KEY.staging.publish]]
+to = "cloudflare-worker"
+account = "${ACCOUNT}"
+worker = "billing-worker-staging"`);
+      expect(data.add.match(/worker = /g)).toHaveLength(2);
+      const line = 'environments = ["dev", "staging", "prod"]';
+      expect(data.problems).toContain(
+        `keypin.toml has no environment for the wrangler env staging; add at the top of keypin.toml: ${line} (keypin run uses the first, keypin publish the last)`,
+      );
+      const parsed = parseMap(`${line}\n${MAPPED}\n${fill(data.add)}`, MAP);
+      assert(parsed.ok, parsed.ok ? "" : parsed.errors.join("\n"));
+      const staging = parsed.map.keys.find((k) => k.name === "RESEND_API_KEY")?.environments;
+      expect(staging?.prod?.publish).toEqual([
+        { to: "cloudflare-worker", account: ACCOUNT, worker: "billing-worker" },
+      ]);
+      expect(staging?.staging?.publish).toEqual([
+        { to: "cloudflare-worker", account: ACCOUNT, worker: "billing-worker-staging" },
+      ]);
+      run.unchanged();
+    });
+
+    test("keeps the map's order and puts a new environment before the last", async () => {
+      const run = setup({
+        files: files(`environments = ["local", "live"]\n${MAPPED.replaceAll("dev =", "local =")}`),
+      });
+      expect(await cli(["check", "--json"], run.deps)).toBe(1);
+      expect(json(run.stdout.text).problems).toContain(
+        `keypin.toml has no environment for the wrangler env staging; replace the environments line in keypin.toml with: environments = ["local", "staging", "live"] (keypin run uses the first, keypin publish the last)`,
+      );
+    });
+
+    test("published from its environment is covered, and never by a prod entry", async () => {
+      const run = setup({
+        files: files(both(`["dev", "staging", "prod"]`, "staging")),
+        worker: held,
+      });
+      expect(await cli(["check", "--json"], run.deps)).toBe(0);
+      const data = json(run.stdout.text);
+      expect(data.production).toEqual([
+        expect.objectContaining({ place: "the Worker billing-worker", mapped: "prod", ok: true }),
+        expect.objectContaining({
+          place: "the Worker billing-worker-staging",
+          mapped: "staging",
+          ok: true,
+        }),
+      ]);
+      expect(data.problems).toEqual([]);
+
+      const wrong = setup({
+        files: files(both(`["dev", "staging", "prod"]`, "prod", "staging")),
+        worker: held,
+      });
+      expect(await cli(["check", "--json"], wrong.deps)).toBe(1);
+      const swapped = json(wrong.stdout.text);
+      expect(swapped.production).toEqual([
+        expect.objectContaining({
+          place: "the Worker billing-worker",
+          mapped: "staging",
+          ok: true,
+        }),
+        expect.objectContaining({
+          place: "the Worker billing-worker-staging",
+          mapped: null,
+          ok: false,
+        }),
+      ]);
+      expect(swapped.add).toBeNull();
+      expect(swapped.problems).toEqual([
+        "RESEND_API_KEY: wrangler.toml requires it; keypin.toml publishes it to the Worker billing-worker-staging from prod, but that Worker is the wrangler env staging, so it would get the prod value; move that publish entry to staging",
+      ]);
+    });
+
+    test.each(["staging", "zcopy"])(
+      "declared again on its own (in %s/), keeps its environment whichever config is read first",
+      async (folder) => {
+        const run = setup({
+          files: {
+            ...files(both(`["dev", "staging", "prod"]`, "prod", "staging")),
+            [`${ROOT}/${folder}/wrangler.toml`]: `name = "billing-worker-staging"\naccount_id = "${ACCOUNT}"\n\n[secrets]\nrequired = ["RESEND_API_KEY"]\n`,
+          },
+          worker: held,
+        });
+        run.disk.folders.add(`${ROOT}/${folder}`);
+        expect(await cli(["check", "--json"], run.deps)).toBe(1);
+        const data = json(run.stdout.text);
+        expect(data.production).toContainEqual(
+          expect.objectContaining({
+            place: "the Worker billing-worker-staging",
+            mapped: null,
+            ok: false,
+          }),
+        );
+        expect(data.problems).toContainEqual(
+          expect.stringContaining(
+            "publishes it to the Worker billing-worker-staging from prod, but that Worker is the wrangler env staging",
+          ),
+        );
+      },
+    );
+
+    test.each([
+      ["prod", "staging"],
+      ["staging", "prod"],
+    ])(
+      "named by two wrangler envs (%s first) is accepted from either, with a note",
+      async (first, second) => {
+        const wrangler = `account_id = "${ACCOUNT}"
+
+[env.${first}]
+name = "billing-worker"
+[env.${first}.secrets]
+required = ["RESEND_API_KEY"]
+
+[env.${second}]
+name = "billing-worker"
+[env.${second}.secrets]
+required = ["RESEND_API_KEY"]
+`;
+        const map = `environments = ["dev", "staging", "prod"]
+${MAPPED}
+[keys.RESEND_API_KEY.staging]
+from = "op://Private/billing prod item/password"
+
+[[keys.RESEND_API_KEY.staging.publish]]
+to = "cloudflare-worker"
+account = "${ACCOUNT}"
+worker = "billing-worker"
+`;
+        const run = setup({ files: files(map, wrangler), worker: held });
+        expect(await cli(["check", "--json"], run.deps)).toBe(0);
+        const data = json(run.stdout.text);
+        expect(data.production).toEqual([
+          expect.objectContaining({
+            place: "the Worker billing-worker",
+            mapped: "staging",
+            ok: true,
+          }),
+        ]);
+        expect(data.notes).toContain(
+          "the Worker billing-worker is declared by the wrangler envs prod and staging; it holds one value, so check accepts it from any of them. Give each env its own Worker name to check them apart",
+        );
+      },
+    );
+
+    test("named by two wrangler envs is never accepted from a third environment", async () => {
+      const wrangler = `account_id = "${ACCOUNT}"
+
+[env.prod]
+name = "billing-worker"
+[env.prod.secrets]
+required = ["RESEND_API_KEY"]
+
+[env.staging]
+name = "billing-worker"
+[env.staging.secrets]
+required = ["RESEND_API_KEY"]
+`;
+      const map = `environments = ["dev", "staging", "prod"]
+[1password]
+account = "my.1password.com"
+
+[keys.RESEND_API_KEY.dev]
+from = "op://Private/billing prod item/password"
+
+[[keys.RESEND_API_KEY.dev.publish]]
+to = "cloudflare-worker"
+account = "${ACCOUNT}"
+worker = "billing-worker"
+`;
+      const run = setup({ files: files(map, wrangler), worker: held });
+      expect(await cli(["check", "--json"], run.deps)).toBe(1);
+      const data = json(run.stdout.text);
+      expect(data.production).toEqual([
+        expect.objectContaining({ place: "the Worker billing-worker", mapped: null, ok: false }),
+      ]);
+      expect(data.problems).toContainEqual(
+        expect.stringContaining(
+          "publishes it to the Worker billing-worker from dev, but that Worker is the wrangler env prod and staging",
+        ),
+      );
+    });
+
+    test.each([
+      ["OTHER_KEY", "RESEND_API_KEY"],
+      ["RESEND_API_KEY", "OTHER_KEY"],
+    ])(
+      "named by two wrangler envs gives the same result whatever the secret order (%s first)",
+      async (a, b) => {
+        const wrangler = `account_id = "${ACCOUNT}"
+
+[env.prod]
+name = "billing-worker"
+[env.prod.secrets]
+required = ["RESEND_API_KEY"]
+
+[env.staging]
+name = "billing-worker"
+[env.staging.secrets]
+required = ["${a}", "${b}"]
+`;
+        const map = `environments = ["dev", "staging", "prod"]
+[1password]
+account = "my.1password.com"
+
+[keys.RESEND_API_KEY.prod]
+from = "op://Private/billing prod item/password"
+
+[[keys.RESEND_API_KEY.prod.publish]]
+to = "cloudflare-worker"
+account = "${ACCOUNT}"
+worker = "billing-worker"
+
+[keys.OTHER_KEY.staging]
+from = "op://Private/billing prod item/password"
+
+[[keys.OTHER_KEY.staging.publish]]
+to = "cloudflare-worker"
+account = "${ACCOUNT}"
+worker = "billing-worker"
+`;
+        const both = {
+          ok: true as const,
+          secrets: [
+            { name: "RESEND_API_KEY", updatedAt: null },
+            { name: "OTHER_KEY", updatedAt: null },
+          ],
+        };
+        const run = setup({ files: files(map, wrangler), worker: both });
+        expect(await cli(["check", "--json"], run.deps)).toBe(0);
+        const data = json(run.stdout.text);
+        expect(data.problems).toEqual([]);
+        expect(data.notes).toContain(
+          "the Worker billing-worker is declared by the wrangler envs prod and staging; it holds one value, so check accepts it from any of them. Give each env its own Worker name to check them apart",
+        );
+      },
+    );
+
+    test("whose env name isn't a keypin environment name stays under the publish environment, with a note", async () => {
+      const run = setup({
+        files: files(MAPPED, STAGED.replaceAll("env.staging", "env.Staging_EU")),
+      });
+      expect(await cli(["check", "--json"], run.deps)).toBe(1);
+      const data = json(run.stdout.text);
+      assert(typeof data.add === "string");
+      expect(data.add).not.toContain("Staging_EU]");
+      expect(data.add.match(/\[\[keys\.RESEND_API_KEY\.prod\.publish\]\]/g)).toHaveLength(2);
+      expect(data.notes).toContain(
+        "wrangler.toml env Staging_EU isn't a keypin environment name, so check proposes its Worker under prod; publish it from the environment that holds its value",
+      );
+      expect(JSON.stringify(data.problems)).not.toContain("environments =");
+    });
+  });
+
   test("an unreadable repo or Worker is unknown, never missing", async () => {
     const run = setup({
       files: { [MAP]: PUBLISHED, [`${ROOT}/.env`]: null },

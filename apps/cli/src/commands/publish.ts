@@ -35,7 +35,7 @@ import {
   writeAll,
   writesFor,
 } from "../publishing";
-import { announce } from "../vault";
+import { announce, lookUpIds } from "../vault";
 
 interface Request {
   keyId: string | null;
@@ -161,10 +161,29 @@ async function publishLocked(
     return 1;
   }
 
-  const approvals = jobs.flatMap(({ key, owner }) =>
-    approvalsFor({ key, environment, mapFile: owner.mapFile, receipts: state.receipts }),
-  );
-  if (approvals.length && !deps.isTerminal && !request.plan) {
+  const approvalsOf = (ids: (ItemIds | null)[]) =>
+    jobs.flatMap(({ key, owner }, index) =>
+      approvalsFor(
+        { key, environment, mapFile: owner.mapFile, receipts: state.receipts },
+        ids[index] ?? null,
+      ),
+    );
+  const unattended = !deps.isTerminal && !request.plan;
+  let approvals = approvalsOf([]);
+  if (unattended && !approvals.length) {
+    try {
+      approvals = approvalsOf(
+        await lookUpIds(
+          deps,
+          jobs.map((job) => job.entry.ref),
+        ),
+      );
+    } catch (error) {
+      say(`Stopped: couldn't find the item: ${messageOf(error)}. Nothing was written.`);
+      return 1;
+    }
+  }
+  if (approvals.length && unattended) {
     say("\nNeeds approval:");
     for (const approval of approvals) say(`  ${approval.approval}`);
     say(

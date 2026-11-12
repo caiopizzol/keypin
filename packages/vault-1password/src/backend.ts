@@ -1,4 +1,11 @@
-import type { KeyRef, VaultBackend, VaultItem, VaultMetadata, VaultScope } from "@keypin/core";
+import type {
+  ItemIds,
+  KeyRef,
+  VaultBackend,
+  VaultItem,
+  VaultMetadata,
+  VaultScope,
+} from "@keypin/core";
 import { formatReference, isDay, Secret } from "@keypin/core";
 import type { Connect, Field, FullItem, SdkClient } from "./sdk";
 import { desktopConnect } from "./sdk";
@@ -45,12 +52,17 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
     return matches[0] ?? null;
   }
 
+  async function locate(sdk: SdkClient, ref: KeyRef): Promise<ItemIds> {
+    const vault = await vaultId(sdk, ref);
+    const found = await find(sdk, vault, ref);
+    if (!found) throw new Error(`${where(ref)}: no such item`);
+    return { vault, item: found.id };
+  }
+
   async function get(ref: KeyRef): Promise<FullItem> {
     const sdk = await client(ref.account);
-    const id = await vaultId(sdk, ref);
-    const found = await find(sdk, id, ref);
-    if (!found) throw new Error(`${where(ref)}: no such item`);
-    return sdk.items.get(id, found.id);
+    const { vault, item } = await locate(sdk, ref);
+    return sdk.items.get(vault, item);
   }
 
   return {
@@ -69,6 +81,10 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
       };
     },
 
+    async itemIds(ref) {
+      return locate(await client(ref.account), ref);
+    },
+
     async write(ref, secret, options = {}) {
       const rotated = options.rotated;
       if (rotated !== undefined && !isDay(rotated)) {
@@ -77,6 +93,11 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
         );
       }
       const sdk = await client(ref.account);
+      if (options.item) {
+        const item = await sdk.items.get(options.item.vault, options.item.item);
+        await sdk.items.put(withValue(item, ref, secret, rotated));
+        return;
+      }
       const id = await vaultId(sdk, ref);
       const found = await find(sdk, id, ref);
       if (found && options.newItem) {
@@ -99,20 +120,7 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
       }
 
       const item = await sdk.items.get(id, found.id);
-      const fields = [...item.fields];
-      const value = valueField(item, ref);
-      fields[fields.indexOf(value)] = { ...value, value: secret.reveal() };
-      if (rotated) {
-        const existing = fields.find((field) => field.title === ROTATED);
-        if (existing)
-          fields[fields.indexOf(existing)] = {
-            ...existing,
-            ...rotatedField(rotated),
-            id: existing.id,
-          };
-        else fields.push(rotatedField(rotated));
-      }
-      await sdk.items.put({ ...item, fields });
+      await sdk.items.put(withValue(item, ref, secret, rotated));
     },
 
     async list(scope) {
@@ -169,6 +177,24 @@ function valueField(item: FullItem, ref: KeyRef): Field {
     );
   }
   return field;
+}
+
+function withValue(
+  item: FullItem,
+  ref: KeyRef,
+  secret: Secret,
+  rotated: string | undefined,
+): FullItem {
+  const fields = [...item.fields];
+  const value = valueField(item, ref);
+  fields[fields.indexOf(value)] = { ...value, value: secret.reveal() };
+  if (rotated) {
+    const existing = fields.find((field) => field.title === ROTATED);
+    if (existing)
+      fields[fields.indexOf(existing)] = { ...existing, ...rotatedField(rotated), id: existing.id };
+    else fields.push(rotatedField(rotated));
+  }
+  return { ...item, fields };
 }
 
 function passwordField(secret: Secret): Field {

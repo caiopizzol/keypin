@@ -136,12 +136,19 @@ function fakeProvider(options: ProviderOptions = {}) {
   return { build, log, tokens, admins };
 }
 
-function writableVault(options: { failWrite?: boolean; source?: string } = {}) {
+function writableVault(
+  options: { failWrite?: boolean; source?: string; replacedAfterRead?: boolean } = {},
+) {
   const values = new Map([
     [options.source ?? SOURCE, OLD_VALUE],
     [ADMIN_SOURCE, ADMIN_VALUE],
   ]);
   const calls: string[] = [];
+  const replaced = new Set<string>();
+  const idsOf = (ref: KeyRef) => ({
+    vault: "vault-1",
+    item: `id-${ref.item}${replaced.has(formatReference(ref)) ? " v2" : ""}`,
+  });
   const vault: VaultBackend = {
     capabilities: { read: true, write: true, list: false, metadata: true },
     async read(ref: KeyRef) {
@@ -151,12 +158,21 @@ function writableVault(options: { failWrite?: boolean; source?: string } = {}) {
       return new Secret(value);
     },
     async readItem(ref: KeyRef) {
-      return { secret: await vault.read(ref), ids: { vault: "vault-1", item: `id-${ref.item}` } };
+      const read = { secret: await vault.read(ref), ids: idsOf(ref) };
+      if (options.replacedAfterRead) replaced.add(formatReference(ref));
+      return read;
+    },
+    async itemIds(ref: KeyRef) {
+      calls.push(`ids ${ref.item}`);
+      return idsOf(ref);
     },
     async write(ref, secret, writeOptions) {
       calls.push(`write ${ref.item} rotated ${writeOptions?.rotated}`);
       if (options.failWrite) throw new Error("1Password is locked");
       if (!values.has(formatReference(ref))) throw new Error(`no field ${formatReference(ref)}`);
+      const expected = writeOptions?.item;
+      if (expected && expected.item !== idsOf(ref).item)
+        throw new Error(`no item ${expected.item}`);
       values.set(formatReference(ref), secret.reveal());
     },
     async list() {
@@ -167,7 +183,7 @@ function writableVault(options: { failWrite?: boolean; source?: string } = {}) {
       return { rotated: "2026-11-10" };
     },
   };
-  return { vault, calls, values };
+  return { vault, calls, values, replaced };
 }
 
 async function receiptFor(value: string, at = "2026-11-10T14:52:03.000Z"): Promise<Receipt> {
@@ -367,7 +383,9 @@ describe("keypin rotate: the first run", () => {
     expect(run.stderr.text).toContain(
       `needs approval: ${GITHUB} was last published from op://App Secrets/${ITEM}/password (1Password account my.1password.com) (item id-deleted item in vault vault-1)`,
     );
-    expect(run.provider.log).not.toContainEqual(expect.stringMatching(/^issue/));
+    expect(run.stderr.text).toContain("Stopped before reading anything");
+    expect(run.vault.calls).toEqual([`ids ${ITEM}`]);
+    expect(run.provider.log).toEqual([]);
     expect(run.disk.contents.has(ROTATIONS)).toBe(false);
 
     const same = await setup({
@@ -488,6 +506,18 @@ describe("keypin rotate: the first run", () => {
     expect(second.provider.log).toContain(`revoke ${NEW_ID.slice(0, 4)}`);
     expect(second.provider.tokens.has(OLD_ID)).toBe(true);
     expect((await second.rotations()).rotations).toEqual([]);
+  });
+});
+
+describe("keypin rotate: an item replaced while it runs", () => {
+  test("the new value goes only to the item it read, so a replacement is left alone", async () => {
+    const run = await setup({ terminal: ["yes"], vault: { replacedAfterRead: true } });
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain(`couldn't store the new value: no item id-${ITEM}`);
+    expect(run.vault.values.get(SOURCE)).toBe(OLD_VALUE);
+    expect((await run.rotations()).rotations[0]?.stage).toBe("issued");
+    expect(run.destinations.log).toEqual(["check github-actions:acme/site"]);
+    expect(run.leaked()).toBe(false);
   });
 });
 

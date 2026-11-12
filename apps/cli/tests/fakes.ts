@@ -74,15 +74,22 @@ export function fakeVault(options: FakeVaultOptions = {}) {
     if (found === undefined) throw new Error(`no item "${ref.item}"`);
     return new Secret(found);
   };
+  const idsOf = (ref: KeyRef) => ({
+    vault: `id-${ref.vault.toLowerCase()}`,
+    item: options.ids?.[ref.item] ?? `id-${ref.item.toLowerCase()}`,
+  });
   const vault: VaultBackend = {
     capabilities: { read: true, write: false, list: false, metadata: true },
     async read(ref) {
       return value(ref);
     },
     async readItem(ref) {
-      const secret = value(ref);
-      const item = options.ids?.[ref.item] ?? `id-${ref.item.toLowerCase()}`;
-      return { secret, ids: { vault: `id-${ref.vault.toLowerCase()}`, item } };
+      return { secret: value(ref), ids: idsOf(ref) };
+    },
+    async itemIds(ref) {
+      calls.push(`ids ${ref.item}`);
+      fail(ref);
+      return idsOf(ref);
     },
     async write(ref, secret, writeOptions = {}) {
       if (!options.items) throw new Error("the fake vault doesn't write");

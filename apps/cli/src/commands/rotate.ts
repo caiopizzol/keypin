@@ -57,7 +57,7 @@ import {
   writeAll,
   writesFor,
 } from "../publishing";
-import { announce } from "../vault";
+import { announce, lookUpIds } from "../vault";
 
 const GRACE_DAYS = DUE_SOON_DAYS;
 
@@ -174,8 +174,14 @@ async function start(run: Run, data: Rotations): Promise<number> {
     say("Stopped: an account check failed. Nothing was read and nothing was changed.");
     return 1;
   }
-  const unread = approvalsFor({ ...planFor(run), receipts: state.receipts });
-  if (!deps.isTerminal && !run.plan && (unread.length || !run.yes)) {
+  const unattended = !deps.isTerminal && !run.plan;
+  let unread = approvalsFor({ ...planFor(run), receipts: state.receipts });
+  if (unattended && run.yes && !unread.length) {
+    const found = await idsBeforeReading(run);
+    if (!found) return 1;
+    unread = approvalsFor({ ...planFor(run), receipts: state.receipts }, found);
+  }
+  if (unattended && (unread.length || !run.yes)) {
     for (const approval of unread) say(`  needs approval: ${approval.approval}`);
     say(
       unread.length
@@ -296,7 +302,7 @@ async function start(run: Run, data: Rotations): Promise<number> {
 
   say(`keypin: writing the new value to ${formatReference(entry.ref)}, with rotated ${today}`);
   try {
-    await vault.write(entry.ref, made.value, { rotated: today });
+    await vault.write(entry.ref, made.value, { rotated: today, item: ids });
     const readBack = await vault.readItem(entry.ref);
     const stored = await generationOf(readBack.secret);
     if (stored !== generation)
@@ -340,8 +346,14 @@ async function publishNew(
       return 1;
     }
     checked = found;
-    const approvals = approvalsFor({ ...planFor(run), receipts: state.receipts });
-    if (!deps.isTerminal && !run.plan && approvals.length) {
+    const unattended = !deps.isTerminal && !run.plan;
+    let approvals = approvalsFor({ ...planFor(run), receipts: state.receipts });
+    if (unattended && !approvals.length) {
+      const found = await idsBeforeReading(run);
+      if (!found) return 1;
+      approvals = approvalsFor({ ...planFor(run), receipts: state.receipts }, found);
+    }
+    if (unattended && approvals.length) {
       say("Stopped before reading the value: publishing needs approval, and --yes can't give it.");
       say(rerun(deps, "rotate", run.args));
       return NEEDS_APPROVAL;
@@ -764,6 +776,16 @@ function withoutFinished(data: Rotations, owner: KeyOwner): Rotations {
 
 function keyOwner(run: Run): KeyOwner {
   return { keyId: run.key.name, environment: run.environment, mapFile: run.map.file };
+}
+
+async function idsBeforeReading(run: Run): Promise<ItemIds | null> {
+  try {
+    const [ids] = await lookUpIds(run.deps, [run.entry.ref]);
+    return ids ?? null;
+  } catch (error) {
+    run.say(`Stopped: couldn't find the item: ${messageOf(error)}. Nothing was changed.`);
+    return null;
+  }
 }
 
 function planFor(run: Run) {

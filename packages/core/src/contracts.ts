@@ -47,10 +47,11 @@ export interface VaultBackend {
   readonly capabilities: VaultCapabilities;
   read(ref: KeyRef): Promise<Secret>;
   readItem(ref: KeyRef): Promise<{ secret: Secret; ids: ItemIds }>;
+  itemIds(ref: KeyRef): Promise<ItemIds>;
   write(
     ref: KeyRef,
     secret: Secret,
-    options?: { rotated?: string; newItem?: boolean },
+    options?: { rotated?: string; newItem?: boolean; item?: ItemIds },
   ): Promise<void>;
   list(scope: VaultScope): Promise<VaultItem[]>;
   metadata(ref: KeyRef): Promise<VaultMetadata>;

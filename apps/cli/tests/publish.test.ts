@@ -559,20 +559,21 @@ describe("a destination only takes a value without approval when it came from th
     ids: Record<string, string> = {},
   ) {
     const destinations = fakeDestinations();
+    const vault = fakeVault({
+      values: {
+        "billing deploy token": ORDINARY,
+        "billing deploy token v2": ORDINARY,
+        "cloudflare admin token": ADMIN,
+      },
+      ids,
+    });
     const fake = fakeDeps({
       disk,
-      backend: fakeVault({
-        values: {
-          "billing deploy token": ORDINARY,
-          "billing deploy token v2": ORDINARY,
-          "cloudflare admin token": ADMIN,
-        },
-        ids,
-      }).vault,
+      backend: vault.vault,
       deps: { cwd, destination: destinations.build, isTerminal: terminal, ask: async () => "yes" },
     });
     const writes = () => destinations.log.filter((l) => l.startsWith("write"));
-    return { ...fake, writes };
+    return { ...fake, writes, calls: vault.calls };
   }
 
   test("pointing a key at another item needs approval, and --yes without a terminal writes nothing", async () => {
@@ -587,11 +588,9 @@ describe("a destination only takes a value without approval when it came from th
     expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], swapped.deps)).toBe(NEEDS_APPROVAL);
     expect(swapped.writes()).toEqual([]);
     expect(swapped.stderr.text).toContain(
-      `    needs approval: github-actions:acme/billing:DEPLOY_TOKEN was last published from op://Private/billing deploy token/password`,
+      `  github-actions:acme/billing:DEPLOY_TOKEN was last published from op://Private/billing deploy token/password`,
     );
-    expect(swapped.stderr.text).toContain(
-      "Stopped: this plan needs approval, and --yes can't give it. Nothing was written.",
-    );
+    expect(swapped.stderr.text).toContain("Stopped before reading the value");
     expect(disk.contents.get(STATE)).toBe(before);
 
     const approved = publisher(disk, "/work/billing", true);
@@ -621,14 +620,17 @@ describe("a destination only takes a value without approval when it came from th
     const same = publisher(disk, "/work/billing", false, first);
     expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], same.deps)).toBe(0);
     expect(same.stderr.text).toContain("receipt already has this generation");
+    expect(same.calls).toEqual(["ids billing deploy token", "read billing deploy token"]);
 
     const before = disk.contents.get(STATE);
     const replaced = { "billing deploy token": "item-2" };
     const unattended = publisher(disk, "/work/billing", false, replaced);
     expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], unattended.deps)).toBe(NEEDS_APPROVAL);
     expect(unattended.writes()).toEqual([]);
+    expect(unattended.calls).toEqual(["ids billing deploy token"]);
+    expect(unattended.stderr.text).toContain("Stopped before reading the value");
     expect(unattended.stderr.text).toContain(
-      "needs approval: github-actions:acme/billing:DEPLOY_TOKEN was last published from op://Private/billing deploy token/password (1Password account my.1password.com) (item item-1 in vault id-private), and now from op://Private/billing deploy token/password (1Password account my.1password.com) (item item-2 in vault id-private)",
+      "  github-actions:acme/billing:DEPLOY_TOKEN was last published from op://Private/billing deploy token/password (1Password account my.1password.com) (item item-1 in vault id-private), and now from op://Private/billing deploy token/password (1Password account my.1password.com) (item item-2 in vault id-private)",
     );
     expect(disk.contents.get(STATE)).toBe(before);
 

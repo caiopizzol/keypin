@@ -64,22 +64,25 @@ It never changes the file: it tells you which lines to remove. See
 
 ### Production keys
 
-For each secret a workflow or Worker needs, `keypin check` prints the TOML to add:
+Put each prod value in 1Password first:
+
+- **In a file:** `keypin import .env.production STRIPE_KEY --env prod --vault Private`
+- **Only in GitHub or Cloudflare:** neither keypin nor you can read it back, so make a new key at the provider.
+
+For staging, add it to `environments` first (`check` prints the line), then import with `--env staging`.
+
+Then `keypin check` prints the TOML to add for each secret a workflow or Worker needs:
 
 ```toml
-[keys.STRIPE_KEY]
-rotate_every = "90d"
-
-[keys.STRIPE_KEY.prod]
-from = "op://<vault>/<item>/<field>"
-
 [[keys.STRIPE_KEY.prod.publish]]
 to = "github-actions"
 repo = "me/my-project"
 ```
 
-Paste it into `keypin.toml` and replace each `<...>`. For `from`, open the field's menu in 1Password and select
-**Copy Secret Reference**. Then publish:
+Paste it into `keypin.toml` and replace each `<...>`. For a key you didn't import, `from` takes its reference: in
+1Password, open the field's menu and select **Copy Secret Reference**.
+
+Then publish:
 
 ```sh
 keypin publish --all

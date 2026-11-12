@@ -23,16 +23,18 @@ values from 1Password only while a command runs.
    - `prerequisites`: missing or unverified tools and logins. Tell the user these first; they do them, not you.
    - `problems`: one line per gap, each saying what to run or add. Exit 0 means nothing to fix.
    - `unknown`: what check couldn't read. Tell the user it's unverified; it never means missing.
-3. Local keys: for each name in `local.unmapped`, ask the user whether it's a secret and which vault. Suggest
-   `keypin import <file> NAME... --vault <vault>`, plus `--account <sign-in address>` when `keypin.toml` has no
-   `[1password]` account, and `--env <name>` when check's suggestion has it. Run it without `--yes`; it exits 3
-   with the command for the user to run. Names in `local.elsewhere` are keys mapped for another environment;
-   import adds this environment's entry to each. If it says it can't add a table to a key, ask the user for that
-   reference and add it by hand.
-4. Production keys: when `add` isn't null, show the user that TOML. With their agreement, paste it into
-   `keypin.toml` and ask them for every `<...>` value: the account's sign-in address, each field's secret
-   reference (1Password: the field's menu, **Copy Secret Reference**), and any repo, Cloudflare account ID or
-   Worker name. keypin rejects a map that still has a `<...>`.
+3. Ask the user once, in one message: which names in `local.unmapped` and `local.elsewhere` are secrets; the vault,
+   and the sign-in address if `keypin.toml` has no account; whether they use staging; and, for each prod or staging
+   secret no env file sets, whether it's in 1Password. If it's only in GitHub or Cloudflare, they make a new key at
+   the provider and put it in 1Password.
+4. Import first: keypin won't import into a map with a `<...>`. For each env file, run check's suggested
+   `keypin import`, with `--env <name>` for another environment's file (`.env.staging` gets `--env staging`, once
+   `environments` lists it; use the line check prints). Run each without `--yes`; it exits 3 with a command for the
+   user. Give the user all of these commands together; each also asks for a 1Password approval. If import can't
+   add a table to a key, ask the user for that reference and add it by hand.
+5. Run `keypin check --json` again. Show the user the `add` TOML and, with their agreement, paste it into
+   `keypin.toml`. Ask for every `<...>` in one list (a reference: the 1Password field's menu, **Copy Secret
+   Reference**).
 
 ## Run
 

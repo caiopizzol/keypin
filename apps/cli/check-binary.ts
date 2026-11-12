@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import {
   copyFile,
   mkdir,
@@ -67,9 +67,25 @@ async function spawn(command: string[], env: Record<string, string>, cwd = folde
 }
 
 const ECHO = ["run", "--", "sh", "-c", 'echo "${FAKE_X:-unset}"'];
-const NAMES = ["run", "--", "sh", "-c", "env | cut -d= -f1 | sort"];
+const ENV = ["run", "--", "env"];
 const SHELL_OWN = new Set(["PWD", "SHLVL", "OLDPWD", "_"]);
 const RUNNER_OWN = /^(npm_.+|NODE)$/;
+const INHERITED = Object.fromEntries(
+  ["self", "link", "keypin", "os", "arch", "cpu", "cpus", "loader", "binary"].map((name) => [
+    name,
+    `caller's ${name}`,
+  ]),
+);
+const BUN_REFUSES_PRELOAD = 'error: Script not found "x"\n';
+
+function environment(stdout: string): Map<string, string> {
+  return new Map(
+    stdout
+      .split("\n")
+      .filter((line) => line.includes("="))
+      .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]),
+  );
+}
 
 async function checkKeypin(
   label: string,
@@ -104,16 +120,28 @@ async function checkKeypin(
     `exit ${leak.code}, stdout ${JSON.stringify(leak.stdout)}, stderr ${leak.stderr}`,
   );
 
-  const names = await run(NAMES);
-  const given = new Set([...Object.keys(BASE_ENV), ...Object.keys(extra)]);
-  const added = names.stdout
-    .split("\n")
-    .filter((name) => name && !given.has(name) && !SHELL_OWN.has(name))
+  const names = await run(ENV, INHERITED);
+  const passed = environment(names.stdout);
+  const given = new Set([
+    ...Object.keys(BASE_ENV),
+    ...Object.keys(extra),
+    ...Object.keys(INHERITED),
+  ]);
+  const added = [...passed.keys()]
+    .filter((name) => !given.has(name) && !SHELL_OWN.has(name))
     .filter((name) => !(runner && RUNNER_OWN.test(name)));
+  const changed = Object.entries(INHERITED)
+    .filter(([name, value]) => passed.get(name) !== value)
+    .map(([name]) => name);
   expect(
     `${label}: keypin run passes only the environment it was given`,
     names.code === 0 && added.length === 0,
     `exit ${names.code}, added ${added.join(", ")}, stderr ${names.stderr}`,
+  );
+  expect(
+    `${label}: keypin run passes the caller's exported names unchanged`,
+    names.code === 0 && changed.length === 0,
+    `exit ${names.code}, changed ${changed.join(", ")}, stderr ${names.stderr}`,
   );
 
   for (const [name, value] of [
@@ -125,9 +153,14 @@ async function checkKeypin(
     const refused = await run(ECHO, { [name]: value });
     const ownRefusal =
       refused.code === 1 && refused.stderr.includes(`keypin can't run with ${name} set`);
+    const bunRefusal =
+      runner &&
+      value.startsWith("--preload") &&
+      refused.code === 1 &&
+      refused.stderr === BUN_REFUSES_PRELOAD;
     expect(
       `${label}: ${name}=${value} is refused before the command runs`,
-      refused.stdout === "" && (ownRefusal || (runner && refused.code !== 0)),
+      refused.stdout === "" && (ownRefusal || bunRefusal),
       `exit ${refused.code}, stdout ${JSON.stringify(refused.stdout)}, stderr ${refused.stderr}`,
     );
   }
@@ -247,6 +280,7 @@ async function checkInstalled() {
         launchedBinary(path, {
           hash: launcherHash(launcherText),
           target: host,
+          size: (file) => (existsSync(file) ? statSync(file).size : null),
           read: (file) => (existsSync(file) ? readFileSync(file, "utf8") : null),
           exists: existsSync,
         }),

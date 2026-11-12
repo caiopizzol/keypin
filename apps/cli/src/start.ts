@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline/promises";
@@ -86,6 +86,14 @@ function readText(path: string): string | null {
   }
 }
 
+function fileSize(path: string): number | null {
+  try {
+    return statSync(path).size;
+  } catch {
+    return null;
+  }
+}
+
 function self(cwd: string) {
   const script = process.argv[1] ?? "keypin";
   const target = hostTarget();
@@ -100,7 +108,13 @@ function self(cwd: string) {
     real: realPath,
     launches: (path) =>
       compiled && launcher !== null && target !== null
-        ? launchedBinary(path, { hash: launcher, target, read: readText, exists: existsSync })
+        ? launchedBinary(path, {
+            hash: launcher,
+            target,
+            size: fileSize,
+            read: readText,
+            exists: existsSync,
+          })
         : null,
   });
 }

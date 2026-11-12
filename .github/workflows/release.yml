@@ -26,8 +26,30 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  binaries:
+  npm-packages:
     needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: check every platform package exists on npm
+        run: |
+          missing=
+          for target in darwin-arm64 darwin-x64 linux-x64 linux-arm64; do
+            status=$(curl -sS -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/@keypin%2fcli-$target")
+            case $status in
+              200) echo "@keypin/cli-$target is on npm" ;;
+              404) missing="$missing @keypin/cli-$target" ;;
+              *) echo "::error::npm answered $status for @keypin/cli-$target"; exit 1 ;;
+            esac
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Not on npm yet:$missing. Trusted publishing can't create a package, so nothing was published. Publish a first version of each by hand and add release.yml as its trusted publisher (docs/development.md, Releases), then re-run this workflow."
+            exit 1
+          fi
+
+  binaries:
+    needs: [release-please, npm-packages]
     if: needs.release-please.outputs.release_created == 'true'
     strategy:
       fail-fast: true
@@ -65,7 +87,7 @@ jobs:
           retention-days: 1
 
   publish:
-    needs: [release-please, binaries]
+    needs: [release-please, npm-packages, binaries]
     if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-latest
     permissions:

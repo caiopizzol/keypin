@@ -50,24 +50,28 @@ keypin and can unset the variable, and anyone who can set your environment can a
 On npm, `keypin` is a small package whose `keypin` command is [`launcher.sh`](../apps/cli/launcher.sh), plus one
 package per platform with the binary: `@keypin/cli-darwin-arm64`, `@keypin/cli-darwin-x64`, `@keypin/cli-linux-x64`
 and `@keypin/cli-linux-arm64`. `keypin` lists them as `optionalDependencies` pinned to its own version, and each
-one's `os` and `cpu` let the package manager install only the one that fits. Nothing runs at install time and
+one's `os` and `cpu` (and `libc: glibc` on Linux) let the package manager install only the one that fits. npm
+checks `libc` from 9.6.3. Nothing runs at install time and
 nothing is downloaded at run time. `pack.ts` writes every package at the root `package.json` version, so the
 platform packages move with each release.
 
 The launcher is a POSIX `sh` script, not a Node script, because `bun add -g` and `bun x` run a Node script with Bun,
 and Bun loads the folder's `bunfig.toml` preload into it. The launcher finds the binary from its own path, never
-from the current folder or `PATH`, and `exec`s it with the same arguments and environment. It loads no `.env` file.
-If the platform package is missing, it names the package and exits 1. The binary embeds the launcher's SHA-256, so
+from the current folder or `PATH`, and `exec`s it with the same arguments and environment: its own variables live in
+a subshell, so a caller's exported `os` or `arch` reaches keypin unchanged. It loads no `.env` file. On macOS it
+tries the shell's architecture first, then the other one, since an x64 npm under Rosetta installs the x64 build on
+Apple Silicon. On Linux it needs glibc's loader and says so on musl systems such as Alpine. If the platform package
+is missing, it names the package and exits 1. The binary embeds the launcher's SHA-256, so
 when the `keypin` on `PATH` is that launcher, the command keypin prints to approve is just `keypin`.
 
 `check-binary` copies the binary to an empty temporary folder with a `.env` that sets `FAKE_X=leak` and a
 `bunfig.toml` that preloads a file, then checks that the binary holds no path into this checkout, that `--version`,
 `--help` and `status` work with empty config and state folders, that `keypin run` passes neither `FAKE_X` nor any
-variable it wasn't given, that the preload never runs, and that each variable above is refused. It then packs the
+variable it wasn't given, that it keeps the caller's values for the names the launcher uses, that the preload never runs, and that each variable above is refused. It then packs the
 npm packages around that binary, serves them from a local registry, and runs the same checks through
 `npm install -g`, `bun add -g` and `bun x`, and checks the error when the platform package is missing. It never
 reaches 1Password or the real npm registry. Run it on the platform the binary is for; the `check` workflow runs it
-for linux-x64, linux-arm64 and darwin-arm64.
+for all four targets.
 
 ## Releases
 
@@ -76,3 +80,15 @@ That tags the release and creates the GitHub Release. The `release` workflow the
 platform's runner and runs `check-binary` on it, packs the npm packages, and publishes the four platform packages
 before `keypin`, so `keypin` never points at a version that isn't there. It skips any package version npm already
 has, so a failed run can run again. npm adds provenance through trusted publishing.
+
+The `release` workflow first checks that the four platform packages exist on npm, and fails before building
+anything if one doesn't, since trusted publishing can't create a package. Before the first release that ships
+them, the owner does this once:
+
+1. On npmjs.com, create the free org `keypin` so the `@keypin` scope exists.
+2. Publish a first version of each platform package by hand. After `bun run compile` and `bun run pack`, from each
+   `apps/cli/packages/cli-<target>` folder: `npm publish --access public`. Publishing the version the release is
+   about to ship works, and the workflow then skips it.
+3. Add `release.yml` as each package's trusted publisher: `npm trust github @keypin/cli-<target> --repo
+   caiopizzol/keypin --file release.yml --allow-publish` (npm 11.15 or later, account 2FA), or **Settings → Trusted
+   publishing** on npmjs.com. The first publish through it must happen within 2 days.

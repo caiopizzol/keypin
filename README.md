@@ -24,7 +24,7 @@ for rotation. It reads values from 1Password only while a command runs, and neve
 
 ## Install
 
-keypin runs on macOS and Linux, on arm64 or x64. You need the [1Password](https://1password.com/downloads) desktop
+keypin runs on macOS and on Linux with glibc (not Alpine), on arm64 or x64. You need the [1Password](https://1password.com/downloads) desktop
 app. To publish, you also need a [`gh`](https://cli.github.com) login for GitHub, or a
 [`wrangler`](https://developers.cloudflare.com/workers/wrangler/) login for Cloudflare.
 

@@ -19,7 +19,7 @@ const common = {
 
 function platformOf(target: Target) {
   const [os, cpu] = target.split("-");
-  return { os: [os], cpu: [cpu] };
+  return os === "linux" ? { os: [os], cpu: [cpu], libc: ["glibc"] } : { os: [os], cpu: [cpu] };
 }
 
 async function writeJson(path: string, value: object) {

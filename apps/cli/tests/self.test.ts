@@ -78,6 +78,28 @@ describe("selfFor", () => {
     expect(self.command).toEqual(["keypin"]);
   });
 
+  test("the npm launcher for this binary, behind another keypin earlier on the full PATH: the full command", () => {
+    const binary = "/g/lib/node_modules/@keypin/cli-darwin-arm64/bin/keypin";
+    const self = selfFor(
+      here({
+        full: [binary],
+        running: [binary],
+        env: { PATH: "node_modules/.bin:/home/me/.bun/bin:/usr/bin", PWD: "/tmp/project" },
+        which: (name, path) => {
+          if (path === "/private/tmp/project/node_modules/.bin") return `${path}/${name}`;
+          return path.split(":").includes("/home/me/.bun/bin") ? `/home/me/.bun/bin/${name}` : null;
+        },
+        links: {
+          "/home/me/.bun/bin/keypin": "/g/lib/node_modules/keypin/bin/keypin",
+          "/private/tmp/project/node_modules/.bin/keypin": "/project/keypin/main.js",
+          [binary]: binary,
+        },
+        launches: (path) => (path === "/g/lib/node_modules/keypin/bin/keypin" ? binary : null),
+      }),
+    );
+    expect(self.command).toEqual([binary]);
+  });
+
   test("an npm launcher that runs another binary: the full command", () => {
     const binary = "/g/lib/node_modules/@keypin/cli-darwin-arm64/bin/keypin";
     const self = selfFor(

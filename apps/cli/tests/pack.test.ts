@@ -37,7 +37,7 @@ describe("pack", () => {
     expect((await stat(join(folder, "bin/keypin"))).mode & 0o111).toBe(0o111);
   });
 
-  test("each platform package holds only its binary, for its own os and cpu", async () => {
+  test("each platform package holds only its binary, for its own os and cpu, and glibc on Linux", async () => {
     const binary = join(out, "fake-binary");
     await writeFile(binary, "binary");
     for (const target of TARGETS) {
@@ -51,6 +51,8 @@ describe("pack", () => {
         cpu: [cpu],
         files: ["bin/keypin"],
       });
+      if (os === "linux") expect(platform.libc).toEqual(["glibc"]);
+      else expect(platform).not.toHaveProperty("libc");
       expect(platform).not.toHaveProperty("scripts");
       expect(platform).not.toHaveProperty("bin");
       expect((await stat(join(folder, "bin/keypin"))).mode & 0o111).toBe(0o111);

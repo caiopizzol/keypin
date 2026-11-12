@@ -19,6 +19,8 @@ const leaks: Record<string, string> = {
   "leak-destructure.ts": "const { reveal } = secret;\nexport const value = reveal();",
   "leak-destructure-computed.ts":
     'const { ["reveal"]: show } = secret;\nexport const value = show();',
+  "leak-destructure-quoted.ts":
+    'const { "\\u0072eveal": show } = secret;\nexport const value = show.call(secret);',
 };
 
 const allowed = [

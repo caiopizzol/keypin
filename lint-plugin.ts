@@ -28,11 +28,10 @@ const REVEAL_ALLOWED = [
 ];
 
 function namesReveal(key: ESTree.Node, computed: boolean): boolean {
-  if (!computed) return key.type === "Identifier" && key.name === "reveal";
   if (key.type === "Literal") return key.value === "reveal";
   if (key.type === "TemplateLiteral")
     return key.expressions.length === 0 && key.quasis[0]?.value.cooked === "reveal";
-  return false;
+  return !computed && key.type === "Identifier" && key.name === "reveal";
 }
 
 const noReveal = defineRule({

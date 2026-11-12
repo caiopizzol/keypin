@@ -6,8 +6,8 @@
   },
   "type": "module",
   "scripts": {
-    "build": "bun ./build.ts",
     "compile": "bun ./compile.ts",
+    "pack": "bun ./pack.ts",
     "check-binary": "bun ./check-binary.ts",
     "typecheck": "tsc"
   },

@@ -1,11 +1,16 @@
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { isTarget, launcherHash, type Target, TARGETS } from "./src/layout";
 import { COMPILED_AUTOLOAD_OFF } from "./src/runtime";
 
-export const TARGETS = ["darwin-arm64", "darwin-x64", "linux-x64", "linux-arm64"] as const;
-type Target = (typeof TARGETS)[number];
+const here = fileURLToPath(new URL(".", import.meta.url));
+export const OUT = join(here, "binaries");
+export const LAUNCHER = join(here, "launcher.sh");
 
-export const OUT = join(import.meta.dir, "binaries");
+export function binaryPath(target: Target): string {
+  return join(OUT, `keypin-${target}`);
+}
 const WASM_READ = "require('path').join(__dirname, 'core_bg.wasm')";
 
 const embedSdkWasm: Bun.BunPlugin = {
@@ -23,14 +28,10 @@ const embedSdkWasm: Bun.BunPlugin = {
   },
 };
 
-function isTarget(name: string): name is Target {
-  return TARGETS.some((target) => target === name);
-}
-
 async function compile(target: Target): Promise<string> {
-  const outfile = join(OUT, `keypin-${target}`);
+  const outfile = binaryPath(target);
   const result = await Bun.build({
-    entrypoints: [join(import.meta.dir, "src/main.ts")],
+    entrypoints: [join(here, "src/main.ts")],
     compile: {
       target: `bun-${target}`,
       outfile,
@@ -39,7 +40,10 @@ async function compile(target: Target): Promise<string> {
       autoloadTsconfig: false,
       autoloadPackageJson: false,
     },
-    define: { KEYPIN_COMPILED: JSON.stringify(COMPILED_AUTOLOAD_OFF) },
+    define: {
+      KEYPIN_COMPILED: JSON.stringify(COMPILED_AUTOLOAD_OFF),
+      KEYPIN_LAUNCHER_SHA256: JSON.stringify(launcherHash(await Bun.file(LAUNCHER).text())),
+    },
     loader: { ".wasm": "file" },
     plugins: [embedSdkWasm],
   });

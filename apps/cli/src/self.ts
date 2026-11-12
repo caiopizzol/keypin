@@ -12,6 +12,7 @@ export interface Here {
   env: Readonly<Record<string, string | undefined>>;
   which: (name: string, path: string) => string | null;
   real: (path: string) => string | null;
+  launches: (path: string) => string | null;
 }
 
 const RUNNER_BIN = `${sep}node_modules${sep}.bin`;
@@ -27,11 +28,13 @@ export function selfFor(here: Here): Self {
   return { folder: shownFolder(here), command: isOnPath(here) ? ["keypin"] : here.full };
 }
 
-function isOnPath({ running, env, which, real, cwd }: Here): boolean {
+function isOnPath({ running, env, which, real, launches, cwd }: Here): boolean {
   const found = which("keypin", terminalPath(env.PATH));
   const target = found === null ? null : real(found);
   if (target === null) return false;
-  if (!running.some((path) => isAbsolute(path) && real(path) === target)) return false;
+  const launched = launches(target);
+  const runs = [target, launched === null ? null : real(launched)];
+  if (!running.some((path) => isAbsolute(path) && runs.includes(real(path)))) return false;
   return firstKeypin(env.PATH, cwd, which, real) === target;
 }
 

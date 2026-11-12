@@ -37,3 +37,6 @@ dist-ssr
 
 # Compiled keypin binaries (bun apps/cli/compile.ts)
 apps/cli/binaries
+
+# npm packages built from them (bun apps/cli/pack.ts)
+apps/cli/packages

@@ -23,6 +23,7 @@ function here(over: Partial<Here> & { links?: Record<string, string> } = {}): He
     which: (name, path) =>
       path.split(":").includes("/home/me/.bun/bin") ? `/home/me/.bun/bin/${name}` : null,
     real: (path) => links[path] ?? null,
+    launches: () => null,
     ...over,
   };
 }
@@ -59,6 +60,39 @@ describe("selfFor", () => {
       }),
     );
     expect(self.command).toEqual(FULL);
+  });
+
+  test("the keypin on PATH is the npm launcher that runs this binary: keypin", () => {
+    const binary = "/g/lib/node_modules/@keypin/cli-darwin-arm64/bin/keypin";
+    const self = selfFor(
+      here({
+        full: [binary],
+        running: [binary],
+        links: {
+          "/home/me/.bun/bin/keypin": "/g/lib/node_modules/keypin/bin/keypin",
+          [binary]: binary,
+        },
+        launches: (path) => (path === "/g/lib/node_modules/keypin/bin/keypin" ? binary : null),
+      }),
+    );
+    expect(self.command).toEqual(["keypin"]);
+  });
+
+  test("an npm launcher that runs another binary: the full command", () => {
+    const binary = "/g/lib/node_modules/@keypin/cli-darwin-arm64/bin/keypin";
+    const self = selfFor(
+      here({
+        full: ["/tmp/keypin"],
+        running: ["/tmp/keypin"],
+        links: {
+          "/home/me/.bun/bin/keypin": "/g/lib/node_modules/keypin/bin/keypin",
+          [binary]: binary,
+          "/tmp/keypin": "/tmp/keypin",
+        },
+        launches: () => binary,
+      }),
+    );
+    expect(self.command).toEqual(["/tmp/keypin"]);
   });
 
   test("a PWD that isn't this folder, or that is missing, leaves the real folder", () => {
@@ -108,6 +142,7 @@ describe("selfFor on disk", () => {
       env: { PATH: `${join(root, "bin")}:/usr/bin`, PWD: join(root, "link") },
       which: (name: string, path: string) => Bun.which(name, { PATH: path }),
       real,
+      launches: () => null,
     };
   }
 

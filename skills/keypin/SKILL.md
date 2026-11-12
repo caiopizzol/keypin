@@ -28,10 +28,10 @@ from 1Password only while a command runs.
 - Run with dev keys: `keypin run -- <command>`. If it warns that an env file still holds a key, tell the user to
   remove that variable from the file; don't edit the file yourself.
 - 1Password asks the user to approve each command. If a command waits, tell the user to approve it.
-- `publish` and `rotate` need a typed `yes` in a terminal, which you don't have. Run `rotate` without `--yes`:
-  it stops, exits 3, and prints the command for the user to run. Before you hand back a `publish` command,
-  run it with `--plan` (for a first setup, `keypin publish --all --plan`) and show the user the plan:
-  the account checks, the generation it read, what it would write where, and which steps need a typed `yes`.
+- `publish` and `rotate` need a typed `yes` in a terminal, which you don't have. Before you hand back the
+  command, run it with `--plan` (for a first setup, `keypin publish --all --plan`) and show the user the plan:
+  the account checks, the generation it read, what it would write where, and which steps need a typed `yes`;
+  for a revoke, when the old token was last used.
   `--plan` writes nothing and never prints a value. It reads the value, so 1Password asks the user to approve
   it. If an account check or a 1Password read fails, it exits 1 and names the problem. Otherwise it exits 3
   and prints the command without `--plan`; the user runs that in a terminal and types `yes` once for the
@@ -39,7 +39,8 @@ from 1Password only while a command runs.
   says it's routine. Nothing else approves a first write, a changed account or item, or a revoke.
 - "Nothing to write" means keypin's receipt matches the value, not that it checked the destination.
 - `rotate` takes two runs. After the first, the user checks that the new token works; the second revokes
-  the old one.
+  the old one. Its `--plan` shows the old token's last-used time; that shows whether something still uses
+  it, not that the new one works.
 - Never put a value in chat, arguments, files, or `keypin.toml`.
 
 Fields and details:

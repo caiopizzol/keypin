@@ -324,6 +324,35 @@ describe("keypin rotate: the first run", () => {
     expect(run.disk.contents.has(ROTATIONS)).toBe(false);
   });
 
+  test("--plan without a terminal reads and checks the current token, shows the plan, and changes nothing", async () => {
+    const run = await setup({});
+    const before = new Map(run.disk.contents);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN", "--plan"], run.deps)).toBe(NEEDS_APPROVAL);
+    expect(run.vault.calls).toEqual([`read ${ITEM}`, `read ${ADMIN_ITEM}`]);
+    expect(run.provider.log).toEqual(["verify", `details ${OLD_ID.slice(0, 4)}`]);
+    expect(run.destinations.log).toEqual(["check github-actions:acme/site"]);
+    expect(run.disk.contents).toEqual(before);
+    expect(run.stderr.text).toContain(`  current token: ${OLD_ID} "cicd-keypin", active`);
+    expect(run.stderr.text).toContain(`  new token: "cicd-keypin 2026-11-10"`);
+    expect(run.stderr.text).toContain(`  publish to: ${GITHUB} (account acme)`);
+    expect(run.stderr.text).toContain("This plan is routine: --yes can approve it.");
+    expect(run.stderr.text).toContain("main.ts rotate CLOUDFLARE_API_TOKEN\n");
+    expect(run.leaked()).toBe(false);
+  });
+
+  test("--plan names a first write's approval, and --yes with a terminal still makes nothing", async () => {
+    const run = await setup({ receipts: null, terminal: ["yes"] });
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN", "--plan", "--yes"], run.deps)).toBe(
+      NEEDS_APPROVAL,
+    );
+    expect(run.asked).toEqual([]);
+    expect(run.provider.log).not.toContainEqual(expect.stringMatching(/^issue/));
+    expect(run.stderr.text).toContain(`    needs approval: first write to ${GITHUB}`);
+    expect(run.stderr.text).toContain("This plan needs yes typed in a terminal");
+    expect(run.disk.contents.has(ROTATIONS)).toBe(false);
+    expect(run.leaked()).toBe(false);
+  });
+
   test("--yes can't approve a first write to a destination", async () => {
     const run = await setup({ receipts: null });
     expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN", "--yes"], run.deps)).toBe(NEEDS_APPROVAL);
@@ -490,6 +519,25 @@ describe("keypin rotate: the next run", () => {
     );
     expect(run.vault.calls).toEqual([]);
     expect(run.provider.tokens.has(OLD_ID)).toBe(true);
+  });
+
+  test("--plan without a terminal shows when the old token was last used, and revokes nothing", async () => {
+    const disk = await published();
+    const before = new Map(disk.contents);
+    const run = await next(disk);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN", "--plan"], run.deps)).toBe(NEEDS_APPROVAL);
+    expect(run.stderr.text).toContain(
+      `Every destination of CLOUDFLARE_API_TOKEN (prod) has generation ${NEW_GENERATION}.`,
+    );
+    expect(run.stderr.text).toContain(`Old token: ${OLD_ID} "cicd-keypin", active`);
+    expect(run.stderr.text).toContain("last used: 2026-11-10T14:54:43Z");
+    expect(run.stderr.text).toContain(`New token: ${NEW_ID} "cicd-keypin 2026-11-10", active`);
+    expect(run.stderr.text).toContain("This plan needs yes typed in a terminal");
+    expect(run.stderr.text).toContain("main.ts rotate CLOUDFLARE_API_TOKEN\n");
+    expect(run.provider.log).not.toContainEqual(expect.stringMatching(/^revoke/));
+    expect(run.provider.tokens.has(OLD_ID)).toBe(true);
+    expect(disk.contents).toEqual(before);
+    expect(run.leaked()).toBe(false);
   });
 
   test("anything but yes keeps the old token", async () => {
@@ -767,6 +815,33 @@ describe("keypin rotate: review fixes", () => {
     run.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
     expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN"], run.deps)).toBe(0);
     expect((await run.rotations()).rotations[0]?.stage).toBe("published");
+  });
+
+  test("--plan on a stored rotation re-checks the new token and shows the writes, and writes nothing", async () => {
+    const disk = await diskWith(record());
+    const run = await setup({ disk });
+    run.vault.values.set(SOURCE, NEW_VALUE);
+    run.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
+    const before = new Map(disk.contents);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN", "--plan"], run.deps)).toBe(NEEDS_APPROVAL);
+    expect(run.stderr.text).toContain(`  checked: ${NEW_ID} is active`);
+    expect(run.stderr.text).toContain(`  write ${GITHUB} (account acme): different generation`);
+    expect(run.stderr.text).toContain("This plan is routine: --yes can approve it.");
+    expect(run.destinations.log).toEqual(["check github-actions:acme/site"]);
+    expect(disk.contents).toEqual(before);
+    expect(run.leaked()).toBe(false);
+  });
+
+  test("--plan on an issued rotation names the token the next run deletes, and deletes nothing", async () => {
+    const disk = await diskWith(record({ stage: "issued" }));
+    const run = await setup({ disk });
+    run.provider.tokens.set(NEW_ID, { ...OLD_TOKEN, id: NEW_ID, value: NEW_VALUE });
+    const before = new Map(disk.contents);
+    expect(await cli(["rotate", "CLOUDFLARE_API_TOKEN", "--plan"], run.deps)).toBe(NEEDS_APPROVAL);
+    expect(run.stderr.text).toContain(`The next run deletes the new token ${NEW_ID}`);
+    expect(run.provider.log).toEqual([]);
+    expect(run.provider.tokens.has(NEW_ID)).toBe(true);
+    expect(disk.contents).toEqual(before);
   });
 
   test("a rotation made in another account is left alone", async () => {

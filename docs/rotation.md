@@ -62,6 +62,24 @@ was last used, and deletes it after you type `yes` in a terminal. `--yes` never 
 keypin knows what a destination holds only from its receipts. It can't see a secret you set by hand, or a write whose
 run stopped before its receipt was saved.
 
+## See the plan first
+
+Add `--plan` to see what the next run would do, without a terminal. It reads the current value and the admin
+token, checks the accounts and the tokens like a real run, prints that run's plan, and stops before its first
+change. It never creates or deletes a token, writes to the vault or a destination, or saves keypin's state. It
+exits 3 with the command to run in a terminal, or 0 when there's nothing to do.
+
+- First run: both tokens, the permissions it copies, the vault item, every destination, and whether `--yes`
+  could approve it.
+- After a run that stored the new token: the new token's check and what it would write where.
+- Revoke run: every check above, the old token's last-used time, and the new token. The last-used time shows
+  whether something still uses the old token. It doesn't prove the new one works, so check the consumers too.
+- After a run that stopped before storing: the token the next run would delete.
+
+1Password asks you to approve `--plan`, because it reads values. Without `--plan`, a run that has no terminal
+stops before reading anything, so `--plan` costs one more 1Password approval in exchange for a plan you can check
+first.
+
 If a run stops partway, `keypin status` shows the unfinished rotation, and the next run in that project picks it up.
 If keypin can't tell whether Cloudflare made the new token, it names the token for you to find and delete in the
 dashboard.

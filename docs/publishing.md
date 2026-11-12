@@ -24,8 +24,8 @@ keypin publish API_TOKEN --plan      # show the plan, write nothing
 3. **Approval:** you type `yes`. The first write to a destination, a changed account, and a changed vault item
    always need a typed `yes` in a terminal. `--yes` can approve only ordinary updates. Without a terminal,
    `publish` and `rotate` stop, print the command to run in one, and exit 3, unless `--yes` covers every step.
-   When a step needs approval, they stop before reading the value, so the plan isn't shown; use `--plan` to
-   see it.
+   When a step needs approval, they stop before reading the value, so the plan isn't shown; add `--plan` to
+   see it (see [Rotation](rotation.md) for `rotate --plan`).
 4. **Receipts:** each write that keypin confirms gets a receipt. A rerun skips those destinations and writes the rest.
 
 ## See the plan first

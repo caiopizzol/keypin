@@ -193,7 +193,11 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
     ),
   ];
   if (unlisted.length) {
-    const line = `environments = ${JSON.stringify([...listed.slice(0, -1), ...unlisted, environment]).replaceAll(",", ", ")}`;
+    const order =
+      listed.length > 1
+        ? [...listed.slice(0, -1), ...unlisted, environment]
+        : [...listed, ...unlisted];
+    const line = `environments = ${JSON.stringify(order).replaceAll(",", ", ")}`;
     const at = hasEnvironments(map?.text ?? "")
       ? "replace the environments line in keypin.toml with"
       : "add at the top of keypin.toml";

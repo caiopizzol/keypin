@@ -688,6 +688,18 @@ worker = "billing-worker-staging"`);
       run.unchanged();
     });
 
+    test("never moves a sole environment from first place", async () => {
+      const run = setup({
+        files: files(`environments = ["dev"]\n${MAPPED}`),
+      });
+      expect(await cli(["check", "--json"], run.deps)).toBe(1);
+      expect(json(run.stdout.text).problems).toContainEqual(
+        expect.stringContaining(
+          'replace the environments line in keypin.toml with: environments = ["dev", "staging"]',
+        ),
+      );
+    });
+
     test("keeps the map's order and puts a new environment before the last", async () => {
       const run = setup({
         files: files(`environments = ["local", "live"]\n${MAPPED.replaceAll("dev =", "local =")}`),

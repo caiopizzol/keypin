@@ -25,8 +25,9 @@ export const USAGE = `Usage:
                            one; the account is the map's, or --account when there's no map yet. It
                            never overwrites an item or a reference, so --yes is enough to approve it.
                            The file stays.
-  keypin run [--env <name>] -- <command>
-                           run a command with one environment's keys (default: the first, dev)
+  keypin run [--env <name>] [--only NAME[,NAME]] -- <command>
+                           run a command with one environment's keys (default: the first, dev),
+                           or only the named ones
   keypin publish <VARIABLE> [--env <name>] [--yes | --plan]
                            check accounts, plan, confirm, then write the key to every destination
                            (default environment: the last, prod); --plan reads the value, prints

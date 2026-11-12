@@ -9,17 +9,18 @@ import { announce } from "../vault";
 export async function run(args: string[], deps: Deps): Promise<number> {
   const { values, positionals } = parseArgs({
     args,
-    options: { env: { type: "string" } },
+    options: { env: { type: "string" }, only: { type: "string", multiple: true } },
     allowPositionals: true,
   });
   if (!positionals.length) throw new UsageError("keypin run needs a command after --");
 
   const map = await findMap(deps.files, deps.cwd);
   const environment = pickEnvironment(map, values.env, runEnvironment(map));
-  const keys = map.keys.flatMap((key) => {
+  const available = map.keys.flatMap((key) => {
     const entry = key.environments[environment];
     return entry ? [{ key, ref: entry.ref }] : [];
   });
+  const keys = values.only ? pick(available, values.only, environment) : available;
 
   const found = new Map<string, Secret>();
   if (keys.length) {
@@ -85,6 +86,22 @@ export async function run(args: string[], deps: Deps): Promise<number> {
   } finally {
     stop();
   }
+}
+
+function pick<T extends { key: { name: string } }>(
+  available: T[],
+  only: string[],
+  environment: string,
+): T[] {
+  const wanted = new Set(only.flatMap((value) => value.split(",")).map((name) => name.trim()));
+  const unknown = [...wanted].filter((name) => !available.some((k) => k.key.name === name));
+  if (unknown.length) {
+    const known = available.map((k) => k.key.name).join(", ") || "none";
+    throw new UsageError(
+      `--only names keys ${environment} has (${known}), got ${unknown.map((name) => `"${name}"`).join(", ")}`,
+    );
+  }
+  return available.filter((k) => wanted.has(k.key.name));
 }
 
 async function warnAboutEnvFiles(deps: Deps, folders: string[], mapped: string[]): Promise<void> {

@@ -38,10 +38,12 @@ values from 1Password only while a command runs.
 
 ## Run
 
-`keypin run -- <command>` runs a command with the dev keys. If it warns that an env file still holds a key, tell
-the user to remove that line. A `.dev.vars` must go entirely, because `wrangler dev` ignores keypin's keys while it
-exists. Before the user deletes it, every secret in it must be imported; name each plain setting left in it, so the
-user can give it a new home first: `wrangler dev --var NAME:value`, not `[vars]`, which also deploys.
+`keypin run -- <command>` runs a command with the dev keys. With `--env prod`, add `--only NAME` for each key the
+command needs: a CI token such as `CLOUDFLARE_API_TOKEN` replaces the tool's own login. If it warns that an env file
+still holds a key, tell the user to remove that line. A `.dev.vars` must go entirely, because `wrangler dev` ignores
+keypin's keys while it exists. Before the user deletes it, every secret in it must be imported; name each plain
+setting left in it, so the user can give it a new home first: `wrangler dev --var NAME:value`, not `[vars]`, which
+also deploys.
 
 ## Publish
 

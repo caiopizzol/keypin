@@ -41,11 +41,11 @@
         <strong>Values stay in your vault.</strong>
       </p>
       <div class="install">
-        <code><span class="p">$</span> npm install -g keypin</code>
+        <code><span class="p">$</span> bun add -g keypin</code>
         <button
           type="button"
           onclick="
-            navigator.clipboard?.writeText('npm install -g keypin').then(
+            navigator.clipboard?.writeText('bun add -g keypin').then(
               () => (this.textContent = 'copied'),
               () => {},
             )
@@ -58,7 +58,7 @@
         <a href="https://github.com/caiopizzol/keypin">GitHub</a>
         <a href="https://www.npmjs.com/package/keypin">npm</a>
       </div>
-      <p class="req">Runs on macOS and Linux. Needs the 1Password desktop app.</p>
+      <p class="req">Needs Bun 1.4.4+ and the 1Password desktop app.</p>
     </main>
     <footer>
       <span>keypin · MIT</span><a href="https://github.com/caiopizzol/keypin#readme">README</a>

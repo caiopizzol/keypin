@@ -33,8 +33,8 @@ function isOnPath({ running, env, which, real, launches, cwd }: Here): boolean {
   const target = found === null ? null : real(found);
   if (target === null) return false;
   const launched = launches(target);
-  const runs = [target, launched === null ? null : real(launched)];
-  if (!running.some((path) => isAbsolute(path) && runs.includes(real(path)))) return false;
+  const runs = [target, launched === null ? null : real(launched)].filter((run) => run !== null);
+  if (!running.some((path) => isAbsolute(path) && runs.includes(real(path) ?? ""))) return false;
   return firstKeypin(env.PATH, cwd, which, real) === target;
 }
 

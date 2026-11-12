@@ -78,6 +78,19 @@ describe("selfFor", () => {
     expect(self.command).toEqual(["keypin"]);
   });
 
+  test("a launcher whose binary doesn't resolve never matches a running path that doesn't resolve", () => {
+    const binary = "/g/lib/node_modules/@keypin/cli-darwin-arm64/bin/keypin";
+    const self = selfFor(
+      here({
+        full: [binary],
+        running: ["/gone/keypin"],
+        links: { "/home/me/.bun/bin/keypin": "/g/lib/node_modules/keypin/bin/keypin" },
+        launches: () => "/missing/keypin",
+      }),
+    );
+    expect(self.command).toEqual([binary]);
+  });
+
   test("the npm launcher for this binary, behind another keypin earlier on the full PATH: the full command", () => {
     const binary = "/g/lib/node_modules/@keypin/cli-darwin-arm64/bin/keypin";
     const self = selfFor(

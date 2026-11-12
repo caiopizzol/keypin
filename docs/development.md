@@ -51,7 +51,8 @@ On npm, `keypin` is a small package whose `keypin` command is [`launcher.sh`](..
 package per platform with the binary: `@keypin/cli-darwin-arm64`, `@keypin/cli-darwin-x64`, `@keypin/cli-linux-x64`
 and `@keypin/cli-linux-arm64`. `keypin` lists them as `optionalDependencies` pinned to its own version, and each
 one's `os` and `cpu` (and `libc: glibc` on Linux) let the package manager install only the one that fits. npm
-checks `libc` from 9.6.3. Nothing runs at install time and
+checks `libc` from 9.6.3; on a musl system with an older npm, the launcher says glibc is missing. Nothing runs at
+install time and
 nothing is downloaded at run time. `pack.ts` writes every package at the root `package.json` version, so the
 platform packages move with each release.
 
@@ -86,9 +87,11 @@ anything if one doesn't, since trusted publishing can't create a package. Before
 them, the owner does this once:
 
 1. On npmjs.com, create the free org `keypin` so the `@keypin` scope exists.
-2. Publish a first version of each platform package by hand. After `bun run compile` and `bun run pack`, from each
-   `apps/cli/packages/cli-<target>` folder: `npm publish --access public`. Publishing the version the release is
-   about to ship works, and the workflow then skips it.
+2. Publish a placeholder version of each platform package by hand, so the package exists. After `bun run compile`
+   and `bun run pack`, in each `apps/cli/packages/cli-<target>` folder set `"version"` in `package.json` to
+   `0.0.0-bootstrap`, then run `npm publish --access public --tag bootstrap`. Don't publish the version the release
+   will ship: the workflow skips a version npm already has, so trusted publishing would never be used.
 3. Add `release.yml` as each package's trusted publisher: `npm trust github @keypin/cli-<target> --repo
    caiopizzol/keypin --file release.yml --allow-publish` (npm 11.15 or later, account 2FA), or **Settings → Trusted
-   publishing** on npmjs.com. The first publish through it must happen within 2 days.
+   publishing** on npmjs.com. Then merge the release PR within 2 days: a trusted publisher that hasn't published
+   within 2 days expires.

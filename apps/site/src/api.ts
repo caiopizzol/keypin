@@ -73,10 +73,14 @@ async function readAnswers(request: Request): Promise<Answers | Response> {
 async function readLimited(request: Request): Promise<Uint8Array | null> {
   const chunks: Uint8Array[] = [];
   let size = 0;
-  for await (const chunk of request.body ?? []) {
-    size += chunk.byteLength;
-    if (size > MAX_BODY) return null;
-    chunks.push(chunk);
+  const reader = request.body?.getReader();
+  for (let next = await reader?.read(); next && !next.done; next = await reader?.read()) {
+    size += next.value.byteLength;
+    if (size > MAX_BODY) {
+      await reader?.cancel();
+      return null;
+    }
+    chunks.push(next.value);
   }
   const bytes = new Uint8Array(size);
   let at = 0;

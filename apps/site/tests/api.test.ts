@@ -157,12 +157,12 @@ describe("PUT, GET and DELETE /api/signup", () => {
   });
 
   test("413 for a body over 4 KB with no Content-Length", async () => {
-    const big = new TextEncoder().encode(JSON.stringify({ use: "solo", note: "a".repeat(5000) }));
+    let pulled = 0;
     const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(big.slice(0, 3000));
-        controller.enqueue(big.slice(3000));
-        controller.close();
+      pull(controller) {
+        pulled += 1;
+        if (pulled > 8192) controller.close();
+        else controller.enqueue(new Uint8Array(1024));
       },
     });
     const headers = new Headers({ authorization: "Bearer good-token", origin: ORIGIN });
@@ -170,6 +170,7 @@ describe("PUT, GET and DELETE /api/signup", () => {
     const request = new Request(`${ORIGIN}/api/signup`, init);
     expect(request.headers.get("content-length")).toBeNull();
     expect((await handleApi(request, fakeApi())).status).toBe(413);
+    expect(pulled).toBeLessThan(10);
   });
 
   test("500, not 401, when token verification itself fails", async () => {

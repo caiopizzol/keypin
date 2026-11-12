@@ -24,6 +24,7 @@ import {
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 const WORKER = /^[A-Za-z0-9_-]+$/;
+const ROTATED = "rotated";
 const GITHUB_SECRET = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export function githubPlace(repo: string): string {
@@ -49,6 +50,10 @@ export function fakeVault(store: WorldStore): VaultBackend {
     );
   };
   const fieldName = (item: Item, ref: KeyRef): string => {
+    if (same(ref.field, ROTATED))
+      throw new Error(
+        `${where(ref)}: "${ROTATED}" holds the day the value last changed; put the value in another field`,
+      );
     const name = Object.keys(item.fields).find((key) => same(key, fieldKey(ref)));
     if (name === undefined) throw new Error(`${where(ref)}: the item has no field "${ref.field}"`);
     return name;

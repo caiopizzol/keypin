@@ -415,6 +415,28 @@ describe("the sandbox's edges", () => {
     expect(Object.keys(world.onePassword.items[0]?.fields ?? {})).toEqual(["Password"]);
   });
 
+  test("the vault refuses the rotated field as a value, as 1Password's backend does", async () => {
+    const world = emptyWorld();
+    world.onePassword.items.push({
+      vault: "Private",
+      title: "t",
+      fields: { password: `${FAKE}v`, rotated: "2026-11-01" },
+      rotated: "2026-11-01",
+    });
+    const vault = fakeVault(memoryStore(world));
+    const ref = {
+      kind: "1password" as const,
+      account: "my.1password.com",
+      vault: "Private",
+      item: "t",
+      section: null,
+      field: "Rotated",
+    };
+    await expect(vault.read(ref)).rejects.toThrow("holds the day the value last changed");
+    await expect(vault.write(ref, new Secret(`${FAKE}w`))).rejects.toThrow("holds the day");
+    expect(world.onePassword.items[0]?.fields.rotated).toBe("2026-11-01");
+  });
+
   test("a token's admin flag must be true or false", () => {
     const world = {
       ...emptyWorld(),

@@ -20,6 +20,12 @@ export default defineConfig({
       "typescript/switch-exhaustiveness-check": "error",
       "no-console": "error",
     },
+    overrides: [
+      {
+        files: ["packages/core/src/**"],
+        rules: { "no-restricted-imports": ["error", { paths: ["bun"], patterns: ["bun:*"] }] },
+      },
+    ],
     options: { typeAware: true, typeCheck: true, denyWarnings: true },
   },
 });

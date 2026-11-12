@@ -14,6 +14,10 @@ function errorsOf(text: string): string[] {
 }
 
 describe("a valid map", () => {
+  test("a map saved with a byte order mark parses the same", () => {
+    expect(parseMap(`\uFEFF${VALID_MAP}`, MAP_FILE)).toEqual(parseMap(VALID_MAP, MAP_FILE));
+  });
+
   test("the design's example parses into typed entries", () => {
     const result = parseMap(VALID_MAP, MAP_FILE);
     expect(result).toEqual({
@@ -496,17 +500,19 @@ describe("wrong kinds and values", () => {
 
   test("a TOML error keeps what went wrong and drops the quoted text", () => {
     expect(errorsOf(`API_KEY=sentinel-x\n`)).toEqual([
-      `${MAP_FILE}: not valid TOML: Strings must be quoted`,
+      `${MAP_FILE}: not valid TOML: Expected a value, and strings must be quoted`,
     ]);
     expect(errorsOf(`[a]\nb = 1\n[a]\n`)).toEqual([
-      `${MAP_FILE}: not valid TOML: Cannot redefine table`,
+      `${MAP_FILE}: not valid TOML: Trying to redefine an already defined table or value`,
     ]);
-    expect(errorsOf(`k = \u00e9x\n`)).toEqual([`${MAP_FILE}: not valid TOML: Expected a value`]);
+    expect(errorsOf(`k = \u00e9x\n`)).toEqual([
+      `${MAP_FILE}: not valid TOML: Expected a value, and strings must be quoted`,
+    ]);
     expect(errorsOf(`k = "\u0001x"\n`)).toEqual([
-      `${MAP_FILE}: not valid TOML: Control character must be escaped in a string`,
+      `${MAP_FILE}: not valid TOML: Control characters are not allowed in strings`,
     ]);
     expect(errorsOf(`k = "a" b\n`)).toEqual([
-      `${MAP_FILE}: not valid TOML: Expected a newline or end of file after a key/value pair`,
+      `${MAP_FILE}: not valid TOML: Each key-value declaration must be followed by an end-of-line`,
     ]);
   });
 

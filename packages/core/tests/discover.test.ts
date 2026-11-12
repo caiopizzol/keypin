@@ -155,6 +155,13 @@ jobs:
     ).toBe(true);
   });
 
+  test("an alias that refers to itself is read once instead of recursing forever", () => {
+    const refs = workflowRefs(
+      "loop: &x\n  again: *x\njobs:\n  a:\n    steps:\n      - run: echo ${{ secrets.TOKEN }}\n",
+    );
+    expect(refs).toMatchObject({ secrets: ["TOKEN"], hidesUses: false });
+  });
+
   test("strings inside an expression neither end it nor count as references", () => {
     const refs = workflowRefs(`
 jobs:
@@ -166,6 +173,14 @@ jobs:
 `);
     assert(refs);
     expect(refs.secrets.toSorted()).toEqual(["API_TOKEN", "QUOTED", "REAL_IF"]);
+  });
+
+  test("reads a workflow saved with a byte order mark", () => {
+    const refs = workflowRefs(
+      "\uFEFFjobs:\n  a:\n    steps:\n      - run: echo ${{ secrets.TOKEN }}\n",
+    );
+    assert(refs);
+    expect(refs.secrets).toEqual(["TOKEN"]);
   });
 
   test("returns null for a file that isn't YAML", () => {
@@ -230,6 +245,15 @@ describe("wrangler configs", () => {
       ["api-operator", null, []],
     ]);
     expect(wranglerWorkers("name = ", "wrangler.toml")).toEqual({ ok: false });
+  });
+
+  test("reads a config saved with a byte order mark, as Wrangler does", () => {
+    for (const config of ["wrangler.json", "wrangler.jsonc", "wrangler.toml"]) {
+      const text = config.endsWith(".toml") ? 'name = "api"\n' : '{ "name": "api" }';
+      const parsed = wranglerWorkers(`\uFEFF${text}`, config);
+      assert(parsed.ok, config);
+      expect(parsed.workers.map((w) => w.worker)).toEqual(["api"]);
+    }
   });
 });
 

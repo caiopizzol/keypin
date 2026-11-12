@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { errorCode, messageOf } from "./errors";
 
 export const INSTALL = "bunx --package vite-plus@1.5.1 vp install";
-export const REINSTALL = "bun add -g keypin";
+export const REINSTALL = "npm install -g keypin";
 
 function checkout(): string | null {
   if (!import.meta.url.endsWith("/apps/cli/src/install.ts")) return null;

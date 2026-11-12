@@ -16,7 +16,6 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/keypin"><img src="https://img.shields.io/npm/v/keypin?color=121311" alt="npm version"></a>
   <img src="https://img.shields.io/badge/license-MIT-121311" alt="MIT">
-  <img src="https://img.shields.io/badge/runtime-Bun-121311" alt="Bun">
 </p>
 
 Each project lists its keys in a `keypin.toml`: names, vault items and destinations, never values. keypin runs your
@@ -25,13 +24,17 @@ for rotation. It reads values from 1Password only while a command runs, and neve
 
 ## Install
 
-You need [Bun](https://bun.sh) 1.4.4 or newer and the [1Password](https://1password.com/downloads) desktop app.
-To publish, you also need a [`gh`](https://cli.github.com) login for GitHub, or a
-[`wrangler`](https://developers.cloudflare.com/workers/wrangler/) login for Cloudflare (macOS or Linux).
+keypin runs on macOS and on Linux with glibc (not Alpine), on arm64 or x64. You need the [1Password](https://1password.com/downloads) desktop
+app. To publish, you also need a [`gh`](https://cli.github.com) login for GitHub, or a
+[`wrangler`](https://developers.cloudflare.com/workers/wrangler/) login for Cloudflare.
 
 ```sh
-bun add -g keypin
+npm install -g keypin
 ```
+
+keypin is one executable with its runtime built in, so you don't need Bun. `bun add -g keypin` works too. The
+package manager installs the build for your platform as an optional dependency, so don't install with
+`--omit=optional` or `--no-optional`.
 
 In 1Password, open **Settings → Developer**. Under **Integrate with the 1Password SDKs**, select **Integrate with
 other apps**. 1Password then asks you to approve each keypin command.

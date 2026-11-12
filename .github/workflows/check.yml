@@ -22,14 +22,26 @@ jobs:
       - run: bun run typecheck
 
   binary:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x64
+            runner: ubuntu-latest
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: darwin-arm64
+            runner: macos-15
+          - target: darwin-x64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.4.4
       - run: bun install --frozen-lockfile
-      - run: bun run compile linux-x64
+      - run: bun run compile ${{ matrix.target }}
         working-directory: apps/cli
-      - run: bun run check-binary binaries/keypin-linux-x64
+      - run: bun run check-binary binaries/keypin-${{ matrix.target }}
         working-directory: apps/cli

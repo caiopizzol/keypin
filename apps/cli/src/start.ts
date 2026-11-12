@@ -1,4 +1,4 @@
-import { realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline/promises";
@@ -25,6 +25,7 @@ import {
 } from "./disk";
 import { installProblem } from "./install";
 import { launch, onSignals } from "./launch";
+import { hostTarget, launchedBinary } from "./layout";
 import { selfCommand } from "./runtime";
 import { selfFor } from "./self";
 
@@ -75,17 +76,46 @@ function realPath(path: string): string | null {
   }
 }
 
+declare const KEYPIN_LAUNCHER_SHA256: string | undefined;
+
+function readText(path: string): string | null {
+  try {
+    return readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+}
+
+function fileSize(path: string): number | null {
+  try {
+    return statSync(path).size;
+  } catch {
+    return null;
+  }
+}
+
 function self(cwd: string) {
   const script = process.argv[1] ?? "keypin";
+  const target = hostTarget();
+  const compiled = Bun.isStandaloneExecutable;
+  const launcher = typeof KEYPIN_LAUNCHER_SHA256 === "string" ? KEYPIN_LAUNCHER_SHA256 : null;
   return selfFor({
-    full: Bun.isStandaloneExecutable
-      ? [process.execPath]
-      : selfCommand(process.argv[0] ?? "bun", script),
-    running: Bun.isStandaloneExecutable ? [process.execPath] : [script],
+    full: compiled ? [process.execPath] : selfCommand(process.argv[0] ?? "bun", script),
+    running: compiled ? [process.execPath] : [script],
     cwd,
     env: process.env,
     which: (name, path) => Bun.which(name, { PATH: path }),
     real: realPath,
+    launches: (path) =>
+      compiled && launcher !== null && target !== null
+        ? launchedBinary(path, {
+            hash: launcher,
+            target,
+            size: fileSize,
+            read: readText,
+            exists: existsSync,
+          })
+        : null,
   });
 }
 

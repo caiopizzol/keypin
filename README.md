@@ -91,7 +91,7 @@ keypin publish --all
 ```sh
 keypin init [folder]                     # write keypin.toml and register the project
 keypin check [folder]                    # report one project; writes nothing
-keypin import <env-file> [NAME...] --vault <vault>
+keypin import <env-file> [NAME...] [--env <name>] --vault <vault>
                                          # move an env file's values into 1Password and map them
 keypin run -- <command>                  # run a command with the dev keys
 keypin publish <VARIABLE> | --all        # write prod keys to their destinations

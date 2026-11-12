@@ -74,6 +74,10 @@ function placeId(target: PublishTarget): string {
     : `github-actions:${target.repo}`;
 }
 
+export function isEnvironmentName(name: string): boolean {
+  return ENVIRONMENT_NAME.test(name);
+}
+
 export function isVariableName(name: string): boolean {
   return VARIABLE_NAME.test(name);
 }

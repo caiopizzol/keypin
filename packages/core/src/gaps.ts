@@ -164,16 +164,20 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
       );
   }
 
-  const run = runEnvironment(keys ?? { environments: DEFAULT_ENVIRONMENTS });
+  const environments = keys?.environments ?? DEFAULT_ENVIRONMENTS;
+  const run = runEnvironment({ environments });
   const local: LocalFile[] = [];
   for (const file of scan.envFiles) {
     if (file.kind !== "set") continue;
+    const suffix = /^(?:\.env|\.dev\.vars)\.(.+)$/.exec(file.path.split("/").at(-1) ?? "")?.[1];
+    const env = suffix !== undefined && environments.includes(suffix) ? suffix : run;
+    const flag = envFlag(env, run);
     const names = file.names.filter(isVariableName);
     const key = (name: string) => keys?.keys.find((k) => k.name === name);
     const unmapped = names.filter((name) => !key(name));
     const elsewhere = names.filter((name) => {
       const found = key(name);
-      return found !== undefined && !found.environments[run];
+      return found !== undefined && !found.environments[env];
     });
     local.push({ file: file.path, tracked: file.tracked, unmapped, elsewhere });
     if (file.tracked)
@@ -181,12 +185,12 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
     if (unmapped.length) {
       const account = keys?.account ? "" : ` --account ${PLACEHOLDER.account}`;
       notes.push(
-        `${file.path} sets ${unmapped.join(", ")}, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import ${file.path} NAME... --vault ${PLACEHOLDER.vault}${account}`,
+        `${file.path} sets ${unmapped.join(", ")}, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import ${file.path} NAME...${flag} --vault ${PLACEHOLDER.vault}${account}`,
       );
     }
     if (elsewhere.length)
       problems.push(
-        `${file.path} sets ${elsewhere.join(", ")}, which keypin.toml maps with no ${run} entry; add a ${run} reference to each by hand`,
+        `${file.path} sets ${elsewhere.join(", ")}, which keypin.toml maps with no ${env} entry; for a key run keypin import ${file.path} ${elsewhere.join(" ")}${flag} --vault ${PLACEHOLDER.vault}`,
       );
   }
 

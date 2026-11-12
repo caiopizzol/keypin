@@ -15,6 +15,8 @@ export {
 } from "./contracts";
 export {
   destinationId,
+  envFlag,
+  isEnvironmentName,
   isVariableName,
   parseMap,
   publishEnvironment,

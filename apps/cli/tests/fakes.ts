@@ -253,6 +253,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
       throw new Error("this test publishes nothing");
     },
     wranglerLoginFile: async () => null,
+    ghLogin: async () => "ok",
     lock: memoryLock(disk),
     isTerminal: false,
     ask: async () => {

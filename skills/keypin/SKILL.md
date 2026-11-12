@@ -20,6 +20,7 @@ values from 1Password only while a command runs.
 
 1. No `keypin.toml`: run `keypin init`.
 2. Run `keypin check --json`. Repeat after each change. It writes nothing and prints no value.
+   - `prerequisites`: tools and logins still to set up. Tell the user these first; they do them, not you.
    - `problems`: one line per gap, each saying what to run or add. Exit 0 means nothing to fix.
    - `unknown`: what check couldn't read. Tell the user it's unverified; it never means missing.
 3. Local keys: for each name in `local.unmapped`, ask the user whether it's a secret and which vault. Suggest

@@ -62,6 +62,7 @@ export interface Deps {
   onSignals: OnSignals;
   destination(target: PublishTarget, publisher: Publisher): Destination;
   wranglerLoginFile(): Promise<string | null>;
+  ghLogin(login: string | null): Promise<"ok" | "not installed" | "not logged in">;
   lock: Lock;
   isTerminal: boolean;
   ask(question: string): Promise<string>;

@@ -198,14 +198,16 @@ export function fakeProvider(world: World, spec: RotateSpec, admin: Secret): Tok
     new Error(`Cloudflare ${method} ${path} returned HTTP ${status} (sandbox)`);
   const inAccount = () => world.tokens.filter((token) => token.account === spec.account);
   const authorized = (method: string, path: string) => {
-    const caller = inAccount().find((t) => t.value === admin.reveal() && t.status === "active");
+    const caller = inAccount().find(
+      (t) => admin.equals(new Secret(t.value)) && t.status === "active",
+    );
     if (!caller) throw http(method, path, 401);
     if (!caller.admin) throw http(method, path, 403);
   };
   return {
     describe: () => `cloudflare account ${spec.account} tokens (sandbox)`,
     async verify(secret) {
-      const found = inAccount().find((t) => t.value === secret.reveal());
+      const found = inAccount().find((t) => secret.equals(new Secret(t.value)));
       if (!found) throw http("GET", `${base}/verify`, 401);
       return { id: found.id, status: found.status, expiresOn: found.expiresOn };
     },

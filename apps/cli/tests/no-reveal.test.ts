@@ -32,6 +32,7 @@ const allowed = [
   "apps/cli/src/commands/run.ts",
   "apps/cli/tests/fakes.ts",
   "packages/core/tests/secret.test.ts",
+  "verification/agents/src/fakes.ts",
 ];
 
 const forbidden = [
@@ -40,6 +41,8 @@ const forbidden = [
   "packages/core/src/plan.ts",
   "packages/vault-1password/scripts/dump.ts",
   "apps/cli/src/tests/helper.ts",
+  "verification/agents/src/sandbox.ts",
+  "verification/agents/src/driver.ts",
 ];
 
 const COMMANDS = "apps/cli/src/commands";

@@ -25,6 +25,7 @@ const REVEAL_ALLOWED = [
   /^packages\/core\/src\/secret\.ts$/,
   /^apps\/cli\/src\/commands\/run\.ts$/,
   /^(apps|packages)\/[^/]+\/tests\//,
+  /^verification\/agents\/src\/fakes\.ts$/,
 ];
 
 function namesReveal(key: ESTree.Node, computed: boolean): boolean {

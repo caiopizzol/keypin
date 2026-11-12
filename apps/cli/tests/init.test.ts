@@ -32,6 +32,13 @@ describe("keypin init", () => {
     expect((await loadRegistry(disk.files, REGISTRY)).projects).toEqual(["/work/billing"]);
   });
 
+  test("quotes a folder with a space in the check command it suggests", async () => {
+    const { deps, disk, stderr } = fakeDeps();
+    disk.folders.add("/work/my project");
+    expect(await cli(["init", "/work/my project"], deps)).toBe(0);
+    expect(stderr.text).toContain("keypin: next, run keypin check '/work/my project' for");
+  });
+
   test("the template is comments only and parses as an empty map", () => {
     expect(TEMPLATE.split("\n").every((line) => line === "" || line.startsWith("#"))).toBe(true);
     expect(parseMap(TEMPLATE, "keypin.toml")).toEqual({

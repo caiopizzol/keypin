@@ -172,7 +172,7 @@ describe("keypin check", () => {
     expect(await cli(["check"], run.deps)).toBe(0);
     expect(sdk).toEqual(["list"]);
     expect(run.stdout.text).toContain(
-      "each item was found in its vault's item list, which holds no values, so its field isn't checked",
+      "items are looked up in each vault's item list, which holds no values, so no field is checked",
     );
 
     titles.pop();

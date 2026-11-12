@@ -101,6 +101,7 @@ async function build(folder: string, deps: Deps): Promise<Report> {
     report.local = result.local;
     report.add = result.add;
     report.problems.push(...result.problems);
+    report.notes.push(...result.notes);
   };
   if (!found) {
     report.problems.push(
@@ -142,7 +143,7 @@ async function build(folder: string, deps: Deps): Promise<Report> {
   const refs = distinctRefs(entries.map(({ entry }) => entry.ref));
   announce(deps.stderr, "the item IDs, not the values,", refs);
   report.notes.push(
-    "each item was found in its vault's item list, which holds no values, so its field isn't checked; keypin run and keypin publish --plan read it",
+    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields",
   );
   const items = new Map<string, ItemResult>();
   for (const ref of refs) items.set(refKey(ref), await checkItem(ref, deps));

@@ -176,12 +176,14 @@ describe("keypin check on a whole project", () => {
     expect(run.log).toEqual([]);
     expect(run.calls).toContain("github acme/billing as null");
     expect(run.calls).toContain(`worker ${ACCOUNT} billing-worker`);
-    expect(text).toContain(`Problems (4):
+    expect(text).toContain(`Problems (3):
   ${MAP} maps no keys yet; run keypin import for an env file, and add the TOML below for production
   STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and keypin.toml doesn't publish it there. Add the TOML below
   RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and keypin.toml doesn't publish it there. Add the TOML below
-  .env sets DATABASE_URL, RESEND_API_KEY, which keypin.toml doesn't map; run keypin import .env --vault <vault> --account <1Password sign-in address>
 `);
+    expect(text).toContain(
+      "  .env sets DATABASE_URL, RESEND_API_KEY, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env NAME... --vault <vault> --account <1Password sign-in address>\n",
+    );
     expect(text).not.toContain("GITHUB_TOKEN");
     expect(text).not.toContain("REGION");
     expect(added(text)).toBe(`[1password]
@@ -247,9 +249,28 @@ worker = "billing-worker"
       },
     ]);
     expect(data.problems).toEqual([
-      ".env sets DATABASE_URL, which keypin.toml doesn't map; run keypin import .env --vault <vault>",
       ".env sets RESEND_API_KEY, which keypin.toml maps with no dev entry; add a dev reference to each by hand",
     ]);
+    expect(data.notes).toContain(
+      ".env sets DATABASE_URL, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env NAME... --vault <vault>",
+    );
+  });
+
+  test("a plain setting left in an env file is a note, and check still exits 0", async () => {
+    const run = setup({
+      files: { [MAP]: PUBLISHED, [`${ROOT}/.env`]: `PORT=3000\n` },
+      github: { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+    });
+    expect(await cli(["check", "--json"], run.deps)).toBe(0);
+    const data = json(run.stdout.text);
+    expect(data.problems).toEqual([]);
+    expect(data.local).toEqual([
+      { file: ".env", tracked: false, unmapped: ["PORT"], elsewhere: [] },
+    ]);
+    expect(data.notes).toContain(
+      ".env sets PORT, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env NAME... --vault <vault>",
+    );
   });
 
   test("the TOML to add, pasted unfilled, fails with one line per <...> until replaced", async () => {
@@ -271,7 +292,7 @@ worker = "billing-worker"
     expect(data.problems[0]).toBe(
       `no keypin.toml in ${ROOT} or any folder above it; run keypin init, then keypin check again`,
     );
-    expect(data.problems).toHaveLength(4);
+    expect(data.problems).toHaveLength(3);
     expect(typeof data.add).toBe("string");
     expect(run.vault).toEqual([]);
     expect(run.disk.contents.has(MAP)).toBe(false);
@@ -346,9 +367,105 @@ prod = { from = "op://Private/billing prod stripe api key/password", publish = [
     expect(await cli(["check", "--json"], run.deps)).toBe(1);
     const data = json(run.stdout.text);
     expect(data.problems).toEqual([
-      'STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn\'t have it, and keypin.toml doesn\'t publish it there. Add { to = "github-actions", repo = "acme/billing" } to its publish list in keypin.toml',
+      'STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn\'t have it, and keypin.toml doesn\'t publish it there. Add { to = "github-actions", repo = "acme/billing" } to the publish list of prod in [keys.STRIPE_API_KEY] in keypin.toml',
     ]);
     expect(data.add).toBeNull();
+  });
+
+  test("a key whose prod entry is a bare reference gets the table to replace it with", async () => {
+    const ref = "op://Private/billing prod stripe api key/password";
+    const map = `[1password]
+account = "my.1password.com"
+
+[keys.STRIPE_API_KEY]
+rotate_every = "90d"
+prod = "${ref}"
+`;
+    const run = setup({
+      files: { [MAP]: map, [`${ROOT}/.env`]: null, [`${ROOT}/wrangler.toml`]: null },
+    });
+    expect(await cli(["check", "--json"], run.deps)).toBe(1);
+    const data = json(run.stdout.text);
+    const replaced = `prod = { from = "${ref}", publish = [{ to = "github-actions", repo = "acme/billing" }] }`;
+    expect(data.problems).toEqual([
+      `STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and keypin.toml doesn't publish it there. In [keys.STRIPE_API_KEY] in keypin.toml, replace prod = "${ref}" with ${replaced}`,
+    ]);
+    expect(data.add).toBeNull();
+    const edited = map.replace(`prod = "${ref}"`, replaced);
+    const parsed = parseMap(edited, MAP);
+    assert(parsed.ok);
+    expect(parsed.map.keys[0]?.environments.prod?.publish).toEqual([
+      { to: "github-actions", repo: "acme/billing", account: "acme" },
+    ]);
+  });
+
+  test("a lowercase map key gets publish commands in its own spelling", async () => {
+    const map = `[1password]
+account = "my.1password.com"
+
+[keys.stripe_api_key]
+rotate_every = "90d"
+
+[keys.stripe_api_key.prod]
+from = "op://Private/billing prod stripe api key/password"
+
+[[keys.stripe_api_key.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`;
+    const run = setup({
+      files: { [MAP]: map, [`${ROOT}/.env`]: null, [`${ROOT}/wrangler.toml`]: null },
+    });
+    expect(await cli(["check", "--json"], run.deps)).toBe(1);
+    expect(json(run.stdout.text).problems).toEqual([
+      "STRIPE_API_KEY: keypin.toml publishes it to acme/billing, which doesn't have it yet; run keypin publish stripe_api_key",
+    ]);
+  });
+
+  test("the same Worker name in two accounts is two places", async () => {
+    const other = "22222222222222222222222222222222";
+    const map = `${MAPPED}
+[keys.RESEND_API_KEY.prod]
+from = "op://Private/billing prod resend api key/password"
+
+[[keys.RESEND_API_KEY.prod.publish]]
+to = "cloudflare-worker"
+account = "${ACCOUNT}"
+worker = "billing-worker"
+`;
+    const run = setup({
+      files: {
+        [MAP]: map,
+        [`${ROOT}/.env`]: null,
+        [`${ROOT}/.github/workflows/deploy.yml`]: null,
+        [`${ROOT}/staging/wrangler.toml`]: `name = "billing-worker"\naccount_id = "${other}"\n\n[secrets]\nrequired = ["RESEND_API_KEY"]\n`,
+      },
+      deps: {
+        workerSecrets: async (account) => ({
+          ok: true,
+          secrets: account === ACCOUNT ? [{ name: "RESEND_API_KEY", updatedAt: null }] : [],
+        }),
+      },
+    });
+    run.disk.folders.add(`${ROOT}/staging`);
+    expect(await cli(["check", "--json"], run.deps)).toBe(1);
+    const data = json(run.stdout.text);
+    expect(data.production).toEqual([
+      expect.objectContaining({
+        place: `the Worker billing-worker in account ${other}`,
+        usedBy: ["staging/wrangler.toml"],
+        mapped: null,
+        holds: false,
+      }),
+      expect.objectContaining({
+        place: `the Worker billing-worker in account ${ACCOUNT}`,
+        usedBy: ["wrangler.toml"],
+        mapped: "prod",
+        holds: true,
+        ok: true,
+      }),
+    ]);
+    expect(data.add).toContain(`account = "${other}"\nworker = "billing-worker"`);
   });
 
   test("an unreadable repo or Worker is unknown, never missing", async () => {
@@ -446,11 +563,90 @@ jobs:
       workflows: [".github/workflows/deploy.yml"],
       notScanned: ["nested"],
     });
-    expect(data.problems).toContain(
-      "web/.env.local sets VITE_KEY, which keypin.toml doesn't map; run keypin import web/.env.local --vault <vault>",
+    expect(data.notes).toContain(
+      "web/.env.local sets VITE_KEY, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import web/.env.local NAME... --vault <vault>",
     );
     expect(run.stdout.text).not.toContain("IGNORED");
     expect(run.stdout.text).not.toContain("NESTED");
+  });
+
+  test("an unreadable folder or file is unknown, and the rest of the report still prints", async () => {
+    const denied = (path: string) =>
+      Object.assign(new Error(`EACCES: permission denied, open '${path}'`), { code: "EACCES" });
+    const run = setup({
+      files: {
+        [MAP]: PUBLISHED,
+        [`${ROOT}/private/data.bin`]: "x",
+        [`${ROOT}/web/.env.local`]: `VITE_KEY=${SENTINEL}\n`,
+      },
+      github: { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+    });
+    for (const folder of ["private", "web"]) run.disk.folders.add(`${ROOT}/${folder}`);
+    const listFolder = run.deps.listFolder.bind(run.deps);
+    const read = run.deps.files.read.bind(run.deps.files);
+    run.deps.listFolder = async (path) => {
+      if (path === `${ROOT}/private`) throw denied(path);
+      return listFolder(path);
+    };
+    run.deps.files = {
+      ...run.deps.files,
+      read: async (path) => {
+        if (path === `${ROOT}/web/.env.local`) throw denied(path);
+        return read(path);
+      },
+    };
+    expect(await cli(["check", "--json"], run.deps)).toBe(0);
+    const data = json(run.stdout.text);
+    expect(data.unknown).toEqual([
+      {
+        what: "the env files and wrangler configs in private",
+        reason: `it couldn't be read: EACCES: permission denied, open '${ROOT}/private'`,
+      },
+      {
+        what: "the names in web/.env.local",
+        reason: `it couldn't be read: EACCES: permission denied, open '${ROOT}/web/.env.local'`,
+      },
+    ]);
+    expect(data.production).toHaveLength(2);
+    expect(run.vault).toHaveLength(4);
+  });
+
+  test("a workflow that passes secrets on is unknown, and check reads the repo's secrets", async () => {
+    const run = setup({
+      files: {
+        [MAP]: MAPPED,
+        [`${ROOT}/.env`]: null,
+        [`${ROOT}/wrangler.toml`]: null,
+        [`${ROOT}/.github/workflows/deploy.yml`]: `
+on: push
+jobs:
+  deploy:
+    uses: ./.github/workflows/reusable.yml
+    secrets: inherit
+`,
+      },
+      github: {
+        ok: true,
+        secrets: [
+          { name: "STRIPE_API_KEY", updatedAt: null },
+          { name: "RESEND_API_KEY", updatedAt: null },
+        ],
+      },
+    });
+    expect(await cli(["check", "--json"], run.deps)).toBe(0);
+    expect(run.calls).toContain("github acme/billing as null");
+    const data = json(run.stdout.text);
+    expect(data.unknown).toEqual([
+      {
+        what: "every secret .github/workflows/deploy.yml uses",
+        reason:
+          "it passes secrets on (secrets: inherit or toJSON(secrets)), so check can't tell which",
+      },
+    ]);
+    expect(data.notes).toContain(
+      "acme/billing has STRIPE_API_KEY, RESEND_API_KEY, which no workflow names and keypin.toml doesn't publish there; a workflow that passes secrets on may use them",
+    );
   });
 
   test("Worker list entries with text or key material never reach the output", async () => {
@@ -477,7 +673,11 @@ jobs:
         deps: { workerSecrets: (account, worker) => reader.listWorkerSecrets(account, worker) },
       });
       await cli(["check", ...flag], run.deps);
-      expect(run.stdout.text).toContain("RESEND_API_KEY");
+      expect(run.stdout.text).toContain(
+        flag.length
+          ? '"place": "the Worker billing-worker",\n      "usedBy": [\n        "wrangler.toml"\n      ],\n      "mapped": null,\n      "holds": true'
+          : "RESEND_API_KEY in the Worker billing-worker (wrangler.toml): has it, not in keypin.toml",
+      );
       expect(leaks(...run.everything())).toBe(false);
     }
   });

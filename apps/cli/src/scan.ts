@@ -27,14 +27,14 @@ export interface ScanResult {
 
 export async function scanProject(deps: Deps, root: string): Promise<ScanResult> {
   const unknowns: Unknown[] = [];
-  const found = await walk(deps, root);
+  const found = await walk(deps, root, unknowns);
 
   const tracked = await trackedFiles(deps, root, found.envFiles);
   const envFiles: ProjectScan["envFiles"] = [];
   for (const path of found.envFiles) {
     const kind = envFileKind(basename(path));
     if (!kind) continue;
-    const text = await deps.files.read(join(root, path));
+    const text = await readSource(deps, root, path, unknowns);
     if (text === null) continue;
     envFiles.push({ path, kind, names: envNames(text), tracked: tracked?.has(path) ?? null });
   }
@@ -49,7 +49,7 @@ export async function scanProject(deps: Deps, root: string): Promise<ScanResult>
 
   const workers: ProjectScan["workers"] = [];
   for (const config of found.wrangler) {
-    const text = await deps.files.read(join(root, config));
+    const text = await readSource(deps, root, config, unknowns);
     if (text === null) continue;
     const parsed = wranglerWorkers(text, config);
     if (!parsed.ok) {
@@ -77,7 +77,16 @@ export async function scanProject(deps: Deps, root: string): Promise<ScanResult>
     }
   }
 
-  const uses = workflows.some((w) => w.refs.secrets.some((name) => !name.startsWith("GITHUB_")));
+  for (const workflow of workflows)
+    if (workflow.refs.hidesUses)
+      unknowns.push({
+        what: `every secret ${workflow.path} uses`,
+        reason:
+          "it passes secrets on (secrets: inherit or toJSON(secrets)), so check can't tell which",
+      });
+  const uses = workflows.some(
+    (w) => w.refs.hidesUses || w.refs.secrets.some((name) => !name.startsWith("GITHUB_")),
+  );
   const origin = top ? await githubOrigin(deps, root) : null;
   const github: ProjectScan["github"] = { repo: null, read: null };
   let login: string | null = null;
@@ -117,16 +126,24 @@ export async function scanProject(deps: Deps, root: string): Promise<ScanResult>
   };
 }
 
-async function walk(deps: Deps, root: string) {
+async function walk(deps: Deps, root: string, unknowns: Unknown[]) {
   const found: { envFiles: string[]; wrangler: string[]; nested: string[] } = {
     envFiles: [],
     wrangler: [],
     nested: [],
   };
   const visit = async (folder: string) => {
-    const entries = (await deps.listFolder(folder)).toSorted((a, b) =>
-      a.name.localeCompare(b.name),
-    );
+    let listed: Awaited<ReturnType<Deps["listFolder"]>>;
+    try {
+      listed = await deps.listFolder(folder);
+    } catch (error) {
+      unknowns.push({
+        what: `the env files and wrangler configs in ${relative(root, folder) || "."}`,
+        reason: `it couldn't be read: ${messageOf(error)}`,
+      });
+      return;
+    }
+    const entries = listed.toSorted((a, b) => a.name.localeCompare(b.name));
     if (folder !== root && entries.some((e) => e.name === ".git")) {
       found.nested.push(relative(root, folder));
       return;
@@ -143,6 +160,23 @@ async function walk(deps: Deps, root: string) {
   };
   await visit(root);
   return found;
+}
+
+async function readSource(
+  deps: Deps,
+  root: string,
+  path: string,
+  unknowns: Unknown[],
+): Promise<string | null> {
+  try {
+    return await deps.files.read(join(root, path));
+  } catch (error) {
+    unknowns.push({
+      what: `the names in ${path}`,
+      reason: `it couldn't be read: ${messageOf(error)}`,
+    });
+    return null;
+  }
 }
 
 async function trackedFiles(
@@ -172,9 +206,9 @@ async function readWorkflows(deps: Deps, root: string, top: string | null, unkno
   const workflows: ProjectScan["workflows"] = [];
   for (const entry of entries.toSorted((a, b) => a.name.localeCompare(b.name))) {
     if (entry.kind !== "file" || !/\.ya?ml$/.test(entry.name)) continue;
-    const text = await deps.files.read(join(dir, entry.name));
-    if (text === null) continue;
     const path = relative(root, join(dir, entry.name));
+    const text = await readSource(deps, root, path, unknowns);
+    if (text === null) continue;
     const refs = workflowRefs(text);
     if (refs) workflows.push({ path, refs });
     else unknowns.push({ what: `the secrets ${path} uses`, reason: "it isn't valid YAML" });

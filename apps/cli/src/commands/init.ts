@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { register } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
 import { projectCount, registryPath } from "../paths";
+import { shellWord } from "../publishing";
 import { MAP_FILE } from "../project";
 
 export const TEMPLATE = `# keypin.toml: this project's keys. It holds names and places, never values.
@@ -49,7 +50,7 @@ export async function init(args: string[], deps: Deps): Promise<number> {
 
   await registerProject(deps, folder);
   deps.stderr.write(
-    `keypin: next, run keypin check${folder === deps.cwd ? "" : ` ${folder}`} for what this project uses and the TOML to add\n`,
+    `keypin: next, run keypin check${folder === deps.cwd ? "" : ` ${shellWord(folder)}`} for what this project uses and the TOML to add\n`,
   );
   return 0;
 }

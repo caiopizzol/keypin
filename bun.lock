@@ -70,6 +70,15 @@
         "@keypin/core": "workspace:*",
       },
     },
+    "verification/agents": {
+      "name": "@keypin/agent-sandbox",
+      "dependencies": {
+        "@keypin/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "1.4.4",
+      },
+    },
   },
   "overrides": {
     "vite": "catalog:",
@@ -96,6 +105,8 @@
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.6.0", "", {}, "sha512-T7jf+5zgsZHwNJ4lvQ7/aezbyk0nNX+zJVWpmHA7VYsEx7a7qr5Rg5IbtJFqkgze5Y2sruq1RUY8Q837Od7iFw=="],
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
+
+    "@keypin/agent-sandbox": ["@keypin/agent-sandbox@workspace:verification/agents"],
 
     "@keypin/cli": ["@keypin/cli@workspace:apps/cli"],
 

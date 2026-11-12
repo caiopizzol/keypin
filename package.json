@@ -14,7 +14,8 @@
   },
   "workspaces": [
     "packages/*",
-    "apps/*"
+    "apps/*",
+    "verification/agents"
   ],
   "type": "module",
   "scripts": {

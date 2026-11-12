@@ -1,0 +1,14 @@
+{
+  "name": "@keypin/agent-sandbox",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@keypin/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.4"
+  }
+}

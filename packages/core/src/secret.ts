@@ -11,6 +11,18 @@ export class Secret {
     return this.#value;
   }
 
+  equals(other: Secret): boolean {
+    return this.#value === other.#value;
+  }
+
+  isEmpty(): boolean {
+    return !this.#value;
+  }
+
+  includes(text: string): boolean {
+    return this.#value.includes(text);
+  }
+
   toString(): string {
     return HIDDEN;
   }

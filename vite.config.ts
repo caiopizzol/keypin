@@ -13,6 +13,7 @@ export default defineConfig({
     rules: {
       "vite-plus/prefer-vite-plus-imports": "error",
       "keypin/no-comments": "error",
+      "keypin/no-reveal": "error",
       "typescript/no-explicit-any": "error",
       "typescript/consistent-type-assertions": ["error", { assertionStyle: "never" }],
       "typescript/no-non-null-assertion": "error",

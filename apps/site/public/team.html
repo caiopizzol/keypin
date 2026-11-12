@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>keypin · using keypin with a team</title>
+    <meta name="description" content="Using keypin with a team? Tell us, so we can build for it." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/team.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <a href="/" aria-label="keypin home">
+        <svg class="logo" viewBox="0 0 24 24" aria-hidden="true">
+          <rect
+            x="0.25"
+            y="0.25"
+            width="23.5"
+            height="23.5"
+            rx="3"
+            fill="#F4F3EE"
+            stroke="#C9C7BD"
+            stroke-width="0.5"
+          />
+          <g transform="translate(4 4)" shape-rendering="crispEdges">
+            <rect x="1" y="5" width="6" height="2" fill="#121311" />
+            <rect x="1" y="9" width="6" height="2" fill="#121311" />
+            <rect x="1" y="7" width="2" height="2" fill="#121311" />
+            <rect x="5" y="7" width="2" height="2" fill="#121311" />
+            <rect x="7" y="7" width="3" height="2" fill="#121311" />
+            <rect x="9" y="9" width="2" height="2" fill="#0B6E36" />
+            <rect x="11" y="7" width="2" height="2" fill="#0B6E36" />
+            <rect x="13" y="5" width="2" height="2" fill="#0B6E36" />
+          </g>
+        </svg>
+      </a>
+      <h1>keypin</h1>
+      <p class="tag">Using keypin with a team? Tell us, so we can build for it.</p>
+
+      <p id="status" class="status" role="status" aria-live="polite">Loading…</p>
+
+      <section id="signed-out" class="panel" hidden>
+        <button type="button" id="sign-in" class="btn primary">Sign in with GitHub</button>
+      </section>
+
+      <form id="form" class="panel" hidden>
+        <h2 tabindex="-1">How do you use keypin?</h2>
+        <fieldset>
+          <legend>I use it</legend>
+          <label><input type="radio" name="use" value="solo" required /> On my own</label>
+          <label><input type="radio" name="use" value="team" /> With a team</label>
+        </fieldset>
+        <fieldset id="size" hidden>
+          <legend>Team size</legend>
+          <label><input type="radio" name="teamSize" value="2-10" /> 2 to 10 people</label>
+          <label><input type="radio" name="teamSize" value="11-50" /> 11 to 50 people</label>
+          <label><input type="radio" name="teamSize" value="51+" /> 51 or more</label>
+        </fieldset>
+        <label for="note"
+          >Anything else? <span class="hint">Optional, up to 500 characters.</span></label
+        >
+        <textarea id="note" name="note" maxlength="500" rows="4"></textarea>
+        <p class="hint">We store your GitHub username, your email and these answers.</p>
+        <div class="actions">
+          <button type="submit" class="btn primary">Send</button>
+          <button type="button" id="cancel" class="btn" hidden>Cancel</button>
+          <button type="button" class="btn sign-out">Sign out</button>
+        </div>
+      </form>
+
+      <section id="stored" class="panel" hidden>
+        <h2 tabindex="-1">What we store</h2>
+        <dl id="fields"></dl>
+        <div class="actions">
+          <button type="button" id="update" class="btn">Update</button>
+          <button type="button" id="delete" class="btn">Delete my sign-up</button>
+          <button type="button" class="btn sign-out">Sign out</button>
+        </div>
+      </section>
+    </main>
+    <footer>
+      <span>keypin · MIT</span><a href="https://github.com/caiopizzol/keypin#readme">README</a>
+    </footer>
+  </body>
+</html>

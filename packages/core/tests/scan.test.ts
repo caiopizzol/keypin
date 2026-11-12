@@ -288,6 +288,7 @@ describe("wrangler configs", () => {
     "queue": { "routes": [], "queues": { "consumers": [{ "queue": "jobs" }] } },
     "preview": { "routes": [], "preview_urls": true },
     "workflow": { "routes": [], "workflows": [{ "name": "jobs", "binding": "JOBS", "class_name": "Jobs" }] },
+    "bound": { "routes": [], "workflows": [{ "name": "jobs", "binding": "JOBS", "class_name": "Jobs", "script_name": "other" }] },
   },
 }`,
       "wrangler.json",

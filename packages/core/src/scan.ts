@@ -237,7 +237,7 @@ function localOnly(top: Record<string, unknown>, env: Record<string, unknown>): 
     inherit("preview_urls") !== true &&
     !listed(inherit("triggers"), "crons") &&
     !listed(env.queues, "consumers") &&
-    !(Array.isArray(env.workflows) && env.workflows.length > 0)
+    !(Array.isArray(env.workflows) && env.workflows.some((w) => !isRecord(w) || !w.script_name))
   );
 }
 

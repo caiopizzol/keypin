@@ -313,6 +313,12 @@ prod = { from = "op://Private/web prod session secret/password", publish = [
 export const registryWith = (...projects: string[]) =>
   JSON.stringify({ version: 1, projects, shared: [] });
 
+export const ESC = "\x1b";
+
+export function unstyled(text: string): string {
+  return text.replaceAll(new RegExp(`${ESC}\\[[0-9;]*m`, "g"), "");
+}
+
 export function leaks(...texts: string[]): boolean {
   return texts.some((t) => t.includes(SENTINEL));
 }

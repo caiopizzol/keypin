@@ -2,7 +2,7 @@ import { assert, describe, expect, test } from "vite-plus/test";
 import { loadRegistry, parseMap } from "@keypin/core";
 import { cli } from "../src/cli";
 import { TEMPLATE } from "../src/commands/init";
-import { fakeDeps, REGISTRY } from "./fakes";
+import { fakeDeps, REGISTRY, unstyled } from "./fakes";
 
 const VAULT = {
   kind: "1password",
@@ -25,18 +25,43 @@ describe("keypin init", () => {
   test("registers the current folder, writes the template, and points at check", async () => {
     const { deps, disk, stderr } = fakeDeps();
     expect(await cli(["init"], deps)).toBe(0);
-    expect(stderr.text).toContain(
-      "keypin: next, run keypin check for what this project uses and the TOML to add\n",
+    expect(stderr.text).toBe(
+      [
+        "ok     wrote /work/billing/keypin.toml",
+        "ok     registered (1 project)",
+        "",
+        "Next: keypin check  what this project uses, and the TOML to add",
+        "",
+      ].join("\n"),
     );
     expect(disk.contents.get("/work/billing/keypin.toml")).toBe(TEMPLATE);
     expect((await loadRegistry(disk.files, REGISTRY)).projects).toEqual(["/work/billing"]);
+  });
+
+  test("in a terminal, marks each line with a check and shortens the home folder", async () => {
+    const { deps, disk, stderr } = fakeDeps({
+      deps: { cwd: "/home/me/code/shop", styled: { stdout: true, stderr: true } },
+    });
+    disk.folders.add("/home/me/code/shop");
+    expect(await cli(["init"], deps)).toBe(0);
+    const plain = unstyled(stderr.text);
+    expect(plain).toBe(
+      [
+        "✓ wrote ~/code/shop/keypin.toml",
+        "✓ registered (1 project)",
+        "",
+        "Next: keypin check  what this project uses, and the TOML to add",
+        "",
+      ].join("\n"),
+    );
+    expect(stderr.text).not.toContain("keypin:");
   });
 
   test("quotes a folder with a space in the check command it suggests", async () => {
     const { deps, disk, stderr } = fakeDeps();
     disk.folders.add("/work/my project");
     expect(await cli(["init", "/work/my project"], deps)).toBe(0);
-    expect(stderr.text).toContain("keypin: next, run keypin check '/work/my project' for");
+    expect(stderr.text).toContain("\nNext: keypin check '/work/my project'  what this");
   });
 
   test("the template is comments only and parses as an empty map", () => {
@@ -106,9 +131,9 @@ describe("keypin init", () => {
   test("counts one project in the singular, more in the plural", async () => {
     const { deps, stderr } = fakeDeps();
     await cli(["init"], deps);
-    expect(stderr.text).toContain(`/work/billing is registered (1 project in ${REGISTRY})`);
+    expect(stderr.text).toContain("registered (1 project)\n");
     await cli(["init", "/work/web"], deps);
-    expect(stderr.text).toContain(`/work/web is registered (2 projects in ${REGISTRY})`);
+    expect(stderr.text).toContain("registered (2 projects)\n");
   });
 
   test("registers a folder given as an argument, relative to the current folder", async () => {
@@ -131,7 +156,8 @@ describe("keypin init", () => {
     disk.contents.set("/work/billing/keypin.toml", "# mine\n");
     expect(await cli(["init"], deps)).toBe(0);
     expect(disk.contents.get("/work/billing/keypin.toml")).toBe("# mine\n");
-    expect(stderr.text).toContain("exists; left it as it is");
+    expect(stderr.text).toContain("ok     /work/billing/keypin.toml exists; left it as it is\n");
+    expect(stderr.text).not.toContain("FAILED");
   });
 
   test("running it twice is harmless", async () => {

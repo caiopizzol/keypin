@@ -19,9 +19,8 @@ import {
 import { type Deps, localDay, UsageError } from "../deps";
 import { messageOf } from "../errors";
 import { MAP_FILE } from "../project";
-import { confirm } from "../output";
+import { confirm, type Output, output } from "../output";
 import { NEEDS_APPROVAL, rerun } from "../publishing";
-import { announce } from "../vault";
 import { registerProject, TEMPLATE } from "./init";
 
 const ROTATE_EVERY = "90d";
@@ -61,11 +60,14 @@ interface Target {
   account: string;
 }
 
+const APPROVE = "1Password may be asking you to approve keypin";
+
 const DOLLAR = "the value has a $, which some loaders expand to another variable's value";
 
 export async function importEnv(args: string[], deps: Deps): Promise<number> {
   const request = parseRequest(args);
-  const say = (text: string) => deps.stderr.write(`${text}\n`);
+  const out = output(deps.stderr, deps.styled.stderr, deps.columns);
+  const say = (text: string) => out.line(text);
   const envPath = resolve(deps.cwd, request.envFile);
   if (envFileKind(basename(envPath)) === "expected")
     throw new UsageError(`${envPath} is an example file; import the file that sets the values`);
@@ -143,6 +145,9 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
     }
   }
 
+  say(
+    `\n${out.bold("Import")} ${envPath}  ${out.dim(`into 1Password account ${target.account}, vault ${request.vault}`)}`,
+  );
   let imports = planned;
   const stored: Import[] = [];
   if (planned.length) {
@@ -154,17 +159,38 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
         `adding the keys to ${target.file} wouldn't parse, so nothing was created: ${check.errors.join("; ")}`,
       );
     const scope = { kind: "1password" as const, account: target.account, vault: request.vault };
-    say(
-      `keypin: listing the items in vault ${request.vault} of 1Password account ${target.account}`,
+    const where = `vault ${request.vault} of 1Password account ${target.account}`;
+    const titles = await out.step(
+      `Listing the items in ${where}, not the values`,
+      async () => new Set((await deps.vault().list(scope)).map((i) => i.title.toLowerCase())),
+      () => ({ ok: true, text: `Listed the items in ${where}, not the values` }),
+      APPROVE,
     );
-    const titles = new Set((await deps.vault().list(scope)).map((i) => i.title.toLowerCase()));
-    imports = [];
-    for (const entry of planned) {
-      if (!titles.has(entry.ref.item.toLowerCase())) {
-        imports.push(entry);
-        continue;
-      }
-      const problem = await existingProblem(deps, entry);
+    const found = planned.filter((entry) => titles.has(entry.ref.item.toLowerCase()));
+    imports = planned.filter((entry) => !found.includes(entry));
+    const problems = new Map<Import, string | null>();
+    const existing = `${count(found.length, "item")} that already ${found.length === 1 ? "exists" : "exist"}, to compare with the file`;
+    if (found.length)
+      await out.step(
+        `Reading ${existing}`,
+        async () => {
+          let unread = 0;
+          for (const entry of found) {
+            try {
+              const value = await deps.vault().read(entry.ref);
+              problems.set(entry, value.equals(entry.value) ? null : "with another value");
+            } catch (error) {
+              unread++;
+              problems.set(entry, `and couldn't be read (${messageOf(error)})`);
+            }
+          }
+          return unread;
+        },
+        (unread) => ({ ok: !unread, text: `Read ${existing}` }),
+        APPROVE,
+      );
+    for (const entry of found) {
+      const problem = problems.get(entry) ?? null;
       if (problem === null) stored.push(entry);
       else
         skips.push({
@@ -176,21 +202,11 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
     }
   }
 
-  skips = await compareMapped(deps, skips);
+  skips = await compareMapped(deps, out, skips);
 
   const today = localDay(deps.now());
-  say(`Import ${envPath} into 1Password account ${target.account}, vault ${request.vault}:`);
-  for (const { name, ref } of imports)
-    say(
-      `  create "${ref.item}" (password, rotated ${today}), and map ${name} to ${formatReference(ref)}`,
-    );
-  if (!imports.length) say("  nothing to create");
-  for (const { name, ref } of stored)
-    say(`  map ${name} to ${formatReference(ref)}, an item that exists with the same value`);
-  if (skips.length) {
-    say("Skipped:");
-    for (const skip of skips) say(`  ${skip.name}: ${skip.reason}`);
-  }
+  say(`\n${out.bold("Plan")}`);
+  for (const row of planRows(imports, stored, skips, today, out)) say(`  ${row}`);
   const existed = skips.some((skip) => skip.exists);
   if (!imports.length && !stored.length) {
     say(`Nothing was imported, and ${target.file} wasn't changed.`);
@@ -212,13 +228,18 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
   if (imports.length && !(await confirmed(deps, request, imports.length))) return NEEDS_APPROVAL;
 
   const created: Import[] = [];
+  if (imports.length) say("");
   for (const entry of imports) {
     try {
-      await deps.vault().write(entry.ref, entry.value, { rotated: today, newItem: true });
+      await out.step(
+        `Creating "${entry.ref.item}" in vault ${request.vault}`,
+        () => deps.vault().write(entry.ref, entry.value, { rotated: today, newItem: true }),
+        () => ({ ok: true, text: `Created "${entry.ref.item}" in vault ${request.vault}` }),
+        APPROVE,
+      );
       created.push(entry);
-      say(`  created "${entry.ref.item}"`);
     } catch (error) {
-      say(`  FAILED "${entry.ref.item}": ${messageOf(error)}`);
+      say(`    ${messageOf(error)}`);
       break;
     }
   }
@@ -231,7 +252,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
   try {
     await writeMap(deps, target, mapped, environment);
   } catch (error) {
-    say(`keypin: ${messageOf(error)}`);
+    say(`${out.mark(false)} ${messageOf(error)}`);
     say(
       target.map
         ? `The items are in 1Password. Add this at the end of ${target.file} by hand:`
@@ -240,8 +261,9 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
     deps.stdout.write(mapAddition(target, mapped, environment));
     return 1;
   }
-  say(`keypin: mapped ${names(mapped.map((i) => i.name))} in ${target.file}`);
+  say(`${out.mark(true)} Mapped ${names(mapped.map((i) => i.name))} in ${target.file}`);
   if (!target.map) await registerProject(deps, deps.cwd);
+  say("");
 
   const left = [...skips.filter((skip) => skip.onlyInFile).map((skip) => skip.name), ...failed];
   const done = new Set([
@@ -258,7 +280,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
   );
   if (left.length)
     say(
-      `${names(left)} ${left.length === 1 ? "is" : "are"} still only in that file, for the reason under Skipped.`,
+      `${names(left)} ${left.length === 1 ? "is" : "are"} still only in that file, for the reason in the plan.`,
     );
   if (basename(envPath).startsWith(".dev.vars"))
     say(
@@ -279,11 +301,52 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
   return failed.length || existed ? 1 : 0;
 }
 
-async function compareMapped(deps: Deps, skips: readonly Skip[]): Promise<Skip[]> {
+function planRows(
+  imports: readonly Import[],
+  stored: readonly Import[],
+  skips: readonly Skip[],
+  today: string,
+  out: Output,
+): string[] {
+  const width = Math.max(0, ...[...imports, ...stored, ...skips].map((row) => row.name.length));
+  const refs = [...imports, ...stored].map((entry) => formatReference(entry.ref));
+  const refWidth = Math.max(0, ...refs.map((ref) => ref.length));
+  const planned = (mark: string, entry: Import, why: string) =>
+    `${mark} ${entry.name.padEnd(width)}  ${formatReference(entry.ref).padEnd(refWidth)}  ${why}`;
+  return [
+    ...imports.map((entry) => planned("+", entry, `create, rotated ${today}`)),
+    ...(imports.length ? [] : [out.dim("nothing to create")]),
+    ...stored.map((entry) => planned("=", entry, "exists with the same value; map it")),
+    ...skips.map((skip) => {
+      const text = `- ${skip.name.padEnd(width)}  skipped: ${skip.reason}`;
+      return skip.exists ? text : out.dim(text);
+    }),
+  ];
+}
+
+async function compareMapped(deps: Deps, out: Output, skips: readonly Skip[]): Promise<Skip[]> {
   const refs = skips.flatMap((skip) => (skip.mapped ? [skip.mapped.ref] : []));
   if (!refs.length) return [...skips];
-  announce(deps.stderr, "the mapped values, to compare with the file", refs);
+  const accounts = [...new Set(refs.map((ref) => ref.account))].join(", ");
+  const values = `${count(refs.length, "mapped value")} from 1Password account ${accounts}, to compare with the file`;
+  const { compared } = await out.step(
+    `Reading ${values}`,
+    () => compareEach(deps, skips),
+    ({ unread }) => ({
+      ok: !unread,
+      text: `Read ${values}  ${out.dim(refs.map(formatReference).join(", "))}`,
+    }),
+    APPROVE,
+  );
+  return compared;
+}
+
+async function compareEach(
+  deps: Deps,
+  skips: readonly Skip[],
+): Promise<{ compared: Skip[]; unread: number }> {
   const compared: Skip[] = [];
+  let unread = 0;
   for (const skip of skips) {
     if (!skip.mapped) {
       compared.push(skip);
@@ -298,6 +361,7 @@ async function compareMapped(deps: Deps, skips: readonly Skip[]): Promise<Skip[]
         onlyInFile: !same,
       });
     } catch (error) {
+      unread++;
       compared.push({
         ...skip,
         reason: `${skip.reason}, and ${formatReference(ref)} couldn't be read to compare: ${messageOf(error)}`,
@@ -305,16 +369,7 @@ async function compareMapped(deps: Deps, skips: readonly Skip[]): Promise<Skip[]
       });
     }
   }
-  return compared;
-}
-
-async function existingProblem(deps: Deps, entry: Import): Promise<string | null> {
-  try {
-    const value = await deps.vault().read(entry.ref);
-    return value.equals(entry.value) ? null : "with another value";
-  } catch (error) {
-    return `and couldn't be read (${messageOf(error)})`;
-  }
+  return { compared, unread };
 }
 
 function selected(

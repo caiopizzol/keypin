@@ -188,6 +188,15 @@ describe("output", () => {
     }
   });
 
+  test("a warning is one line with a mark, and plain without styling", () => {
+    const plainOut = writer();
+    output(plainOut, false).warn(".env still holds a copy");
+    expect(plainOut.text()).toBe("warn   .env still holds a copy\n");
+    const styledOut = writer();
+    output(styledOut, true).warn(".env still holds a copy");
+    expect(styledOut.text()).toBe(`${ESC}[33m!${ESC}[0m .env still holds a copy\n`);
+  });
+
   test("confirm takes y or yes in any case, and anything else is no", async () => {
     const answers = async (answer: string) => confirm({ ask: async () => answer }, "Write?");
     for (const yes of ["y", "Y", "yes", " YES "]) expect(await answers(yes)).toBe(true);

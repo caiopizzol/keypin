@@ -124,7 +124,7 @@ async function publishLocked(
 ): Promise<number> {
   const { environment } = request;
   const many = request.keyId === null;
-  const out = output(deps.stderr, deps.styled);
+  const out = output(deps.stderr, deps.styled, deps.columns);
   const say = (text: string) => out.line(text);
   const jobs = jobsFor(request, map, say);
   if (many && !jobs.length) {

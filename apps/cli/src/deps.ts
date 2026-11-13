@@ -66,6 +66,7 @@ export interface Deps {
   lock: Lock;
   isTerminal: boolean;
   styled: boolean;
+  columns: () => number;
   ask(question: string): Promise<string>;
 }
 

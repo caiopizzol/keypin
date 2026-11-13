@@ -118,7 +118,9 @@ describe("keypin publish", () => {
   test("before any approval prompt it names the key, item and every destination", async () => {
     const run = setup({ terminal: "no" });
     await cli(["publish", "STRIPE_API_KEY"], run.deps);
-    const beforeRead = run.stderr.text.split("Read 1 value")[0] ?? "";
+    const readAt = run.stderr.text.indexOf("Read 1 value");
+    expect(readAt).toBeGreaterThan(0);
+    const beforeRead = run.stderr.text.slice(0, readAt);
     expect(beforeRead).toContain(
       "STRIPE_API_KEY prod  from op://Private/billing stripe api key/password in 1Password account my.1password.com",
     );

@@ -257,6 +257,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
     lock: memoryLock(disk),
     isTerminal: false,
     styled: false,
+    columns: () => 80,
     ask: async () => {
       throw new Error("this test asks nothing");
     },

@@ -1,7 +1,11 @@
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 import { confirm, isStyled, output } from "../src/output";
 
 const ESC = "\x1b";
+
+function plain(text: string): string {
+  return text.replaceAll(new RegExp(`${ESC}\\[[0-9;]*m`, "g"), "");
+}
 
 function writer() {
   let text = "";
@@ -54,6 +58,47 @@ describe("output", () => {
       ),
     ).rejects.toThrow("HTTP 500");
     expect(stderr.text().replaceAll(ESC, "ESC")).toMatch(/✗ESC\[0m Writing {2}.*\n$/);
+  });
+
+  test("without styling, a failed step still prints its label and FAILED", async () => {
+    const stderr = writer();
+    const out = output(stderr, false);
+    await expect(
+      out.step(
+        "GitHub  acme/billing  checking the account",
+        () => Promise.reject(new Error("fetch failed")),
+        () => ({ ok: true, text: "" }),
+      ),
+    ).rejects.toThrow("fetch failed");
+    expect(stderr.text()).toBe("FAILED GitHub  acme/billing  checking the account\n");
+  });
+
+  test("a spinner frame never wraps, so each redraw replaces the whole frame", async () => {
+    vi.useFakeTimers();
+    try {
+      const stderr = writer();
+      const out = output(stderr, true, () => 80);
+      const running = "Reading 1 value from 1Password account my.1password.com";
+      const hint = "1Password may be asking you to approve keypin";
+      let finish = () => {};
+      const step = out.step(
+        running,
+        () => new Promise<void>((resolve) => (finish = resolve)),
+        () => ({ ok: true, text: "Read" }),
+        hint,
+      );
+      vi.advanceTimersByTime(1500);
+      finish();
+      await step;
+      const frames = stderr
+        .text()
+        .split(`\r${ESC}[2K`)
+        .filter((frame) => frame && !frame.endsWith("\n"));
+      expect(frames.some((frame) => plain(frame).includes("1Password may"))).toBe(true);
+      for (const frame of frames) expect(plain(frame).length).toBeLessThanOrEqual(79);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("confirm takes y or yes in any case, and anything else is no", async () => {

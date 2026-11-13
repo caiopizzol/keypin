@@ -29,7 +29,7 @@ export function isStyled(
   return Boolean(isTTY) && env.NO_COLOR === undefined && env.TERM !== "dumb";
 }
 
-export function output(stderr: Writer, styled: boolean): Output {
+export function output(stderr: Writer, styled: boolean, columns = () => 80): Output {
   const paint = (code: string) => (text: string) => (styled ? `\x1b[${code}m${text}\x1b[0m` : text);
   const green = paint("32");
   const red = paint("1;31");
@@ -44,16 +44,24 @@ export function output(stderr: Writer, styled: boolean): Output {
     slow?: string,
   ): Promise<T> {
     if (!styled) {
-      const result = await work();
-      const { ok, text } = done(result);
-      line(`${mark(ok)} ${text}`);
-      return result;
+      try {
+        const result = await work();
+        const { ok, text } = done(result);
+        line(`${mark(ok)} ${text}`);
+        return result;
+      } catch (error) {
+        line(`${mark(false)} ${running}`);
+        throw error;
+      }
     }
     const started = Date.now();
     let frame = 0;
     const draw = () => {
-      const hint = slow && Date.now() - started > SLOW_MS ? dim(`  ${slow}`) : "";
-      stderr.write(`\r\x1b[2K${green(FRAMES[frame++ % FRAMES.length] ?? "")} ${running}${hint}`);
+      const hint = slow && Date.now() - started > SLOW_MS ? `  ${slow}` : "";
+      const text = fit(`${running}${hint}`, columns() - 3);
+      const shown =
+        text.length > running.length ? `${running}${dim(text.slice(running.length))}` : text;
+      stderr.write(`\r\x1b[2K${green(FRAMES[frame++ % FRAMES.length] ?? "")} ${shown}`);
     };
     draw();
     const timer = setInterval(draw, TICK_MS);
@@ -85,6 +93,10 @@ export function columns(rows: readonly (readonly string[])[]): string[][] {
   for (const row of rows)
     row.forEach((cell, i) => (widths[i] = Math.max(widths[i] ?? 0, cell.length)));
   return rows.map((row) => row.map((cell, i) => cell.padEnd(widths[i] ?? 0)));
+}
+
+function fit(text: string, width: number): string {
+  return text.length <= width ? text : `${text.slice(0, Math.max(width - 1, 0))}…`;
 }
 
 function seconds(ms: number): string {

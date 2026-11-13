@@ -12,6 +12,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { isRecord } from "@keypin/core";
 import { version } from "../../package.json";
 import { LAUNCHER } from "./compile";
 import { packKeypin, packTarget } from "./pack";
@@ -184,9 +185,8 @@ async function packed(packageFolder: string, out: string): Promise<Published> {
     packageFolder,
   );
   if (result.code !== 0) throw new Error(`npm pack failed in ${packageFolder}: ${result.stderr}`);
-  const manifest: Record<string, unknown> = JSON.parse(
-    await readFile(join(packageFolder, "package.json"), "utf8"),
-  );
+  const manifest: unknown = JSON.parse(await readFile(join(packageFolder, "package.json"), "utf8"));
+  if (!isRecord(manifest)) throw new Error(`${packageFolder}/package.json isn't a JSON object`);
   return { manifest, tarball: new Uint8Array(await readFile(join(out, result.stdout.trim()))) };
 }
 

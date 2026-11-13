@@ -228,11 +228,12 @@ describe("keypin status", () => {
         "couldn't read /work/billing/keypin.toml: EACCES: permission denied",
       );
       if (json) {
+        const problems: unknown = expect.arrayContaining([
+          expect.objectContaining({ kind: "no-map", project: "/work/billing" }),
+        ]);
         expect(parseJson(stdout.text)).toMatchObject({
           rows: [{ keyId: "SESSION_SECRET" }, { keyId: "SESSION_SECRET" }],
-          problems: expect.arrayContaining([
-            expect.objectContaining({ kind: "no-map", project: "/work/billing" }),
-          ]),
+          problems,
         });
       } else {
         expect(stdout.text).toMatch(/SESSION_SECRET\s+prod/);

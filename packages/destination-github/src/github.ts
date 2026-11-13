@@ -42,7 +42,8 @@ export class GitHubSecretDestination implements Destination {
     if (!REPO.test(options.repo))
       throw new Error(`"${options.repo}" isn't a GitHub repository in the form owner/name`);
     this.#repo = options.repo;
-    this.#owner = options.repo.split("/")[0];
+    const [owner = ""] = options.repo.split("/");
+    this.#owner = owner;
     this.#environment = options.environment ?? null;
     this.#secrets = secretsPath(options.repo, options.environment);
     this.#login = options.login ?? null;

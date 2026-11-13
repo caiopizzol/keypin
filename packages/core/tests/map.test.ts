@@ -585,10 +585,8 @@ admin = "op://Private/shared cloudflare token admin/password"
     );
     assert(result.ok, JSON.stringify(result));
     expect(result.map.keys[0]).toMatchObject({ name: "CLOUDFLARE_API_TOKEN", rotateEvery: "90d" });
-    expect(result.map.keys[0]?.environments.prod).toEqual({
-      ref: expect.objectContaining({ item: "site deploy token" }),
-      publish: [],
-    });
+    const ref: unknown = expect.objectContaining({ item: "site deploy token" });
+    expect(result.map.keys[0]?.environments.prod).toEqual({ ref, publish: [] });
   });
 });
 

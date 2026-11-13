@@ -2,6 +2,8 @@ import { expect, test } from "vite-plus/test";
 import { approvalsFor, type ItemIds, type KeyRef, planPublish } from "../src/index";
 import { GITHUB, KEY, KEY_MAP, receipt, WORKER } from "./fixtures";
 
+const anyText: unknown = expect.any(String);
+
 const NEW = "aaaaaaaaaaaaaaaa";
 const OLD = "bbbbbbbbbbbbbbbb";
 
@@ -280,11 +282,8 @@ test("a receipt that doesn't record its item, from state version 1, needs approv
     generation: NEW,
     ids: null,
   });
-  expect(summary(plan)[0]).toMatchObject({
-    action: "write",
-    reason: "item changed",
-    approval: expect.stringContaining("an item its receipt doesn't record"),
-  });
+  const approval: unknown = expect.stringContaining("an item its receipt doesn't record");
+  expect(summary(plan)[0]).toMatchObject({ action: "write", reason: "item changed", approval });
   expect(summary(plan)[1]?.action).toBe("skip");
 });
 
@@ -368,12 +367,12 @@ test("a Worker receipt from another Cloudflare account is another secret", () =>
 
 test("approvals are known from the receipts alone, before any value is read", () => {
   expect(approvalsFor({ key: KEY, environment: "prod", mapFile: KEY_MAP, receipts: [] })).toEqual([
-    { destinationId: WORKER, reason: "no receipt", approval: expect.any(String) },
-    { destinationId: GITHUB, reason: "no receipt", approval: expect.any(String) },
+    { destinationId: WORKER, reason: "no receipt", approval: anyText },
+    { destinationId: GITHUB, reason: "no receipt", approval: anyText },
   ]);
   const receipts = [receipt(WORKER, OLD), receipt(GITHUB, OLD, { source: OTHER_ITEM })];
   expect(approvalsFor({ key: KEY, environment: "prod", mapFile: KEY_MAP, receipts })).toEqual([
-    { destinationId: GITHUB, reason: "item changed", approval: expect.any(String) },
+    { destinationId: GITHUB, reason: "item changed", approval: anyText },
   ]);
 });
 

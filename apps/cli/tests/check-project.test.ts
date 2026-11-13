@@ -1370,7 +1370,10 @@ describe("keypin check's prerequisites", () => {
 
   test("an empty project needs only 1Password, and that doesn't fail check", async () => {
     const run = setup({
-      files: Object.fromEntries([...Object.keys(PROJECT).map((p) => [p, null]), [MAP, TEMPLATE]]),
+      files: Object.fromEntries<string | null>([
+        ...Object.keys(PROJECT).map((p): [string, null] => [p, null]),
+        [MAP, TEMPLATE],
+      ]),
     });
     expect(await cli(["check", "--json"], run.deps)).toBe(1);
     const data = json(run.stdout.text);

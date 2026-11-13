@@ -3,6 +3,7 @@ import { copyFile, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isRecord } from "@keypin/core";
 import { afterAll, beforeAll, expect, test } from "vite-plus/test";
 import { repoPath } from "../../../lint-plugin";
 
@@ -78,7 +79,7 @@ beforeAll(async () => {
   if (!Array.isArray(diagnostics)) throw new Error("vp lint diagnostics is not a list");
   flagged = new Map();
   for (const diagnostic of diagnostics) {
-    if (diagnostic.code !== "keypin(no-reveal)") continue;
+    if (!isRecord(diagnostic) || diagnostic.code !== "keypin(no-reveal)") continue;
     const file = relative(checkout, resolve(checkout, String(diagnostic.filename)));
     flagged.set(file, (flagged.get(file) ?? 0) + 1);
   }

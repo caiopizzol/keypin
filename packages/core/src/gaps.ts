@@ -55,7 +55,7 @@ export type Fix =
       options: string;
       caveat: string | null;
     }
-  | { kind: "add"; text: string; why: string }
+  | { kind: "add"; text: string; why: string; key: string }
   | { kind: "edit"; text: string }
   | { kind: "publish"; text: string; key: string; why: string; command: string };
 
@@ -260,7 +260,7 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
     const edit = add.edits.get(`${n.name} ${place.id}`);
     fix(
       edit === undefined
-        ? { kind: "add", text: `${why}. Add the TOML below`, why }
+        ? { kind: "add", text: `${why}. Add the TOML below`, why, key: key?.name ?? n.name }
         : { kind: "edit", text: `${why}. ${edit}` },
     );
   }

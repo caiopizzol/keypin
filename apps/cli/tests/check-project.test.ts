@@ -197,14 +197,15 @@ describe("keypin check on a whole project", () => {
   STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and keypin.toml doesn't publish it there.
   RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and keypin.toml doesn't publish it there.
   ${AFTER_IMPORT}
+  ${PASTE}
 `);
-    expect(text).not.toContain(PASTE);
     expect(text).not.toContain("Note:");
     expect(text).not.toContain("GITHUB_TOKEN");
     expect(text).not.toContain("REGION");
     const data = setup({ files: { [MAP]: TEMPLATE } });
     await cli(["check", "--json"], data.deps);
-    expect(json(data.stdout.text).add).toBe(`[1password]
+    expect(json(data.stdout.text).add).toBe(added(text));
+    expect(added(text)).toBe(`[1password]
 account = "<1Password sign-in address>"
 
 [keys.STRIPE_API_KEY]
@@ -277,43 +278,66 @@ worker = "billing-worker"
   test("following the steps in order, import then the TOML, leaves a map that parses", async () => {
     const vault = fakeVault({ items: [] });
     const run = setup({
-      files: { [MAP]: TEMPLATE, [`${ROOT}/.env.example`]: null },
+      files: {
+        [MAP]: TEMPLATE,
+        [`${ROOT}/.env`]: `DATABASE_URL=${SENTINEL}\nRESEND_API_KEY=${SENTINEL}\nPORT=3000\n`,
+        [`${ROOT}/.env.example`]: null,
+      },
       deps: { vault: () => vault.vault },
     });
-    const pasteAfter = async () => {
+    const check = async () => {
       const before = run.stdout.text.length;
       await cli(["check"], run.deps);
       const text = run.stdout.text.slice(before);
-      const command = /^ {4}(keypin import .+)$/m.exec(text)?.[1];
-      return { text, command };
+      return { text, command: /^ {4}(keypin import .+)$/m.exec(text)?.[1] };
+    };
+    const paste = (text: string) => {
+      const pasted = `${run.disk.contents.get(MAP) ?? ""}\n${fill(added(text))}`;
+      const parsed = parseMap(pasted, MAP);
+      assert(parsed.ok, parsed.ok ? "" : parsed.errors.join("\n"));
+      return parsed.map;
     };
 
-    const first = await pasteAfter();
+    const first = await check();
     assert(first.command !== undefined, first.text);
+    expect(first.command).toContain(" PORT ");
+    expect(first.text).toContain(AFTER_IMPORT);
     const args = first.command
+      .replace("<1Password sign-in address>", "my.1password.com")
       .split(" ")
       .slice(1)
-      .map((arg) => (arg === "<vault>" ? "Private" : arg))
-      .map((arg) => (arg === "<1Password" ? "my.1password.com" : arg))
-      .filter((arg) => arg !== "sign-in" && arg !== "address>");
+      .filter((arg) => arg !== "PORT")
+      .map((arg) => (arg === "<vault>" ? "Private" : arg));
     expect(await cli([...args, "--yes"], run.deps)).toBe(0);
-    if (first.text.includes(PASTE)) {
-      const map = run.disk.contents.get(MAP) ?? "";
-      const pasted = `${map}\n${fill(added(first.text))}`;
-      assert(parseMap(pasted, MAP).ok, pasted);
-    } else expect(first.text).toContain(AFTER_IMPORT);
 
-    const second = await pasteAfter();
-    expect(second.command).toBeUndefined();
-    const pasted = `${run.disk.contents.get(MAP) ?? ""}\n${fill(added(second.text))}`;
-    const parsed = parseMap(pasted, MAP);
-    assert(parsed.ok, parsed.ok ? "" : parsed.errors.join("\n"));
-    expect(parsed.map.keys.map((k) => k.name).sort()).toEqual([
-      "DATABASE_URL",
-      "RESEND_API_KEY",
-      "STRIPE_API_KEY",
-    ]);
+    const second = await check();
+    expect(second.command).toBe("keypin import .env PORT --vault <vault>");
+    expect(second.text).not.toContain(AFTER_IMPORT);
+    expect(
+      paste(second.text)
+        .keys.map((k) => k.name)
+        .sort(),
+    ).toEqual(["DATABASE_URL", "RESEND_API_KEY", "STRIPE_API_KEY"]);
   });
+
+  test.each([
+    ["a map with an account", MAPPED, false],
+    ["a map with no account yet", TEMPLATE, true],
+  ])(
+    "a plain setting left in an env file never holds back the TOML (%s)",
+    async (_, map, warns) => {
+      const run = setup({
+        files: { [MAP]: map, [`${ROOT}/.env`]: "PORT=3000\n", [`${ROOT}/.env.example`]: null },
+      });
+      expect(await cli(["check"], run.deps)).toBe(1);
+      const text = run.stdout.text;
+      expect(text).toContain("    keypin import .env PORT --vault <vault>");
+      expect(text.includes(AFTER_IMPORT)).toBe(warns);
+      const parsed = parseMap(`${map}\n${fill(added(text))}`, MAP);
+      assert(parsed.ok, parsed.ok ? "" : parsed.errors.join("\n"));
+      expect(parsed.map.keys.map((k) => k.name)).toContain("STRIPE_API_KEY");
+    },
+  );
 
   test("an env file named for an environment suggests importing it with --env", async () => {
     const run = setup({

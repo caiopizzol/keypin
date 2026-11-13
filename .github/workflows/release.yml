@@ -26,6 +26,34 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+  release-pr-title:
+    needs: release-please
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: report pr-title on the release PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          pr=$(gh pr list --repo "$REPO" --state open --label "autorelease: pending" --json number,headRefOid,title --jq '.[0] // empty')
+          if [ -z "$pr" ]; then
+            echo "No open release PR."
+            exit 0
+          fi
+          sha=$(printf '%s' "$pr" | jq -r .headRefOid)
+          printf '%s' "$pr" | jq -r .title > "$RUNNER_TEMP/title"
+          if sh scripts/check-commit-title.sh "$RUNNER_TEMP/title"; then conclusion=success; else conclusion=failure; fi
+          gh api "repos/$REPO/check-runs" -f name=pr-title -f head_sha="$sha" -f status=completed -f conclusion="$conclusion" \
+            -f "output[title]=Release PR title" -f "output[summary]=$(cat "$RUNNER_TEMP/title")"
+          [ "$conclusion" = success ]
+
   npm-packages:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'

@@ -26,9 +26,6 @@
         "@types/bun": "1.4.4",
       },
     },
-    "apps/site": {
-      "name": "@keypin/site",
-    },
     "packages/core": {
       "name": "@keypin/core",
       "dependencies": {
@@ -103,8 +100,6 @@
     "@keypin/destination-cloudflare": ["@keypin/destination-cloudflare@workspace:packages/destination-cloudflare"],
 
     "@keypin/destination-github": ["@keypin/destination-github@workspace:packages/destination-github"],
-
-    "@keypin/site": ["@keypin/site@workspace:apps/site"],
 
     "@keypin/vault-1password": ["@keypin/vault-1password@workspace:packages/vault-1password"],
 

@@ -29,9 +29,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# Wrangler local state (wrangler dev)
-.wrangler
-
 # AI agent worktrees
 .claude/worktrees/
 

@@ -170,7 +170,10 @@ export function main(): Promise<number> {
     },
     lock: diskLock,
     isTerminal: Boolean(process.stdin.isTTY),
-    styled: isStyled(process.stderr.isTTY, process.env),
+    styled: {
+      stdout: isStyled(process.stdout.isTTY, process.env),
+      stderr: isStyled(process.stderr.isTTY, process.env),
+    },
     columns: () => process.stderr.columns || 80,
     ask,
   });

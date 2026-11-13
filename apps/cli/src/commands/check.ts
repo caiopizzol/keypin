@@ -14,11 +14,13 @@ import {
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
 import { messageOf } from "../errors";
+import { columns, type Output, output, tilde } from "../output";
 import { registryPath } from "../paths";
 import { locateMap, MAP_FILE } from "../project";
+import { labels } from "../publishing";
 import { describeLogin, githubLogin, publisherFor } from "../publisher";
 import { type ScanResult, scanProject, type Unknown, usesSecrets } from "../scan";
-import { announce, distinctRefs, refKey } from "../vault";
+import { distinctRefs, refKey } from "../vault";
 
 interface ItemResult {
   reference: string;
@@ -78,12 +80,20 @@ export async function check(args: string[], deps: Deps): Promise<number> {
   const folder = resolve(deps.cwd, positionals[0] ?? ".");
   if (!(await deps.isFolder(folder))) throw new Error(`${folder} isn't a folder`);
 
-  const report = await build(folder, deps);
-  deps.stdout.write(values.json ? `${JSON.stringify(report, null, 2)}\n` : render(report));
+  const { report, places } = await build(folder, deps);
+  deps.stdout.write(
+    values.json
+      ? `${JSON.stringify(report, null, 2)}\n`
+      : render(report, places, output(deps.stdout, deps.styled.stdout), deps.home),
+  );
   return report.ok ? 0 : 1;
 }
 
-async function build(folder: string, deps: Deps): Promise<Report> {
+type Places = Map<DestinationResult, string>;
+
+async function build(folder: string, deps: Deps): Promise<{ report: Report; places: Places }> {
+  const out = output(deps.stderr, deps.styled.stderr, deps.columns);
+  const places: Places = new Map();
   const found = await locateMap(deps.files, folder);
   const root = found ? dirname(found.file) : folder;
   const scanned = await scanProject(deps, root);
@@ -107,7 +117,7 @@ async function build(folder: string, deps: Deps): Promise<Report> {
   const items = new Map<string, ItemResult>();
   const done = async () => {
     report.prerequisites = await prerequisites(root, scanned, targets, items, deps);
-    return finish(report);
+    return { report: finish(report), places };
   };
   const gaps = (map: KeysMap | null) => {
     const result = findGaps(scanned.scan, map && found ? { map, text: found.text } : null);
@@ -155,11 +165,21 @@ async function build(folder: string, deps: Deps): Promise<Report> {
   const use = (id: string, label: string) => users.set(id, [...(users.get(id) ?? []), label]);
 
   const refs = distinctRefs(entries.map(({ entry }) => entry.ref));
-  announce(deps.stderr, "the item IDs, not the values,", refs);
   report.notes.push(
     "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields",
   );
-  for (const ref of refs) items.set(refKey(ref), await checkItem(ref, deps));
+  const lookup = `${count(refs.length, "item")} in 1Password account ${[...new Set(refs.map((ref) => ref.account))].join(", ")}, not the values`;
+  await out.step(
+    `Looking up ${lookup}`,
+    async () => {
+      for (const ref of refs) items.set(refKey(ref), await checkItem(ref, deps));
+    },
+    () => ({
+      ok: [...items.values()].every((item) => item.ok),
+      text: `Looked up ${lookup}`,
+    }),
+    "1Password may be asking you to approve keypin",
+  );
 
   for (const { entry } of entries)
     for (const target of entry.publish) targets.set(placeOf(target), target);
@@ -175,24 +195,38 @@ async function build(folder: string, deps: Deps): Promise<Report> {
       `the wrangler login is an OAuth token stored in plain text in ${wrangler}; wrangler logout removes it`,
     );
   const destinations = new Map<string, DestinationResult>();
-  for (const [place, target] of targets) {
-    const login =
-      target.to === "github-actions"
-        ? describeLogin(publisher.githubLogin)
-        : `the wrangler login${wrangler === null ? "" : ` in ${wrangler}`}`;
-    destinations.set(place, await checkDestination(place, target, login, publisher, deps));
-  }
+  const accounts = count(targets.size, "account");
+  if (targets.size)
+    await out.step(
+      `Checking ${accounts}`,
+      async () => {
+        for (const [place, target] of targets) {
+          const login =
+            target.to === "github-actions"
+              ? describeLogin(publisher.githubLogin)
+              : `the wrangler login${wrangler === null ? "" : ` in ${wrangler}`}`;
+          destinations.set(place, await checkDestination(place, target, login, publisher, deps));
+        }
+      },
+      () => ({
+        ok: [...destinations.values()].every((d) => d.ok),
+        text: `Checked ${accounts}`,
+      }),
+    );
+  const label = labels(entries.flatMap(({ entry }) => entry.publish));
 
   for (const { key, environment, entry } of entries) {
-    const label = `${key} (${environment})`;
+    const name = `${key} (${environment})`;
     const from = items.get(refKey(entry.ref));
     if (!from) throw new Error(`no item check for ${formatReference(entry.ref)}`);
-    use(`item ${refKey(entry.ref)}`, label);
+    use(`item ${refKey(entry.ref)}`, name);
     const reached = entry.publish.map((target) => {
-      use(`place ${placeOf(target)}`, label);
+      use(`place ${placeOf(target)}`, name);
       const result = destinations.get(placeOf(target));
       if (!result) throw new Error(`no account check for ${placeOf(target)}`);
-      return { ...result, destination: secretKey(target, key) };
+      const row = { ...result, destination: secretKey(target, key) };
+      places.set(row, label(target));
+      return row;
     });
     report.keys.push({ key, environment, from, destinations: reached });
   }
@@ -303,55 +337,59 @@ function placeOf(target: PublishTarget): string {
     : `github-actions:${target.repo.toLowerCase()}${target.environment === undefined ? "" : `/environments/${target.environment.toLowerCase()}`}`;
 }
 
-function render(report: Report): string {
-  const lines = [`keypin check ${report.map ?? report.folder}`];
+function render(report: Report, places: Places, out: Output, home: string): string {
+  const { bold, dim, mark } = out;
+  const lines = [bold(`keypin check ${report.map ?? report.folder}`)];
   const { env, wrangler, workflows, notScanned } = report.read;
-  lines.push(
-    `  read: ${count(env.length, "env file")}, ${count(wrangler.length, "wrangler config")}, ${count(workflows.length, "workflow")}`,
-  );
-  if (report.github.repo) lines.push(`  GitHub: ${report.github.repo}`);
-  if (notScanned.length) lines.push(`  not scanned (own git repository): ${notScanned.join(", ")}`);
+  const read = `read ${count(env.length, "env file")}, ${count(wrangler.length, "wrangler config")}, ${count(workflows.length, "workflow")}`;
+  lines.push(`  ${dim(report.github.repo ? `${read}; GitHub ${report.github.repo}` : read)}`);
+  if (notScanned.length)
+    lines.push(`  ${dim(`not scanned (own git repository): ${notScanned.join(", ")}`)}`);
   if (report.prerequisites.length) {
-    lines.push("", "Before you start:");
-    for (const p of report.prerequisites) lines.push(`  ${p.name}: ${p.status}; ${p.fix}`);
+    lines.push("", bold("Before you start:"));
+    const rows = columns(report.prerequisites.map((p) => [`${p.name}:`, `${p.status};`]));
+    report.prerequisites.forEach((p, i) => lines.push(`  ${(rows[i] ?? []).join(" ")} ${p.fix}`));
   }
   for (const row of report.keys) {
-    lines.push("", `${row.key} (${row.environment})`);
-    lines.push(`  ${mark(row.from.ok)} from ${row.from.reference}`);
+    lines.push("", `${bold(row.key)} ${row.environment}`);
+    lines.push(`  ${mark(row.from.ok)} ${row.from.reference}`);
     for (const d of row.destinations) {
+      const facts = d.ok
+        ? `as ${d.publisher ?? "unknown"}, account ${d.reached ?? d.pinned}`
+        : `as ${d.publisher ?? "unknown"}, pinned ${d.pinned}, reaches ${d.reached ?? "unknown"}`;
       lines.push(
-        `  ${mark(d.ok)} ${d.destination}: login ${d.login}, publisher ${d.publisher ?? "unknown"}, pinned account ${d.pinned}, reaches ${d.reached ?? "unknown"}`,
+        `  ${mark(d.ok)} ${places.get(d) ?? d.destination}  ${dim(`${facts}; ${d.login}`)}`,
       );
     }
   }
   if (report.production.length) {
-    lines.push("", "Production needs:");
+    lines.push("", bold("Production needs:"));
     for (const need of report.production) {
       const holds = need.holds === null ? "unknown" : need.holds ? "has it" : "doesn't have it";
       const mapped = need.mapped === null ? "not in keypin.toml" : `keypin.toml (${need.mapped})`;
       lines.push(
-        `  ${mark(need.ok)} ${need.name} in ${need.place} (${need.usedBy.join(", ")}): ${holds}, ${mapped}`,
+        `  ${mark(need.ok)} ${need.name} in ${need.place} ${dim(`(${need.usedBy.join(", ")}): ${holds}, ${mapped}`)}`,
       );
     }
   }
   const local = report.local.filter((file) => file.unmapped.length || file.elsewhere.length);
   if (local.length) {
-    lines.push("", "Set in an env file, with no local entry in keypin.toml:");
+    lines.push("", bold("Set in an env file, with no local entry in keypin.toml:"));
     for (const file of local)
       lines.push(`  ${file.file}: ${[...file.unmapped, ...file.elsewhere].join(", ")}`);
   }
   if (report.unknown.length) {
-    lines.push("", `Unknown (${report.unknown.length}):`);
-    for (const u of report.unknown) lines.push(`  ${u.what}: ${u.reason}`);
+    lines.push("", dim(`Unknown (${report.unknown.length}):`));
+    for (const u of report.unknown) lines.push(dim(`  ${u.what}: ${u.reason}`));
   }
   if (report.notes.length) {
-    lines.push("", `Notes (${report.notes.length}):`);
-    for (const note of report.notes) lines.push(`  ${note}`);
+    lines.push("", dim(`Notes (${report.notes.length}):`));
+    for (const note of report.notes) lines.push(dim(`  ${note}`));
   }
   if (report.problems.length) {
-    lines.push("", `Problems (${report.problems.length}):`);
+    lines.push("", bold(`Problems (${report.problems.length}):`));
     for (const problem of report.problems) lines.push(`  ${problem}`);
-  } else lines.push("", "Everything checks out.");
+  } else lines.push("", `${mark(true)} Everything checks out.`);
   if (report.add !== null) {
     lines.push(
       "",
@@ -360,13 +398,9 @@ function render(report: Report): string {
       report.add.trimEnd(),
     );
   }
-  return `${lines.join("\n")}\n`;
+  return tilde(`${lines.join("\n")}\n`, home);
 }
 
 function count(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? "" : "s"}`;
-}
-
-function mark(ok: boolean): string {
-  return ok ? "ok    " : "FAILED";
 }

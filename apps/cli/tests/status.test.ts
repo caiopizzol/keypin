@@ -1,4 +1,5 @@
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
+import { stripVTControlCharacters } from "node:util";
 import { isRecord } from "@keypin/core";
 import { cli } from "../src/cli";
 import { TEMPLATE } from "../src/commands/init";
@@ -57,7 +58,7 @@ describe("keypin status", () => {
       "metadata web prod session secret",
     ]);
     expect(stderr.text).toBe(
-      "ok     Read rotated dates of 3 items in 1Password account my.1password.com, not the values\n",
+      "ok     Read 3 rotated dates from 1Password account my.1password.com, not the values\n",
     );
   });
 
@@ -135,7 +136,7 @@ describe("keypin status", () => {
     expect(stdout.text.match(/rotated date couldn't be read/g)).toHaveLength(2);
     expect(stderr.text).toBe(
       [
-        "FAILED Couldn't read 1 of the rotated dates of 3 items in 1Password account my.1password.com, not the values",
+        "FAILED Couldn't read 1 of 3 rotated dates from 1Password account my.1password.com, not the values",
         `keypin: 1Password: "billing stripe api key" isn't readable`,
         "",
       ].join("\n"),
@@ -502,5 +503,42 @@ dev = "op://Private/forever/password"
         },
       ],
     });
+  });
+
+  test("while 1Password is slow, the approval hint fits an 80-column terminal", async () => {
+    vi.useFakeTimers();
+    try {
+      const fake = fakeVault({ metadata: METADATA });
+      let release = () => {};
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const { deps, stderr } = fakeDeps({
+        disk: memoryFiles({
+          [REGISTRY]: registryWith("/work/billing", "/work/web"),
+          "/work/billing/keypin.toml": BILLING_MAP,
+          "/work/web/keypin.toml": WEB_MAP,
+        }),
+        backend: {
+          ...fake.vault,
+          metadata: async (ref) => {
+            await held;
+            return fake.vault.metadata(ref);
+          },
+        },
+        deps: { styled: { stdout: false, stderr: true }, columns: () => 80 },
+      });
+      const run = cli(["status"], deps);
+      await vi.advanceTimersByTimeAsync(1500);
+      const frames = stderr.text.split("\r\x1b[2K").filter(Boolean);
+      const last = stripVTControlCharacters(frames.at(-1) ?? "");
+      expect(last).toContain("1Password may be asking you to approve keypin");
+      expect(last.length).toBeLessThanOrEqual(79);
+      release();
+      expect(await run).toBe(0);
+      expect(stripVTControlCharacters(stderr.text)).toContain(
+        "✓ Read 3 rotated dates from 1Password account my.1password.com, not the values",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -54,9 +54,10 @@ export async function status(args: string[], deps: Deps): Promise<number> {
   const metadata = new Map<string, VaultMetadata | null>();
   if (refs.length) {
     const errors: string[] = [];
-    const items = `rotated dates of ${count(refs.length, "item")} in 1Password account ${[...new Set(refs.map((ref) => ref.account))].join(", ")}, not the values`;
+    const dates = count(refs.length, "rotated date");
+    const from = `from 1Password account ${[...new Set(refs.map((ref) => ref.account))].join(", ")}, not the values`;
     await output(deps.stderr, deps.styled.stderr, deps.columns).step(
-      `Reading ${items}`,
+      `Reading ${dates}`,
       async () => {
         const vault = deps.vault();
         for (const ref of refs) {
@@ -70,7 +71,9 @@ export async function status(args: string[], deps: Deps): Promise<number> {
       },
       () => ({
         ok: !errors.length,
-        text: errors.length ? `Couldn't read ${errors.length} of the ${items}` : `Read ${items}`,
+        text: errors.length
+          ? `Couldn't read ${errors.length} of ${dates} ${from}`
+          : `Read ${dates} ${from}`,
       }),
       "1Password may be asking you to approve keypin",
     );

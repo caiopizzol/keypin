@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 import { cli } from "../src/cli";
 import { diskFiles, listFolder } from "../src/disk";
 import { launch } from "../src/launch";
@@ -179,6 +179,37 @@ prod = "op://Private/ci cloudflare token/credential"
       "ok     Read 1 dev value from 1Password account my.1password.com  op://Private/web dev session secret/password\n",
     );
     expect(stdout.text).toBe("");
+  });
+
+  test("at 80 columns, a slow read keeps the 1Password approval hint in view", async () => {
+    vi.useFakeTimers();
+    try {
+      const { deps, stderr } = setup();
+      const vault = deps.vault();
+      const read = vault.read.bind(vault);
+      vault.read = async (ref) => {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        return read(ref);
+      };
+      deps.styled = { stdout: true, stderr: true };
+      deps.columns = () => 80;
+      let code: number | undefined;
+      void cli(["run", "--", "true"], deps).then((c) => (code = c));
+      while (code === undefined) await vi.advanceTimersByTimeAsync(100);
+      expect(code).toBe(0);
+      const frames = stderr.text
+        .split(`\r${ESC}[2K`)
+        .map((frame) => unstyled(frame))
+        .filter((frame) => frame && !frame.includes("\n"));
+      expect(
+        frames.some((f) =>
+          f.endsWith(" Reading 1 dev value  1Password may be asking you to approve keypin"),
+        ),
+      ).toBe(true);
+      for (const frame of frames) expect(frame.length).toBeLessThanOrEqual(79);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test("in a terminal, the step and warnings end their lines before the command starts", async () => {

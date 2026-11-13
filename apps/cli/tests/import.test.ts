@@ -1,4 +1,4 @@
-import { assert, describe, expect, test } from "vite-plus/test";
+import { assert, describe, expect, test, vi } from "vite-plus/test";
 import { formatReference, loadRegistry, parseMap } from "@keypin/core";
 import { cli } from "../src/cli";
 import { TEMPLATE } from "../src/commands/init";
@@ -157,12 +157,64 @@ describe("keypin import", () => {
     ).toBe(true);
   });
 
+  test("at 80 columns, every slow vault step keeps the 1Password approval hint in view", async () => {
+    vi.useFakeTimers();
+    try {
+      const env = `STRIPE_KEY=${SENTINEL}-stripe\nWEBHOOK_SECRET=${SENTINEL}-webhook\nOLD_KEY=${SENTINEL}-old\n`;
+      const map = `[1password]\naccount = "${ACCOUNT}"\n\n[keys.OLD_KEY]\ndev = "op://App Secrets/billing dev old/password"\n`;
+      const { deps, fake, stderr } = setup({
+        files: { [ENV]: env, [MAP]: map },
+        items: ["billing dev webhook secret"],
+        values: {
+          "billing dev webhook secret": `${SENTINEL}-webhook`,
+          "billing dev old": `${SENTINEL}-old`,
+        },
+      });
+      const slow =
+        <A extends unknown[], R>(work: (...args: A) => Promise<R>) =>
+        async (...args: A) => {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          return work(...args);
+        };
+      fake.vault.list = slow(fake.vault.list.bind(fake.vault));
+      fake.vault.read = slow(fake.vault.read.bind(fake.vault));
+      fake.vault.write = slow(fake.vault.write.bind(fake.vault));
+      deps.styled = { stdout: true, stderr: true };
+      deps.columns = () => 80;
+      let code: number | undefined;
+      void cli(["import", ".env", "--vault", "App Secrets", "--yes"], deps).then((c) => (code = c));
+      while (code === undefined) await vi.advanceTimersByTimeAsync(100);
+      expect(code).toBe(0);
+      const frames = stderr.text
+        .split(`\r${ESC}[2K`)
+        .map((frame) => unstyled(frame))
+        .filter((frame) => frame && !frame.includes("\n"));
+      const running = [...new Set(frames.map((frame) => frame.slice(2).split("  ")[0]))];
+      expect(running).toEqual([
+        "Listing vault App Secrets",
+        "Reading 1 existing item",
+        "Reading 1 mapped value",
+        "Creating item 1 of 1",
+      ]);
+      for (const label of running)
+        expect(
+          frames.some((f) =>
+            f.endsWith(` ${label}  1Password may be asking you to approve keypin`),
+          ),
+          label,
+        ).toBe(true);
+      for (const frame of frames) expect(frame.length).toBeLessThanOrEqual(79);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("a create that fails ends as a failed line with the reason under it", async () => {
     const env = `A_KEY=${SENTINEL}-a\nB_KEY=${SENTINEL}-b\n`;
     const { deps, stderr } = setup({ files: { [ENV]: env }, failing: ["billing dev b key"] });
     expect(await cli([...NEW, "--yes"], deps)).toBe(1);
     expect(stderr.text).toContain(
-      `ok     Created "billing dev a key" in vault App Secrets\nFAILED Creating "billing dev b key" in vault App Secrets\n    1Password: "billing dev b key" isn't readable\n`,
+      `ok     Created "billing dev a key" in vault App Secrets\nFAILED Couldn't create "billing dev b key" in vault App Secrets\n    1Password: "billing dev b key" isn't readable\n`,
     );
     expect(leaks(stderr.text)).toBe(false);
   });

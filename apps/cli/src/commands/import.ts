@@ -161,7 +161,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
     const scope = { kind: "1password" as const, account: target.account, vault: request.vault };
     const where = `vault ${request.vault} of 1Password account ${target.account}`;
     const titles = await out.step(
-      `Listing the items in ${where}, not the values`,
+      `Listing vault ${request.vault}`,
       async () => new Set((await deps.vault().list(scope)).map((i) => i.title.toLowerCase())),
       () => ({ ok: true, text: `Listed the items in ${where}, not the values` }),
       APPROVE,
@@ -172,7 +172,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
     const existing = `${count(found.length, "item")} that already ${found.length === 1 ? "exists" : "exist"}, to compare with the file`;
     if (found.length)
       await out.step(
-        `Reading ${existing}`,
+        `Reading ${count(found.length, "existing item")}`,
         async () => {
           let unread = 0;
           for (const entry of found) {
@@ -229,19 +229,28 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
 
   const created: Import[] = [];
   if (imports.length) say("");
-  for (const entry of imports) {
-    try {
-      await out.step(
-        `Creating "${entry.ref.item}" in vault ${request.vault}`,
-        () => deps.vault().write(entry.ref, entry.value, { rotated: today, newItem: true }),
-        () => ({ ok: true, text: `Created "${entry.ref.item}" in vault ${request.vault}` }),
-        APPROVE,
-      );
-      created.push(entry);
-    } catch (error) {
-      say(`    ${messageOf(error)}`);
+  for (const [index, entry] of imports.entries()) {
+    const problem = await out.step(
+      `Creating item ${index + 1} of ${imports.length}`,
+      () =>
+        deps
+          .vault()
+          .write(entry.ref, entry.value, { rotated: today, newItem: true })
+          .then(
+            () => null,
+            (error: unknown) => messageOf(error),
+          ),
+      (problem) => ({
+        ok: problem === null,
+        text: `${problem === null ? "Created" : "Couldn't create"} "${entry.ref.item}" in vault ${request.vault}`,
+      }),
+      APPROVE,
+    );
+    if (problem !== null) {
+      say(`    ${problem}`);
       break;
     }
+    created.push(entry);
   }
   const failed = imports.filter((entry) => !created.includes(entry)).map((i) => i.name);
   if (failed.length)
@@ -330,7 +339,7 @@ async function compareMapped(deps: Deps, out: Output, skips: readonly Skip[]): P
   const accounts = [...new Set(refs.map((ref) => ref.account))].join(", ");
   const values = `${count(refs.length, "mapped value")} from 1Password account ${accounts}, to compare with the file`;
   const { compared } = await out.step(
-    `Reading ${values}`,
+    `Reading ${count(refs.length, "mapped value")}`,
     () => compareEach(deps, skips),
     ({ unread }) => ({
       ok: !unread,

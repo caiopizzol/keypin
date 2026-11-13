@@ -109,7 +109,7 @@ async function readValues(
   const values = `${keys.length} ${environment} ${keys.length === 1 ? "value" : "values"}`;
   const references = [...new Set(refs.map(formatReference))].join(", ");
   return out.step(
-    `Reading ${values} from 1Password account ${accounts}`,
+    `Reading ${values}`,
     async () => {
       const vault = deps.vault();
       const failures: string[] = [];

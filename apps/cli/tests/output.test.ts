@@ -101,6 +101,65 @@ describe("output", () => {
     }
   });
 
+  test("a long label gives way to the hint, which is never cut", async () => {
+    vi.useFakeTimers();
+    try {
+      for (const width of [80, 72]) {
+        const stderr = writer();
+        const out = output(stderr, true, () => width);
+        const running = "Looking up 4 items in 1Password account my.1password.com, not the values";
+        const hint = "1Password may be asking you to approve keypin";
+        let finish = () => {};
+        const step = out.step(
+          running,
+          () => new Promise<void>((resolve) => (finish = resolve)),
+          () => ({ ok: true, text: "Looked up" }),
+          hint,
+        );
+        vi.advanceTimersByTime(1500);
+        finish();
+        await step;
+        const frames = stderr
+          .text()
+          .split(`\r${ESC}[2K`)
+          .filter((frame) => frame && !frame.endsWith("\n"))
+          .map(plain);
+        const last = frames.at(-1) ?? "";
+        expect(last.endsWith(`  ${hint}`)).toBe(true);
+        expect(last).toContain("Looking up");
+        for (const frame of frames) expect(frame.length).toBeLessThanOrEqual(width - 1);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a hint that can't fit beside any label is cut, and the frame still never wraps", async () => {
+    vi.useFakeTimers();
+    try {
+      const stderr = writer();
+      const out = output(stderr, true, () => 30);
+      let finish = () => {};
+      const step = out.step(
+        "Reading 1 value",
+        () => new Promise<void>((resolve) => (finish = resolve)),
+        () => ({ ok: true, text: "Read" }),
+        "1Password may be asking you to approve keypin",
+      );
+      vi.advanceTimersByTime(1500);
+      finish();
+      await step;
+      const frames = stderr
+        .text()
+        .split(`\r${ESC}[2K`)
+        .filter((frame) => frame && !frame.endsWith("\n"))
+        .map(plain);
+      for (const frame of frames) expect(frame.length).toBeLessThanOrEqual(29);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("confirm takes y or yes in any case, and anything else is no", async () => {
     const answers = async (answer: string) => confirm({ ask: async () => answer }, "Write?");
     for (const yes of ["y", "Y", "yes", " YES "]) expect(await answers(yes)).toBe(true);

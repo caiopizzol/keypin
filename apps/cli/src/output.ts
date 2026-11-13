@@ -3,6 +3,7 @@ import type { Deps, Writer } from "./deps";
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const TICK_MS = 80;
 const SLOW_MS = 1000;
+const MIN_LABEL = 12;
 
 export interface Done {
   ok: boolean;
@@ -57,10 +58,10 @@ export function output(stderr: Writer, styled: boolean, columns = () => 80): Out
     const started = Date.now();
     let frame = 0;
     const draw = () => {
+      const width = columns() - 3;
       const hint = slow && Date.now() - started > SLOW_MS ? `  ${slow}` : "";
-      const text = fit(`${running}${hint}`, columns() - 3);
-      const shown =
-        text.length > running.length ? `${running}${dim(text.slice(running.length))}` : text;
+      const label = fit(running, Math.max(width - hint.length, MIN_LABEL));
+      const shown = `${label}${dim(fit(hint, width - label.length))}`;
       stderr.write(`\r\x1b[2K${green(FRAMES[frame++ % FRAMES.length] ?? "")} ${shown}`);
     };
     draw();
@@ -100,7 +101,8 @@ export function tilde(text: string, home: string): string {
 }
 
 function fit(text: string, width: number): string {
-  return text.length <= width ? text : `${text.slice(0, Math.max(width - 1, 0))}…`;
+  if (width <= 0) return "";
+  return text.length <= width ? text : `${text.slice(0, width - 1)}…`;
 }
 
 function seconds(ms: number): string {

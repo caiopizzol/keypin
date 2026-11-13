@@ -162,7 +162,7 @@ describe("keypin import", () => {
     const { deps, stderr } = setup({ files: { [ENV]: env }, failing: ["billing dev b key"] });
     expect(await cli([...NEW, "--yes"], deps)).toBe(1);
     expect(stderr.text).toContain(
-      `ok     Created "billing dev a key" in vault App Secrets\nFAILED Creating "billing dev b key" in vault App Secrets\n    `,
+      `ok     Created "billing dev a key" in vault App Secrets\nFAILED Creating "billing dev b key" in vault App Secrets\n    1Password: "billing dev b key" isn't readable\n`,
     );
     expect(leaks(stderr.text)).toBe(false);
   });

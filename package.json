@@ -18,12 +18,13 @@
   ],
   "type": "module",
   "scripts": {
-    "check": "vp check && ! git grep --untracked -nE '(oxlint|eslint)-(disable|enable)' -- '*.ts' && sh scripts/check-lockfile.sh && sh scripts/check-typescript-only.sh",
+    "check": "vp check && ! git grep --untracked -nE '(oxlint|eslint)-(disable|enable)' -- '*.ts' && sh scripts/check-lockfile.sh && sh scripts/check-typescript-only.sh && bun scripts/check-action-pins.ts",
     "test": "bun --bun vp test",
-    "typecheck": "vp run -r typecheck",
+    "typecheck": "vp run -r typecheck && tsc -p scripts",
     "prepare": "vp config"
   },
   "devDependencies": {
+    "@types/bun": "1.4.4",
     "typescript": "7.0.2",
     "vite": "catalog:",
     "vite-plus": "catalog:"

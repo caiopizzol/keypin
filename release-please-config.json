@@ -10,8 +10,7 @@
       "package-name": "keypin",
       "initial-version": "0.1.0",
       "bump-minor-pre-major": true,
-      "bump-patch-for-minor-pre-major": false,
-      "exclude-paths": ["apps/site"]
+      "bump-patch-for-minor-pre-major": false
     }
   }
 }

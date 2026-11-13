@@ -213,7 +213,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; plac
         text: `Checked ${accounts}`,
       }),
     );
-  const label = labels([...targets.values()]);
+  const label = labels(entries.flatMap(({ entry }) => entry.publish));
 
   for (const { key, environment, entry } of entries) {
     const name = `${key} (${environment})`;

@@ -96,6 +96,22 @@ describe("keypin check", () => {
     expect(leaks(...run.everything())).toBe(false);
   });
 
+  test("destinations line up for every key that publishes to them", async () => {
+    const run = setup({
+      map: `${BILLING_MAP}
+[keys.OTHER_KEY]
+prod = { from = "op://Private/billing stripe api key/password", publish = [
+  { to = "github-actions", repo = "acme/billing" },
+  { to = "cloudflare-worker", account = "${ACCOUNT}", worker = "billing-worker" },
+] }
+`,
+    });
+    expect(await cli(["check"], run.deps)).toBe(0);
+    const rows = run.stdout.text.split("\n").filter((line) => line.includes("acme/billing"));
+    expect(rows).toHaveLength(2);
+    for (const row of rows) expect(row).toContain("GitHub      acme/billing    as acme");
+  });
+
   test("works without a terminal and never asks", async () => {
     const run = setup({
       deps: {

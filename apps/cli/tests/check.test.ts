@@ -25,6 +25,7 @@ import {
 const ACCOUNT = "11111111111111111111111111111111";
 const MAP_FILE = "/work/billing/keypin.toml";
 const WRANGLER = "/home/me/Library/Preferences/.wrangler/config/default.toml";
+const TILDE_WRANGLER = "~/Library/Preferences/.wrangler/config/default.toml";
 
 function setup(
   options: {
@@ -68,7 +69,7 @@ describe("keypin check", () => {
     const run = setup();
     expect(await cli(["check"], run.deps)).toBe(0);
     expect(run.stderr.text).toContain(
-      "keypin: reading the item IDs, not the values, from 1Password account my.1password.com: op://Private/billing stripe api key/password\n",
+      "ok     Looked up 1 item in 1Password account my.1password.com, not the values\n",
     );
     expect(run.calls).toEqual(["ids billing stripe api key"]);
     expect(run.log).toEqual([
@@ -78,16 +79,16 @@ describe("keypin check", () => {
     expect(run.log.some((l) => l.startsWith("write"))).toBe(false);
     const text = run.stdout.text;
     expect(text).toContain(
-      "STRIPE_API_KEY (dev)\n  ok     from op://Private/billing stripe api key/password",
+      "STRIPE_API_KEY dev\n  ok     op://Private/billing stripe api key/password",
     );
     expect(text).toContain(
-      `  ok     github-actions:acme/billing:STRIPE_API_KEY: login the active gh login, publisher acme, pinned account acme, reaches acme`,
+      "  ok     GitHub      acme/billing    as acme, account acme; the active gh login",
     );
     expect(text).toContain(
-      `  ok     cloudflare-worker:${ACCOUNT}:billing-worker:STRIPE_API_KEY: login the wrangler login in ${WRANGLER}, publisher me@example.com, pinned account ${ACCOUNT}, reaches ${ACCOUNT}`,
+      `  ok     Cloudflare  billing-worker  as me@example.com, account ${ACCOUNT}; the wrangler login in ${TILDE_WRANGLER}`,
     );
     expect(text).toContain(
-      `the wrangler login is an OAuth token stored in plain text in ${WRANGLER}`,
+      `the wrangler login is an OAuth token stored in plain text in ${TILDE_WRANGLER}`,
     );
     expect(text).toContain("Everything checks out.");
     run.unchanged();
@@ -115,14 +116,14 @@ describe("keypin check", () => {
       },
     });
     expect(await cli(["check"], run.deps)).toBe(0);
-    expect(run.stdout.text).toContain("login alice (git config github.account)");
+    expect(run.stdout.text).toContain("; alice (git config github.account)");
   });
 
   test("a missing item is one problem line naming the keys that use it, exit 1", async () => {
     const run = setup({ values: {} });
     expect(await cli(["check"], run.deps)).toBe(1);
     const text = run.stdout.text;
-    expect(text).toContain("  FAILED from op://Private/billing stripe api key/password");
+    expect(text).toContain("  FAILED op://Private/billing stripe api key/password");
     expect(text).toContain(
       `Problems (1):\n  no item "billing stripe api key" (STRIPE_API_KEY (dev), STRIPE_API_KEY (prod))\n`,
     );

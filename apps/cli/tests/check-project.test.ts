@@ -379,7 +379,7 @@ worker = "billing-worker"
     expect(await cli(["check"], run.deps)).toBe(0);
     expect(run.vault.every((call) => call.startsWith("ids "))).toBe(true);
     expect(run.vault).toHaveLength(4);
-    expect(run.stderr.text).toContain("keypin: reading the item IDs, not the values, from");
+    expect(run.stderr.text).toContain("Looked up 4 items in 1Password account");
     const text = run.stdout.text;
     expect(text).toContain(
       "  ok     STRIPE_API_KEY in acme/billing (.github/workflows/deploy.yml): has it, keypin.toml (prod)",
@@ -1362,9 +1362,9 @@ describe("keypin check's prerequisites", () => {
     expect(await cli(["check"], run.deps)).toBe(1);
     expect(run.vault).toEqual([]);
     expect(run.stdout.text).toContain(`Before you start:
-  GitHub: not logged in; run gh auth login --hostname github.com, signing in as alice
+  GitHub:     not logged in; run gh auth login --hostname github.com, signing in as alice
   Cloudflare: not logged in; run wrangler login
-  1Password: not checked; keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected
+  1Password:  not checked;   keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected
 `);
   });
 

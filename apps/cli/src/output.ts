@@ -10,10 +10,10 @@ export interface Done {
 }
 
 export interface Output {
-  line(text?: string): void;
-  bold(text: string): string;
-  dim(text: string): string;
-  mark(ok: boolean): string;
+  line: (text?: string) => void;
+  bold: (text: string) => string;
+  dim: (text: string) => string;
+  mark: (ok: boolean) => string;
   step<T>(
     running: string,
     work: () => Promise<T>,
@@ -93,6 +93,10 @@ export function columns(rows: readonly (readonly string[])[]): string[][] {
   for (const row of rows)
     row.forEach((cell, i) => (widths[i] = Math.max(widths[i] ?? 0, cell.length)));
   return rows.map((row) => row.map((cell, i) => cell.padEnd(widths[i] ?? 0)));
+}
+
+export function tilde(text: string, home: string): string {
+  return text.replaceAll(new RegExp(`(^|[\\s(])${RegExp.escape(home)}(?=/|$|[\\s)])`, "g"), "$1~");
 }
 
 function fit(text: string, width: number): string {

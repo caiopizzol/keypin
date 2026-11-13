@@ -2,7 +2,7 @@ import { assert, describe, expect, test } from "vite-plus/test";
 import { isRecord, parseMap, type StoreRead } from "@keypin/core";
 import { CloudflareReader } from "@keypin/destination-cloudflare";
 import { cli } from "../src/cli";
-import { PASTE, THEN } from "../src/commands/check";
+import { AFTER_IMPORT, PASTE, THEN } from "../src/commands/check";
 import { TEMPLATE } from "../src/commands/init";
 import type { Deps } from "../src/deps";
 import {
@@ -196,12 +196,15 @@ describe("keypin check on a whole project", () => {
 4 Add the production keys to keypin.toml
   STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and keypin.toml doesn't publish it there.
   RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and keypin.toml doesn't publish it there.
-  ${PASTE}
+  ${AFTER_IMPORT}
 `);
+    expect(text).not.toContain(PASTE);
     expect(text).not.toContain("Note:");
     expect(text).not.toContain("GITHUB_TOKEN");
     expect(text).not.toContain("REGION");
-    expect(added(text)).toBe(`[1password]
+    const data = setup({ files: { [MAP]: TEMPLATE } });
+    await cli(["check", "--json"], data.deps);
+    expect(json(data.stdout.text).add).toBe(`[1password]
 account = "<1Password sign-in address>"
 
 [keys.STRIPE_API_KEY]
@@ -226,11 +229,11 @@ account = "${ACCOUNT}"
 worker = "billing-worker"
 `);
     run.unchanged();
-    expect(leaks(...run.everything())).toBe(false);
+    expect(leaks(...run.everything(), ...data.everything())).toBe(false);
   });
 
-  test("the TOML to add, filled in and pasted, closes the production gap", async () => {
-    const first = setup({ files: { [MAP]: TEMPLATE } });
+  test("with no import step, the TOML prints, and filled in and pasted closes the production gap", async () => {
+    const first = setup({ files: { [MAP]: TEMPLATE, [`${ROOT}/.env`]: null } });
     await cli(["check"], first.deps);
     const pasted = `${TEMPLATE}\n${fill(added(first.stdout.text))}`;
     assert(parseMap(pasted, MAP).ok, pasted);
@@ -269,6 +272,47 @@ worker = "billing-worker"
     expect(data.notes).toContain(
       ".env sets DATABASE_URL, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env NAME... --vault <vault>",
     );
+  });
+
+  test("following the steps in order, import then the TOML, leaves a map that parses", async () => {
+    const vault = fakeVault({ items: [] });
+    const run = setup({
+      files: { [MAP]: TEMPLATE, [`${ROOT}/.env.example`]: null },
+      deps: { vault: () => vault.vault },
+    });
+    const pasteAfter = async () => {
+      const before = run.stdout.text.length;
+      await cli(["check"], run.deps);
+      const text = run.stdout.text.slice(before);
+      const command = /^ {4}(keypin import .+)$/m.exec(text)?.[1];
+      return { text, command };
+    };
+
+    const first = await pasteAfter();
+    assert(first.command !== undefined, first.text);
+    const args = first.command
+      .split(" ")
+      .slice(1)
+      .map((arg) => (arg === "<vault>" ? "Private" : arg))
+      .map((arg) => (arg === "<1Password" ? "my.1password.com" : arg))
+      .filter((arg) => arg !== "sign-in" && arg !== "address>");
+    expect(await cli([...args, "--yes"], run.deps)).toBe(0);
+    if (first.text.includes(PASTE)) {
+      const map = run.disk.contents.get(MAP) ?? "";
+      const pasted = `${map}\n${fill(added(first.text))}`;
+      assert(parseMap(pasted, MAP).ok, pasted);
+    } else expect(first.text).toContain(AFTER_IMPORT);
+
+    const second = await pasteAfter();
+    expect(second.command).toBeUndefined();
+    const pasted = `${run.disk.contents.get(MAP) ?? ""}\n${fill(added(second.text))}`;
+    const parsed = parseMap(pasted, MAP);
+    assert(parsed.ok, parsed.ok ? "" : parsed.errors.join("\n"));
+    expect(parsed.map.keys.map((k) => k.name).sort()).toEqual([
+      "DATABASE_URL",
+      "RESEND_API_KEY",
+      "STRIPE_API_KEY",
+    ]);
   });
 
   test("an env file named for an environment suggests importing it with --env", async () => {
@@ -311,6 +355,16 @@ worker = "billing-worker"
     expect(data.notes).toContain(
       `.env.production sets NEW_KEY, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env.production NAME... --vault <vault>${note}`,
     );
+    const text = setup({
+      files: {
+        [MAP]: MAPPED,
+        [`${ROOT}/.env.production`]: `DATABASE_URL=${SENTINEL}\nNEW_KEY=${SENTINEL}\n`,
+      },
+    });
+    await cli(["check"], text.deps);
+    expect(text.stdout.text).toContain(`    keypin import .env.production NEW_KEY --vault <vault>
+  That command maps them as dev; if they're the values of another environment, list it in environments and add --env <name>.
+`);
 
     const first = setup({
       files: {
@@ -324,7 +378,7 @@ worker = "billing-worker"
     expect(listed.notes).toContain(
       ".env.production sets NEW_KEY, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env.production NAME... --vault <vault>",
     );
-    expect(leaks(...mapped.everything(), ...first.everything())).toBe(false);
+    expect(leaks(...mapped.everything(), ...text.everything(), ...first.everything())).toBe(false);
   });
 
   test("an env file named for an unlisted environment flags an already-mapped key too", async () => {
@@ -361,7 +415,7 @@ worker = "billing-worker"
   });
 
   test("the TOML to add, pasted unfilled, fails with one line per <...> until replaced", async () => {
-    const first = setup({ files: { [MAP]: TEMPLATE } });
+    const first = setup({ files: { [MAP]: TEMPLATE, [`${ROOT}/.env`]: null } });
     await cli(["check"], first.deps);
     const run = setup({ files: { [MAP]: `${TEMPLATE}\n${added(first.stdout.text)}` } });
     expect(await cli(["check", "--json"], run.deps)).toBe(1);

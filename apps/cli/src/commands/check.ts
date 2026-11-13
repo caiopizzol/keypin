@@ -457,14 +457,11 @@ function plan(report: Report, found: Step[], fixes: Fix[], empty: string | null)
     );
   }
   const add = of("add");
-  if (report.add !== null)
-    all(
-      ORDER.add,
-      `Add the production keys to ${MAP_FILE}`,
-      add,
-      [...add.map((fix) => sentence(fix.why)), PASTE],
-      report.add,
-    );
+  const why = add.map((fix) => sentence(fix.why));
+  if (report.add !== null && imports.length)
+    all(ORDER.add, `Add the production keys to ${MAP_FILE}`, add, [...why, AFTER_IMPORT]);
+  else if (report.add !== null)
+    all(ORDER.add, `Add the production keys to ${MAP_FILE}`, add, [...why, PASTE], report.add);
   const edits = of("edit");
   if (edits.length)
     all(
@@ -512,6 +509,8 @@ function plan(report: Report, found: Step[], fixes: Fix[], empty: string | null)
 export const PASTE =
   "Replace each <...> with the real value; keypin rejects a map that still has one:";
 export const THEN = "Then run keypin check again.";
+export const AFTER_IMPORT =
+  "The import above changes keypin.toml. Once it's done, run keypin check again for the TOML to add.";
 
 function render(report: Report, steps: Step[], out: Output, home: string): string {
   const { bold, dim, mark } = out;

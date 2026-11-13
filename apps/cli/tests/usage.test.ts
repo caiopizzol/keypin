@@ -14,6 +14,7 @@ describe("an unknown command", () => {
       ["unregistr", "unregister"],
       ["ini", "init"],
       ["pub", "publish"],
+      ["impto", "import"],
     ];
     for (const [typed, meant] of typos) {
       const { deps, stdout, stderr } = fakeDeps();

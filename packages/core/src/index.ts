@@ -67,4 +67,4 @@ export {
   type WorkerDeclaration,
   type WorkflowRefs,
 } from "./scan";
-export { findGaps, type Gaps, type LocalFile, type Need, type ProjectScan } from "./gaps";
+export { findGaps, type Fix, type Gaps, type LocalFile, type Need, type ProjectScan } from "./gaps";

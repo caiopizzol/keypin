@@ -77,39 +77,29 @@ describe("keypin check", () => {
       `check github-actions:acme/billing`,
     ]);
     expect(run.log.some((l) => l.startsWith("write"))).toBe(false);
-    const text = run.stdout.text;
-    expect(text).toContain(
-      "STRIPE_API_KEY dev\n  ok     op://Private/billing stripe api key/password",
-    );
-    expect(text).toContain(
-      "  ok     GitHub      acme/billing    as acme, account acme; the active gh login",
-    );
-    expect(text).toContain(
-      `  ok     Cloudflare  billing-worker  as me@example.com, account ${ACCOUNT}; the wrangler login in ${TILDE_WRANGLER}`,
-    );
-    expect(text).toContain(
-      `the wrangler login is an OAuth token stored in plain text in ${TILDE_WRANGLER}`,
-    );
-    expect(text).toContain("Everything checks out.");
+    expect(run.stdout.text)
+      .toBe(`billing /work/billing · read 0 env files, 0 wrangler configs, 0 workflows
+ok     1 key, 2 destinations. Everything checks out.
+Note: the wrangler login is an OAuth token stored in plain text in ${TILDE_WRANGLER}; wrangler logout removes it
+`);
     run.unchanged();
     expect(run.disk.contents.has(STATE)).toBe(false);
     expect(leaks(...run.everything())).toBe(false);
   });
 
-  test("destinations line up for every key that publishes to them", async () => {
+  test("the all-good line counts keys and destinations, and nothing else is listed", async () => {
     const run = setup({
       map: `${BILLING_MAP}
 [keys.OTHER_KEY]
 prod = { from = "op://Private/billing stripe api key/password", publish = [
   { to = "github-actions", repo = "acme/billing" },
-  { to = "cloudflare-worker", account = "${ACCOUNT}", worker = "billing-worker" },
 ] }
 `,
     });
     expect(await cli(["check"], run.deps)).toBe(0);
-    const rows = run.stdout.text.split("\n").filter((line) => line.includes("acme/billing"));
-    expect(rows).toHaveLength(2);
-    for (const row of rows) expect(row).toContain("GitHub      acme/billing    as acme");
+    expect(run.stdout.text).toContain("ok     2 keys, 3 destinations. Everything checks out.\n");
+    expect(run.stdout.text).not.toContain("things to do");
+    expect(run.stdout.text).not.toContain("acme/billing");
   });
 
   test("works without a terminal and never asks", async () => {
@@ -126,23 +116,26 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
 
   test("names the login from git config github.account", async () => {
     const run = setup({
+      badAccount: ["github-actions:acme/billing"],
       deps: {
         git: async (_folder, args) =>
           args.join(" ") === "config --get github.account" ? "alice\n" : null,
       },
     });
-    expect(await cli(["check"], run.deps)).toBe(0);
-    expect(run.stdout.text).toContain("; alice (git config github.account)");
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(run.stdout.text).toContain(
+      "  As acme, pinned acme, reaches unknown; alice (git config github.account).\n",
+    );
   });
 
   test("a missing item is one problem line naming the keys that use it, exit 1", async () => {
     const run = setup({ values: {} });
     expect(await cli(["check"], run.deps)).toBe(1);
-    const text = run.stdout.text;
-    expect(text).toContain("  FAILED op://Private/billing stripe api key/password");
-    expect(text).toContain(
-      `Problems (1):\n  no item "billing stripe api key" (STRIPE_API_KEY (dev), STRIPE_API_KEY (prod))\n`,
-    );
+    expect(run.stdout.text).toContain(`1 thing to do:
+1 Fix the vault item op://Private/billing stripe api key/password
+  No item "billing stripe api key".
+  Used by STRIPE_API_KEY (dev), STRIPE_API_KEY (prod).
+`);
     run.unchanged();
   });
 
@@ -186,17 +179,22 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
       },
     }));
     const run = setup({ deps: { vault: () => backend } });
-    expect(await cli(["check"], run.deps)).toBe(0);
+    expect(await cli(["check", "--json"], run.deps)).toBe(0);
     expect(sdk).toEqual(["list"]);
-    expect(run.stdout.text).toContain(
-      "items are looked up in each vault's item list, which holds no values, so no field is checked",
+    expect(parseJson(run.stdout.text)).toHaveProperty(
+      "notes",
+      expect.arrayContaining([
+        expect.stringContaining(
+          "items are looked up in each vault's item list, which holds no values, so no field is checked",
+        ),
+      ]),
     );
 
     titles.pop();
     const missing = setup({ deps: { vault: () => backend } });
     expect(await cli(["check"], missing.deps)).toBe(1);
     expect(missing.stdout.text).toContain(
-      `  op://Private/billing stripe api key/password (1Password account my.1password.com): no such item (STRIPE_API_KEY (dev), STRIPE_API_KEY (prod))`,
+      "  op://Private/billing stripe api key/password (1Password account my.1password.com): no such item.\n  Used by STRIPE_API_KEY (dev), STRIPE_API_KEY (prod).\n",
     );
     expect(sdk).not.toContain("get");
     expect(leaks(...run.everything(), ...missing.everything())).toBe(false);
@@ -261,9 +259,12 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
   test("a failed account check is a problem; nothing is read twice or written", async () => {
     const run = setup({ badAccount: ["cloudflare-worker:billing-worker"] });
     expect(await cli(["check"], run.deps)).toBe(1);
-    expect(run.stdout.text).toContain(
-      `  cloudflare-worker:${ACCOUNT}/billing-worker: the login can't reach ${ACCOUNT} (STRIPE_API_KEY (prod))`,
-    );
+    expect(run.stdout.text).toContain(`1 thing to do:
+1 Fix the login for the Worker billing-worker
+  The login can't reach ${ACCOUNT}.
+  As me@example.com, pinned ${ACCOUNT}, reaches unknown; the wrangler login in ${TILDE_WRANGLER}.
+  Used by STRIPE_API_KEY (prod).
+`);
     expect(run.log.filter((l) => l.startsWith("check"))).toHaveLength(2);
     run.unchanged();
   });
@@ -283,9 +284,7 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
   test("an empty map is a problem, not a healthy setup", async () => {
     const run = setup({ map: "" });
     expect(await cli(["check"], run.deps)).toBe(1);
-    expect(run.stdout.text).toContain(
-      `${MAP_FILE} maps no keys yet; run keypin import for an env file, and add the TOML below for production`,
-    );
+    expect(run.stdout.text).toContain(`2 Map a key\n  ${MAP_FILE} maps no keys yet.\n`);
     expect(run.calls).toEqual([]);
   });
 
@@ -293,14 +292,16 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
     const run = setup();
     run.disk.contents.delete(MAP_FILE);
     expect(await cli(["check"], run.deps)).toBe(1);
-    expect(run.stdout.text).toContain("no keypin.toml in /work/billing or any folder above it");
+    expect(run.stdout.text).toContain(
+      "Create keypin.toml\n  There's no keypin.toml in /work/billing or any folder above it.\n    keypin init\n",
+    );
   });
 
   test("an unregistered project gets a note, not a problem", async () => {
     const run = setup();
     run.disk.contents.set(REGISTRY, registryWith());
     expect(await cli(["check"], run.deps)).toBe(0);
-    expect(run.stdout.text).toContain("/work/billing isn't registered");
+    expect(run.stdout.text).toContain("Note: /work/billing isn't registered");
   });
 
   test("the --json shape", async () => {

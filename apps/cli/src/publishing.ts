@@ -21,6 +21,7 @@ import {
 import type { Deps, LockHolder } from "./deps";
 import { messageOf } from "./errors";
 import { statePath } from "./paths";
+import { columns, type Output } from "./output";
 import { publisherFor } from "./publisher";
 
 export const NEEDS_APPROVAL = 3;
@@ -58,29 +59,52 @@ function lockedMessage(file: string, holder: LockHolder): string {
   return `keypin: another publish (process ${holder.pid}) holds ${file} and is still running. Wait for it to finish.`;
 }
 
+export type Label = (target: PublishTarget) => string;
+
+export function labels(targets: readonly PublishTarget[]): Label {
+  const padded = columns(targets.map(placeCells));
+  const known = new Map(targets.map((target, i) => [target, padded[i]?.join("  ") ?? ""]));
+  return (target) => known.get(target) ?? placeCells(target).join("  ");
+}
+
+function placeCells(target: PublishTarget): string[] {
+  return target.to === "cloudflare-worker"
+    ? ["Cloudflare", target.worker]
+    : [
+        "GitHub",
+        target.environment === undefined
+          ? target.repo
+          : `${target.repo} environment ${target.environment}`,
+      ];
+}
+
 export async function checkAccounts(
   key: KeyEntry,
   entry: EnvEntry,
   deps: Deps,
-  say: Say,
-  heading = "Account checks",
+  out: Output,
+  label: Label,
 ): Promise<Map<string, Checked> | null> {
-  say(`\n${heading}:`);
   const checked = new Map<string, Checked>();
   let failed = false;
   const publisher = await publisherFor(entry.publish, deps);
   for (const target of entry.publish) {
-    const label = describeTarget(target, key.name);
+    const place = label(target);
     try {
       const destination = deps.destination(target, publisher);
-      const check = await destination.checkAccount();
-      checked.set(destinationId(target, key.name), { target, destination, check });
-      say(
-        `  ${check.ok ? "ok" : "FAILED"} ${label}: ${accountFacts(check)}${check.ok ? "" : `: ${check.reason ?? "no reason given"}`}`,
+      const check = await out.step(
+        `${place}  checking the account`,
+        () => destination.checkAccount(),
+        (result) => ({ ok: result.ok, text: `${place}  ${out.dim(accountFacts(result))}` }),
       );
-      if (!check.ok) failed = true;
+      checked.set(destinationId(target, key.name), { target, destination, check });
+      if (!check.ok) {
+        failed = true;
+        out.line(`    ${check.reason ?? "the account check failed"}`);
+        if (check.fix) out.line(`    fix: ${check.fix}`);
+      }
     } catch (error) {
-      say(`  FAILED ${label}: ${messageOf(error)}`);
+      out.line(`    ${messageOf(error)}`);
       failed = true;
     }
   }
@@ -113,9 +137,10 @@ export async function writeAll(input: {
   state: State;
   path: string;
   deps: Deps;
-  say: Say;
+  out: Output;
+  label: Label;
 }): Promise<{ ok: boolean; state: State }> {
-  const { key, environment, mapFile, entry, secret, ids, generation, writes, path, deps, say } =
+  const { key, environment, mapFile, entry, secret, ids, generation, writes, path, deps, out } =
     input;
   const id = crypto.randomUUID();
   let state = startOperation(input.state, {
@@ -130,9 +155,13 @@ export async function writeAll(input: {
   await saveState(deps.files, path, state);
 
   for (const { destinationId: written, found } of writes) {
-    const label = describeTarget(found.target, key.name);
+    const place = input.label(found.target);
     try {
-      const evidence = await found.destination.write(key.name, secret);
+      const evidence = await out.step(
+        `${place}  writing ${key.name}`,
+        () => found.destination.write(key.name, secret),
+        () => ({ ok: true, text: `${place}  wrote ${key.name}` }),
+      );
       state = recordReceipt(
         state,
         {
@@ -154,9 +183,8 @@ export async function writeAll(input: {
         id,
       );
       await saveState(deps.files, path, state);
-      say(`  wrote ${label}`);
     } catch (error) {
-      say(`  FAILED ${label}: ${messageOf(error)}`);
+      out.line(`    ${messageOf(error)}`);
       return { ok: false, state };
     }
   }
@@ -186,7 +214,7 @@ export function planOnly(
   const say = (text: string) => deps.stderr.write(`${text}\n`);
   say(
     needsApproval
-      ? "\nThis plan needs yes typed in a terminal; --yes can't approve it."
+      ? "\nThis plan needs approval in a terminal; --yes can't give it."
       : "\nThis plan is routine: --yes can approve it.",
   );
   say("Nothing was written: --plan only shows the plan.");
@@ -199,9 +227,7 @@ export function shellWord(word: string): string {
 }
 
 export function accountFacts(check: AccountCheck): string {
-  return `publisher ${check.publisher}, destination account ${check.destinationAccount ?? "unknown"}`;
-}
-
-export function describeTarget(target: PublishTarget, secretName: string): string {
-  return `${destinationId(target, secretName)} (account ${target.account})`;
+  return check.ok
+    ? `as ${check.publisher}, account ${check.destinationAccount ?? check.expected}`
+    : `as ${check.publisher}, pinned ${check.expected}, reaches ${check.destinationAccount ?? "unknown"}`;
 }

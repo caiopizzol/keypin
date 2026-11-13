@@ -88,7 +88,7 @@ Then publish:
 keypin publish --all
 ```
 
-`publish` shows what it will write where and waits for you to type `yes`. See
+`publish` shows what it will write where and waits for you to answer `y`. See
 [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md).
 
 ## Commands

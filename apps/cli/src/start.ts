@@ -26,6 +26,7 @@ import {
 import { installProblem } from "./install";
 import { launch, onSignals } from "./launch";
 import { hostTarget, launchedBinary } from "./layout";
+import { isStyled } from "./output";
 import { selfCommand } from "./runtime";
 import { selfFor } from "./self";
 
@@ -64,6 +65,10 @@ async function ask(question: string): Promise<string> {
   const prompt = createInterface({ input: process.stdin, output: process.stderr });
   try {
     return await prompt.question(question);
+  } catch (error) {
+    if (!(error instanceof Error && error.name === "AbortError")) throw error;
+    process.stderr.write("\n");
+    return "";
   } finally {
     prompt.close();
   }
@@ -165,6 +170,8 @@ export function main(): Promise<number> {
     },
     lock: diskLock,
     isTerminal: Boolean(process.stdin.isTTY),
+    styled: isStyled(process.stderr.isTTY, process.env),
+    columns: () => process.stderr.columns || 80,
     ask,
   });
 }

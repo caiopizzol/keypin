@@ -65,6 +65,8 @@ export interface Deps {
   ghLogin(login: string | null): Promise<"ok" | "not installed" | "not logged in">;
   lock: Lock;
   isTerminal: boolean;
+  styled: boolean;
+  columns: () => number;
   ask(question: string): Promise<string>;
 }
 

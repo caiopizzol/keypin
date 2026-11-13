@@ -35,7 +35,7 @@ from = "op://Production/billing prod stripe key/password"
 For a key `keypin.toml` already has without that environment, it adds only that table, at the end of the file, and
 leaves the key's other lines as they are.
 
-It shows every item it will create and waits for you to type `yes`. `--yes` approves it, because it only creates
+It shows every item it will create and waits for you to answer `y`. `--yes` approves it, because it only creates
 items.
 
 It never overwrites an item, and it skips, by name:

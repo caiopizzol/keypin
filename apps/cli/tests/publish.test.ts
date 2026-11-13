@@ -118,12 +118,14 @@ describe("keypin publish", () => {
   test("before any approval prompt it names the key, item and every destination", async () => {
     const run = setup({ terminal: "no" });
     await cli(["publish", "STRIPE_API_KEY"], run.deps);
-    const beforeRead = run.stderr.text.split("keypin: reading")[0] ?? "";
+    const readAt = run.stderr.text.indexOf("Read 1 value");
+    expect(readAt).toBeGreaterThan(0);
+    const beforeRead = run.stderr.text.slice(0, readAt);
     expect(beforeRead).toContain(
-      `Publishing STRIPE_API_KEY (prod) from op://Private/billing stripe api key/password`,
+      "STRIPE_API_KEY prod  from op://Private/billing stripe api key/password in 1Password account my.1password.com",
     );
-    expect(beforeRead).toContain(`to: ${WORKER} (account 11111111111111111111111111111111)`);
-    expect(beforeRead).toContain(`to: ${GITHUB} (account acme)`);
+    expect(beforeRead).toContain("Cloudflare  billing-worker  as me@example.com");
+    expect(beforeRead).toContain("GitHub      acme/billing    as acme");
   });
 
   test("the approval command drops --plan, but keeps one after the -- separator", () => {
@@ -171,11 +173,11 @@ describe("keypin publish", () => {
 
     const again = setup({ terminal: "yes", disk: first.disk });
     expect(await cli(["publish", "STRIPE_API_KEY"], again.deps)).toBe(0);
-    expect(again.asked).toEqual(["Type yes to write (this plan needs approval): "]);
-    expect(again.stderr.text).toContain(
-      `needs approval: first write to ${environment}:STRIPE_API_KEY (account acme)`,
+    expect(again.asked).toEqual(["Write 1 secret? [y/N] "]);
+    expect(again.stderr.text).toMatch(
+      /\+ GitHub {6}acme\/billing environment production {2}first write +needs approval/,
     );
-    expect(again.stderr.text).toContain(`not in the map any more: ${GITHUB}`);
+    expect(again.stderr.text).toContain(`- ${GITHUB}: not in the map any more`);
     expect(again.log.filter((l) => l.startsWith("write"))).toEqual([
       `write ${environment} STRIPE_API_KEY (${SENTINEL.length} chars)`,
     ]);
@@ -186,11 +188,22 @@ describe("keypin publish", () => {
     ]);
   });
 
-  test("anything but yes on the terminal writes nothing", async () => {
-    const run = setup({ terminal: "y" });
-    expect(await cli(["publish", "STRIPE_API_KEY"], run.deps)).toBe(NEEDS_APPROVAL);
-    expect(run.log.some((l) => l.startsWith("write"))).toBe(false);
-    expect(run.disk.contents.has(STATE)).toBe(false);
+  test("anything but y or yes on the terminal writes nothing", async () => {
+    for (const answer of ["", "n", "no", "yess", "ok"]) {
+      const run = setup({ terminal: answer });
+      expect(await cli(["publish", "STRIPE_API_KEY"], run.deps)).toBe(NEEDS_APPROVAL);
+      expect(run.log.some((l) => l.startsWith("write"))).toBe(false);
+      expect(run.disk.contents.has(STATE)).toBe(false);
+    }
+  });
+
+  test("y, yes and Y each confirm", async () => {
+    for (const answer of ["y", "Y", " yes ", "YES"]) {
+      const run = setup({ terminal: answer });
+      expect(await cli(["publish", "STRIPE_API_KEY"], run.deps)).toBe(0);
+      expect(run.asked).toEqual(["Write 2 secrets? [y/N] "]);
+      expect(run.log.filter((l) => l.startsWith("write"))).toHaveLength(2);
+    }
   });
 
   test("a failure at the second destination keeps the first receipt, and the rerun skips the first", async () => {
@@ -204,9 +217,7 @@ describe("keypin publish", () => {
     const again = setup({ terminal: "yes", disk: first.disk });
     expect(await cli(["publish", "STRIPE_API_KEY"], again.deps)).toBe(0);
     expect(again.stderr.text).toContain("didn't finish: wrote 1 of 2");
-    expect(again.stderr.text).toContain(
-      `skip ${WORKER} (account 11111111111111111111111111111111): receipt already has this generation`,
-    );
+    expect(again.stderr.text).toContain("= Cloudflare  billing-worker  already has this value");
     expect(again.log.filter((l) => l.startsWith("write"))).toEqual([
       `write ${GITHUB_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
     ]);
@@ -222,7 +233,8 @@ describe("keypin publish", () => {
     expect(run.calls).toEqual([]);
     expect(run.log).toEqual([`check ${WORKER_PLACE}`, `check ${GITHUB_PLACE}`]);
     expect(run.asked).toEqual([]);
-    expect(run.stderr.text).toContain(`FAILED ${GITHUB} (account acme)`);
+    expect(run.stderr.text).toContain("FAILED GitHub      acme/billing    as acme, pinned acme");
+    expect(run.stderr.text).toContain("    the login can't reach acme");
     expect(run.stderr.text).toContain("Nothing was read and nothing was written");
     expect(run.disk.contents.has(STATE)).toBe(false);
   });
@@ -251,7 +263,7 @@ describe("keypin publish", () => {
   test("--yes in a terminal still asks when a step needs approval", async () => {
     const run = setup({ terminal: "no" });
     expect(await cli(["publish", "STRIPE_API_KEY", "--yes"], run.deps)).toBe(NEEDS_APPROVAL);
-    expect(run.asked).toEqual(["Type yes to write (this plan needs approval): "]);
+    expect(run.asked).toEqual(["Write 2 secrets? [y/N] "]);
     expect(run.log.some((l) => l.startsWith("write"))).toBe(false);
   });
 
@@ -261,7 +273,7 @@ describe("keypin publish", () => {
     const next = setup({ disk: first.disk, value: `${SENTINEL}-next` });
     expect(await cli(["publish", "STRIPE_API_KEY", "--yes"], next.deps)).toBe(0);
     expect(next.log.filter((l) => l.startsWith("write"))).toHaveLength(2);
-    expect(next.stderr.text).toContain("different generation");
+    expect(next.stderr.text).toContain("new value");
     expect(next.stderr.text).not.toContain("needs approval");
     expect(leaks(...next.everything())).toBe(false);
   });
@@ -283,11 +295,12 @@ describe("keypin publish", () => {
     expect(run.disk.contents).toEqual(before);
     const text = run.stderr.text;
     const generation = await generationOf(new Secret(SENTINEL));
-    expect(text).toContain(`  ok ${WORKER} (account 11111111111111111111111111111111)`);
-    expect(text).toContain(`Plan for generation ${generation}:`);
-    expect(text).toContain(`  write ${GITHUB} (account acme): no receipt`);
-    expect(text).toContain(`    needs approval: first write to ${GITHUB} (account acme)`);
-    expect(text).toContain("This plan needs yes typed in a terminal; --yes can't approve it.");
+    expect(text).toContain(
+      "ok     Cloudflare  billing-worker  as me@example.com, account 11111111111111111111111111111111",
+    );
+    expect(text).toContain(`Plan  generation ${generation}`);
+    expect(text).toContain("  + GitHub      acme/billing    first write  needs approval");
+    expect(text).toContain("This plan needs approval in a terminal; --yes can't give it.");
     expect(text).toContain(
       "To approve, run this in a terminal:\n  cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts publish STRIPE_API_KEY\n",
     );
@@ -305,7 +318,7 @@ describe("keypin publish", () => {
     expect(next.asked).toEqual([]);
     expect(next.log.some((l) => l.startsWith("write"))).toBe(false);
     expect(next.disk.contents.get(STATE)).toBe(saved);
-    expect(next.stderr.text).toContain("different generation");
+    expect(next.stderr.text).toContain("  ~ GitHub      acme/billing    new value");
     expect(next.stderr.text).toContain("This plan is routine: --yes can approve it.");
     expect(next.stderr.text).toContain("main.ts publish STRIPE_API_KEY --yes\n");
     expect(leaks(...next.everything())).toBe(false);
@@ -333,7 +346,7 @@ describe("keypin publish", () => {
     );
     const next = setup({ disk: first.disk });
     expect(await cli(["publish", "STRIPE_API_KEY"], next.deps)).toBe(0);
-    expect(next.stderr.text).toContain(`not in the map any more: ${GITHUB}`);
+    expect(next.stderr.text).toContain(`- ${GITHUB}: not in the map any more`);
     expect(next.log).toEqual([`check ${WORKER_PLACE}`]);
   });
 
@@ -502,9 +515,7 @@ describe("keypin publish", () => {
       });
     const first = deps(true, "alice");
     expect(await cli(["publish", "STRIPE_API_KEY"], first.deps)).toBe(0);
-    expect(first.stderr.text).toContain(
-      "ok github-actions:acme/billing:STRIPE_API_KEY (account acme): publisher alice, destination account acme",
-    );
+    expect(first.stderr.text).toContain("ok     GitHub  acme/billing  as alice, account acme");
     const saved = await loadState(disk.files, STATE);
     expect(saved.receipts).toMatchObject([
       { account: { pinned: "acme", publisher: "alice", destinationAccount: "acme" } },
@@ -514,8 +525,8 @@ describe("keypin publish", () => {
     const again = deps(false, null);
     requests.length = 0;
     expect(await cli(["publish", "STRIPE_API_KEY"], again.deps)).toBe(0);
-    expect(again.stderr.text).toContain("publisher bob, destination account acme");
-    expect(again.stderr.text).toContain("receipt already has this generation");
+    expect(again.stderr.text).toContain("as bob, account acme");
+    expect(again.stderr.text).toContain("already has this value");
     expect(again.stderr.text).not.toContain("account changed");
     expect(requests.some((r) => r.startsWith("PUT"))).toBe(false);
     expect(logins).toEqual(["alice", null]);
@@ -660,7 +671,7 @@ describe("a destination only takes a value without approval when it came from th
 
     const same = publisher(disk, "/work/billing", false, first);
     expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], same.deps)).toBe(0);
-    expect(same.stderr.text).toContain("receipt already has this generation");
+    expect(same.stderr.text).toContain("already has this value");
     expect(same.calls).toEqual(["ids billing deploy token", "read billing deploy token"]);
 
     const before = disk.contents.get(STATE);
@@ -707,7 +718,7 @@ describe("a destination only takes a value without approval when it came from th
     disk.contents.set("/work/billing/keypin.toml", deployMap("billing deploy token v2"));
     const renamed = publisher(disk, "/work/billing", false, ids);
     expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], renamed.deps)).toBe(0);
-    expect(renamed.stderr.text).toContain("receipt already has this generation");
+    expect(renamed.stderr.text).toContain("already has this value");
     expect(renamed.stderr.text).not.toContain("needs approval");
   });
 
@@ -727,7 +738,7 @@ describe("a destination only takes a value without approval when it came from th
     const replaced = { "billing deploy token": "item-2" };
     const same = publisher(disk, "/work/billing", false, replaced);
     expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], same.deps)).toBe(0);
-    expect(same.stderr.text).toContain("receipt already has this generation");
+    expect(same.stderr.text).toContain("already has this value");
 
     disk.contents.set(STATE, v3);
     disk.contents.set("/work/billing/keypin.toml", deployMap("billing deploy token v2"));
@@ -896,7 +907,7 @@ describe("a destination only takes a value without approval when it came from th
     ).toBe(0);
     const rerun = publisher(disk, "/work/billing", false);
     expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], rerun.deps)).toBe(0);
-    expect(rerun.stderr.text).toContain("receipt already has this generation");
+    expect(rerun.stderr.text).toContain("already has this value");
     expect(rerun.writes()).toEqual([]);
   });
 });
@@ -1027,7 +1038,7 @@ describe("keypin publish --all", () => {
   test("several keys get one combined plan and one approval, in map order", async () => {
     const run = setupAll({ terminal: "yes" });
     expect(await cli(["publish", "--all"], run.deps)).toBe(0);
-    expect(run.asked).toEqual(["Type yes to write (this plan needs approval): "]);
+    expect(run.asked).toEqual(["Write 3 secrets? [y/N] "]);
     expect(run.calls).toEqual(["read billing stripe api key", "read billing other key"]);
     expect(run.writes()).toEqual([
       `write ${WORKER_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
@@ -1036,12 +1047,12 @@ describe("keypin publish --all", () => {
     ]);
     const text = run.stderr.text;
     const firstWrite = text.indexOf("Published STRIPE_API_KEY");
-    expect(text.indexOf("Plan for STRIPE_API_KEY, generation")).toBeLessThan(
-      text.indexOf("Plan for OTHER_KEY, generation"),
+    expect(text.indexOf("Plan for STRIPE_API_KEY  generation")).toBeLessThan(
+      text.indexOf("Plan for OTHER_KEY  generation"),
     );
-    expect(text.indexOf("Plan for OTHER_KEY, generation")).toBeLessThan(firstWrite);
+    expect(text.indexOf("Plan for OTHER_KEY  generation")).toBeLessThan(firstWrite);
     expect(text).toContain("Not published, no prod destinations: DEV_ONLY");
-    expect(text).toContain("Published OTHER_KEY (prod) to 1 destination(s).");
+    expect(text).toContain("Published OTHER_KEY (prod) to 1 destination.");
     const state = await run.state();
     expect(state.receipts.map((r) => [r.keyId, r.destinationId])).toEqual([
       ["STRIPE_API_KEY", WORKER],
@@ -1062,7 +1073,7 @@ describe("keypin publish --all", () => {
     ]);
     expect(run.calls).toEqual([]);
     expect(run.asked).toEqual([]);
-    expect(run.stderr.text).toContain(`FAILED ${OTHER} (account acme)`);
+    expect(run.stderr.text).toContain("FAILED GitHub      acme/other      as acme, pinned acme");
     expect(run.stderr.text).toContain("Nothing was read and nothing was written");
     expect(run.disk.contents.has(STATE)).toBe(false);
   });
@@ -1089,9 +1100,11 @@ describe("keypin publish --all", () => {
     expect(run.calls).toEqual(["read billing stripe api key", "read billing other key"]);
     expect(run.writes()).toEqual([]);
     expect(run.disk.contents).toEqual(before);
-    expect(run.stderr.text).toContain("Plan for STRIPE_API_KEY, generation");
-    expect(run.stderr.text).toContain("Plan for OTHER_KEY, generation");
-    expect(run.stderr.text).toContain(`    needs approval: first write to ${OTHER} (account acme)`);
+    expect(run.stderr.text).toContain("Plan for STRIPE_API_KEY  generation");
+    expect(run.stderr.text).toContain("Plan for OTHER_KEY  generation");
+    expect(run.stderr.text).toContain(
+      "  + GitHub      acme/other      first write  needs approval",
+    );
     expect(run.stderr.text).toContain("main.ts publish --all\n");
     expect(leaks(...run.everything())).toBe(false);
   });
@@ -1114,7 +1127,7 @@ describe("keypin publish --all", () => {
 
     const asked = setupAll({ disk: first.disk, suffix: "-next", terminal: "no" });
     expect(await cli(["publish", "--all", "--yes"], asked.deps)).toBe(NEEDS_APPROVAL);
-    expect(asked.asked).toEqual(["Type yes to write (this plan needs approval): "]);
+    expect(asked.asked).toEqual(["Write 4 secrets? [y/N] "]);
     expect(asked.writes()).toEqual([]);
 
     first.disk.contents.set("/work/billing/keypin.toml", ALL_MAP);
@@ -1153,7 +1166,7 @@ describe("keypin publish --all", () => {
   test("a failure in a later key keeps every earlier key's receipts", async () => {
     const run = setupAll({ terminal: "yes", failWrite: [OTHER_PLACE] });
     expect(await cli(["publish", "--all"], run.deps)).toBe(1);
-    expect(run.stderr.text).toContain("Published STRIPE_API_KEY (prod) to 2 destination(s).");
+    expect(run.stderr.text).toContain("Published STRIPE_API_KEY (prod) to 2 destinations.");
     expect(run.stderr.text).toContain("Not finished: OTHER_KEY.");
     const state = await run.state();
     expect(state.receipts.map((r) => r.destinationId)).toEqual([WORKER, GITHUB]);

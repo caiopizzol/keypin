@@ -256,6 +256,8 @@ export function fakeDeps(setup: FakeSetup = {}) {
     ghLogin: async () => "ok",
     lock: memoryLock(disk),
     isTerminal: false,
+    styled: false,
+    columns: () => 80,
     ask: async () => {
       throw new Error("this test asks nothing");
     },

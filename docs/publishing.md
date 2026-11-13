@@ -19,11 +19,11 @@ the map names, must already exist. Run
 1. **Accounts:** it checks that each login reaches the account the map pins, and stops if one doesn't.
 2. **Plan:** it reads the value and shows what it will write where. It skips a destination when this machine's
    receipt shows it already got this value; keypin never reads a destination's secret.
-3. **Approval:** you type `yes`.
+3. **Approval:** you answer `y`.
 4. **Receipts:** it records each write on this machine, so a rerun skips destinations that are done.
 
-A first write to a destination, a changed account and a changed vault item always need a typed `yes` in a terminal.
-`--yes` approves only routine updates. Without a terminal, a publish that needs a typed `yes` stops before reading the
+A first write to a destination, a changed account and a changed vault item always need a `y` in a terminal.
+`--yes` approves only routine updates. Without a terminal, a publish that needs a `y` stops before reading the
 value and prints the command to run in one.
 
 A teammate's machine has no receipts, so their first publish counts as a first write.
@@ -37,6 +37,6 @@ exits 3 when the plan would write and 0 when there's nothing to write.
 ## Every key
 
 `--all` publishes every key that has destinations in the environment. It checks every account first, shows one plan
-and asks for one `yes`. If a write fails, it stops and keeps the receipts so far; run it again to continue.
+and asks once. If a write fails, it stops and keeps the receipts so far; run it again to continue.
 
 keypin never deletes a secret from a destination you remove from the map.

@@ -17,6 +17,7 @@ export interface Output {
   dim: (text: string) => string;
   red: (text: string) => string;
   mark: (ok: boolean) => string;
+  warn: (text: string) => void;
   step<T>(
     running: string,
     work: () => Promise<T>,
@@ -83,7 +84,9 @@ export function output(stderr: Writer, styled: boolean, columns = () => 80): Out
     }
   }
 
-  return { line, bold: paint("1"), dim, red, mark, step };
+  const warn = (text: string) => line(`${styled ? paint("33")("!") : "warn  "} ${text}`);
+
+  return { line, bold: paint("1"), dim, red, mark, warn, step };
 }
 
 export async function confirm(deps: Pick<Deps, "ask">, question: string): Promise<boolean> {

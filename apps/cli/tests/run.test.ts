@@ -2,11 +2,21 @@ import { spawnSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 import { cli } from "../src/cli";
 import { diskFiles, listFolder } from "../src/disk";
 import { launch } from "../src/launch";
-import { fakeDeps, fakeLauncher, fakeVault, leaks, memoryFiles, SENTINEL, WEB_MAP } from "./fakes";
+import {
+  ESC,
+  fakeDeps,
+  fakeLauncher,
+  fakeVault,
+  leaks,
+  memoryFiles,
+  SENTINEL,
+  unstyled,
+  WEB_MAP,
+} from "./fakes";
 
 const PROD_VALUE = "prod-value-that-run-never-reads";
 
@@ -157,7 +167,80 @@ prod = "op://Private/ci cloudflare token/credential"
     const { deps, launcher, stderr } = setup({ failing: ["web dev session secret"] });
     expect(await cli(["run", "--", "true"], deps)).toBe(1);
     expect(launcher.launches).toHaveLength(0);
-    expect(stderr.text).toContain("SESSION_SECRET (op://Private/web dev session secret/password)");
+    expect(stderr.text).toMatch(
+      /^FAILED Couldn't read from 1Password account my\.1password\.com\n {4}SESSION_SECRET \(op:\/\/Private\/web dev session secret\/password\): .*\nStopped: couldn't read, so the command didn't start\.\n$/,
+    );
+  });
+
+  test("reading the values is one step on stderr that names the items, not the values", async () => {
+    const { deps, stdout, stderr } = setup();
+    expect(await cli(["run", "--", "true"], deps)).toBe(0);
+    expect(stderr.text).toBe(
+      "ok     Read 1 dev value from 1Password account my.1password.com  op://Private/web dev session secret/password\n",
+    );
+    expect(stdout.text).toBe("");
+  });
+
+  test("at 80 columns, a slow read keeps the 1Password approval hint in view", async () => {
+    vi.useFakeTimers();
+    try {
+      const { deps, stderr } = setup();
+      const vault = deps.vault();
+      const read = vault.read.bind(vault);
+      vault.read = async (ref) => {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        return read(ref);
+      };
+      deps.styled = { stdout: true, stderr: true };
+      deps.columns = () => 80;
+      let code: number | undefined;
+      void cli(["run", "--", "true"], deps).then((c) => (code = c));
+      while (code === undefined) await vi.advanceTimersByTimeAsync(100);
+      expect(code).toBe(0);
+      const frames = stderr.text
+        .split(`\r${ESC}[2K`)
+        .map((frame) => unstyled(frame))
+        .filter((frame) => frame && !frame.includes("\n"));
+      expect(
+        frames.some((f) =>
+          f.endsWith(" Reading 1 dev value  1Password may be asking you to approve keypin"),
+        ),
+      ).toBe(true);
+      for (const frame of frames) expect(frame.length).toBeLessThanOrEqual(79);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("in a terminal, the step and warnings end their lines before the command starts", async () => {
+    const launcher = fakeLauncher();
+    let before = "";
+    const fake = fakeDeps({
+      disk: memoryFiles({
+        "/work/web/keypin.toml": WEB_MAP,
+        "/work/web/.env": `SESSION_SECRET=${SENTINEL}\n`,
+      }),
+      backend: fakeVault({ values: { "web dev session secret": SENTINEL } }).vault,
+      deps: {
+        cwd: "/work/web",
+        env: { SESSION_SECRET: "old" },
+        styled: { stdout: true, stderr: true },
+        launch: (command, env) => {
+          before = fake.stderr.text;
+          return launcher.launch(command, env);
+        },
+        onSignals: launcher.onSignals,
+      },
+    });
+    expect(await cli(["run", "--", "true"], fake.deps)).toBe(0);
+    expect(fake.stderr.text).toBe(before);
+    expect(fake.stdout.text).toBe("");
+    const lines = unstyled(before.split(`\r${ESC}[2K`).at(-1) ?? "");
+    expect(lines).toMatch(
+      /^✓ Read 1 dev value from 1Password account my\.1password\.com {2}op:\/\/Private\/web dev session secret\/password {2}\d+\.\ds\n! SESSION_SECRET was already set; using the vault's value\n! \.env still holds a plaintext copy of SESSION_SECRET; .*\n$/,
+    );
+    expect(before).not.toContain("keypin:");
+    expect(leaks(before)).toBe(false);
   });
 
   test("passes the child's exit code through", async () => {
@@ -176,7 +259,9 @@ prod = "op://Private/ci cloudflare token/credential"
     const { deps, launcher, stderr } = setup({ env: { SESSION_SECRET: "old" } });
     await cli(["run", "--", "true"], deps);
     expect(launcher.launches).toMatchObject([{ env: { SESSION_SECRET: SENTINEL } }]);
-    expect(stderr.text).toContain("SESSION_SECRET was already set; using the vault's value");
+    expect(stderr.text).toContain(
+      "\nwarn   SESSION_SECRET was already set; using the vault's value\n",
+    );
     expect(leaks(stderr.text)).toBe(false);
   });
 
@@ -240,7 +325,7 @@ prod = "op://Private/ci cloudflare token/credential"
       });
       expect(await cli(["run", "--", "wrangler", "dev"], deps)).toBe(0);
       expect(stderr.text).toContain(
-        `keypin: ../.dev.vars still sets SESSION_SECRET, and while it exists ${IGNORED}`,
+        `\nwarn   ../.dev.vars still sets SESSION_SECRET, and while it exists ${IGNORED}`,
       );
       expect(stderr.text.split(".dev.vars")).toHaveLength(2);
       expect(stderr.text).not.toContain("PORT");
@@ -256,8 +341,8 @@ prod = "op://Private/ci cloudflare token/credential"
         },
       });
       expect(await cli(["run", "--", "wrangler", "dev"], deps)).toBe(0);
-      expect(stderr.text).toContain(`keypin: ../.dev.vars exists, so ${IGNORED}`);
-      expect(stderr.text).toContain(`keypin: .dev.vars.staging exists, so ${IGNORED}`);
+      expect(stderr.text).toContain(`\nwarn   ../.dev.vars exists, so ${IGNORED}`);
+      expect(stderr.text).toContain(`\nwarn   .dev.vars.staging exists, so ${IGNORED}`);
       expect(stderr.text).not.toContain("PORT");
       expect(launcher.launches).toMatchObject([{ env: { SESSION_SECRET: SENTINEL } }]);
       expect(leaks(stdout.text, stderr.text)).toBe(false);
@@ -281,7 +366,7 @@ prod = "op://Private/ci cloudflare token/credential"
       });
       expect(await cli(["run", "--", "true"], deps)).toBe(0);
       expect(stderr.text).toContain(
-        "keypin: .env.local still holds a plaintext copy of SESSION_SECRET; tools differ on which value wins. Move it out of the file.\n",
+        "\nwarn   .env.local still holds a plaintext copy of SESSION_SECRET; tools differ on which value wins. Move it out of the file.\n",
       );
       expect(launcher.launches).toHaveLength(1);
       expect(leaks(stdout.text, stderr.text)).toBe(false);

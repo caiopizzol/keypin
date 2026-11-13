@@ -2,7 +2,8 @@ import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { register } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
-import { projectCount, registryPath } from "../paths";
+import { output, tilde } from "../output";
+import { registryPath } from "../paths";
 import { shellWord } from "../publishing";
 import { MAP_FILE } from "../project";
 
@@ -42,15 +43,17 @@ export async function init(args: string[], deps: Deps): Promise<number> {
   const created = await deps.createFile(file, TEMPLATE);
   if (created === "link")
     throw new Error(`${file} is a symbolic link; keypin init doesn't follow one`);
-  deps.stderr.write(
+  const out = output(deps.stderr, deps.styled.stderr, deps.columns);
+  const shown = tilde(file, deps.home);
+  out.line(
     created === "created"
-      ? `keypin: wrote ${file}\n`
-      : `keypin: ${file} exists; left it as it is\n`,
+      ? `${out.mark(true)} wrote ${shown}`
+      : `${out.mark(true)} ${shown} exists; left it as it is`,
   );
 
   await registerProject(deps, folder);
-  deps.stderr.write(
-    `keypin: next, run keypin check${folder === deps.cwd ? "" : ` ${shellWord(folder)}`} for what this project uses and the TOML to add\n`,
+  out.line(
+    `\nNext: keypin check${folder === deps.cwd ? "" : ` ${shellWord(folder)}`}  ${out.dim("what this project uses, and the TOML to add")}`,
   );
   return 0;
 }
@@ -58,5 +61,7 @@ export async function init(args: string[], deps: Deps): Promise<number> {
 export async function registerProject(deps: Deps, folder: string): Promise<void> {
   const path = registryPath(deps);
   const registry = await register(deps.files, path, folder);
-  deps.stderr.write(`keypin: ${folder} is registered (${projectCount(registry, path)})\n`);
+  const out = output(deps.stderr, deps.styled.stderr, deps.columns);
+  const count = registry.projects.length;
+  out.line(`${out.mark(true)} registered (${count} ${count === 1 ? "project" : "projects"})`);
 }

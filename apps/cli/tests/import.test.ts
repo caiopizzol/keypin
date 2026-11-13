@@ -1,8 +1,17 @@
-import { assert, describe, expect, test } from "vite-plus/test";
+import { assert, describe, expect, test, vi } from "vite-plus/test";
 import { formatReference, loadRegistry, parseMap } from "@keypin/core";
 import { cli } from "../src/cli";
 import { TEMPLATE } from "../src/commands/init";
-import { fakeDeps, fakeVault, leaks, memoryFiles, REGISTRY, SENTINEL } from "./fakes";
+import {
+  ESC,
+  fakeDeps,
+  fakeVault,
+  leaks,
+  memoryFiles,
+  REGISTRY,
+  SENTINEL,
+  unstyled,
+} from "./fakes";
 
 const ROOT = "/work/billing";
 const ENV = `${ROOT}/.env`;
@@ -58,6 +67,8 @@ function setup(options: Setup = {}) {
   return { ...result, fake, asked, text };
 }
 
+const squash = (text: string) => text.replace(/ {2,}/g, "  ");
+
 const NEW = ["import", ".env", "--vault", "App Secrets", "--account", ACCOUNT];
 
 describe("keypin import", () => {
@@ -94,13 +105,118 @@ describe("keypin import", () => {
     expect(disk.contents.get(ENV)).toBe(ENV_TEXT);
 
     const out = text();
-    expect(out).toContain("EMPTY: the value is empty");
-    expect(out).toContain("app.key: not a variable name");
+    expect(squash(out)).toContain("- EMPTY  skipped: the value is empty");
+    expect(squash(out)).toContain("- app.key  skipped: not a variable name");
     expect(out).toContain(`keypin left ${ENV} as it is`);
     expect(out).toContain("app.key is still only in that file");
     expect(out).toContain("keypin run -- <command> provides them");
     expect(out).toContain("Remove the STRIPE_KEY, WEBHOOK_SECRET lines from it");
     expect(leaks(out, written, disk.contents.get(REGISTRY) ?? "")).toBe(false);
+  });
+
+  test("prints the plan as aligned rows: + create, = map an existing item, - skipped", async () => {
+    const env = `STRIPE_KEY=${SENTINEL}-stripe\nWEBHOOK_SECRET=${SENTINEL}-webhook\nEMPTY=\n`;
+    const { deps, stderr } = setup({
+      files: { [ENV]: env },
+      items: ["billing dev webhook secret"],
+      values: { "billing dev webhook secret": `${SENTINEL}-webhook` },
+    });
+    expect(await cli([...NEW, "--yes"], deps)).toBe(0);
+    expect(stderr.text).toContain(
+      [
+        "Plan",
+        "  + STRIPE_KEY      op://App Secrets/billing dev stripe key/password      create, rotated 2026-11-09",
+        "  = WEBHOOK_SECRET  op://App Secrets/billing dev webhook secret/password  exists with the same value; map it",
+        "  - EMPTY           skipped: the value is empty",
+        "",
+      ].join("\n"),
+    );
+    expect(stderr.text).toContain(
+      `ok     Created "billing dev stripe key" in vault App Secrets\nok     Mapped STRIPE_KEY, WEBHOOK_SECRET in ${MAP}\n`,
+    );
+    expect(stderr.text).not.toContain("keypin:");
+  });
+
+  test("in a terminal, vault work runs as live steps, skipped rows are dim, and the guidance is plain", async () => {
+    const { deps, stderr } = setup();
+    deps.styled = { stdout: true, stderr: true };
+    expect(await cli([...NEW, "--yes"], deps)).toBe(0);
+    const plain = unstyled(stderr.text);
+    expect(plain).toContain(
+      `\r${ESC}[2K✓ Listed the items in vault App Secrets of 1Password account my.1password.com, not the values`,
+    );
+    expect(plain).toContain(`\r${ESC}[2K✓ Created "billing dev stripe key" in vault App Secrets`);
+    expect(stderr.text).toContain(
+      `${ESC}[2m- EMPTY           skipped: the value is empty${ESC}[0m`,
+    );
+    expect(stderr.text).toContain(
+      "\nRemove the STRIPE_KEY, WEBHOOK_SECRET lines from it: keypin run warns while an env file holds a key it provides.\n",
+    );
+    expect(
+      stderr.text.endsWith("keypin run warns while an env file holds a key it provides.\n"),
+    ).toBe(true);
+  });
+
+  test("at 80 columns, every slow vault step keeps the 1Password approval hint in view", async () => {
+    vi.useFakeTimers();
+    try {
+      const env = `STRIPE_KEY=${SENTINEL}-stripe\nWEBHOOK_SECRET=${SENTINEL}-webhook\nOLD_KEY=${SENTINEL}-old\n`;
+      const map = `[1password]\naccount = "${ACCOUNT}"\n\n[keys.OLD_KEY]\ndev = "op://App Secrets/billing dev old/password"\n`;
+      const { deps, fake, stderr } = setup({
+        files: { [ENV]: env, [MAP]: map },
+        items: ["billing dev webhook secret"],
+        values: {
+          "billing dev webhook secret": `${SENTINEL}-webhook`,
+          "billing dev old": `${SENTINEL}-old`,
+        },
+      });
+      const slow =
+        <A extends unknown[], R>(work: (...args: A) => Promise<R>) =>
+        async (...args: A) => {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          return work(...args);
+        };
+      fake.vault.list = slow(fake.vault.list.bind(fake.vault));
+      fake.vault.read = slow(fake.vault.read.bind(fake.vault));
+      fake.vault.write = slow(fake.vault.write.bind(fake.vault));
+      deps.styled = { stdout: true, stderr: true };
+      deps.columns = () => 80;
+      let code: number | undefined;
+      void cli(["import", ".env", "--vault", "App Secrets", "--yes"], deps).then((c) => (code = c));
+      while (code === undefined) await vi.advanceTimersByTimeAsync(100);
+      expect(code).toBe(0);
+      const frames = stderr.text
+        .split(`\r${ESC}[2K`)
+        .map((frame) => unstyled(frame))
+        .filter((frame) => frame && !frame.includes("\n"));
+      const running = [...new Set(frames.map((frame) => frame.slice(2).split("  ")[0]))];
+      expect(running).toEqual([
+        "Listing vault App Secrets",
+        "Reading 1 existing item",
+        "Reading 1 mapped value",
+        "Creating item 1 of 1",
+      ]);
+      for (const label of running)
+        expect(
+          frames.some((f) =>
+            f.endsWith(` ${label}  1Password may be asking you to approve keypin`),
+          ),
+          label,
+        ).toBe(true);
+      for (const frame of frames) expect(frame.length).toBeLessThanOrEqual(79);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a create that fails ends as a failed line with the reason under it", async () => {
+    const env = `A_KEY=${SENTINEL}-a\nB_KEY=${SENTINEL}-b\n`;
+    const { deps, stderr } = setup({ files: { [ENV]: env }, failing: ["billing dev b key"] });
+    expect(await cli([...NEW, "--yes"], deps)).toBe(1);
+    expect(stderr.text).toContain(
+      `ok     Created "billing dev a key" in vault App Secrets\nFAILED Couldn't create "billing dev b key" in vault App Secrets\n    1Password: "billing dev b key" isn't readable\n`,
+    );
+    expect(leaks(stderr.text)).toBe(false);
   });
 
   test("into the untouched init template, replaces it with a full map", async () => {
@@ -130,11 +246,11 @@ describe("keypin import", () => {
     const parsed = parseMap(written, MAP);
     assert(parsed.ok);
     expect(parsed.map.keys.find((k) => k.name === "STRIPE_KEY")?.rotateEvery).toBe("30d");
-    expect(text()).toContain(
-      `STRIPE_KEY: already mapped in ${MAP}; left as it is, and it matches the vault`,
+    expect(squash(text())).toContain(
+      `- STRIPE_KEY  skipped: already mapped in ${MAP}; left as it is, and it matches the vault`,
     );
     expect(text()).toContain(
-      `keypin: reading the mapped values, to compare with the file from 1Password account ${ACCOUNT}: op://App Secrets/billing dev stripe/password`,
+      `ok     Read 1 mapped value from 1Password account ${ACCOUNT}, to compare with the file  op://App Secrets/billing dev stripe/password`,
     );
     expect(text()).toContain("app.key is still only in that file");
     expect(text()).not.toContain("STRIPE_KEY, app.key");
@@ -153,11 +269,11 @@ describe("keypin import", () => {
     expect(fake.created).toEqual([]);
     expect(fake.calls).toEqual(["read billing dev stripe", "read billing dev webhook"]);
     expect(disk.contents.get(MAP)).toBe(map);
-    expect(text()).toContain(
-      `STRIPE_KEY: already mapped in ${MAP}; left as it is, and it differs from the vault`,
+    expect(squash(text())).toContain(
+      `- STRIPE_KEY  skipped: already mapped in ${MAP}; left as it is, and it differs from the vault`,
     );
-    expect(text()).toContain(
-      `WEBHOOK_SECRET: already mapped in ${MAP}; left as it is, and op://App Secrets/billing dev webhook/password couldn't be read to compare`,
+    expect(squash(text())).toContain(
+      `- WEBHOOK_SECRET  skipped: already mapped in ${MAP}; left as it is, and op://App Secrets/billing dev webhook/password couldn't be read to compare`,
     );
     expect(text()).not.toContain("Delete it");
     expect(leaks(text(), disk.contents.get(MAP) ?? "")).toBe(false);
@@ -175,8 +291,8 @@ describe("keypin import", () => {
     expect(await cli(["import", ".env", "--vault", "App Secrets", "--yes"], deps)).toBe(0);
     expect(fake.calls).not.toContain("read billing dev stripe");
     expect(fake.created.map((c) => c.ref.item)).toEqual(["billing dev webhook secret"]);
-    expect(text()).toContain(
-      `STRIPE_KEY: already mapped in ${MAP}; left as it is, but the value has a $, which some loaders expand to another variable's value, so keypin can't compare it with the vault`,
+    expect(squash(text())).toContain(
+      `- STRIPE_KEY  skipped: already mapped in ${MAP}; left as it is, but the value has a $, which some loaders expand to another variable's value, so keypin can't compare it with the vault`,
     );
     expect(text()).toContain("STRIPE_KEY is still only in that file");
     expect(text()).not.toContain("Delete it and stop loading it");
@@ -217,8 +333,8 @@ describe("keypin import", () => {
     });
     expect(await cli([...NEW, "--yes"], deps)).toBe(1);
     expect(fake.created.map((c) => c.ref.item)).toEqual(["billing dev webhook secret"]);
-    expect(text()).toContain(
-      `STRIPE_KEY: "billing dev stripe key" already exists in vault App Secrets with another value; keypin doesn't overwrite it`,
+    expect(squash(text())).toContain(
+      `- STRIPE_KEY  skipped: "billing dev stripe key" already exists in vault App Secrets with another value; keypin doesn't overwrite it`,
     );
     const parsed = parseMap(disk.contents.get(MAP) ?? "", MAP);
     assert(parsed.ok);
@@ -244,10 +360,10 @@ describe("keypin import", () => {
     expect(disk.contents.has(MAP)).toBe(false);
     expect(disk.contents.has(REGISTRY)).toBe(false);
     expect(stderr.text).toContain(
-      `Import ${ENV} into 1Password account ${ACCOUNT}, vault App Secrets:`,
+      `\nImport ${ENV}  into 1Password account ${ACCOUNT}, vault App Secrets\n`,
     );
-    expect(stderr.text).toContain(
-      `create "billing dev stripe key" (password, rotated 2026-11-09), and map STRIPE_KEY to op://App Secrets/billing dev stripe key/password`,
+    expect(squash(stderr.text)).toContain(
+      `+ STRIPE_KEY  op://App Secrets/billing dev stripe key/password  create, rotated 2026-11-09\n`,
     );
     expect(stderr.text).toContain(`Map: write ${MAP} and register ${ROOT}`);
     expect(stderr.text).toContain(
@@ -325,8 +441,8 @@ describe("keypin import", () => {
     assert(parsed.ok);
     expect(parsed.map.keys.map((k) => k.name)).toEqual(["STRIPE_KEY", "WEBHOOK_SECRET"]);
     const out = again.stdout.text + again.stderr.text;
-    expect(out).toContain(
-      "map WEBHOOK_SECRET to op://App Secrets/billing dev webhook secret/password, an item that exists with the same value",
+    expect(squash(out)).toContain(
+      "= WEBHOOK_SECRET  op://App Secrets/billing dev webhook secret/password  exists with the same value; map it\n",
     );
     expect(leaks(text(), out, disk.contents.get(MAP) ?? "")).toBe(false);
   });
@@ -344,11 +460,11 @@ describe("keypin import", () => {
     expect(fake.created).toEqual([]);
     expect(disk.contents.has(MAP)).toBe(false);
     const out = stdout.text + stderr.text;
-    expect(out).toContain(
-      `A_KEY: "billing dev a key" already exists in vault App Secrets with another value; keypin doesn't overwrite it`,
+    expect(squash(out)).toContain(
+      `- A_KEY  skipped: "billing dev a key" already exists in vault App Secrets with another value; keypin doesn't overwrite it`,
     );
-    expect(out).toContain(
-      `B_KEY: "billing dev b key" already exists in vault App Secrets and couldn't be read`,
+    expect(squash(out)).toContain(
+      `- B_KEY  skipped: "billing dev b key" already exists in vault App Secrets and couldn't be read`,
     );
     expect(leaks(out)).toBe(false);
   });
@@ -506,8 +622,8 @@ repo = "acme/billing"
       expect(await cli([...args(), "--yes"], deps)).toBe(0);
       expect(fake.created).toEqual([]);
       expect(disk.contents.get(MAP)).toBe(map);
-      expect(text()).toContain(
-        `STRIPE_KEY: already mapped in ${MAP}; left as it is, and it differs from the vault`,
+      expect(squash(text())).toContain(
+        `- STRIPE_KEY  skipped: already mapped in ${MAP}; left as it is, and it differs from the vault`,
       );
       expect(text()).toContain(`Nothing was imported, and ${MAP} wasn't changed.`);
       expect(leaks(text())).toBe(false);
@@ -518,8 +634,8 @@ repo = "acme/billing"
       const { deps, disk, fake, text } = setup({ files: { [MAP]: map, [PROD_ENV]: PROD_TEXT } });
       expect(await cli([...args(), "--yes"], deps)).toBe(0);
       expect(fake.created.map((c) => c.ref.item)).toEqual(["billing prod new key"]);
-      expect(text()).toContain(
-        `STRIPE_KEY: mapped in ${MAP} without prod, in a form keypin can't add a table to; add its prod reference by hand`,
+      expect(squash(text())).toContain(
+        `- STRIPE_KEY  skipped: mapped in ${MAP} without prod, in a form keypin can't add a table to; add its prod reference by hand`,
       );
       const parsed = parseMap(disk.contents.get(MAP) ?? "", MAP);
       assert(parsed.ok, JSON.stringify(parsed));
@@ -570,8 +686,8 @@ repo = "acme/billing"
     const { deps, fake, text } = setup({ files: { [ENV]: env } });
     expect(await cli([...NEW, "--yes"], deps)).toBe(0);
     expect(fake.created.map((c) => c.ref.item)).toEqual(["billing dev base"]);
-    expect(text()).toContain("TOKEN: the value has a $");
-    expect(text()).toContain("ESCAPED: the value has a $");
+    expect(squash(text())).toContain("- TOKEN  skipped: the value has a $");
+    expect(squash(text())).toContain("- ESCAPED  skipped: the value has a $");
     expect(text()).toContain("TOKEN, ESCAPED are still only in that file");
     expect(leaks(text())).toBe(false);
   });
@@ -590,8 +706,8 @@ repo = "acme/billing"
     const { deps, fake, text } = setup({ files: { [ENV]: env } });
     expect(await cli([...NEW, "--yes"], deps)).toBe(0);
     expect(fake.created.map((c) => c.ref.item)).toEqual(["billing dev api key"]);
-    expect(text()).toContain(
-      `api_key: its item would be "billing dev api key", the same as API_KEY's`,
+    expect(squash(text())).toContain(
+      `- api_key  skipped: its item would be "billing dev api key", the same as API_KEY's`,
     );
     expect(text()).toContain("api_key is still only in that file");
     expect(leaks(text())).toBe(false);
@@ -662,7 +778,7 @@ repo = "acme/billing"
     });
     const args = ["import", ".env", "STRIPE_KEY", "WEBHOOK_SECRET", "--vault", "App Secrets"];
     expect(await cli([...args, "--yes"], deps)).toBe(0);
-    expect(text()).toContain("STRIPE_KEY: the value is empty");
+    expect(squash(text())).toContain("- STRIPE_KEY  skipped: the value is empty");
     expect(text()).toContain("Remove the STRIPE_KEY, WEBHOOK_SECRET lines from it");
     expect(text()).not.toContain("Delete it");
     expect(leaks(text())).toBe(false);

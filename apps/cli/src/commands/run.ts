@@ -1,10 +1,17 @@
 import { dirname, join, relative } from "node:path";
 import { parseArgs } from "node:util";
-import { envFileKind, envNames, formatReference, runEnvironment, type Secret } from "@keypin/core";
+import {
+  envFileKind,
+  envNames,
+  formatReference,
+  type KeyRef,
+  runEnvironment,
+  type Secret,
+} from "@keypin/core";
 import { type Child, type Deps, UsageError } from "../deps";
 import { errorCode, messageOf } from "../errors";
 import { findMap, pickEnvironment } from "../project";
-import { announce } from "../vault";
+import { type Output, output } from "../output";
 
 export async function run(args: string[], deps: Deps): Promise<number> {
   const { values, positionals } = parseArgs({
@@ -22,26 +29,13 @@ export async function run(args: string[], deps: Deps): Promise<number> {
   });
   const keys = values.only ? pick(available, values.only, environment) : available;
 
+  const out = output(deps.stderr, deps.styled.stderr, deps.columns);
   const found = new Map<string, Secret>();
   if (keys.length) {
-    announce(
-      deps.stderr,
-      `${environment} values`,
-      keys.map((k) => k.ref),
-    );
-    const vault = deps.vault();
-    const failures: string[] = [];
-    for (const { key, ref } of keys) {
-      try {
-        found.set(key.name, await vault.read(ref));
-      } catch (error) {
-        failures.push(`${key.name} (${formatReference(ref)}): ${messageOf(error)}`);
-      }
-    }
+    const failures = await readValues(keys, found, environment, deps, out);
     if (failures.length) {
-      deps.stderr.write(
-        `keypin: couldn't read, so the command didn't start:\n  ${failures.join("\n  ")}\n`,
-      );
+      for (const failure of failures) out.line(`    ${failure}`);
+      out.line("Stopped: couldn't read, so the command didn't start.");
       return 1;
     }
   }
@@ -50,7 +44,7 @@ export async function run(args: string[], deps: Deps): Promise<number> {
   for (const [name, value] of Object.entries(deps.env)) if (value !== undefined) env[name] = value;
   for (const [name, secret] of found) {
     if (env[name] !== undefined) {
-      deps.stderr.write(`keypin: ${name} was already set; using the vault's value\n`);
+      out.warn(`${name} was already set; using the vault's value`);
     }
     env[name] = secret.reveal();
   }
@@ -59,14 +53,15 @@ export async function run(args: string[], deps: Deps): Promise<number> {
     .filter(([, value]) => value.includes("\0"))
     .map(([name]) => name);
   if (unsafe.length) {
-    deps.stderr.write(
-      `keypin: ${unsafe.join(", ")} contains a NUL character, which an environment can't hold; the command didn't start\n`,
+    out.line(
+      `Stopped: ${unsafe.join(", ")} contains a NUL character, which an environment can't hold; the command didn't start.`,
     );
     return 1;
   }
 
   await warnAboutEnvFiles(
     deps,
+    out,
     [...new Set([dirname(map.file), deps.cwd])],
     keys.map((k) => k.key.name),
   );
@@ -75,9 +70,7 @@ export async function run(args: string[], deps: Deps): Promise<number> {
   try {
     child = deps.launch(positionals, env);
   } catch (error) {
-    deps.stderr.write(
-      `keypin: couldn't start "${positionals[0]}": ${errorCode(error) ?? "unknown error"}\n`,
-    );
+    out.line(`Stopped: couldn't start "${positionals[0]}": ${errorCode(error) ?? "unknown error"}`);
     return 1;
   }
   const stop = deps.onSignals((signal) => child.kill(signal));
@@ -104,7 +97,47 @@ function pick<T extends { key: { name: string } }>(
   return available.filter((k) => wanted.has(k.key.name));
 }
 
-async function warnAboutEnvFiles(deps: Deps, folders: string[], mapped: string[]): Promise<void> {
+async function readValues(
+  keys: readonly { key: { name: string }; ref: KeyRef }[],
+  found: Map<string, Secret>,
+  environment: string,
+  deps: Deps,
+  out: Output,
+): Promise<string[]> {
+  const refs = keys.map((k) => k.ref);
+  const accounts = [...new Set(refs.map((ref) => ref.account))].join(", ");
+  const values = `${keys.length} ${environment} ${keys.length === 1 ? "value" : "values"}`;
+  const references = [...new Set(refs.map(formatReference))].join(", ");
+  return out.step(
+    `Reading ${values}`,
+    async () => {
+      const vault = deps.vault();
+      const failures: string[] = [];
+      for (const { key, ref } of keys) {
+        try {
+          found.set(key.name, await vault.read(ref));
+        } catch (error) {
+          failures.push(`${key.name} (${formatReference(ref)}): ${messageOf(error)}`);
+        }
+      }
+      return failures;
+    },
+    (failures) => ({
+      ok: !failures.length,
+      text: failures.length
+        ? `Couldn't read from 1Password account ${accounts}`
+        : `Read ${values} from 1Password account ${accounts}  ${out.dim(references)}`,
+    }),
+    "1Password may be asking you to approve keypin",
+  );
+}
+
+async function warnAboutEnvFiles(
+  deps: Deps,
+  out: Output,
+  folders: string[],
+  mapped: string[],
+): Promise<void> {
   if (!mapped.length) return;
   for (const folder of folders) {
     const entries = await deps.listFolder(folder).catch(() => []);
@@ -116,18 +149,18 @@ async function warnAboutEnvFiles(deps: Deps, folders: string[], mapped: string[]
       const names = new Set(envNames(text));
       const held = mapped.filter((name) => names.has(name));
       const file = relative(deps.cwd, path);
-      if (entry.name.startsWith(".dev.vars")) deps.stderr.write(devVarsWarning(file, held));
-      else if (held.length) deps.stderr.write(envFileWarning(file, held));
+      if (entry.name.startsWith(".dev.vars")) out.warn(devVarsWarning(file, held));
+      else if (held.length) out.warn(envFileWarning(file, held));
     }
   }
 }
 
 function devVarsWarning(file: string, keys: string[]): string {
   const found = keys.length ? `still sets ${keys.join(", ")}, and while it exists` : "exists, so";
-  return `keypin: ${file} ${found} wrangler dev ignores the keys keypin provides. Give each setting in it a new home, then delete the file.\n`;
+  return `${file} ${found} wrangler dev ignores the keys keypin provides. Give each setting in it a new home, then delete the file.`;
 }
 
 function envFileWarning(file: string, keys: string[]): string {
   const it = keys.length === 1 ? "it" : "them";
-  return `keypin: ${file} still holds a plaintext copy of ${keys.join(", ")}; tools differ on which value wins. Move ${it} out of the file.\n`;
+  return `${file} still holds a plaintext copy of ${keys.join(", ")}; tools differ on which value wins. Move ${it} out of the file.`;
 }

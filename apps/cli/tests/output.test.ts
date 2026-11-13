@@ -134,6 +134,34 @@ describe("output", () => {
     }
   });
 
+  test("on a terminal narrower than the minimum label, the frame still never wraps", async () => {
+    vi.useFakeTimers();
+    try {
+      for (const width of [14, 12, 8, 4]) {
+        const stderr = writer();
+        const out = output(stderr, true, () => width);
+        let finish = () => {};
+        const step = out.step(
+          "Reading 1 value",
+          () => new Promise<void>((resolve) => (finish = resolve)),
+          () => ({ ok: true, text: "Read" }),
+          "1Password may be asking you to approve keypin",
+        );
+        vi.advanceTimersByTime(1500);
+        finish();
+        await step;
+        const frames = stderr
+          .text()
+          .split(`\r${ESC}[2K`)
+          .filter((frame) => frame && !frame.endsWith("\n"))
+          .map(plain);
+        for (const frame of frames) expect(frame.length).toBeLessThanOrEqual(width - 1);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test("a hint that can't fit beside any label is cut, and the frame still never wraps", async () => {
     vi.useFakeTimers();
     try {

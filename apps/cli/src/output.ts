@@ -60,7 +60,7 @@ export function output(stderr: Writer, styled: boolean, columns = () => 80): Out
     const draw = () => {
       const width = columns() - 3;
       const hint = slow && Date.now() - started > SLOW_MS ? `  ${slow}` : "";
-      const label = fit(running, Math.max(width - hint.length, MIN_LABEL));
+      const label = fit(running, Math.min(Math.max(width - hint.length, MIN_LABEL), width));
       const shown = `${label}${dim(fit(hint, width - label.length))}`;
       stderr.write(`\r\x1b[2K${green(FRAMES[frame++ % FRAMES.length] ?? "")} ${shown}`);
     };

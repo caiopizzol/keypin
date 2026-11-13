@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { isRecord } from "@keypin/core";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import root from "../../../package.json";
 import { LAUNCHER } from "../compile";
@@ -16,7 +17,9 @@ afterEach(async () => {
 });
 
 async function manifest(folder: string): Promise<Record<string, unknown>> {
-  return JSON.parse(await readFile(join(folder, "package.json"), "utf8"));
+  const data: unknown = JSON.parse(await readFile(join(folder, "package.json"), "utf8"));
+  if (!isRecord(data)) throw new Error(`${folder}/package.json isn't a JSON object`);
+  return data;
 }
 
 describe("pack", () => {

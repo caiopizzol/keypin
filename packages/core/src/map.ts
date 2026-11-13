@@ -256,7 +256,8 @@ function validateKey(
     err("", `field "rotate_every" must be <n>d, <n>w, <n>m or never`);
   }
 
-  const environments: Record<Environment, EnvEntry> = Object.create(null);
+  const environments: Record<Environment, EnvEntry> = {};
+  Reflect.setPrototypeOf(environments, null);
   const declared = environmentNames.filter((name) => Object.hasOwn(raw, name));
   for (const name of declared) {
     const entry = validateEnv(raw[name], account, (m) => err(` ${name}`, m));
@@ -423,7 +424,8 @@ function destination(raw: unknown, fail: (message: string) => void): PublishTarg
         `field "environment" must be a GitHub environment name, at most 255 characters and not . or ..`,
       );
     if (failed || repo === undefined) return undefined;
-    const target: PublishTarget = { to, repo, account: repo.split("/")[0] };
+    const [account = ""] = repo.split("/");
+    const target: PublishTarget = { to, repo, account };
     return environment === undefined ? target : { ...target, environment };
   }
   err(`field "to" must be one of: ${DESTINATION_KINDS.join(", ")}`);

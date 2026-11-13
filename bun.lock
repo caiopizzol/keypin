@@ -5,6 +5,7 @@
     "": {
       "name": "keys",
       "devDependencies": {
+        "@types/bun": "1.4.4",
         "typescript": "7.0.2",
         "vite": "catalog:",
         "vite-plus": "catalog:",

@@ -45,8 +45,9 @@ binary is for; the `check` workflow runs it for all four.
 
 ## Releases
 
-Release Please keeps a release PR open. Approve its workflows so `check` runs, then merge it. The `release` workflow
-then builds and checks each binary, and publishes the four platform packages before `keypin`.
+Release Please keeps a release PR open. Approve its workflows so `check` runs, then merge it as an admin: pullfrog
+doesn't review release PRs, so `pullfrog-approval` never passes. The `release` workflow posts the PR's `pr-title`
+check, then, after the merge, builds and checks each binary and publishes the four platform packages before `keypin`.
 
 The workflow fails before building if a platform package doesn't exist on npm yet, since trusted publishing can't
 create one. Before the first release, the owner does this once:

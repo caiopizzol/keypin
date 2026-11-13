@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from "node:util";
 import type { Deps, Writer } from "./deps";
 
 const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -13,6 +14,7 @@ export interface Output {
   line: (text?: string) => void;
   bold: (text: string) => string;
   dim: (text: string) => string;
+  red: (text: string) => string;
   mark: (ok: boolean) => string;
   step<T>(
     running: string,
@@ -80,7 +82,7 @@ export function output(stderr: Writer, styled: boolean, columns = () => 80): Out
     }
   }
 
-  return { line, bold: paint("1"), dim, mark, step };
+  return { line, bold: paint("1"), dim, red, mark, step };
 }
 
 export async function confirm(deps: Pick<Deps, "ask">, question: string): Promise<boolean> {
@@ -91,8 +93,14 @@ export async function confirm(deps: Pick<Deps, "ask">, question: string): Promis
 export function columns(rows: readonly (readonly string[])[]): string[][] {
   const widths: number[] = [];
   for (const row of rows)
-    row.forEach((cell, i) => (widths[i] = Math.max(widths[i] ?? 0, cell.length)));
-  return rows.map((row) => row.map((cell, i) => cell.padEnd(widths[i] ?? 0)));
+    row.forEach((cell, i) => (widths[i] = Math.max(widths[i] ?? 0, visible(cell))));
+  return rows.map((row) =>
+    row.map((cell, i) => cell + " ".repeat((widths[i] ?? 0) - visible(cell))),
+  );
+}
+
+function visible(text: string): number {
+  return stripVTControlCharacters(text).length;
 }
 
 export function tilde(text: string, home: string): string {

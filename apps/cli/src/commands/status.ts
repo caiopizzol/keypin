@@ -1,12 +1,13 @@
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { parseArgs } from "node:util";
 import {
   buildStatus,
-  formatReference,
+  envFlag,
   loadRegistry,
   loadState,
   type MapResult,
   parseMap,
+  publishEnvironment,
   type Status,
   type StatusRow,
   type VaultMetadata,
@@ -15,7 +16,10 @@ import { type Deps, localDay, UsageError } from "../deps";
 import { registryPath, statePath } from "../paths";
 import { MAP_FILE } from "../project";
 import { messageOf } from "../errors";
-import { announce, distinctRefs, refKey } from "../vault";
+import { columns, type Output, output, tilde } from "../output";
+import { distinctRefs, refKey } from "../vault";
+
+type Problem = Status["problems"][number];
 
 export async function status(args: string[], deps: Deps): Promise<number> {
   const { values, positionals } = parseArgs({
@@ -49,80 +53,146 @@ export async function status(args: string[], deps: Deps): Promise<number> {
   );
   const metadata = new Map<string, VaultMetadata | null>();
   if (refs.length) {
-    announce(deps.stderr, "rotated dates; no values are shown", refs);
-    const vault = deps.vault();
-    for (const ref of refs) {
-      try {
-        metadata.set(refKey(ref), await vault.metadata(ref));
-      } catch (error) {
-        deps.stderr.write(`keypin: ${messageOf(error)}\n`);
-        metadata.set(refKey(ref), null);
-      }
-    }
+    const errors: string[] = [];
+    const dates = count(refs.length, "rotated date");
+    const from = `from 1Password account ${[...new Set(refs.map((ref) => ref.account))].join(", ")}, not the values`;
+    await output(deps.stderr, deps.styled.stderr, deps.columns).step(
+      `Reading ${dates}`,
+      async () => {
+        const vault = deps.vault();
+        for (const ref of refs) {
+          try {
+            metadata.set(refKey(ref), await vault.metadata(ref));
+          } catch (error) {
+            errors.push(messageOf(error));
+            metadata.set(refKey(ref), null);
+          }
+        }
+      },
+      () => ({
+        ok: !errors.length,
+        text: errors.length
+          ? `Couldn't read ${errors.length} of ${dates} ${from}`
+          : `Read ${dates} ${from}`,
+      }),
+      "1Password may be asking you to approve keypin",
+    );
+    for (const error of errors) deps.stderr.write(`keypin: ${error}\n`);
   }
 
+  const today = localDay(deps.now());
   const result = buildStatus({
     registry,
     maps,
     receipts: state.receipts,
     metadata: (ref) => metadata.get(refKey(ref)) ?? null,
-    today: localDay(deps.now()),
+    today,
   });
 
   if (values.json) {
-    deps.stdout.write(`${JSON.stringify({ today: localDay(deps.now()), ...result }, null, 2)}\n`);
+    deps.stdout.write(`${JSON.stringify({ today, ...result }, null, 2)}\n`);
   } else {
-    deps.stdout.write(render(result, registry.projects.length));
+    const publish = (row: StatusRow) => {
+      const map = maps.get(row.project);
+      const fallback = map?.ok ? publishEnvironment(map.map) : row.environment;
+      return `keypin publish ${row.keyId}${envFlag(row.environment, fallback)}`;
+    };
+    const out = output(deps.stdout, deps.styled.stdout);
+    deps.stdout.write(render(result, registry.projects, { today, home: deps.home, out, publish }));
   }
   return result.problems.some((p) => p.severity === "problem") ? 1 : 0;
 }
 
-function render(result: Status, projects: number): string {
-  if (!projects) return `No projects registered. Run "keypin init" in a project folder.\n`;
-  const lines: string[] = [];
-  const header = ["KEY", "ENV", "FROM", "ROTATED", "EVERY", "DUE"];
-  const cells = (row: StatusRow) => [
-    row.keyId,
-    row.environment,
-    formatReference(row.ref),
-    row.rotated ?? "-",
-    row.rotateEvery ?? "-",
-    row.due ?? (row.rotateEvery === "never" ? "never" : "unknown"),
-  ];
-  const widths = header.map((h, i) =>
-    Math.max(h.length, ...result.rows.map((r) => (cells(r)[i] ?? "").length)),
+interface Context {
+  today: string;
+  home: string;
+  out: Output;
+  publish: (row: StatusRow) => string;
+}
+
+function render(result: Status, projects: readonly string[], context: Context): string {
+  if (!projects.length) return `No projects registered. Run "keypin init" in a project folder.\n`;
+  const { home, out } = context;
+  const cells = columns(
+    result.rows.map((row) => [
+      row.keyId,
+      row.environment,
+      due(row, context),
+      ...places(row, result.problems, out),
+    ]),
   );
-  const line = (values: string[]) =>
-    values
-      .map((v, i) => v.padEnd(widths[i] ?? 0))
-      .join("  ")
-      .trimEnd();
 
-  lines.push(line(header));
-  let project: string | undefined;
-  for (const row of result.rows) {
-    if (row.project !== project) {
-      project = row.project;
-      lines.push(`# ${project}`);
-    }
-    lines.push(line(cells(row)));
-    for (const d of row.destinations) {
-      const receipt = d.receipt
-        ? `last published ${d.receipt.at} by ${d.receipt.publisher}, generation ${d.receipt.generation}`
-        : "no receipt";
-      lines.push(`    -> ${d.destinationId} (account ${d.account}): ${receipt}`);
-    }
+  const lines: string[] = [];
+  for (const project of projects) {
+    lines.push(`${out.bold(basename(project))} ${out.dim(tilde(project, home))}`);
+    result.rows.forEach((row, i) => {
+      if (row.project === project) lines.push(`  ${(cells[i] ?? []).join("  ")}`.trimEnd());
+    });
   }
-  if (!result.rows.length) lines.push("(no keys)");
 
-  for (const [severity, title] of [
-    ["problem", "Problems"],
-    ["notice", "Notices"],
-  ] as const) {
+  for (const severity of ["problem", "notice"] as const) {
     const found = result.problems.filter((p) => p.severity === severity);
     if (!found.length) continue;
-    lines.push("", `${title} (${found.length}):`);
-    for (const p of found) lines.push(`  ${p.kind}: ${p.message.replaceAll("\n", "\n    ")}`);
+    const title = count(found.length, severity);
+    lines.push("", severity === "problem" ? out.red(title) : out.bold(title));
+    for (const p of found) {
+      const where = p.keyId === undefined ? "" : `${out.dim(basename(p.project))} `;
+      lines.push(`  ${where}${tilde(p.message, home).replaceAll("\n", "\n    ")}`);
+      const next = nextStep(p, result.rows, context);
+      if (next) lines.push(`    ${tilde(next, home)}`);
+    }
   }
   return `${lines.join("\n")}\n`;
+}
+
+function due(row: StatusRow, { out, today }: Context): string {
+  if (row.rotateEvery === "never") return out.dim("never rotates");
+  if (row.due === null) return out.red("rotation unknown");
+  const days = daysBetween(today, row.due);
+  if (days < 0) return out.red(`${count(-days, "day")} overdue`);
+  return days === 0 ? "due today" : `due in ${count(days, "day")}`;
+}
+
+function places(row: StatusRow, problems: readonly Problem[], out: Output): string[] {
+  const service = (id: string) => (id.startsWith("cloudflare-worker:") ? "Cloudflare" : "GitHub");
+  return row.destinations.map(({ destinationId: id, receipt }) => {
+    const shared = row.destinations.filter((d) => service(d.destinationId) === service(id));
+    const name =
+      shared.length > 1 ? `${service(id)} ${id.split(":").slice(1, -1).join(":")}` : service(id);
+    if (receipt) return `${out.mark(true).trimEnd()} ${name}`;
+    const unknown = problems.some(
+      (p) => p.kind === "missing-receipt" && sameRow(p, row) && p.destinationId === id,
+    );
+    return `${out.dim("·")} ${name} ${out.dim(unknown ? "no receipt" : "not published")}`;
+  });
+}
+
+function nextStep(problem: Problem, rows: readonly StatusRow[], context: Context): string | null {
+  const row = rows.find((r) => sameRow(problem, r));
+  if (!row) return null;
+  if (problem.kind === "overdue" || problem.kind === "due-soon") {
+    const rotate = "Put a new value in the 1Password item and set rotated to today";
+    return row.destinations.length
+      ? `${rotate}, then run ${context.publish(row)} in ${row.project}.`
+      : `${rotate}.`;
+  }
+  if (problem.kind === "no-rotation-date" && row.rotated === null)
+    return "Add a rotated Date field to the 1Password item, with the day the value last changed.";
+  return null;
+}
+
+function sameRow(problem: Problem, row: StatusRow): boolean {
+  return (
+    problem.project === row.project &&
+    problem.keyId === row.keyId &&
+    problem.environment === row.environment
+  );
+}
+
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+function count(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }

@@ -1,8 +1,9 @@
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import {
   type Environment,
   findGaps,
+  type Fix,
   formatReference,
   type Gaps,
   type KeyRef,
@@ -14,10 +15,9 @@ import {
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
 import { messageOf } from "../errors";
-import { columns, type Output, output, tilde } from "../output";
+import { type Output, output, tilde } from "../output";
 import { registryPath } from "../paths";
 import { locateMap, MAP_FILE } from "../project";
-import { labels } from "../publishing";
 import { describeLogin, githubLogin, publisherFor } from "../publisher";
 import { type ScanResult, scanProject, type Unknown, usesSecrets } from "../scan";
 import { distinctRefs, refKey } from "../vault";
@@ -80,20 +80,49 @@ export async function check(args: string[], deps: Deps): Promise<number> {
   const folder = resolve(deps.cwd, positionals[0] ?? ".");
   if (!(await deps.isFolder(folder))) throw new Error(`${folder} isn't a folder`);
 
-  const { report, places } = await build(folder, deps);
+  const { report, steps } = await build(folder, deps);
   deps.stdout.write(
     values.json
       ? `${JSON.stringify(report, null, 2)}\n`
-      : render(report, places, output(deps.stdout, deps.styled.stdout), deps.home),
+      : render(report, steps, output(deps.stdout, deps.styled.stdout), deps.home),
   );
   return report.ok ? 0 : 1;
 }
 
-type Places = Map<DestinationResult, string>;
+interface Step {
+  order: number;
+  title: string;
+  body: string[];
+  toml?: string;
+  covers: string[];
+}
 
-async function build(folder: string, deps: Deps): Promise<{ report: Report; places: Places }> {
+const ORDER = {
+  setup: 0,
+  map: 1,
+  tracked: 2,
+  environments: 3,
+  import: 4,
+  item: 5,
+  add: 6,
+  edit: 7,
+  account: 8,
+  publish: 9,
+  last: 10,
+} as const;
+
+const ITEM_NOTE =
+  "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields";
+
+async function build(folder: string, deps: Deps): Promise<{ report: Report; steps: Step[] }> {
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);
-  const places: Places = new Map();
+  const steps: Step[] = [];
+  const problem = (order: number, title: string, body: string[], text: string) => {
+    report.problems.push(text);
+    steps.push({ order, title, body, covers: [text] });
+  };
+  let fixes: Fix[] = [];
+  let empty: string | null = null;
   const found = await locateMap(deps.files, folder);
   const root = found ? dirname(found.file) : folder;
   const scanned = await scanProject(deps, root);
@@ -116,8 +145,10 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; plac
   const targets = new Map<string, PublishTarget>();
   const items = new Map<string, ItemResult>();
   const done = async () => {
-    report.prerequisites = await prerequisites(root, scanned, targets, items, deps);
-    return { report: finish(report), places };
+    const setup = await prerequisites(root, scanned, targets, items, deps);
+    report.prerequisites = setup.map(({ name, status, fix }) => ({ name, status, fix }));
+    finish(report);
+    return { report, steps: plan(report, [...setup.map((p) => p.step), ...steps], fixes, empty) };
   };
   const gaps = (map: KeysMap | null) => {
     const result = findGaps(scanned.scan, map && found ? { map, text: found.text } : null);
@@ -126,9 +157,13 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; plac
     report.add = result.add;
     report.problems.push(...result.problems);
     report.notes.push(...result.notes);
+    fixes = result.fixes;
   };
   if (!found) {
-    report.problems.push(
+    problem(
+      ORDER.map,
+      `Create ${MAP_FILE}`,
+      [`There's no ${MAP_FILE} in ${folder} or any folder above it.`, "  keypin init"],
       `no ${MAP_FILE} in ${folder} or any folder above it; run keypin init, then keypin check again`,
     );
     gaps(null);
@@ -144,13 +179,18 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; plac
   const parsed = parseMap(found.text, found.file);
   if (!parsed.ok) {
     report.problems.push(...parsed.errors);
+    steps.push({
+      order: ORDER.map,
+      title: `Fix ${found.file}`,
+      body: parsed.errors,
+      covers: parsed.errors,
+    });
     return done();
   }
   const map = parsed.map;
   if (!map.keys.length) {
-    report.problems.push(
-      `${found.file} maps no keys yet; run keypin import for an env file, and add the TOML below for production`,
-    );
+    empty = `${found.file} maps no keys yet; run keypin import for an env file, and add the TOML below for production`;
+    report.problems.push(empty);
     gaps(map);
     return done();
   }
@@ -165,9 +205,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; plac
   const use = (id: string, label: string) => users.set(id, [...(users.get(id) ?? []), label]);
 
   const refs = distinctRefs(entries.map(({ entry }) => entry.ref));
-  report.notes.push(
-    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields",
-  );
+  report.notes.push(ITEM_NOTE);
   const lookup = `${count(refs.length, "item")} in 1Password account ${[...new Set(refs.map((ref) => ref.account))].join(", ")}, not the values`;
   await out.step(
     `Looking up ${lookup}`,
@@ -213,7 +251,6 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; plac
         text: `Checked ${accounts}`,
       }),
     );
-  const label = labels(entries.flatMap(({ entry }) => entry.publish));
 
   for (const { key, environment, entry } of entries) {
     const name = `${key} (${environment})`;
@@ -224,22 +261,39 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; plac
       use(`place ${placeOf(target)}`, name);
       const result = destinations.get(placeOf(target));
       if (!result) throw new Error(`no account check for ${placeOf(target)}`);
-      const row = { ...result, destination: secretKey(target, key) };
-      places.set(row, label(target));
-      return row;
+      return { ...result, destination: secretKey(target, key) };
     });
     report.keys.push({ key, environment, from, destinations: reached });
   }
 
-  const usedBy = (id: string) => ` (${users.get(id)?.join(", ") ?? "unused"})`;
+  const usedBy = (id: string) => users.get(id)?.join(", ") ?? "unused";
   for (const ref of refs) {
     const item = items.get(refKey(ref));
-    if (item?.problem) report.problems.push(`${item.problem}${usedBy(`item ${refKey(ref)}`)}`);
+    if (!item?.problem) continue;
+    const by = usedBy(`item ${refKey(ref)}`);
+    problem(
+      ORDER.item,
+      `Fix the vault item ${item.reference}`,
+      [sentence(item.problem), `Used by ${by}.`],
+      `${item.problem} (${by})`,
+    );
   }
   for (const [place, result] of destinations) {
     if (result.ok) continue;
+    const target = targets.get(place);
+    const by = usedBy(`place ${place}`);
     const fix = result.fix ? `; fix: ${result.fix}` : "";
-    report.problems.push(`${place}: ${result.problem}${fix}${usedBy(`place ${place}`)}`);
+    problem(
+      ORDER.account,
+      `Fix the login for ${target ? where(target) : place}`,
+      [
+        sentence(result.problem ?? "the account check failed"),
+        `As ${result.publisher ?? "unknown"}, pinned ${result.pinned}, reaches ${result.reached ?? "unknown"}; ${result.login}.`,
+        ...(result.fix ? [`Fix: ${sentence(result.fix)}`] : []),
+        `Used by ${by}.`,
+      ],
+      `${place}: ${result.problem}${fix} (${by})`,
+    );
   }
   gaps(map);
   return done();
@@ -254,37 +308,55 @@ async function prerequisites(
   targets: Map<string, PublishTarget>,
   items: Map<string, ItemResult>,
   deps: Deps,
-): Promise<Prerequisite[]> {
-  const list: Prerequisite[] = [];
+): Promise<(Prerequisite & { step: Step })[]> {
+  const list: (Prerequisite & { step: Step })[] = [];
+  const add = (p: Prerequisite, title: string, body: string[]) =>
+    list.push({ ...p, step: { order: ORDER.setup, title, body, covers: [] } });
   const to = (kind: PublishTarget["to"]) => [...targets.values()].some((t) => t.to === kind);
   if (usesSecrets(scanned.scan.workflows) || to("github-actions")) {
     const login = await githubLogin(deps, root);
     const status = await deps.ghLogin(login);
-    const signIn = `gh auth login --hostname github.com${login ? `, signing in as ${login}` : ""}`;
+    const command = "gh auth login --hostname github.com";
+    const signIn = `${command}${login ? `, signing in as ${login}` : ""}`;
+    const body = [`  ${command}`, ...(login ? [`Sign in as ${login}.`] : [])];
     if (status === "not installed")
-      list.push({
-        name: "GitHub",
-        status,
-        fix: `install gh (https://cli.github.com), then run ${signIn}`,
-      });
+      add(
+        { name: "GitHub", status, fix: `install gh (https://cli.github.com), then run ${signIn}` },
+        "Install gh and sign in to GitHub",
+        ["Install gh from https://cli.github.com, then run:", ...body],
+      );
     else if (status === "not logged in")
-      list.push({ name: "GitHub", status, fix: `run ${signIn}` });
+      add({ name: "GitHub", status, fix: `run ${signIn}` }, "Sign in to GitHub", body);
   }
   if (
     (scanned.files.wrangler.length || to("cloudflare-worker")) &&
     !(await deps.wranglerLoginFile())
   )
-    list.push({ name: "Cloudflare", status: "not logged in", fix: "run wrangler login" });
+    add(
+      { name: "Cloudflare", status: "not logged in", fix: "run wrangler login" },
+      "Sign in to Cloudflare",
+      ["  wrangler login"],
+    );
   if (!items.size)
-    list.push({ name: "1Password", status: "not checked", fix: `keypin needs ${INTEGRATION}` });
+    add(
+      { name: "1Password", status: "not checked", fix: `keypin needs ${INTEGRATION}` },
+      "Set up 1Password",
+      [`keypin needs ${INTEGRATION}.`],
+    );
   else if ([...items.values()].some((item) => item.problem?.includes("sign-in failed")))
-    list.push({
-      name: "1Password",
-      status: "sign-in failed",
-      fix: `check ${INTEGRATION}, and that it's unlocked`,
-    });
+    add(
+      {
+        name: "1Password",
+        status: "sign-in failed",
+        fix: `check ${INTEGRATION}, and that it's unlocked`,
+      },
+      SIGN_IN,
+      [`Check ${INTEGRATION}, and that it's unlocked.`],
+    );
   return list;
 }
+
+const SIGN_IN = "Sign in to 1Password";
 
 function finish(report: Report): Report {
   report.ok = !report.problems.length;
@@ -337,68 +409,157 @@ function placeOf(target: PublishTarget): string {
     : `github-actions:${target.repo.toLowerCase()}${target.environment === undefined ? "" : `/environments/${target.environment.toLowerCase()}`}`;
 }
 
-function render(report: Report, places: Places, out: Output, home: string): string {
-  const { bold, dim, mark } = out;
-  const lines = [bold(`keypin check ${report.map ?? report.folder}`)];
-  const { env, wrangler, workflows, notScanned } = report.read;
-  const read = `read ${count(env.length, "env file")}, ${count(wrangler.length, "wrangler config")}, ${count(workflows.length, "workflow")}`;
-  lines.push(`  ${dim(report.github.repo ? `${read}; GitHub ${report.github.repo}` : read)}`);
-  if (notScanned.length)
-    lines.push(`  ${dim(`not scanned (own git repository): ${notScanned.join(", ")}`)}`);
-  if (report.prerequisites.length) {
-    lines.push("", bold("Before you start:"));
-    const rows = columns(report.prerequisites.map((p) => [`${p.name}:`, `${p.status};`]));
-    report.prerequisites.forEach((p, i) => lines.push(`  ${(rows[i] ?? []).join(" ")} ${p.fix}`));
-  }
-  for (const row of report.keys) {
-    lines.push("", `${bold(row.key)} ${row.environment}`);
-    lines.push(`  ${mark(row.from.ok)} ${row.from.reference}`);
-    for (const d of row.destinations) {
-      const facts = d.ok
-        ? `as ${d.publisher ?? "unknown"}, account ${d.reached ?? d.pinned}`
-        : `as ${d.publisher ?? "unknown"}, pinned ${d.pinned}, reaches ${d.reached ?? "unknown"}`;
-      lines.push(
-        `  ${mark(d.ok)} ${places.get(d) ?? d.destination}  ${dim(`${facts}; ${d.login}`)}`,
-      );
+function plan(report: Report, found: Step[], fixes: Fix[], empty: string | null): Step[] {
+  const steps: Step[] = [];
+  const signIn = found.find((step) => step.title === SIGN_IN);
+  for (const step of found) {
+    const signs =
+      step.order === ORDER.item && step.covers.every((c) => c.includes("sign-in failed"));
+    if (!signIn || !signs) steps.push(step);
+    else {
+      signIn.covers.push(...step.covers);
+      for (const line of step.body.slice(0, 1))
+        if (!signIn.body.includes(line)) signIn.body.push(line);
     }
   }
-  if (report.production.length) {
-    lines.push("", bold("Production needs:"));
-    for (const need of report.production) {
-      const holds = need.holds === null ? "unknown" : need.holds ? "has it" : "doesn't have it";
-      const mapped = need.mapped === null ? "not in keypin.toml" : `keypin.toml (${need.mapped})`;
-      lines.push(
-        `  ${mark(need.ok)} ${need.name} in ${need.place} ${dim(`(${need.usedBy.join(", ")}): ${holds}, ${mapped}`)}`,
-      );
-    }
-  }
-  const local = report.local.filter((file) => file.unmapped.length || file.elsewhere.length);
-  if (local.length) {
-    lines.push("", bold("Set in an env file, with no local entry in keypin.toml:"));
-    for (const file of local)
-      lines.push(`  ${file.file}: ${[...file.unmapped, ...file.elsewhere].join(", ")}`);
-  }
-  if (report.unknown.length) {
-    lines.push("", dim(`Unknown (${report.unknown.length}):`));
-    for (const u of report.unknown) lines.push(dim(`  ${u.what}: ${u.reason}`));
-  }
-  if (report.notes.length) {
-    lines.push("", dim(`Notes (${report.notes.length}):`));
-    for (const note of report.notes) lines.push(dim(`  ${note}`));
-  }
-  if (report.problems.length) {
-    lines.push("", bold(`Problems (${report.problems.length}):`));
-    for (const problem of report.problems) lines.push(`  ${problem}`);
-  } else lines.push("", `${mark(true)} Everything checks out.`);
-  if (report.add !== null) {
-    lines.push(
-      "",
-      `Add to ${report.map ?? MAP_FILE}, then replace each <...> with the real value (keypin rejects a map that still has one):`,
-      "",
-      report.add.trimEnd(),
+  const of = <K extends Fix["kind"]>(kind: K) =>
+    fixes.filter((fix): fix is Extract<Fix, { kind: K }> => fix.kind === kind);
+  const all = (order: number, title: string, list: Fix[], body: string[], toml?: string) =>
+    steps.push({ order, title, body, covers: list.map((fix) => fix.text), toml });
+  for (const fix of of("tracked"))
+    all(ORDER.tracked, `Stop tracking ${fix.file} in git`, [fix], [sentence(fix.text)]);
+  for (const fix of of("environments"))
+    all(
+      ORDER.environments,
+      `List an environment in ${MAP_FILE}`,
+      [fix],
+      [
+        `${sentence(fix.why)} ${sentence(fix.at).slice(0, -1)}:`,
+        `  ${fix.line}`,
+        "keypin run uses the first environment, keypin publish the last.",
+      ],
+    );
+  const imports = of("import").filter((fix) => !report.ok || report.problems.includes(fix.text));
+  if (imports.length) {
+    const files = [...new Set(imports.map((fix) => fix.file))];
+    all(
+      ORDER.import,
+      `Move ${files.length === 1 ? `${files[0]}'s` : "env-file"} keys into 1Password`,
+      imports,
+      [
+        ...imports.flatMap((fix) => [
+          sentence(fix.why),
+          `  keypin import ${fix.file} ${fix.names.join(" ")}${fix.options}`,
+          ...(fix.caveat ? [sentence(fix.caveat)] : []),
+        ]),
+        "Leave out a name that isn't a key; it stays in the file.",
+      ],
     );
   }
+  const add = of("add");
+  const imported = new Set(imports.flatMap((fix) => fix.names));
+  const overlaps =
+    imports.length > 0 &&
+    (/^\[1password\]$/m.test(report.add ?? "") || add.some((fix) => imported.has(fix.key)));
+  if (report.add !== null)
+    all(
+      ORDER.add,
+      `Add the production keys to ${MAP_FILE}`,
+      add,
+      [...add.map((fix) => sentence(fix.why)), ...(overlaps ? [AFTER_IMPORT] : []), PASTE],
+      report.add,
+    );
+  const edits = of("edit");
+  if (edits.length)
+    all(
+      ORDER.edit,
+      `Edit ${MAP_FILE}`,
+      edits,
+      edits.map((fix) => sentence(fix.text)),
+    );
+  const publish = of("publish");
+  if (publish.length) {
+    const keys = [...new Set(publish.map((fix) => fix.key))];
+    all(
+      ORDER.publish,
+      keys.length === 1 ? `Publish ${keys[0]}` : `Publish ${keys.length} keys`,
+      publish,
+      [
+        ...publish.map((fix) => sentence(fix.why)),
+        ...[...new Set(publish.map((fix) => fix.command))].map((command) => `  ${command}`),
+      ],
+    );
+  }
+  if (empty !== null) {
+    const next = steps.find((step) => step.order === ORDER.import || step.order === ORDER.add);
+    if (next) next.covers.push(empty);
+    else
+      steps.push({
+        order: ORDER.map,
+        title: "Map a key",
+        body: [`${report.map} maps no keys yet.`, "  keypin import --help"],
+        covers: [empty],
+      });
+  }
+  const covered = new Set(steps.flatMap((step) => step.covers));
+  for (const text of report.problems)
+    if (!covered.has(text))
+      steps.push({
+        order: ORDER.last,
+        title: "Fix a problem",
+        body: [sentence(text)],
+        covers: [text],
+      });
+  return steps.sort((a, b) => a.order - b.order);
+}
+
+export const PASTE =
+  "Replace each <...> with the real value; keypin rejects a map that still has one:";
+export const THEN = "Then run keypin check again.";
+export const AFTER_IMPORT =
+  "If you ran the import above, run keypin check again for this TOML instead; the import wrote some of these tables.";
+
+function render(report: Report, steps: Step[], out: Output, home: string): string {
+  const { bold, dim, mark } = out;
+  const { env, wrangler, workflows, notScanned } = report.read;
+  const github = report.github.repo ? `; GitHub ${report.github.repo}` : "";
+  const read = `read ${count(env.length, "env file")}, ${count(wrangler.length, "wrangler config")}, ${count(workflows.length, "workflow")}${github}`;
+  const lines = [`${bold(basename(report.folder))} ${dim(`${report.folder} · ${read}`)}`];
+  if (notScanned.length)
+    lines.push(dim(`Not scanned (own git repository): ${notScanned.join(", ")}`));
+  if (steps.length) {
+    lines.push(
+      steps.length === 1 ? "1 thing to do:" : `${steps.length} things to do, in this order:`,
+    );
+    steps.forEach((step, i) => {
+      lines.push(bold(`${i + 1} ${step.title}`), ...step.body.map((line) => `  ${line}`));
+      if (step.toml !== undefined) lines.push("", step.toml.trimEnd(), "", `  ${THEN}`);
+    });
+  } else {
+    const keys = new Set(report.keys.map((row) => row.key)).size;
+    const destinations = report.keys.reduce((n, row) => n + row.destinations.length, 0);
+    lines.push(
+      `${mark(true)} ${count(keys, "key")}, ${count(destinations, "destination")}. Everything checks out.`,
+    );
+  }
+  const shown = new Set(steps.flatMap((step) => step.covers));
+  for (const u of report.unknown) lines.push(dim(`Not checked: ${u.what}; ${u.reason}`));
+  for (const note of report.notes)
+    if (note !== ITEM_NOTE && !shown.has(note)) lines.push(dim(`Note: ${note}`));
   return tilde(`${lines.join("\n")}\n`, home);
+}
+
+function sentence(text: string): string {
+  const first = /^(?!keypin\b|gh\b|wrangler\b)[a-z]+\b(?![./:])/.test(text)
+    ? `${text[0]?.toUpperCase()}${text.slice(1)}`
+    : text;
+  return /[.:]$/.test(first) ? first : `${first}.`;
+}
+
+function where(target: PublishTarget): string {
+  return target.to === "cloudflare-worker"
+    ? `the Worker ${target.worker}`
+    : `${target.repo}${target.environment === undefined ? "" : ` (environment ${target.environment})`}`;
 }
 
 function count(n: number, noun: string): string {

@@ -43,12 +43,29 @@ export interface LocalFile {
   elsewhere: string[];
 }
 
+export type Fix =
+  | { kind: "environments"; text: string; why: string; at: string; line: string }
+  | { kind: "tracked"; text: string; file: string }
+  | {
+      kind: "import";
+      text: string;
+      why: string;
+      file: string;
+      names: string[];
+      options: string;
+      caveat: string | null;
+    }
+  | { kind: "add"; text: string; why: string; key: string }
+  | { kind: "edit"; text: string }
+  | { kind: "publish"; text: string; key: string; why: string; command: string };
+
 export interface Gaps {
   production: Need[];
   local: LocalFile[];
   add: string | null;
   problems: string[];
   notes: string[];
+  fixes: Fix[];
 }
 
 interface Place {
@@ -184,6 +201,11 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
   const add = tomlToAdd(missing, keys, environment, map?.text ?? "");
 
   const problems: string[] = [];
+  const fixes: Fix[] = [];
+  const fix = (found: Fix) => {
+    fixes.push(found);
+    problems.push(found.text);
+  };
   const unlisted = [
     ...new Set(
       needs.flatMap(({ need: n, place }) => {
@@ -201,9 +223,14 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
     const at = hasEnvironments(map?.text ?? "")
       ? "replace the environments line in keypin.toml with"
       : "add at the top of keypin.toml";
-    problems.push(
-      `keypin.toml has no environment for the wrangler env${unlisted.length > 1 ? "s" : ""} ${unlisted.join(" and ")}; ${at}: ${line} (keypin run uses the first, keypin publish the last)`,
-    );
+    const why = `keypin.toml has no environment for the wrangler env${unlisted.length > 1 ? "s" : ""} ${unlisted.join(" and ")}`;
+    fix({
+      kind: "environments",
+      text: `${why}; ${at}: ${line} (keypin run uses the first, keypin publish the last)`,
+      why,
+      at,
+      line,
+    });
   }
   for (const found of needs) {
     const { need: n, place, key } = found;
@@ -211,15 +238,16 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
     const uses = `${n.usedBy.join(", ")} ${n.to === "github-actions" ? "uses" : "requires"} it`;
     const other = elsewhere(found);
     if (other !== null && n.mapped === null) {
-      problems.push(
-        `${n.name}: ${uses}; keypin.toml publishes it to ${place.label} from ${other}, but that Worker is the wrangler env ${place.onlyFrom.join(" and ")}, so it would get the ${other} value; move that publish entry to ${place.onlyFrom.join(" or ")}`,
-      );
+      const why = `${n.name}: ${uses}`;
+      const edit = `keypin.toml publishes it to ${place.label} from ${other}, but that Worker is the wrangler env ${place.onlyFrom.join(" and ")}, so it would get the ${other} value; move that publish entry to ${place.onlyFrom.join(" or ")}`;
+      fix({ kind: "edit", text: `${why}; ${edit}` });
       continue;
     }
     if (n.mapped !== null) {
-      problems.push(
-        `${n.name}: keypin.toml publishes it to ${place.label}, which doesn't have it yet; run keypin publish ${key?.name ?? n.name}${envFlag(n.mapped, environment)}`,
-      );
+      const why = `${n.name}: keypin.toml publishes it to ${place.label}, which doesn't have it yet`;
+      const name = key?.name ?? n.name;
+      const command = `keypin publish ${name}${envFlag(n.mapped, environment)}`;
+      fix({ kind: "publish", text: `${why}; run ${command}`, key: name, why, command });
       continue;
     }
     const held =
@@ -228,8 +256,13 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
         : n.holds === false
           ? `${place.label} doesn't have it${maybeEnvironment(place === repo ? [...(declared.get(n.name) ?? [])] : [])}, and keypin.toml doesn't publish it there`
           : `keypin.toml doesn't publish it to ${place.label}`;
+    const why = `${n.name}: ${uses}; ${held}`;
     const edit = add.edits.get(`${n.name} ${place.id}`);
-    problems.push(`${n.name}: ${uses}; ${held}. ${edit ?? "Add the TOML below"}`);
+    fix(
+      edit === undefined
+        ? { kind: "add", text: `${why}. Add the TOML below`, why, key: key?.name ?? n.name }
+        : { kind: "edit", text: `${why}. ${edit}` },
+    );
   }
   if (repo.hidden && scan.github.read?.ok) {
     const unmapped = scan.github.read.secrets
@@ -255,13 +288,14 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
     const suffix = /^(?:\.env|\.dev\.vars)\.(.+)$/.exec(file.path.split("/").at(-1) ?? "")?.[1];
     const env = suffix !== undefined && environments.includes(suffix) ? suffix : run;
     const flag = envFlag(env, run);
-    const other =
+    const caveat =
       suffix !== undefined &&
       !environments.includes(suffix) &&
       isEnvironmentName(suffix) &&
       !/^(local|dev|development)$/.test(suffix)
-        ? `, which maps them as ${run}; if they're the values of another environment, list it in environments and add --env <name>`
-        : "";
+        ? `maps them as ${run}; if they're the values of another environment, list it in environments and add --env <name>`
+        : null;
+    const other = caveat === null ? "" : `, which ${caveat}`;
     const names = file.names.filter(isVariableName);
     const key = (name: string) => keys?.keys.find((k) => k.name === name);
     const unmapped = names.filter((name) => !key(name));
@@ -271,17 +305,35 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
     });
     local.push({ file: file.path, tracked: file.tracked, unmapped, elsewhere });
     if (file.tracked)
-      problems.push(`${file.path} is tracked by git, so its values may be committed`);
+      fix({
+        kind: "tracked",
+        text: `${file.path} is tracked by git, so its values may be committed`,
+        file: file.path,
+      });
+    const importing = (why: string, names: string[], account: string) => ({
+      kind: "import" as const,
+      why,
+      file: file.path,
+      names,
+      options: `${flag} --vault ${PLACEHOLDER.vault}${account}`,
+      caveat: caveat && `That command ${caveat}`,
+    });
     if (unmapped.length) {
       const account = keys?.account ? "" : ` --account ${PLACEHOLDER.account}`;
-      notes.push(
-        `${file.path} sets ${unmapped.join(", ")}, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import ${file.path} NAME...${flag} --vault ${PLACEHOLDER.vault}${account}${other}`,
-      );
+      const sets = `${file.path} sets ${unmapped.join(", ")}, which keypin.toml doesn't map`;
+      const found = importing(sets, unmapped, account);
+      const text = `${sets}; a plain setting can stay, and for a key run keypin import ${file.path} NAME...${found.options}${other}`;
+      notes.push(text);
+      fixes.push({ ...found, text });
     }
-    if (elsewhere.length)
-      problems.push(
-        `${file.path} sets ${elsewhere.join(", ")}, which keypin.toml maps with no ${env} entry; for a key run keypin import ${file.path} ${elsewhere.join(" ")}${flag} --vault ${PLACEHOLDER.vault}${other}`,
-      );
+    if (elsewhere.length) {
+      const why = `${file.path} sets ${elsewhere.join(", ")}, which keypin.toml maps with no ${env} entry`;
+      const found = importing(why, elsewhere, "");
+      fix({
+        ...found,
+        text: `${why}; for a key run keypin import ${file.path} ${elsewhere.join(" ")}${found.options}${other}`,
+      });
+    }
   }
 
   return {
@@ -290,6 +342,7 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
     add: add.text,
     problems,
     notes,
+    fixes,
   };
 }
 

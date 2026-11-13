@@ -2,6 +2,7 @@ import { assert, describe, expect, test } from "vite-plus/test";
 import { isRecord, parseMap, type StoreRead } from "@keypin/core";
 import { CloudflareReader } from "@keypin/destination-cloudflare";
 import { cli } from "../src/cli";
+import { AFTER_IMPORT, PASTE, THEN } from "../src/commands/check";
 import { TEMPLATE } from "../src/commands/init";
 import type { Deps } from "../src/deps";
 import {
@@ -152,10 +153,17 @@ function json(
 }
 
 function added(text: string): string {
-  const marker = "keypin rejects a map that still has one):\n\n";
-  const at = text.indexOf(marker);
+  const start = `${PASTE}\n\n`;
+  const at = text.indexOf(start);
   assert(at !== -1, text);
-  return text.slice(at + marker.length);
+  const toml = text.slice(at + start.length);
+  const end = toml.indexOf(`\n\n  ${THEN}`);
+  assert(end !== -1, text);
+  return `${toml.slice(0, end)}\n`;
+}
+
+function steps(text: string): string[] {
+  return [...text.matchAll(/^(\d+) ([A-Z].*)$/gm)].map((m) => `${m[1]} ${m[2]}`);
 }
 
 const FILLED: [string, string][] = [
@@ -176,16 +184,27 @@ describe("keypin check on a whole project", () => {
     expect(run.log).toEqual([]);
     expect(run.calls).toContain("github acme/billing as null");
     expect(run.calls).toContain(`worker ${ACCOUNT} billing-worker`);
-    expect(text).toContain(`Problems (3):
-  ${MAP} maps no keys yet; run keypin import for an env file, and add the TOML below for production
-  STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and keypin.toml doesn't publish it there. Add the TOML below
-  RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and keypin.toml doesn't publish it there. Add the TOML below
+    expect(text).toContain(`4 things to do, in this order:
+1 Sign in to Cloudflare
+    wrangler login
+2 Set up 1Password
+  keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected.
+3 Move .env's keys into 1Password
+  .env sets DATABASE_URL, RESEND_API_KEY, which keypin.toml doesn't map.
+    keypin import .env DATABASE_URL RESEND_API_KEY --vault <vault> --account <1Password sign-in address>
+  Leave out a name that isn't a key; it stays in the file.
+4 Add the production keys to keypin.toml
+  STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and keypin.toml doesn't publish it there.
+  RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and keypin.toml doesn't publish it there.
+  ${AFTER_IMPORT}
+  ${PASTE}
 `);
-    expect(text).toContain(
-      "  .env sets DATABASE_URL, RESEND_API_KEY, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env NAME... --vault <vault> --account <1Password sign-in address>\n",
-    );
+    expect(text).not.toContain("Note:");
     expect(text).not.toContain("GITHUB_TOKEN");
     expect(text).not.toContain("REGION");
+    const data = setup({ files: { [MAP]: TEMPLATE } });
+    await cli(["check", "--json"], data.deps);
+    expect(json(data.stdout.text).add).toBe(added(text));
     expect(added(text)).toBe(`[1password]
 account = "<1Password sign-in address>"
 
@@ -211,11 +230,11 @@ account = "${ACCOUNT}"
 worker = "billing-worker"
 `);
     run.unchanged();
-    expect(leaks(...run.everything())).toBe(false);
+    expect(leaks(...run.everything(), ...data.everything())).toBe(false);
   });
 
-  test("the TOML to add, filled in and pasted, closes the production gap", async () => {
-    const first = setup({ files: { [MAP]: TEMPLATE } });
+  test("with no import step, the TOML prints, and filled in and pasted closes the production gap", async () => {
+    const first = setup({ files: { [MAP]: TEMPLATE, [`${ROOT}/.env`]: null } });
     await cli(["check"], first.deps);
     const pasted = `${TEMPLATE}\n${fill(added(first.stdout.text))}`;
     assert(parseMap(pasted, MAP).ok, pasted);
@@ -255,6 +274,70 @@ worker = "billing-worker"
       ".env sets DATABASE_URL, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env NAME... --vault <vault>",
     );
   });
+
+  test("following the steps in order, import then the TOML, leaves a map that parses", async () => {
+    const vault = fakeVault({ items: [] });
+    const run = setup({
+      files: {
+        [MAP]: TEMPLATE,
+        [`${ROOT}/.env`]: `DATABASE_URL=${SENTINEL}\nRESEND_API_KEY=${SENTINEL}\nPORT=3000\n`,
+        [`${ROOT}/.env.example`]: null,
+      },
+      deps: { vault: () => vault.vault },
+    });
+    const check = async () => {
+      const before = run.stdout.text.length;
+      await cli(["check"], run.deps);
+      const text = run.stdout.text.slice(before);
+      return { text, command: /^ {4}(keypin import .+)$/m.exec(text)?.[1] };
+    };
+    const paste = (text: string) => {
+      const pasted = `${run.disk.contents.get(MAP) ?? ""}\n${fill(added(text))}`;
+      const parsed = parseMap(pasted, MAP);
+      assert(parsed.ok, parsed.ok ? "" : parsed.errors.join("\n"));
+      return parsed.map;
+    };
+
+    const first = await check();
+    assert(first.command !== undefined, first.text);
+    expect(first.command).toContain(" PORT ");
+    expect(first.text).toContain(AFTER_IMPORT);
+    const args = first.command
+      .replace("<1Password sign-in address>", "my.1password.com")
+      .split(" ")
+      .slice(1)
+      .filter((arg) => arg !== "PORT")
+      .map((arg) => (arg === "<vault>" ? "Private" : arg));
+    expect(await cli([...args, "--yes"], run.deps)).toBe(0);
+
+    const second = await check();
+    expect(second.command).toBe("keypin import .env PORT --vault <vault>");
+    expect(second.text).not.toContain(AFTER_IMPORT);
+    expect(
+      paste(second.text)
+        .keys.map((k) => k.name)
+        .sort(),
+    ).toEqual(["DATABASE_URL", "RESEND_API_KEY", "STRIPE_API_KEY"]);
+  });
+
+  test.each([
+    ["a map with an account", MAPPED, false],
+    ["a map with no account yet", TEMPLATE, true],
+  ])(
+    "a plain setting left in an env file never holds back the TOML (%s)",
+    async (_, map, warns) => {
+      const run = setup({
+        files: { [MAP]: map, [`${ROOT}/.env`]: "PORT=3000\n", [`${ROOT}/.env.example`]: null },
+      });
+      expect(await cli(["check"], run.deps)).toBe(1);
+      const text = run.stdout.text;
+      expect(text).toContain("    keypin import .env PORT --vault <vault>");
+      expect(text.includes(AFTER_IMPORT)).toBe(warns);
+      const parsed = parseMap(`${map}\n${fill(added(text))}`, MAP);
+      assert(parsed.ok, parsed.ok ? "" : parsed.errors.join("\n"));
+      expect(parsed.map.keys.map((k) => k.name)).toContain("STRIPE_API_KEY");
+    },
+  );
 
   test("an env file named for an environment suggests importing it with --env", async () => {
     const run = setup({
@@ -296,6 +379,16 @@ worker = "billing-worker"
     expect(data.notes).toContain(
       `.env.production sets NEW_KEY, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env.production NAME... --vault <vault>${note}`,
     );
+    const text = setup({
+      files: {
+        [MAP]: MAPPED,
+        [`${ROOT}/.env.production`]: `DATABASE_URL=${SENTINEL}\nNEW_KEY=${SENTINEL}\n`,
+      },
+    });
+    await cli(["check"], text.deps);
+    expect(text.stdout.text).toContain(`    keypin import .env.production NEW_KEY --vault <vault>
+  That command maps them as dev; if they're the values of another environment, list it in environments and add --env <name>.
+`);
 
     const first = setup({
       files: {
@@ -309,7 +402,7 @@ worker = "billing-worker"
     expect(listed.notes).toContain(
       ".env.production sets NEW_KEY, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env.production NAME... --vault <vault>",
     );
-    expect(leaks(...mapped.everything(), ...first.everything())).toBe(false);
+    expect(leaks(...mapped.everything(), ...text.everything(), ...first.everything())).toBe(false);
   });
 
   test("an env file named for an unlisted environment flags an already-mapped key too", async () => {
@@ -346,7 +439,7 @@ worker = "billing-worker"
   });
 
   test("the TOML to add, pasted unfilled, fails with one line per <...> until replaced", async () => {
-    const first = setup({ files: { [MAP]: TEMPLATE } });
+    const first = setup({ files: { [MAP]: TEMPLATE, [`${ROOT}/.env`]: null } });
     await cli(["check"], first.deps);
     const run = setup({ files: { [MAP]: `${TEMPLATE}\n${added(first.stdout.text)}` } });
     expect(await cli(["check", "--json"], run.deps)).toBe(1);
@@ -373,6 +466,7 @@ worker = "billing-worker"
   test("a finished setup checks items by ID, without reading a value, and exits 0", async () => {
     const run = setup({
       files: { [MAP]: PUBLISHED, [`${ROOT}/.env`]: null },
+      deps: { wranglerLoginFile: async () => "/home/me/.wrangler/config/default.toml" },
       github: { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] },
       worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
     });
@@ -381,11 +475,8 @@ worker = "billing-worker"
     expect(run.vault).toHaveLength(4);
     expect(run.stderr.text).toContain("Looked up 4 items in 1Password account");
     const text = run.stdout.text;
-    expect(text).toContain(
-      "  ok     STRIPE_API_KEY in acme/billing (.github/workflows/deploy.yml): has it, keypin.toml (prod)",
-    );
-    expect(text).toContain("Everything checks out.");
-    expect(text).not.toContain("Add to");
+    expect(text).toContain("ok     3 keys, 2 destinations. Everything checks out.\n");
+    expect(text).not.toContain(PASTE);
     run.unchanged();
     expect(leaks(...run.everything())).toBe(false);
   });
@@ -401,6 +492,54 @@ worker = "billing-worker"
     expect(data.add).toBeNull();
   });
 
+  test("a gap shows once, as one step, though it is a production need and a problem", async () => {
+    const run = setup({ files: { [MAP]: PUBLISHED, [`${ROOT}/.env`]: null } });
+    expect(await cli(["check"], run.deps)).toBe(1);
+    const text = run.stdout.text;
+    expect(text.match(/STRIPE_API_KEY/g)).toHaveLength(2);
+    expect(text).toContain(`1 Sign in to Cloudflare
+    wrangler login
+2 Publish 2 keys
+  STRIPE_API_KEY: keypin.toml publishes it to acme/billing, which doesn't have it yet.
+  RESEND_API_KEY: keypin.toml publishes it to the Worker billing-worker, which doesn't have it yet.
+    keypin publish STRIPE_API_KEY
+    keypin publish RESEND_API_KEY
+`);
+  });
+
+  test("steps come in the order to do them: logins, import, TOML, publish", async () => {
+    const run = setup({
+      files: {
+        [MAP]: MAPPED.replace(
+          "[keys.RESEND_API_KEY]",
+          `[keys.STRIPE_API_KEY.prod]
+from = "op://Private/billing prod stripe api key/password"
+
+[[keys.STRIPE_API_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+
+[keys.RESEND_API_KEY]`,
+        ),
+        [`${ROOT}/.env`]: `DATABASE_URL=${SENTINEL}\nNEW_KEY=${SENTINEL}\n`,
+      },
+      deps: { ghLogin: async () => "not logged in" },
+    });
+    expect(await cli(["check"], run.deps)).toBe(1);
+    const text = run.stdout.text;
+    expect(steps(text)).toEqual([
+      "1 Sign in to GitHub",
+      "2 Sign in to Cloudflare",
+      "3 Move .env's keys into 1Password",
+      "4 Add the production keys to keypin.toml",
+      "5 Publish STRIPE_API_KEY",
+    ]);
+    expect(text).toContain("5 things to do, in this order:\n");
+    expect(text).toContain("    keypin import .env NEW_KEY --vault <vault>\n");
+    expect(text).toContain("    keypin publish STRIPE_API_KEY\n");
+    expect(text).not.toContain("\x1b");
+  });
+
   test("a secret the place has, which the map doesn't publish there, gets the TOML to add", async () => {
     const run = setup({
       files: { [MAP]: MAPPED, [`${ROOT}/.env`]: null },
@@ -410,7 +549,7 @@ worker = "billing-worker"
     expect(await cli(["check"], run.deps)).toBe(1);
     const text = run.stdout.text;
     expect(text).toContain(
-      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing has it, but keypin.toml doesn't publish it there. Add the TOML below",
+      "  STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing has it, but keypin.toml doesn't publish it there.\n",
     );
     const toml = added(text);
     expect(toml).not.toContain("[1password]");
@@ -1033,7 +1172,7 @@ jobs:
     expect(await cli(["check"], run.deps)).toBe(1);
     expect(run.calls).toContain("github acme/billing as null in production");
     expect(run.stdout.text).toContain(
-      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing (environment production) doesn't have it, and keypin.toml doesn't publish it there. Add the TOML below",
+      "  STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing (environment production) doesn't have it, and keypin.toml doesn't publish it there.\n",
     );
     expect(added(run.stdout.text)).toContain(`[[keys.STRIPE_API_KEY.prod.publish]]
 to = "github-actions"
@@ -1343,7 +1482,7 @@ jobs:
       expect(run.stdout.text).toContain(
         flag.length
           ? '"place": "the Worker billing-worker",\n      "usedBy": [\n        "wrangler.toml"\n      ],\n      "mapped": null,\n      "holds": true'
-          : "RESEND_API_KEY in the Worker billing-worker (wrangler.toml): has it, not in keypin.toml",
+          : "RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker has it, but keypin.toml doesn't publish it there.",
       );
       expect(leaks(...run.everything())).toBe(false);
     }
@@ -1361,10 +1500,15 @@ describe("keypin check's prerequisites", () => {
     });
     expect(await cli(["check"], run.deps)).toBe(1);
     expect(run.vault).toEqual([]);
-    expect(run.stdout.text).toContain(`Before you start:
-  GitHub:     not logged in; run gh auth login --hostname github.com, signing in as alice
-  Cloudflare: not logged in; run wrangler login
-  1Password:  not checked;   keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected
+    expect(run.stdout.text).toContain(`5 things to do, in this order:
+1 Sign in to GitHub
+    gh auth login --hostname github.com
+  Sign in as alice.
+2 Sign in to Cloudflare
+    wrangler login
+3 Set up 1Password
+  keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected.
+4 Move .env's keys into 1Password
 `);
   });
 
@@ -1407,7 +1551,7 @@ describe("keypin check's prerequisites", () => {
     const run = setup({ files: { [MAP]: MAPPED }, deps: wrangler });
     await cli(["check"], run.deps);
     expect(run.vault.length).toBeGreaterThan(0);
-    expect(run.stdout.text).not.toContain("Before you start");
+    expect(steps(run.stdout.text)).not.toContainEqual(expect.stringMatching(/^1 (Sign in|Set up)/));
     const again = setup({ files: { [MAP]: MAPPED }, deps: wrangler });
     await cli(["check", "--json"], again.deps);
     expect(prerequisites(again.stdout.text)).toEqual([]);

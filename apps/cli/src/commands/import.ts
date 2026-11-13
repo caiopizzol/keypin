@@ -19,6 +19,7 @@ import {
 import { type Deps, localDay, UsageError } from "../deps";
 import { messageOf } from "../errors";
 import { MAP_FILE } from "../project";
+import { confirm } from "../output";
 import { NEEDS_APPROVAL, rerun } from "../publishing";
 import { announce } from "../vault";
 import { registerProject, TEMPLATE } from "./init";
@@ -479,8 +480,7 @@ async function confirmed(deps: Deps, request: Request, items: number): Promise<b
   const say = (text: string) => deps.stderr.write(`${text}\n`);
   if (request.yes) return true;
   if (deps.isTerminal) {
-    const answer = await deps.ask(`Type yes to create ${count(items, "item")} in 1Password: `);
-    if (answer.trim() === "yes") return true;
+    if (await confirm(deps, `Create ${count(items, "item")} in 1Password?`)) return true;
     say("Not confirmed. Nothing was created.");
     return false;
   }

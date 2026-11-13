@@ -40,7 +40,7 @@ Exit codes:
   0  done
   1  failed, or status or check found a problem
   2  usage error
-  3  stopped for approval: run the printed command in a terminal and type yes;
+  3  stopped for approval: run the printed command in a terminal and answer y;
      --plan exits 3 whenever the plan would write (routine or not), 0 when there's nothing to write
   keypin run exits 1 if it can't start the command, then with the command's own code.
 `;

@@ -9,6 +9,7 @@ import {
   type KeyEntry,
   type KeyOwner,
   type KeysMap,
+  type PlanStep,
   generationOf,
   loadState,
   planPublish,
@@ -20,12 +21,12 @@ import {
 import { type Deps, UsageError } from "../deps";
 import { messageOf } from "../errors";
 import { findMap, pickEnvironment } from "../project";
+import { columns, confirm, type Output, output } from "../output";
 import {
-  accountFacts,
   type Checked,
   checkAccounts,
-  describeTarget,
   finishAll,
+  labels,
   locked,
   NEEDS_APPROVAL,
   planOnly,
@@ -35,7 +36,6 @@ import {
   writeAll,
   writesFor,
 } from "../publishing";
-import { announce, lookUpIds } from "../vault";
 
 interface Request {
   keyId: string | null;
@@ -124,22 +124,20 @@ async function publishLocked(
 ): Promise<number> {
   const { environment } = request;
   const many = request.keyId === null;
-  const say = (text: string) => deps.stderr.write(`${text}\n`);
+  const out = output(deps.stderr, deps.styled);
+  const say = (text: string) => out.line(text);
   const jobs = jobsFor(request, map, say);
   if (many && !jobs.length) {
     say(`No key in ${map.file} has ${environment} destinations; nothing to publish.`);
     return 1;
   }
-
   for (const { key, entry } of jobs) {
-    say(`Publishing ${key.name} (${environment}) from ${formatReference(entry.ref)}`);
-    say(`  1Password account: ${entry.ref.account}`);
-    for (const target of entry.publish) say(`  to: ${describeTarget(target, key.name)}`);
     if (!entry.publish.length) {
       say(`The map lists no destinations for ${key.name} (${environment}); nothing to publish.`);
       return 1;
     }
   }
+  const label = labels(jobs.flatMap((job) => job.entry.publish));
 
   let state = await loadState(deps.files, path);
   for (const { owner } of jobs) {
@@ -152,12 +150,15 @@ async function publishLocked(
 
   const checks: Checks[] = [];
   for (const job of jobs) {
-    const heading = many ? `Account checks for ${job.key.name}` : "Account checks";
-    const checked = await checkAccounts(job.key, job.entry, deps, say, heading);
+    const { key, entry } = job;
+    say(
+      `\n${out.bold(key.name)} ${environment}  ${out.dim(`from ${formatReference(entry.ref)} in 1Password account ${entry.ref.account}`)}`,
+    );
+    const checked = await checkAccounts(key, entry, deps, out, label);
     if (checked) checks.push({ ...job, checked });
   }
   if (checks.length < jobs.length) {
-    say("Stopped: an account check failed. Nothing was read and nothing was written.");
+    say("\nStopped: an account check failed. Nothing was read and nothing was written.");
     return 1;
   }
 
@@ -168,23 +169,19 @@ async function publishLocked(
         ids[index] ?? null,
       ),
     );
+  say("");
   const unattended = !deps.isTerminal && !request.plan;
   let approvals = approvalsOf([]);
   if (unattended && !approvals.length) {
     try {
-      approvals = approvalsOf(
-        await lookUpIds(
-          deps,
-          jobs.map((job) => job.entry.ref),
-        ),
-      );
+      approvals = approvalsOf(await lookUpIds(jobs, deps, out));
     } catch (error) {
       say(`Stopped: couldn't find the item: ${messageOf(error)}. Nothing was written.`);
       return 1;
     }
   }
   if (approvals.length && unattended) {
-    say("\nNeeds approval:");
+    say("Needs approval:");
     for (const approval of approvals) say(`  ${approval.approval}`);
     say(
       `Stopped before reading ${many ? "any value" : "the value"}: this publish needs approval, and --yes can't give it. Nothing was read and nothing was written.`,
@@ -193,25 +190,16 @@ async function publishLocked(
     return NEEDS_APPROVAL;
   }
 
-  announce(
-    deps.stderr,
-    many ? "the values to publish" : "the value to publish",
-    jobs.map((job) => job.entry.ref),
-  );
+  const read = await readValues(checks, deps, out);
+  if (!read.ok) {
+    say(`Stopped: couldn't read ${read.failed}`);
+    return 1;
+  }
+
   const planned: Planned[] = [];
   let needsApproval = false;
-  for (const job of checks) {
-    const { key, entry, owner, checked } = job;
-    let secret: Secret;
-    let ids: ItemIds;
-    try {
-      ({ secret, ids } = await deps.vault().readItem(entry.ref));
-    } catch (error) {
-      say(
-        `Stopped: couldn't read ${key.name} (${formatReference(entry.ref)}): ${messageOf(error)}`,
-      );
-      return 1;
-    }
+  for (const job of read.jobs) {
+    const { key, owner, checked, secret, ids } = job;
     const generation = await generationOf(secret);
     const plan = planPublish({
       key,
@@ -223,23 +211,24 @@ async function publishLocked(
     });
     const writes = writesFor(plan.steps, checked);
     say(
-      many
-        ? `\nPlan for ${key.name}, generation ${generation}:`
-        : `\nPlan for generation ${generation}:`,
+      `\nPlan${many ? ` for ${out.bold(key.name)}` : ""}  ${out.dim(`generation ${generation}`)}`,
     );
-    for (const step of plan.steps) {
-      const found = checked.get(step.destinationId);
-      say(`  ${step.action} ${describeTarget(step.target, key.name)}: ${step.reason}`);
-      if (found) say(`    ${accountFacts(found.check)}`);
-      if (step.approval) say(`    needs approval: ${step.approval}`);
-    }
+    const rows = columns(plan.steps.map((step) => [label(step.target), WHY[step.reason]]));
+    plan.steps.forEach((step, index) => {
+      const [place = "", why = ""] = rows[index] ?? [];
+      const text = `${step.action === "skip" ? "=" : step.approval ? "+" : "~"} ${place}  ${why}`;
+      const approval = step.approval ? `  ${out.bold("needs approval")}` : "";
+      say(`  ${step.action === "skip" ? out.dim(text.trimEnd()) : `${text}${approval}`}`);
+      if (step.reason === "account changed" || step.reason === "item changed")
+        say(`    ${out.dim(step.approval ?? "")}`);
+    });
     for (const removed of plan.removed) {
       say(
-        `  not in the map any more: ${removed.destinationId} (last got ${removed.lastReceipt.generation} at ${removed.lastReceipt.at}). keypin doesn't delete it.`,
+        `  ${out.dim(`- ${removed.destinationId}: not in the map any more (last got ${removed.lastReceipt.generation} at ${removed.lastReceipt.at}). keypin doesn't delete it.`)}`,
       );
     }
     needsApproval ||= plan.needsApproval;
-    planned.push({ ...job, secret, ids, generation, writes });
+    planned.push({ ...job, generation, writes });
   }
 
   const finished = planned
@@ -253,13 +242,15 @@ async function publishLocked(
   const pending = planned.filter((job) => job.writes.length);
   if (!pending.length) {
     say(
-      "Nothing to write: the receipts on this machine show every destination already got this generation.",
+      "\nNothing to write: the receipts on this machine show every destination already got this generation.",
     );
     return 0;
   }
   if (request.plan) return planOnly(deps, "publish", request.args, needsApproval);
 
-  if (!(await confirmed(deps, needsApproval, request))) return NEEDS_APPROVAL;
+  const total = pending.reduce((sum, job) => sum + job.writes.length, 0);
+  say("");
+  if (!(await confirmed(deps, needsApproval, request, total))) return NEEDS_APPROVAL;
 
   for (const [index, job] of pending.entries()) {
     const written = await writeAll({
@@ -274,7 +265,8 @@ async function publishLocked(
       state,
       path,
       deps,
-      say,
+      out,
+      label,
     });
     state = written.state;
     if (!written.ok) {
@@ -285,23 +277,79 @@ async function publishLocked(
       say("Stopped. Finished writes keep their receipts; run keypin publish again to continue.");
       return 1;
     }
-    say(`Published ${job.key.name} (${environment}) to ${job.writes.length} destination(s).`);
+    say(
+      `Published ${out.bold(job.key.name)} (${environment}) to ${count(job.writes.length, "destination")}.`,
+    );
   }
   return 0;
+}
+
+const WHY: Record<PlanStep["reason"], string> = {
+  "no receipt": "first write",
+  "new destination": "first write",
+  "account changed": "account changed",
+  "item changed": "vault item changed",
+  "different generation": "new value",
+  "receipt already has this generation": "already has this value",
+};
+
+type Read =
+  | { ok: true; jobs: (Checks & { secret: Secret; ids: ItemIds })[] }
+  | { ok: false; failed: string };
+
+async function lookUpIds(jobs: Job[], deps: Deps, out: Output): Promise<ItemIds[]> {
+  const items = count(jobs.length, "item ID");
+  return out.step(
+    `Looking up ${items} in 1Password, not the values`,
+    async () => {
+      const ids: ItemIds[] = [];
+      for (const job of jobs) ids.push(await deps.vault().itemIds(job.entry.ref));
+      return ids;
+    },
+    () => ({ ok: true, text: `Looked up ${items} in 1Password, not the values` }),
+    "1Password may be asking you to approve keypin",
+  );
+}
+
+function readValues(checks: Checks[], deps: Deps, out: Output): Promise<Read> {
+  const accounts = [...new Set(checks.map((job) => job.entry.ref.account))].join(", ");
+  const values = count(checks.length, "value");
+  return out.step(
+    `Reading ${values} from 1Password account ${accounts}`,
+    async (): Promise<Read> => {
+      const jobs = [];
+      for (const job of checks) {
+        try {
+          jobs.push({ ...job, ...(await deps.vault().readItem(job.entry.ref)) });
+        } catch (error) {
+          return {
+            ok: false,
+            failed: `${job.key.name} (${formatReference(job.entry.ref)}): ${messageOf(error)}`,
+          };
+        }
+      }
+      return { ok: true, jobs };
+    },
+    (read) => ({
+      ok: read.ok,
+      text: read.ok
+        ? `Read ${values} from 1Password account ${accounts}`
+        : `Couldn't read from 1Password account ${accounts}`,
+    }),
+    "1Password may be asking you to approve keypin",
+  );
 }
 
 async function confirmed(
   deps: Deps,
   needsApproval: boolean,
   request: { yes: boolean; args: string[] },
+  total: number,
 ): Promise<boolean> {
   const say = (text: string) => deps.stderr.write(`${text}\n`);
   if (request.yes && !needsApproval) return true;
   if (deps.isTerminal) {
-    const answer = await deps.ask(
-      `Type yes to write${needsApproval ? " (this plan needs approval)" : ""}: `,
-    );
-    if (answer.trim() === "yes") return true;
+    if (await confirm(deps, `Write ${count(total, "secret")}?`)) return true;
     say("Not confirmed. Nothing was written.");
     return false;
   }
@@ -312,4 +360,8 @@ async function confirmed(
   );
   say(rerun(deps, "publish", request.args));
   return false;
+}
+
+function count(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }

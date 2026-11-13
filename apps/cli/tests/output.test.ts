@@ -1,0 +1,64 @@
+import { describe, expect, test } from "vite-plus/test";
+import { confirm, isStyled, output } from "../src/output";
+
+const ESC = "\x1b";
+
+function writer() {
+  let text = "";
+  return { write: (chunk: string) => void (text += chunk), text: () => text };
+}
+
+describe("output", () => {
+  test("styling needs a terminal, and NO_COLOR or TERM=dumb turns it off", () => {
+    expect(isStyled(true, {})).toBe(true);
+    expect(isStyled(false, {})).toBe(false);
+    expect(isStyled(undefined, {})).toBe(false);
+    expect(isStyled(true, { NO_COLOR: "" })).toBe(false);
+    expect(isStyled(true, { TERM: "dumb" })).toBe(false);
+  });
+
+  test("without styling, a step prints one plain line and no escape codes", async () => {
+    const stderr = writer();
+    const out = output(stderr, false);
+    const result = await out.step(
+      "Checking",
+      async () => 7,
+      (n) => ({ ok: n === 7, text: `Checked ${n}` }),
+    );
+    expect(result).toBe(7);
+    expect(stderr.text()).toBe("ok     Checked 7\n");
+  });
+
+  test("with styling, a step ends on its own line with a mark and a time", async () => {
+    const stderr = writer();
+    const out = output(stderr, true);
+    await out.step(
+      "Checking",
+      async () => false,
+      () => ({ ok: false, text: "Checked" }),
+    );
+    const last = stderr.text().split(`${ESC}[2K`).at(-1) ?? "";
+    expect(last.replaceAll(ESC, "ESC")).toMatch(
+      /^ESC\[1;31m✗ESC\[0m Checked {2}ESC\[2m\d+\.\dsESC\[0m\n$/,
+    );
+  });
+
+  test("a failed step clears its spinner and rethrows", async () => {
+    const stderr = writer();
+    const out = output(stderr, true);
+    await expect(
+      out.step(
+        "Writing",
+        () => Promise.reject(new Error("HTTP 500")),
+        () => ({ ok: true, text: "" }),
+      ),
+    ).rejects.toThrow("HTTP 500");
+    expect(stderr.text().replaceAll(ESC, "ESC")).toMatch(/✗ESC\[0m Writing {2}.*\n$/);
+  });
+
+  test("confirm takes y or yes in any case, and anything else is no", async () => {
+    const answers = async (answer: string) => confirm({ ask: async () => answer }, "Write?");
+    for (const yes of ["y", "Y", "yes", " YES "]) expect(await answers(yes)).toBe(true);
+    for (const no of ["", "n", "no", "yess", "sure"]) expect(await answers(no)).toBe(false);
+  });
+});

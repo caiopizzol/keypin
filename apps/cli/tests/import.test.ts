@@ -266,16 +266,18 @@ describe("keypin import", () => {
     );
   });
 
-  test("in a terminal, creates only after a typed yes", async () => {
-    const no = setup({ terminal: true, answer: "y" });
+  test("in a terminal, creates only after y or yes", async () => {
+    const no = setup({ terminal: true, answer: "n" });
     expect(await cli(NEW, no.deps)).toBe(3);
-    expect(no.asked).toEqual(["Type yes to create 2 items in 1Password: "]);
+    expect(no.asked).toEqual(["Create 2 items in 1Password? [y/N] "]);
     expect(no.fake.created).toEqual([]);
     expect(no.disk.contents.has(MAP)).toBe(false);
 
-    const yes = setup({ terminal: true, answer: "yes" });
-    expect(await cli(NEW, yes.deps)).toBe(0);
-    expect(yes.fake.created).toHaveLength(2);
+    for (const answer of ["y", "yes"]) {
+      const yes = setup({ terminal: true, answer });
+      expect(await cli(NEW, yes.deps)).toBe(0);
+      expect(yes.fake.created).toHaveLength(2);
+    }
   });
 
   test("a failure midway stops, and maps only the items it created; a rerun finishes", async () => {

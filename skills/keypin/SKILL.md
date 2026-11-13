@@ -11,7 +11,7 @@ values from 1Password only while a command runs.
 ## Rules
 
 - Never put a value in chat, arguments, files or `keypin.toml`, and never read an env file's values yourself.
-- The user creates 1Password items and types `yes` to approve. You never approve a first write, or a changed
+- The user creates 1Password items and answers `y` to approve. You never approve a first write, or a changed
   account or item.
 - 1Password asks the user to approve each command. If a command waits, tell the user.
 - Run `keypin --help` first, and use only what it lists.
@@ -51,7 +51,7 @@ also deploys.
    wait on a command you handed to the user, don't block the plan.
 2. Run `keypin publish --all --plan` (or `keypin publish NAME --plan`) and show the user the plan. It writes
    nothing; 1Password asks the user to approve the read.
-3. Exit 3: give the user the printed command to run in a terminal, where they type `yes`. Exit 0: nothing to
+3. Exit 3: give the user the printed command to run in a terminal, where they answer `y`. Exit 0: nothing to
    write. Exit 1: show the problem.
 4. Use `--yes` only when the user asks and the plan says it's routine.
 

@@ -316,7 +316,7 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
       file: file.path,
       names,
       options: `${flag} --vault ${PLACEHOLDER.vault}${account}`,
-      caveat: caveat && `keypin import ${caveat}`,
+      caveat: caveat && `That command ${caveat}`,
     });
     if (unmapped.length) {
       const account = keys?.account ? "" : ` --account ${PLACEHOLDER.account}`;

@@ -21,7 +21,7 @@ export function repoPath(file: string, plugin: string = import.meta.url): string
 }
 
 const REVEAL_ALLOWED = [
-  /^packages\/(vault|destination)-[^/]+\/src\//,
+  /^packages\/(vault|destination|issuer)-[^/]+\/src\//,
   /^packages\/core\/src\/secret\.ts$/,
   /^apps\/cli\/src\/commands\/run\.ts$/,
   /^(apps|packages)\/[^/]+\/tests\//,

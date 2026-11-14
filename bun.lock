@@ -57,6 +57,15 @@
         "@types/node": "26.6.6",
       },
     },
+    "packages/issuer-resend": {
+      "name": "@keypin/issuer-resend",
+      "dependencies": {
+        "@keypin/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "26.6.6",
+      },
+    },
     "packages/vault-1password": {
       "name": "@keypin/vault-1password",
       "dependencies": {
@@ -110,6 +119,8 @@
     "@keypin/destination-cloudflare": ["@keypin/destination-cloudflare@workspace:packages/destination-cloudflare"],
 
     "@keypin/destination-github": ["@keypin/destination-github@workspace:packages/destination-github"],
+
+    "@keypin/issuer-resend": ["@keypin/issuer-resend@workspace:packages/issuer-resend"],
 
     "@keypin/vault-1password": ["@keypin/vault-1password@workspace:packages/vault-1password"],
 

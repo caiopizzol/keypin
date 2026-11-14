@@ -11,6 +11,7 @@ import {
   type Status,
   type StatusRow,
   type VaultMetadata,
+  vaultAccounts,
 } from "@keypin/core";
 import { type Deps, localDay, UsageError } from "../deps";
 import { registryPath, statePath } from "../paths";
@@ -56,7 +57,7 @@ export async function status(args: string[], deps: Deps): Promise<number> {
   if (refs.length) {
     const errors: string[] = [];
     const dates = count(refs.length, "rotated date");
-    const from = `from 1Password account ${[...new Set(refs.map((ref) => ref.account))].join(", ")}, not the values`;
+    const from = `from ${vaultAccounts(refs)}, not the values`;
     await output(deps.stderr, deps.styled.stderr, deps.columns).step(
       `Reading ${dates}`,
       async () => {

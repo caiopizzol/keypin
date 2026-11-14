@@ -366,7 +366,7 @@ describe("wrong kinds and values", () => {
   });
 
   test.each([
-    ["Private/i/password", "must start with op://"],
+    ["Private/i/password", "must start with op:// or infisical://"],
     [
       "op://Private/i",
       "must be op://<vault>/<item>/<field> or op://<vault>/<item>/<section>/<field>",
@@ -728,5 +728,84 @@ worker = "<worker>"
       MAP_FILE,
     );
     assert(result.ok, JSON.stringify(result));
+  });
+});
+
+describe("Infisical references", () => {
+  const PIN = `[infisical]\norganization = "acme"\n`;
+
+  test("a reference names the project, environment, folders and secret, and takes the pin", () => {
+    const result = parseMap(
+      `${PIN}[keys.STRIPE_KEY]\ndev = "infisical://billing/dev/STRIPE_KEY"\nprod = "infisical://billing/prod/payments/stripe/STRIPE_KEY"\n`,
+      MAP_FILE,
+    );
+    assert(result.ok);
+    const [key] = result.map.keys;
+    expect(result.map.infisical).toEqual({
+      url: "https://app.infisical.com",
+      organization: "acme",
+    });
+    expect(key?.environments.dev?.ref).toEqual({
+      kind: "infisical",
+      url: "https://app.infisical.com",
+      organization: "acme",
+      project: "billing",
+      environment: "dev",
+      path: "/",
+      name: "STRIPE_KEY",
+    });
+    expect(key?.environments.prod?.ref).toMatchObject({
+      environment: "prod",
+      path: "/payments/stripe",
+      name: "STRIPE_KEY",
+    });
+  });
+
+  test("a self-hosted address is kept without its trailing slash", () => {
+    const result = parseMap(
+      `[infisical]\nurl = "https://vault.acme.dev/"\norganization = "acme"\n[keys.A]\ndev = "infisical://p/dev/A"\n`,
+      MAP_FILE,
+    );
+    assert(result.ok);
+    expect(result.map.keys[0]?.environments.dev?.ref).toMatchObject({
+      url: "https://vault.acme.dev",
+    });
+  });
+
+  test("a map can read from 1Password and Infisical at once", () => {
+    const result = parseMap(
+      `${VAULTS}${PIN}[keys.A]\ndev = "op://Private/a/password"\nprod = "infisical://p/prod/A"\n`,
+      MAP_FILE,
+    );
+    assert(result.ok);
+    expect(result.map.keys[0]?.environments.dev?.ref.kind).toBe("1password");
+    expect(result.map.keys[0]?.environments.prod?.ref.kind).toBe("infisical");
+  });
+
+  test.each([
+    [
+      `[keys.A]\ndev = "infisical://p/dev/A"\n`,
+      `key "A" dev: field "from" needs your Infisical organization: add [infisical] with organization = "..."`,
+    ],
+    [`[infisical]\nurl = "https://x.dev"\n`, `[infisical]: missing field "organization"`],
+    [
+      `[infisical]\nurl = "https://x.dev/api"\norganization = "acme"\n`,
+      `[infisical]: field "url" must be an https:// address such as https://eu.infisical.com, with no path`,
+    ],
+    [
+      `[infisical]\nurl = "http://x.dev"\norganization = "acme"\n`,
+      `[infisical]: field "url" must be an https:// address such as https://eu.infisical.com, with no path`,
+    ],
+    [`[infisical]\norganization = "acme"\ntoken = "x"\n`, `[infisical]: unknown field "token"`],
+    [
+      `${PIN}[keys.A]\ndev = "infisical://p/A"\n`,
+      `key "A" dev: field "from" must be infisical://<project>/<environment>/<SECRET_NAME>, with any folders before the name`,
+    ],
+    [
+      `${PIN}[keys.A]\ndev = "infisical://<project>/dev/A"\n`,
+      `key "A" dev: field "from" has a <...> placeholder for its project: replace it with the project's slug, the environment's slug, and the secret's name`,
+    ],
+  ])("%s is refused", (text, message) => {
+    expect(errorsOf(text)).toEqual([`${MAP_FILE}: ${message}`]);
   });
 });

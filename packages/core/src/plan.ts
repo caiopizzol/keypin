@@ -6,7 +6,7 @@ import {
   receiptSecretKey,
   secretKey,
 } from "./map";
-import { formatReference, sameField, sameRef } from "./reference";
+import { describeRef, sameAccount, sameField, sameRef } from "./reference";
 import type { Generation } from "./secret";
 import { type KeyOwner, ownedBy } from "./state";
 
@@ -167,8 +167,7 @@ function itemChange(receipt: Receipt, ref: KeyRef, ids: ItemIds | null): string 
   if (!source) return `an item its receipt doesn't record, ${now}`;
   const before = `${describeRef(source)}, ${now}`;
   if (!sourceIds) return sameRef(source, ref) ? null : before;
-  if (source.kind !== ref.kind || source.account !== ref.account || !sameField(source, ref))
-    return before;
+  if (!sameAccount(source, ref) || !sameField(source, ref)) return before;
   if (ids === null || (ids.vault === sourceIds.vault && ids.item === sourceIds.item)) return null;
   return `${describeRef(source)} (item ${sourceIds.item} in vault ${sourceIds.vault}), and now from ${describeRef(ref)} (item ${ids.item} in vault ${ids.vault})`;
 }
@@ -180,8 +179,4 @@ export function latestPerSecret(receipts: readonly Receipt[]): Receipt[] {
     if (!seen || seen.at < receipt.at) latest.set(receiptSecretKey(receipt), receipt);
   }
   return [...latest.values()];
-}
-
-function describeRef(ref: KeyRef): string {
-  return `${formatReference(ref)} (1Password account ${ref.account})`;
 }

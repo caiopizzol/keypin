@@ -1,12 +1,13 @@
 import type {
   ItemIds,
   KeyRef,
+  OnePasswordRef,
   VaultBackend,
   VaultItem,
   VaultMetadata,
   VaultScope,
 } from "@keypin/core";
-import { formatReference, isDay, Secret } from "@keypin/core";
+import { describeRef, formatReference, isDay, Secret } from "@keypin/core";
 import type { Connect, Field, FullItem, SdkClient } from "./sdk";
 import { desktopConnect } from "./desktop";
 
@@ -39,7 +40,7 @@ export function onePasswordBackend(
     return pending;
   }
 
-  async function vaultId(sdk: SdkClient, scope: VaultScope): Promise<string> {
+  async function vaultId(sdk: SdkClient, scope: OnePasswordScope): Promise<string> {
     const matches = named(await sdk.vaults.list(), scope.vault);
     const [match] = matches;
     if (!match) throw new Error(noVault(scope, mode));
@@ -51,21 +52,25 @@ export function onePasswordBackend(
     return match.id;
   }
 
-  async function find(sdk: SdkClient, id: string, ref: KeyRef): Promise<{ id: string } | null> {
+  async function find(
+    sdk: SdkClient,
+    id: string,
+    ref: OnePasswordRef,
+  ): Promise<{ id: string } | null> {
     const matches = named(await sdk.items.list(id), ref.item);
     if (matches.length > 1)
       throw new Error(`${where(ref)}: ${matches.length} items have this name`);
     return matches[0] ?? null;
   }
 
-  async function locate(sdk: SdkClient, ref: KeyRef): Promise<ItemIds> {
+  async function locate(sdk: SdkClient, ref: OnePasswordRef): Promise<ItemIds> {
     const vault = await vaultId(sdk, ref);
     const found = await find(sdk, vault, ref);
     if (!found) throw new Error(`${where(ref)}: no such item`);
     return { vault, item: found.id };
   }
 
-  async function get(ref: KeyRef): Promise<FullItem> {
+  async function get(ref: OnePasswordRef): Promise<FullItem> {
     const sdk = await client(ref.account);
     const { vault, item } = await locate(sdk, ref);
     return sdk.items.get(vault, item);
@@ -74,12 +79,14 @@ export function onePasswordBackend(
   return {
     capabilities: { read: true, write: mode === "desktop", list: true, metadata: true },
 
-    async read(ref) {
+    async read(given) {
+      const ref = own(given);
       const item = await get(ref);
       return new Secret(valueField(item, ref).value);
     },
 
-    async readItem(ref) {
+    async readItem(given) {
+      const ref = own(given);
       const item = await get(ref);
       return {
         secret: new Secret(valueField(item, ref).value),
@@ -87,11 +94,13 @@ export function onePasswordBackend(
       };
     },
 
-    async itemIds(ref) {
+    async itemIds(given) {
+      const ref = own(given);
       return locate(await client(ref.account), ref);
     },
 
-    async write(ref, secret, options = {}) {
+    async write(given, secret, options = {}) {
+      const ref = own(given);
       const rotated = options.rotated;
       if (rotated !== undefined && !isDay(rotated)) {
         throw new Error(
@@ -126,7 +135,8 @@ export function onePasswordBackend(
       await sdk.items.put(withValue(item, ref, secret, rotated));
     },
 
-    async list(scope) {
+    async list(given) {
+      const scope = ownScope(given);
       const sdk = await client(scope.account);
       const items = await sdk.items.list(await vaultId(sdk, scope));
       return items.map((item): VaultItem => ({
@@ -137,7 +147,8 @@ export function onePasswordBackend(
       }));
     },
 
-    async metadata(ref): Promise<VaultMetadata> {
+    async metadata(given): Promise<VaultMetadata> {
+      const ref = own(given);
       const item = await get(ref);
       const rotated = plainField(item.fields, ROTATED, ref);
       return { rotated: rotated === null ? null : toDay(rotated, ref) };
@@ -145,7 +156,7 @@ export function onePasswordBackend(
   };
 }
 
-function noVault(scope: VaultScope, mode: SignInMode): string {
+function noVault(scope: OnePasswordScope, mode: SignInMode): string {
   const account = `1Password account "${scope.account}"`;
   if (mode === "desktop") return `${account} has no vault "${scope.vault}"`;
   if (BUILT_IN.includes(scope.vault.toLowerCase()))
@@ -153,7 +164,21 @@ function noVault(scope: VaultScope, mode: SignInMode): string {
   return `${account}: the vault "${scope.vault}" isn't visible to this service account (it may not exist, or wasn't granted)`;
 }
 
-function where(ref: KeyRef): string {
+type OnePasswordScope = Extract<VaultScope, { kind: "1password" }>;
+
+function own(ref: KeyRef): OnePasswordRef {
+  if (ref.kind !== "1password")
+    throw new Error(`${describeRef(ref)}: keypin's 1Password vault can't read this reference`);
+  return ref;
+}
+
+function ownScope(scope: VaultScope): OnePasswordScope {
+  if (scope.kind !== "1password")
+    throw new Error(`keypin's 1Password vault can't list ${scope.kind} secrets`);
+  return scope;
+}
+
+function where(ref: OnePasswordRef): string {
   return `${formatReference(ref)} (1Password account ${ref.account})`;
 }
 
@@ -165,7 +190,7 @@ function named<T extends { id: string; title: string }>(candidates: T[], name: s
   );
 }
 
-function valueField(item: FullItem, ref: KeyRef): Field {
+function valueField(item: FullItem, ref: OnePasswordRef): Field {
   const sections = ref.section === null ? [] : named(item.sections, ref.section);
   if (ref.section !== null && !sections.length) {
     throw new Error(`${where(ref)}: the item has no section "${ref.section}"`);
@@ -192,7 +217,7 @@ function valueField(item: FullItem, ref: KeyRef): Field {
 
 function withValue(
   item: FullItem,
-  ref: KeyRef,
+  ref: OnePasswordRef,
   secret: Secret,
   rotated: string | undefined,
 ): FullItem {
@@ -221,7 +246,7 @@ function rotatedField(day: string): Field {
   return { id: ROTATED, title: ROTATED, fieldType: "Date", value: day };
 }
 
-function plainField(fields: Field[], title: string, ref: KeyRef): string | null {
+function plainField(fields: Field[], title: string, ref: OnePasswordRef): string | null {
   const field = fields.find((candidate) => candidate.title === title);
   if (!field) return null;
   if (field.fieldType !== "Text" && field.fieldType !== "Date") {
@@ -230,7 +255,7 @@ function plainField(fields: Field[], title: string, ref: KeyRef): string | null 
   return field.value === "" ? null : field.value;
 }
 
-function toDay(value: string, ref: KeyRef): string {
+function toDay(value: string, ref: OnePasswordRef): string {
   if (DAY.test(value)) return value;
   if (UNIX_SECONDS.test(value)) {
     const date = new Date(Number(value) * 1000);

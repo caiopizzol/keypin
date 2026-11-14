@@ -4,6 +4,8 @@ import {
   type EnvEntry,
   type Environment,
   formatReference,
+  vaultAccount,
+  vaultAccounts,
   type Generation,
   type ItemIds,
   type KeyEntry,
@@ -153,7 +155,7 @@ async function publishLocked(
   for (const job of jobs) {
     const { key, entry } = job;
     say(
-      `\n${out.bold(key.name)} ${environment}  ${out.dim(`from ${formatReference(entry.ref)} in 1Password account ${entry.ref.account}`)}`,
+      `\n${out.bold(key.name)} ${environment}  ${out.dim(`from ${formatReference(entry.ref)} in ${vaultAccount(entry.ref)}`)}`,
     );
     const checked = await checkAccounts(key, entry, deps, out, label);
     if (checked) checks.push({ ...job, checked });
@@ -313,10 +315,10 @@ async function lookUpIds(jobs: Job[], deps: Deps, out: Output): Promise<ItemIds[
 }
 
 function readValues(checks: Checks[], deps: Deps, out: Output): Promise<Read> {
-  const accounts = [...new Set(checks.map((job) => job.entry.ref.account))].join(", ");
+  const accounts = vaultAccounts(checks.map((job) => job.entry.ref));
   const values = count(checks.length, "value");
   return out.step(
-    `Reading ${values} from 1Password account ${accounts}`,
+    `Reading ${values} from ${accounts}`,
     async (): Promise<Read> => {
       const jobs = [];
       for (const job of checks) {

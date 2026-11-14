@@ -12,6 +12,7 @@ import {
   parseMap,
   type PublishTarget,
   secretKey,
+  vaultAccounts,
 } from "@keypin/core";
 import { DESKTOP_APP_MISSING } from "@keypin/vault-1password";
 import { type Deps, UsageError } from "../deps";
@@ -219,7 +220,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
   const refs = distinctRefs(entries.map(({ entry }) => entry.ref));
   report.notes.push(...unprovenPins(signIn, refs));
   report.notes.push(ITEM_NOTE);
-  const lookup = `${count(refs.length, "item")} in 1Password account ${[...new Set(refs.map((ref) => ref.account))].join(", ")}, not the values`;
+  const lookup = `${count(refs.length, "item")} in ${vaultAccounts(refs)}, not the values`;
   await out.step(
     `Looking up ${lookup}`,
     async () => {
@@ -416,7 +417,8 @@ function signInNotes(signIn: SignIn): string[] {
 function unprovenPins(signIn: SignIn, refs: readonly KeyRef[]): string[] {
   if (signIn.mode !== "service-account") return [];
   const limit = "the vaults granted to the service account are what limit it";
-  return [...new Set(refs.map((ref) => ref.account))].flatMap((account) => {
+  const accounts = refs.flatMap((ref) => (ref.kind === "1password" ? [ref.account] : []));
+  return [...new Set(accounts)].flatMap((account) => {
     if (isAccountId(account))
       return [
         `${MAP_FILE} pins the account ID ${account}, which a service account token can't be checked against, so ${limit}`,

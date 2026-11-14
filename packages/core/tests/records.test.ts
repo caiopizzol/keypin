@@ -50,7 +50,7 @@ describe("state", () => {
 
   test("a source saved before references named a field reads as the password field", async () => {
     const saved = receipt(WORKER, "aaaaaaaaaaaaaaaa");
-    assert(saved.source);
+    assert(saved.source?.kind === "1password");
     const { section: _section, field: _field, ...before } = saved.source;
     const fake = fakeFiles({
       [STATE]: JSON.stringify({
@@ -60,6 +60,22 @@ describe("state", () => {
       }),
     });
     expect((await loadState(fake.files, STATE)).receipts[0]?.source).toEqual(saved.source);
+  });
+
+  test("a receipt with an Infisical source saves and loads whole", async () => {
+    const source = {
+      kind: "infisical" as const,
+      url: "https://app.infisical.com",
+      organization: "acme",
+      project: "billing",
+      environment: "prod",
+      path: "/",
+      name: "STRIPE_KEY",
+    };
+    const fake = fakeFiles();
+    const state = recordReceipt(emptyState(), receipt(WORKER, "aaaaaaaaaaaaaaaa", { source }));
+    await saveState(fake.files, STATE, state);
+    expect((await loadState(fake.files, STATE)).receipts[0]?.source).toEqual(source);
   });
 
   test("another schema version gives a clear error", async () => {

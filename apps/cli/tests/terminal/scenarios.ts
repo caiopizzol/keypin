@@ -139,12 +139,29 @@ export function placeOf(target: {
     : `github-actions:${target.repo ?? ""}${target.environment === undefined ? "" : `/environments/${target.environment}`}`;
 }
 
+export const SHORTEST_VALUE = 8;
+
 export function valuesOf(scenario: Scenario): string[] {
   const items = Object.values(scenario.onePassword.accounts).flatMap((vaults) =>
     Object.values(vaults).flat(),
   );
+  const short = items.filter((item) => item.value.length < SHORTEST_VALUE);
+  if (short.length)
+    throw new Error(
+      `vault values need ${SHORTEST_VALUE} characters or more, so the leak check can find them: ${short.map((item) => item.title).join(", ")}`,
+    );
   const env = Object.entries(scenario.files)
     .filter(([path]) => path.split("/").at(-1)?.startsWith(".env"))
-    .flatMap(([, text]) => text.split("\n").map((line) => line.split("=").slice(1).join("=")));
-  return [...items.map((item) => item.value), ...env].filter((value) => value.length >= 8);
+    .flatMap(([, text]) =>
+      text.split("\n").map((line) =>
+        line
+          .split("=")
+          .slice(1)
+          .join("=")
+          .trim()
+          .replace(/^(["'])(.*)\1$/, "$2"),
+      ),
+    )
+    .filter((value) => value.length >= SHORTEST_VALUE);
+  return [...items.map((item) => item.value), ...env];
 }

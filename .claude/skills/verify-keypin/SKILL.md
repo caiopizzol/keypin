@@ -42,7 +42,8 @@ bun apps/cli/tests/terminal/drive.ts --list     # the scenarios
 bun apps/cli/tests/terminal/drive.ts --version
 ```
 
-The last line must print the version in `package.json` and end `--- exit 0 · effects 0 · leaks 0 · overlong frames 0`.
+The screen must show the version in `package.json`, and the summary line after it must read
+`--- exit 0 · effects 0 · leaks 0 · overlong frames 0`, followed by the `evidence:` line.
 If `--list` fails to import, run the install again. If it says `child.ts runs only inside a sandbox`, something
 ran `child.ts` directly; always go through `drive.ts`.
 
@@ -70,7 +71,10 @@ evidence: <folder>
 ```
 
 It exits 1 if a vault or `.env` value reached the terminal (`leaks`) or a spinner frame was wider than the
-terminal (`overlong frames`), whatever keypin's own exit code.
+terminal (`overlong frames`), whatever keypin's own exit code. Only spinner frames count: they are redrawn in
+place, so a wrapped frame leaves stray lines. A finished `✓`/`✗` line is printed once and may wrap like any
+other output. `.env` values shorter than 8 characters (`PORT=3000`) aren't leak-checked, since short text shows
+up in normal output; a vault value that short is a scenario error.
 
 For the journeys, the steps and the expected screens, read [features/README.md](features/README.md) and the
 feature file for what you changed.
@@ -110,7 +114,7 @@ sequence the change started using; read `raw.txt` and teach `render()` that sequ
 Add an entry to `scenarios` in `scenarios.ts`: files to put in the project, whether it's registered, git origin
 and `github.account`, 1Password accounts → vaults → items (title, value, rotated day), gh and wrangler state,
 the GitHub secrets the repo has, and per place (`github-actions:<repo>` or `cloudflare-worker:<worker>`) a
-failing account check or write. Give every value 8 characters or more, so the leak check can spot it. Use
+failing account check or write. Give every vault value 8 characters or more, or `drive()` refuses the scenario; the leak check can't find shorter ones. Use
 `day(offset)` for rotated dates, so "due in N days" stays true over time.
 
 ## Cleanup

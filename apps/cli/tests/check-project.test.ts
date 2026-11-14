@@ -1151,6 +1151,19 @@ required = ["RESEND_API_KEY"]
     },
   );
 
+  test.each(["../acme/billing", "/srv/git/acme/billing.git"])(
+    "a local path origin (%s) is not a GitHub repository",
+    async (remote) => {
+      const run = setup({
+        files: { [MAP]: MAPPED },
+        git: { "remote get-url origin": `${remote}\n` },
+      });
+      await cli(["check", "--json"], run.deps);
+      expect(json(run.stdout.text).github).toMatchObject({ repo: null });
+      expect(run.calls.some((c) => c.startsWith("github"))).toBe(false);
+    },
+  );
+
   test("a tracked env file is a problem", async () => {
     const run = setup({ files: { [MAP]: MAPPED }, git: { "ls-files": ".env\0" } });
     expect(await cli(["check", "--json"], run.deps)).toBe(1);

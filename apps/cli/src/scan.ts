@@ -246,7 +246,7 @@ async function readWorkflows(deps: Deps, root: string, top: string | null, unkno
 }
 
 const GITHUB_REMOTE =
-  /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/;
+  /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|(?:ssh:\/\/)?(?:[^@/:]+@)?[^/:]+(?::\d+)?[:/])([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/;
 
 async function githubOrigin(
   deps: Deps,

@@ -1138,6 +1138,19 @@ required = ["RESEND_API_KEY"]
     expect(run.calls.some((c) => c.startsWith("github") || c.startsWith("worker"))).toBe(false);
   });
 
+  test.each(["git@github-work:acme/billing.git", "github-work:acme/billing"])(
+    "an origin behind an SSH host alias (%s) is read as that GitHub repository",
+    async (remote) => {
+      const run = setup({
+        files: { [MAP]: MAPPED },
+        git: { "remote get-url origin": `${remote}\n` },
+      });
+      await cli(["check", "--json"], run.deps);
+      expect(json(run.stdout.text).github).toMatchObject({ repo: "acme/billing" });
+      expect(run.calls).toContainEqual(expect.stringMatching(/^github acme\/billing/));
+    },
+  );
+
   test("a tracked env file is a problem", async () => {
     const run = setup({ files: { [MAP]: MAPPED }, git: { "ls-files": ".env\0" } });
     expect(await cli(["check", "--json"], run.deps)).toBe(1);

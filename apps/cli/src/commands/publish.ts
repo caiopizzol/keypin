@@ -23,7 +23,7 @@ import {
 import { type Deps, UsageError } from "../deps";
 import { messageOf } from "../errors";
 import { findMap, pickEnvironment } from "../project";
-import { approval } from "../sign-in";
+import { approval, signInFor } from "../sign-in";
 import { columns, confirm, type Output, output } from "../output";
 import {
   type Checked,
@@ -140,6 +140,10 @@ async function publishLocked(
       return 1;
     }
   }
+  signInFor(
+    deps,
+    jobs.map((job) => job.entry.ref),
+  );
   const label = labels(jobs.flatMap((job) => job.entry.publish));
 
   let state = await loadState(deps.files, path);
@@ -303,14 +307,20 @@ type Read =
 async function lookUpIds(jobs: Job[], deps: Deps, out: Output): Promise<ItemIds[]> {
   const items = count(jobs.length, "item ID");
   return out.step(
-    `Looking up ${items} in 1Password, not the values`,
+    `Looking up ${items} in ${vaultAccounts(jobs.map((job) => job.entry.ref))}, not the values`,
     async () => {
       const ids: ItemIds[] = [];
       for (const job of jobs) ids.push(await deps.vault().itemIds(job.entry.ref));
       return ids;
     },
-    () => ({ ok: true, text: `Looked up ${items} in 1Password, not the values` }),
-    approval(deps),
+    () => ({
+      ok: true,
+      text: `Looked up ${items} in ${vaultAccounts(jobs.map((job) => job.entry.ref))}, not the values`,
+    }),
+    approval(
+      deps,
+      jobs.map((job) => job.entry.ref),
+    ),
   );
 }
 
@@ -337,7 +347,10 @@ function readValues(checks: Checks[], deps: Deps, out: Output): Promise<Read> {
       ok: read.ok,
       text: read.ok ? `Read ${values} from ${accounts}` : `Couldn't read from ${accounts}`,
     }),
-    approval(deps),
+    approval(
+      deps,
+      checks.map((job) => job.entry.ref),
+    ),
   );
 }
 

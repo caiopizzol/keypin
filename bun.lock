@@ -21,6 +21,7 @@
         "@keypin/destination-cloudflare": "workspace:*",
         "@keypin/destination-github": "workspace:*",
         "@keypin/vault-1password": "workspace:*",
+        "@keypin/vault-infisical": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "1.4.4",

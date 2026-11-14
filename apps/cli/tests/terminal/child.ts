@@ -9,9 +9,12 @@ import {
   type SdkClient,
   signInAddress,
 } from "@keypin/vault-1password";
+import { credentialsFrom, infisicalBackend } from "@keypin/vault-infisical";
 import { cli } from "../../src/cli";
 import { onePasswordFrom } from "../../src/sign-in";
 import { realDeps } from "../../src/start";
+import { routedVault } from "../../src/vault";
+import { infisicalFetch, type Stored as InfisicalStored } from "../infisical-fake";
 import { type FakeItem, placeOf, SANDBOX_MARKER, type Scenario, scenarios } from "./scenarios";
 
 export const ACCOUNT_NOT_FOUND =
@@ -152,30 +155,71 @@ function owner(target: PublishTarget): string {
 }
 
 const run = scenario;
+
+function isStored(entry: unknown): entry is InfisicalStored {
+  return (
+    isRecord(entry) &&
+    typeof entry.project === "string" &&
+    typeof entry.environment === "string" &&
+    typeof entry.name === "string" &&
+    isRecord(entry.secret) &&
+    typeof entry.secret.value === "string"
+  );
+}
 const slow = async () => {
   if (run.onePassword.slowMs) await Bun.sleep(run.onePassword.slowMs);
 };
-const onePassword = onePasswordFrom(process.env, {
-  desktop: requireDesktopApp(
-    async (account) => {
+let onePassword: ReturnType<typeof onePasswordFrom> | undefined;
+const signedIn = () =>
+  (onePassword ??= onePasswordFrom(process.env, {
+    desktop: requireDesktopApp(
+      async (account) => {
+        await slow();
+        if (!run.onePassword.accounts[account]) throw new Error(ACCOUNT_NOT_FOUND);
+        return client(account, run);
+      },
+      () => (run.onePassword.noDesktopApp ? null : "fake 1Password app"),
+    ),
+    token: async (token) => {
       await slow();
-      if (!run.onePassword.accounts[account]) throw new Error(ACCOUNT_NOT_FOUND);
-      return client(account, run);
+      return client(signInAddress(token), run);
     },
-    () => (run.onePassword.noDesktopApp ? null : "fake 1Password app"),
-  ),
-  token: async (token) => {
-    await slow();
-    return client(signInAddress(token), run);
-  },
-});
+  }));
+const INFISICAL = join(sandbox, "infisical.json");
+const infisical = infisicalBackend(
+  credentialsFrom(process.env),
+  infisicalFetch(run.infisical ?? { organization: "", projects: {} }, {
+    load: () => {
+      try {
+        const parsed: unknown = JSON.parse(readFileSync(INFISICAL, "utf8"));
+        return Array.isArray(parsed) ? parsed.filter(isStored) : [];
+      } catch {
+        return [];
+      }
+    },
+    save(entry) {
+      const others = this.load().filter(
+        (s) =>
+          !(
+            s.project === entry.project &&
+            s.environment === entry.environment &&
+            (s.path ?? "/") === (entry.path ?? "/") &&
+            s.name === entry.name
+          ),
+      );
+      writeFileSync(INFISICAL, JSON.stringify([...others, entry]));
+    },
+    effect,
+  }),
+);
+const vault = routedVault({ "1password": () => signedIn().vault, infisical: () => infisical });
 const real = realDeps();
 
 process.exitCode = await cli(process.argv.slice(2), {
   ...real,
   self: { folder: real.cwd, command: ["keypin"] },
-  signIn: () => onePassword.signIn,
-  vault: () => onePassword.vault,
+  signIn: () => signedIn().signIn,
+  vault: () => vault,
   ghLogin: async () => run.gh,
   wranglerLoginFile: async () =>
     run.wrangler ? join(homedir(), ".wrangler/config/default.toml") : null,

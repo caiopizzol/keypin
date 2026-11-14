@@ -22,7 +22,7 @@ repo = "me/my-project"
 ## 1Password account
 
 `account` is the account's sign-in address, as shown at the top left of the 1Password app, or its account ID. A team
-shares one account, and each member signs in to it.
+shares one account, and each member signs in to it. For Infisical, see [Infisical](infisical.md).
 
 ## Keys
 

@@ -469,6 +469,10 @@ async function readTarget(deps: Deps, request: Request): Promise<Target> {
   const parsed = parseMap(found, file);
   if (!parsed.ok) throw new Error(`fix ${file} first: ${parsed.errors.join("; ")}`);
   const account = parsed.map.account ?? request.account;
+  if (!parsed.map.account && parsed.map.infisical)
+    throw new Error(
+      `import creates 1Password items, and ${file} reads from Infisical; add the secrets in Infisical and map them with infisical:// references (docs/infisical.md)`,
+    );
   if (!account)
     throw new UsageError(
       `--account is required: ${file} has no [1password] account, so give its sign-in address, such as my.1password.com`,

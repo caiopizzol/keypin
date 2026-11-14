@@ -229,6 +229,55 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
+    "with Infisical, run, status and publish read from the organization and leak nothing",
+    async () => {
+      const where = "Infisical organization acme at https://app.infisical.com";
+      const run = await drive({
+        scenario: "infisical",
+        args: ["run", "--", "sh", "-c", "env | grep -c INFISICAL_UNIVERSAL_AUTH || true"],
+      });
+      expect(run.exit).toBe(0);
+      expect(run.screen).toMatch(new RegExp(`^✓ Read 1 dev value from ${where}`, "m"));
+      expect(run.screen).toMatch(/^0$/m);
+      const status = await drive({ scenario: "infisical", args: ["status"] });
+      expect(status.screen).toContain(`✓ Read 2 rotated dates from ${where}, not the values`);
+      expect(status.screen).toContain("STRIPE_KEY  prod  due in 5 days");
+      const publish = await drive({
+        scenario: "infisical",
+        args: ["publish", "STRIPE_KEY"],
+        answers: ["y"],
+      });
+      expect(publish.exit).toBe(0);
+      expect(publish.screen).toContain(`from infisical://billing/prod/STRIPE_KEY in ${where}`);
+      expect(publish.effects).toEqual([
+        "destination write github-actions:acme/billing STRIPE_KEY (23 chars)",
+      ]);
+      for (const result of [run, status, publish]) {
+        expect(result.screen).not.toContain("1Password");
+        clean(result);
+      }
+    },
+    SLOW,
+  );
+
+  test(
+    "with Infisical, check and run need no 1Password token, though KEYPIN_1PASSWORD=service-account",
+    async () => {
+      const env = { KEYPIN_1PASSWORD: "service-account" };
+      const check = await drive({ scenario: "infisical", args: ["check"], env });
+      expect(check.exit).toBe(0);
+      expect(check.screen).toContain("Everything checks out.");
+      const run = await drive({ scenario: "infisical", args: ["run", "--", "true"], env });
+      expect(run.exit).toBe(0);
+      for (const result of [check, run]) {
+        expect(result.screen).not.toContain("OP_SERVICE_ACCOUNT_TOKEN");
+        clean(result);
+      }
+    },
+    SLOW,
+  );
+
+  test(
     "init in an empty repository writes the template, registers it, and says what's next",
     async () => {
       const result = await drive({ scenario: "fresh", args: ["init"] });

@@ -1,4 +1,4 @@
-import { formatReference, type KeyRef, vaultAccount } from "@keypin/core";
+import { formatReference, type KeyRef, type VaultBackend, vaultAccount } from "@keypin/core";
 import type { Writer } from "./deps";
 
 export function announce(stderr: Writer, what: string, refs: readonly KeyRef[]): void {
@@ -24,3 +24,18 @@ export const refKey = (ref: KeyRef) =>
       ? [ref.kind, ref.account, ref.vault, ref.item, ref.section, ref.field]
       : [ref.kind, ref.url, ref.organization, ref.project, ref.environment, ref.path, ref.name],
   );
+
+export type Vaults = { [Kind in KeyRef["kind"]]: () => VaultBackend };
+
+export function routedVault(vaults: Vaults): VaultBackend {
+  const of = (thing: { kind: KeyRef["kind"] }) => vaults[thing.kind]();
+  return {
+    capabilities: { read: true, write: false, list: true, metadata: true },
+    read: (ref) => of(ref).read(ref),
+    readItem: (ref) => of(ref).readItem(ref),
+    itemIds: (ref) => of(ref).itemIds(ref),
+    write: (ref, secret, options) => of(ref).write(ref, secret, options),
+    list: (scope) => of(scope).list(scope),
+    metadata: (ref) => of(ref).metadata(ref),
+  };
+}

@@ -63,7 +63,13 @@ export {
   unfinishedOperations,
   type State,
 } from "./state";
-export { approvalsFor, planNewValue, planPublish, type PlanStep } from "./plan";
+export {
+  approvalsFor,
+  planNewValue,
+  planPublish,
+  type PlanStep,
+  type RemovedDestination,
+} from "./plan";
 export {
   buildStatus,
   type ProblemKind,

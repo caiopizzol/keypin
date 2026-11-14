@@ -93,6 +93,8 @@ function writableVault(failSave = false) {
   const rotated: string[] = [];
   const log: string[] = [];
   const made = { count: 0 };
+  const itemIds = new Map<string, string>();
+  const idsOf = (item: string) => ({ vault: "v1", item: itemIds.get(item) ?? `id-${item}` });
   const vault: VaultBackend = {
     capabilities: { read: true, write: true, list: false, metadata: true },
     async read(ref) {
@@ -102,10 +104,11 @@ function writableVault(failSave = false) {
       return new Secret(value);
     },
     async readItem(ref) {
-      return { secret: await vault.read(ref), ids: { vault: "v1", item: `id-${ref.item}` } };
+      return { secret: await vault.read(ref), ids: idsOf(ref.item) };
     },
     async itemIds(ref) {
-      return { vault: "v1", item: `id-${ref.item}` };
+      log.push(`ids ${ref.item}`);
+      return idsOf(ref.item);
     },
     async write(ref, secret, options = {}) {
       if (failSave) {
@@ -123,7 +126,7 @@ function writableVault(failSave = false) {
       return { rotated: null };
     },
   };
-  return { vault, values, rotated, log, made };
+  return { vault, values, rotated, log, made, itemIds };
 }
 
 interface Setup extends FakeDestinationOptions, IssuerOptions {
@@ -132,13 +135,14 @@ interface Setup extends FakeDestinationOptions, IssuerOptions {
   disk?: ReturnType<typeof memoryFiles>;
   vault?: ReturnType<typeof writableVault>;
   failSave?: boolean;
+  made?: { count: number };
 }
 
 function setup(options: Setup = {}) {
   const disk = options.disk ?? memoryFiles({ "/work/billing/keypin.toml": MAP });
   const vault = options.vault ?? writableVault(options.failSave);
   const destinations = fakeDestinations(options);
-  const issuer = fakeIssuer(options, vault.made);
+  const issuer = fakeIssuer(options, options.made ?? vault.made);
   const answers = [...(options.answers ?? [])];
   const asked: string[] = [];
   const fake = fakeDeps({
@@ -281,12 +285,35 @@ describe("keypin rotate", () => {
     expect(first.leaked()).toBe(false);
 
     const fixed = writableVault();
-    const again = setup({ disk: first.disk, vault: fixed, answers: ["y", "n"] });
+    const again = setup({ disk: first.disk, vault: fixed, made: vault.made, answers: ["y", "n"] });
     expect(await again.run()).toBe(0);
     expect(again.stderr.text).toContain(
       `keypin created key key-1 at Resend on ${again.deps.now().toISOString()}, but 1Password doesn't hold it. If nothing uses it, delete it at https://resend.com/api-keys.`,
     );
-    expect(fixed.values.get("mailer resend key")).toBe(NEW(1));
+    expect(again.issuer.log).toEqual([
+      "check none",
+      "create RESEND_API_KEY prod 2026-11-09 -> key-2",
+    ]);
+    expect(fixed.values.get("mailer resend key")).toBe(NEW(2));
+    expect((await again.state()).issued).toEqual([expect.objectContaining({ id: "key-2" })]);
+  });
+
+  test("a key another issuer made is reported at that issuer, not the configured one", async () => {
+    const first = setup({ answers: ["y"] });
+    await first.run();
+    const state = await first.state();
+    const stale = state.issued.map((i) => ({
+      ...i,
+      issuer: "openai",
+      generation: "cccccccccccccccc",
+    }));
+    first.disk.contents.set(STATE, JSON.stringify({ ...state, issued: stale }));
+    const again = setup({ disk: first.disk, vault: first.vault, answers: ["n"] });
+    expect(await again.run()).toBe(NEEDS_APPROVAL);
+    expect(again.stderr.text).toContain(
+      `keypin created key key-1 at openai on ${again.deps.now().toISOString()}, before this key's issuer became Resend. If nothing uses it, delete it at openai, not Resend.`,
+    );
+    expect(again.stderr.text).not.toContain("delete it at https://resend.com/api-keys");
   });
 
   test("a failed destination keeps the new key, never revokes, and the rerun finishes without creating another", async () => {
@@ -325,6 +352,43 @@ describe("keypin rotate", () => {
     expect(run.vault.log).toEqual([]);
     expect(run.issuer.log).toEqual([]);
     expect(run.stderr.text).toContain("this rotation needs approval, and --yes can't give it");
+  });
+
+  test("without a terminal, an item replaced under the same title stops before reading either key", async () => {
+    const first = setup({ answers: ["y"] });
+    await first.run();
+    first.vault.itemIds.set("mailer resend key", "id-replaced");
+    first.vault.log.length = 0;
+    const run = setup({ disk: first.disk, vault: first.vault, terminal: false });
+    expect(await run.run("--yes")).toBe(NEEDS_APPROVAL);
+    expect(run.vault.log).toEqual(["ids mailer resend key"]);
+    expect(run.issuer.admins).toEqual([]);
+    expect(run.issuer.log).toEqual([]);
+    expect(run.stderr.text).toContain(
+      "was last published from op://Private/mailer resend key/credential",
+    );
+    expect(run.stderr.text).toContain("Nothing was read and nothing was created.");
+  });
+
+  test("a destination that left the map is named in the plan and again before the revoke", async () => {
+    const first = setup({ answers: ["y"] });
+    await first.run();
+    first.disk.contents.set(
+      "/work/billing/keypin.toml",
+      MAP.replace('  { to = "github-actions", repo = "acme/mailer" },\n', ""),
+    );
+    const run = setup({ disk: first.disk, vault: first.vault, answers: ["y", "n"] });
+    expect(await run.run()).toBe(0);
+    expect(run.writes()).toEqual([`write ${WORKER} RESEND_API_KEY (${NEW(2).length} chars)`]);
+    const gone = `- ${GITHUB}:RESEND_API_KEY: not in the map any more (last got ${await generationOf(new Secret(NEW(1)))}`;
+    expect(run.stderr.text.split(gone)).toHaveLength(3);
+    expect(run.stderr.text).toContain(
+      "Rotated RESEND_API_KEY (prod): the new key is in 1Password and the destination in the map.\nNot in the map any more, so keypin didn't write them; they may still use the old key:\n",
+    );
+    expect(run.stderr.text).not.toContain("every destination");
+    expect(run.stderr.text.indexOf(gone, run.stderr.text.indexOf("Rotated"))).toBeLessThan(
+      run.stderr.text.indexOf("The old key key-1 still works"),
+    );
   });
 
   test("without a terminal, --yes rotates a routine key but never revokes", async () => {
@@ -393,6 +457,29 @@ describe("keypin rotate", () => {
     expect(await run.run()).toBe(1);
     expect(run.issuer.log).toEqual([]);
     expect(run.stderr.text).toContain("needs the desktop app");
+  });
+
+  test("a service account finishes a saved rotation: publish and revoke", async () => {
+    const first = setup({ answers: ["y"] });
+    await first.run();
+    const failing = setup({
+      disk: first.disk,
+      vault: first.vault,
+      failWrite: [GITHUB],
+      answers: ["y"],
+    });
+    expect(await failing.run()).toBe(1);
+    const readOnly = {
+      ...first.vault,
+      vault: {
+        ...first.vault.vault,
+        capabilities: { ...first.vault.vault.capabilities, write: false },
+      },
+    };
+    const resumed = setup({ disk: first.disk, vault: readOnly, answers: ["y", "y"] });
+    expect(await resumed.run()).toBe(0);
+    expect(resumed.writes()).toEqual([`write ${GITHUB} RESEND_API_KEY (${NEW(2).length} chars)`]);
+    expect(resumed.issuer.log).toEqual(["check key-2", "revoke key-1"]);
   });
 
   test("the new key's generation is what publish records", async () => {

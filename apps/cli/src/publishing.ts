@@ -9,20 +9,24 @@ import {
   type ItemIds,
   type KeyEntry,
   type KeyOwner,
+  type KeyRef,
   type PlanStep,
   type PublishTarget,
   recordReceipt,
+  type RemovedDestination,
   saveState,
   type Secret,
   startOperation,
   type State,
   unfinishedOperations,
+  vaultAccounts,
 } from "@keypin/core";
 import type { Deps, LockHolder } from "./deps";
 import { messageOf } from "./errors";
 import { statePath } from "./paths";
 import { columns, confirm, type Output } from "./output";
 import { publisherFor } from "./publisher";
+import { approval } from "./sign-in";
 
 export const NEEDS_APPROVAL = 3;
 
@@ -262,6 +266,29 @@ export function publishRows(steps: readonly PlanStep[], label: Label): PlanRow[]
     detail:
       step.reason === "account changed" || step.reason === "item changed" ? step.approval : null,
   }));
+}
+
+export function showRemoved(out: Output, removed: readonly RemovedDestination[]): void {
+  for (const { destinationId: id, lastReceipt: last } of removed) {
+    out.line(
+      `  ${out.dim(`- ${id}: not in the map any more (last got ${last.generation} at ${last.at}). keypin doesn't delete it.`)}`,
+    );
+  }
+}
+
+export async function lookUpIds(refs: readonly KeyRef[], deps: Deps, out: Output) {
+  const items = `${refs.length} item ID${refs.length === 1 ? "" : "s"}`;
+  const where = vaultAccounts(refs);
+  return out.step(
+    `Looking up ${items} in ${where}, not the values`,
+    async () => {
+      const ids: ItemIds[] = [];
+      for (const ref of refs) ids.push(await deps.vault().itemIds(ref));
+      return ids;
+    },
+    () => ({ ok: true, text: `Looked up ${items} in ${where}, not the values` }),
+    approval(deps, refs),
+  );
 }
 
 export function showPlan(out: Output, rows: readonly PlanRow[]): void {

@@ -18,6 +18,7 @@ import {
   type PlanStep,
   publishEnvironment,
   recordIssued,
+  type RemovedDestination,
   saveState,
   type Secret,
   type State,
@@ -35,11 +36,13 @@ import {
   type Label,
   labels,
   locked,
+  lookUpIds,
   NEEDS_APPROVAL,
   type PlanRow,
   publishRows,
   rerun,
   showPlan,
+  showRemoved,
   writeAll,
   writesFor,
 } from "../publishing";
@@ -61,6 +64,7 @@ interface Ready {
   ids: ItemIds;
   issuer: Issuer;
   checked: Map<string, Checked>;
+  removed: RemovedDestination[];
 }
 
 export async function rotate(args: string[], deps: Deps): Promise<number> {
@@ -108,7 +112,16 @@ async function rotateLocked(job: Job): Promise<number> {
   say(
     `${out.bold(key.name)} ${owner.environment}  ${out.dim(`from ${formatReference(entry.ref)} in 1Password account ${entry.ref.account}`)}`,
   );
-  const approvals = approvalsFor(input);
+  let approvals = approvalsFor(input);
+  if (!deps.isTerminal && !approvals.length) {
+    try {
+      const [ids = null] = await lookUpIds([entry.ref], deps, out);
+      approvals = approvalsFor(input, ids);
+    } catch (error) {
+      say(`Stopped: couldn't find the item: ${messageOf(error)}. Nothing was created.`);
+      return 1;
+    }
+  }
   if (!deps.isTerminal && approvals.length) {
     say("Needs approval:");
     for (const needed of approvals) say(`  ${needed.approval}`);
@@ -125,7 +138,7 @@ async function rotateLocked(job: Job): Promise<number> {
     return 1;
   }
   const generation = await generationOf(read.secret);
-  const unpublished = planPublish({ ...input, generation, ids: read.ids }).steps;
+  const { steps: unpublished, removed } = planPublish({ ...input, generation, ids: read.ids });
   const next = nextRotation({
     issued: issuedFor(state, owner),
     issuer: spec.kind,
@@ -147,14 +160,11 @@ async function rotateLocked(job: Job): Promise<number> {
     say("\nStopped: an account check failed. Nothing was created and nothing was written.");
     return 1;
   }
-  const ready = { ids: read.ids, issuer, checked };
+  const ready = { ids: read.ids, issuer, checked, removed };
   if (next.action === "resume")
     return resume(job, ready, next.issued, read.secret, unpublished, state);
 
-  if (next.abandoned)
-    say(
-      `\n${out.dim(`keypin created key ${next.abandoned.id} at ${issuer.describe()} on ${next.abandoned.at}, but 1Password doesn't hold it. If nothing uses it, delete it at ${issuer.dashboard()}.`)}`,
-    );
+  if (next.abandoned) say(`\n${out.dim(abandonedNote(next.abandoned, issuer, spec))}`);
   const steps = planNewValue(input, read.ids);
   say("\nPlan");
   showPlan(out, [
@@ -169,6 +179,7 @@ async function rotateLocked(job: Job): Promise<number> {
         : `revoke the old key ${next.current}, after a second y`,
     ),
   ]);
+  showRemoved(out, removed);
   say("");
   const ok = await confirmed(
     deps,
@@ -223,6 +234,7 @@ async function resume(
   if (steps.every((step) => step.action === "skip")) return revokeOld(job, ready, issued, state);
   out.line("\nPlan");
   showPlan(out, publishRows(steps, job.label));
+  showRemoved(out, ready.removed);
   out.line("");
   const total = writesFor(steps, ready.checked).length;
   const ok = await confirmed(deps, {
@@ -273,9 +285,17 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
   const { key, owner, deps, out } = job;
   const { issuer } = ready;
   const where = issuer.describe();
+  const listed = job.entry.publish.length;
   out.line(
-    `\nRotated ${out.bold(key.name)} (${owner.environment}): the new key is in 1Password and every destination.`,
+    `\nRotated ${out.bold(key.name)} (${owner.environment}): the new key is in 1Password and the ${listed === 1 ? "destination" : `${listed} destinations`} in the map.`,
   );
+  const behind = ready.removed.filter((r) => r.lastReceipt.generation !== issued.generation);
+  if (behind.length) {
+    out.line(
+      "Not in the map any more, so keypin didn't write them; they may still use the old key:",
+    );
+    showRemoved(out, behind);
+  }
   const old = issued.old.id;
   if (old === null) {
     out.line(
@@ -317,6 +337,12 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
     recordIssued(state, { ...issued, old: { ...issued.old, revoked: true } }),
   );
   return 0;
+}
+
+function abandonedNote(old: Issued, issuer: Issuer, spec: IssuerSpec): string {
+  if (old.issuer !== spec.kind)
+    return `keypin created key ${old.id} at ${old.issuer} on ${old.at}, before this key's issuer became ${issuer.describe()}. If nothing uses it, delete it at ${old.issuer}, not ${issuer.describe()}.`;
+  return `keypin created key ${old.id} at ${issuer.describe()} on ${old.at}, but 1Password doesn't hold it. If nothing uses it, delete it at ${issuer.dashboard()}.`;
 }
 
 function row(sign: PlanRow["sign"], place: string, why: string): PlanRow {

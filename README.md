@@ -8,9 +8,7 @@
 <h1 align="center">keypin</h1>
 
 <p align="center">
-  A map of every app key across your projects, published to the account it's pinned to.
-  <br>
-  Values stay in your vault.
+  Get your team's keys out of <code>.env</code> files.
 </p>
 
 <p align="center">
@@ -18,9 +16,12 @@
   <img src="https://img.shields.io/badge/license-MIT-121311" alt="MIT">
 </p>
 
-Each project lists its keys in a `keypin.toml`: names, 1Password items and destinations, never values. keypin runs
-your commands with the dev keys and publishes the prod keys to GitHub Actions and Cloudflare Workers. It reads
-values from 1Password only while a command runs.
+keypin runs your apps with keys from your vault, and keeps one map of every key your team uses. Nothing to commit,
+paste in a chat, or leave on a laptop.
+
+Each project lists its keys in a `keypin.toml`: names, vault items and destinations, never values. keypin runs your
+commands with the dev keys and publishes the prod keys to GitHub Actions and Cloudflare Workers. It reads a value
+only while a command runs.
 
 ## Install
 

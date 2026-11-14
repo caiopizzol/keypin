@@ -1,6 +1,6 @@
 ---
 name: "keypin"
-tagline: "Values stay in your vault."
+tagline: "Get your team's keys out of .env files."
 specVersion: "0.3.0"
 version: 1
 language: en
@@ -12,22 +12,24 @@ language: en
 
 ### Overview
 
-keypin is a command-line tool that keeps a map of every app key across your projects and publishes each key to the
-account it's pinned to. Each project lists its keys in a `keypin.toml`: names, vault items and destinations, never
-values. Before: keys live in `.env` files and get pasted into GitHub and Cloudflare by hand. After: one map says
-where every key comes from and where it goes, and keypin reads the values from 1Password only while a command runs.
+keypin is a command-line tool that gets a team's keys out of `.env` files. Each project lists its keys in a
+`keypin.toml`: names, vault items and destinations, never values. Before: every laptop has a copy of every key in a
+`.env` file, more copies sit in chats, notes and commits, and nobody has the full list. After: each value is kept
+once, in the team's vault; one map says where every key comes from, where it goes and when it's due; and keypin
+reads a value only while a command runs.
 
 ### Audience
 
-A developer with `.env` files on their machine and keys in production on GitHub Actions and Cloudflare Workers, who
-already keeps secrets in 1Password. They distrust tools that ask to hold their secrets. Not for teams that want a
-hosted secrets manager, or for anyone without 1Password.
+A developer or a small team with `.env` files on their machines and keys in production on GitHub Actions and
+Cloudflare Workers, who already keep secrets in a vault. Today that vault is 1Password. They distrust tools that ask
+to hold their secrets. Not for teams that want a hosted secrets manager.
 
 ### Positioning
 
-A key map for your own projects. Not a secrets manager, not a vault, not a server. 1Password holds the values;
-GitHub and Cloudflare receive them; keypin knows the path between them.
+The way out of `.env` files for keys you already keep in a vault. Not a secrets manager, not a vault, not a server.
+Your vault holds the values; GitHub and Cloudflare receive them; keypin knows the path between them.
 
+- No key sits in a file to commit, paste, or leave on a laptop.
 - The map holds names and places, never values.
 - It checks the account before every write.
 - It shows a plan before every publish, and a first write waits for you to answer `y`.
@@ -45,40 +47,44 @@ The careful operator. Exact, plain, cautious, quiet. Not alarmist, not clever, n
 
 ### Promise
 
-Values stay in your vault. Nothing is published without a plan, and a first write or a changed account waits for
-you to answer `y`.
+Your vault is the source for each key, and publishing sends it only to the destinations in the map. Nothing is
+published without a plan, and a first write or a changed account waits for you to answer `y`.
 
-Base message: keypin knows where every key goes, never what it is.
+Base message: get your team's keys out of `.env` files.
 
 ### Guardrails
 
 Plain, exact, calm. keypin cannot sound like a security vendor, a hosted platform, or a growth product.
-Litmus test: if a sentence would need a value to be true, or a superlative to be interesting, it's wrong.
+Litmus test: if a sentence would need a value to be true, or a superlative to be interesting, it's wrong. Never
+promise that a key can't leak: a running command still holds it. Say what keypin removes instead.
 
 ## Voice
 
 ### Identity
 
-We map your keys and move them where they belong, and we tell you exactly what we read, what we write, and what
-we never touch.
+We get your keys out of files and into one place, and we tell you exactly what we read, what we write, and what we
+never touch.
 
-Essence: names, never values.
+Essence: one source, one map.
 
 ### Tagline & Slogans
 
-- Primary: "Values stay in your vault." Use it under the name, everywhere.
-- Description: "A map of every app key across your projects, published to the account it's pinned to."
+- Primary: "Get your team's keys out of `.env` files." Use it as the headline, everywhere.
+- Description: "keypin runs your apps with keys from your vault, and keeps one map of every key your team uses.
+  Nothing to commit, paste in a chat, or leave on a laptop."
+- Short description (60 characters or fewer): "Get your team's keys out of .env files."
 
 ### Message Pillars
 
-- **Map:** each project's keys, by name, in one committed file.
-- **Vault:** values stay in 1Password and are never written to disk.
+- **No files:** keypin runs your apps with keys from your vault. Nothing to commit, paste, or leave behind.
+- **One map:** every key your team uses, where it goes, and when it's due, in one committed file per project.
 - **Approval:** a plan before every publish, and a checked account behind it.
 
 ### Phrases
 
+- "Get your team's keys out of `.env` files."
+- "Nothing to commit, paste in a chat, or leave on a laptop."
 - "Names, never values."
-- "Values stay in your vault."
 - "A plan before every publish."
 
 ### Vocabulary
@@ -88,7 +94,7 @@ Essence: names, never values.
 | A credential an app reads           | key         | token, env var   |
 | `keypin.toml`                       | the map     | config, manifest |
 | GitHub Actions, a Cloudflare Worker | destination | target, sink     |
-| A 1Password entry                   | vault item  | entry, record    |
+| An entry in your vault (1Password)  | vault item  | entry, record    |
 
 The name is always lowercase: keypin.
 
@@ -98,11 +104,12 @@ The name is always lowercase: keypin.
 - Name the command, the file, or the field. Use code formatting for them.
 - Short sentences, sentence case, no exclamation marks, no emoji.
 - Claim only what the code does today.
+- Say "your vault". Name 1Password only where a reader needs to know which vault works today.
 
-| We Say                          | We Never Say                    |
-| ------------------------------- | ------------------------------- |
-| "Values stay in your vault."    | "Bank-grade security."          |
-| "It waits for you to answer y." | "Seamless, effortless deploys." |
+| We Say                          | We Never Say                |
+| ------------------------------- | --------------------------- |
+| "Nothing to leave on a laptop." | "Bank-grade security."      |
+| "It waits for you to answer y." | "Your keys can never leak." |
 
 ## Visual
 

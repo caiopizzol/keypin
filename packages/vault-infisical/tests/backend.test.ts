@@ -75,12 +75,14 @@ function fakeInfisical(
       return reply(404, { message: "Project not found" });
     if (parsed.pathname === "/api/v4/secrets")
       return reply(200, {
-        secrets: [...secrets].map(([key, s]) => ({
-          id: s.id,
-          secretKey: key.split(":").at(-1),
-          tags: [{ id: "t", slug: "billing", name: "billing" }],
-          updatedAt: "2026-11-01T00:00:00.000Z",
-        })),
+        secrets: [...secrets]
+          .filter(([key]) => key.startsWith(`${where}:`) && query.projectId === PROJECT_ID)
+          .map(([key, s]) => ({
+            id: s.id,
+            secretKey: key.split(":").at(-1),
+            tags: [{ id: "t", slug: "billing", name: "billing" }],
+            updatedAt: "2026-11-01T00:00:00.000Z",
+          })),
       });
     const name = decodeURIComponent(parsed.pathname.replace("/api/v4/secrets/", ""));
     const key = `${where}:${name}`;
@@ -357,7 +359,13 @@ describe("writing", () => {
 });
 
 test("list names the secrets of a project, environment and path, without values", async () => {
-  const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": STRIPE } });
+  const fake = fakeInfisical({
+    secrets: {
+      "prod:/:STRIPE_KEY": STRIPE,
+      "dev:/:STRIPE_KEY": { ...STRIPE, id: "secret-dev" },
+      "prod:/payments:RESEND_KEY": { ...STRIPE, id: "secret-folder" },
+    },
+  });
   const items = await infisicalBackend(CREDENTIALS, fake.fetch).list({
     kind: "infisical",
     url: URL,
@@ -374,5 +382,11 @@ test("list names the secrets of a project, environment and path, without values"
       updatedAt: "2026-11-01T00:00:00.000Z",
     },
   ]);
-  expect(fake.calls.at(-1)?.query.viewSecretValue).toBe("false");
+  expect(fake.calls.at(-1)?.query).toMatchObject({
+    projectId: PROJECT_ID,
+    environment: "prod",
+    secretPath: "/",
+    viewSecretValue: "false",
+    includeImports: "false",
+  });
 });

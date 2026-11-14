@@ -384,6 +384,7 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
       "registered",
       "read",
       "github",
+      "onePassword",
       "keys",
       "production",
       "local",
@@ -398,6 +399,7 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
       folder: "/work/billing",
       map: MAP_FILE,
       registered: true,
+      onePassword: { signIn: "desktop", address: null },
       problems: [],
       ok: true,
     });

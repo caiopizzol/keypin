@@ -113,6 +113,7 @@ export async function cli(argv: string[], deps: Deps): Promise<number> {
     return 0;
   }
   try {
+    if (VAULT_COMMANDS.has(name)) deps.signIn();
     return await command(args, deps);
   } catch (error) {
     if (error instanceof UsageError || errorCode(error)?.startsWith("ERR_PARSE_ARGS")) {
@@ -125,6 +126,7 @@ export async function cli(argv: string[], deps: Deps): Promise<number> {
 }
 
 const MORE = "keypin --help lists every command.\n";
+const VAULT_COMMANDS = new Set(["status", "check", "import", "run", "publish"]);
 
 function usageOf(name: string): string {
   return COMMAND_USAGE.filter(([command]) => command === name)

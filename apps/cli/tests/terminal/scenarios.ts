@@ -27,7 +27,10 @@ export interface Scenario {
   wrangler: boolean;
   githubSecrets: string[] | null;
   places: Record<string, Place>;
+  env?: Record<string, string>;
 }
+
+export const FAKE_TOKEN = `ops_${Buffer.from(JSON.stringify({ signInAddress: "my.1password.com" })).toString("base64url")}`;
 
 export function day(offset: number): string {
   const date = new Date();
@@ -132,6 +135,22 @@ export const scenarios: Record<string, Scenario> = {
       },
     },
   },
+  "service-account": {
+    ...ready,
+    about:
+      "ready, but signed in with a fake service account token for my.1password.com, the items in a vault named Deploy; 1Password takes 1.5s to answer",
+    files: { ...ready.files, "keypin.toml": MAP.replaceAll("op://Private/", "op://Deploy/") },
+    onePassword: {
+      ...ready.onePassword,
+      slowMs: 1500,
+      accounts: {
+        "my.1password.com": {
+          Deploy: ready.onePassword.accounts["my.1password.com"]?.Private ?? [],
+        },
+      },
+    },
+    env: { KEYPIN_1PASSWORD: "service-account", OP_SERVICE_ACCOUNT_TOKEN: FAKE_TOKEN },
+  },
   fresh: {
     ...ready,
     about: "an empty git repository: no keypin.toml, not registered, nothing signed in",
@@ -170,5 +189,6 @@ export function valuesOf(scenario: Scenario): string[] {
     .filter(([path]) => path.split("/").at(-1)?.startsWith(".env"))
     .flatMap(([, text]) => [...envValues(text).values()].map((secret) => secret.reveal()))
     .filter((value) => value.length >= SHORTEST_VALUE);
-  return [...items.map((item) => item.value), ...env];
+  const token = scenario.env?.OP_SERVICE_ACCOUNT_TOKEN;
+  return [...items.map((item) => item.value), ...env, ...(token ? [token] : [])];
 }

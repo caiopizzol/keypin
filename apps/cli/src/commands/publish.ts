@@ -21,6 +21,7 @@ import {
 import { type Deps, UsageError } from "../deps";
 import { messageOf } from "../errors";
 import { findMap, pickEnvironment } from "../project";
+import { approval } from "../sign-in";
 import { columns, confirm, type Output, output } from "../output";
 import {
   type Checked,
@@ -307,7 +308,7 @@ async function lookUpIds(jobs: Job[], deps: Deps, out: Output): Promise<ItemIds[
       return ids;
     },
     () => ({ ok: true, text: `Looked up ${items} in 1Password, not the values` }),
-    "1Password may be asking you to approve keypin",
+    approval(deps),
   );
 }
 
@@ -336,7 +337,7 @@ function readValues(checks: Checks[], deps: Deps, out: Output): Promise<Read> {
         ? `Read ${values} from 1Password account ${accounts}`
         : `Couldn't read from 1Password account ${accounts}`,
     }),
-    "1Password may be asking you to approve keypin",
+    approval(deps),
   );
 }
 

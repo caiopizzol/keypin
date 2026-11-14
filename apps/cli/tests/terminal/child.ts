@@ -5,11 +5,12 @@ import { isRecord, type PublishTarget } from "@keypin/core";
 import {
   type Field,
   type FullItem,
-  onePasswordBackend,
   requireDesktopApp,
   type SdkClient,
+  signInAddress,
 } from "@keypin/vault-1password";
 import { cli } from "../../src/cli";
+import { onePasswordFrom } from "../../src/sign-in";
 import { realDeps } from "../../src/start";
 import { type FakeItem, placeOf, SANDBOX_MARKER, type Scenario, scenarios } from "./scenarios";
 
@@ -151,22 +152,30 @@ function owner(target: PublishTarget): string {
 }
 
 const run = scenario;
-const vault = onePasswordBackend(
-  requireDesktopApp(
+const slow = async () => {
+  if (run.onePassword.slowMs) await Bun.sleep(run.onePassword.slowMs);
+};
+const onePassword = onePasswordFrom(process.env, {
+  desktop: requireDesktopApp(
     async (account) => {
-      if (run.onePassword.slowMs) await Bun.sleep(run.onePassword.slowMs);
+      await slow();
       if (!run.onePassword.accounts[account]) throw new Error(ACCOUNT_NOT_FOUND);
       return client(account, run);
     },
     () => (run.onePassword.noDesktopApp ? null : "fake 1Password app"),
   ),
-);
+  token: async (token) => {
+    await slow();
+    return client(signInAddress(token), run);
+  },
+});
 const real = realDeps();
 
 process.exitCode = await cli(process.argv.slice(2), {
   ...real,
   self: { folder: real.cwd, command: ["keypin"] },
-  vault: () => vault,
+  signIn: () => onePassword.signIn,
+  vault: () => onePassword.vault,
   ghLogin: async () => run.gh,
   wranglerLoginFile: async () =>
     run.wrangler ? join(homedir(), ".wrangler/config/default.toml") : null,

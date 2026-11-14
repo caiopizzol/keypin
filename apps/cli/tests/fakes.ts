@@ -241,6 +241,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
       return "replaced";
     },
     isLink: async (path) => disk.links.has(path),
+    signIn: () => ({ mode: "desktop", tokenIgnored: false }),
     vault: () => backend,
     now: () => new Date(2026, 10, 9, 12, 0, 0),
     stdout: stdout.writer,

@@ -3,6 +3,7 @@ import { statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { withoutSignIn } from "@keypin/core";
 
 export function wranglerConfigFile(
   env: Readonly<Record<string, string | undefined>> = process.env,
@@ -66,7 +67,7 @@ function tomlString(text: string, key: string): string | null {
 
 function refresh(): Promise<void> {
   return new Promise((resolve, reject) => {
-    execFile("wrangler", ["whoami"], (error) => {
+    execFile("wrangler", ["whoami"], { env: withoutSignIn(process.env) }, (error) => {
       if (error)
         reject(
           new Error("the wrangler login has expired, and `wrangler whoami` couldn't refresh it"),

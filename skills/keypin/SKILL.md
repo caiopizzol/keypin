@@ -13,7 +13,9 @@ values from 1Password only while a command runs.
 - Never put a value in chat, arguments, files or `keypin.toml`, and never read an env file's values yourself.
 - The user creates 1Password items and answers `y` to approve. You never approve a first write, or a changed
   account or item.
-- 1Password asks the user to approve each command. If a command waits, tell the user.
+- 1Password asks the user to approve each command, unless the machine uses a service account
+  (`KEYPIN_1PASSWORD=service-account`). If a command waits, tell the user. Never set `KEYPIN_1PASSWORD` or
+  `OP_SERVICE_ACCOUNT_TOKEN` yourself.
 - Run `keypin --help` first, and use only what it lists.
 
 ## Set up

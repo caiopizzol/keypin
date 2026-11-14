@@ -68,3 +68,4 @@ export {
   type WorkflowRefs,
 } from "./scan";
 export { findGaps, type Fix, type Gaps, type LocalFile, type Need, type ProjectScan } from "./gaps";
+export { SIGN_IN_VARIABLES, withoutSignIn } from "./env";

@@ -32,10 +32,19 @@ export interface SdkClient {
 
 export type Connect = (account: string) => Promise<SdkClient>;
 
-export const desktopConnect: Connect = async (account) => {
+type Sdk = typeof import("@1password/sdk");
+
+export const desktopConnect: Connect = (account) =>
+  sdkClient((sdk) => new sdk.DesktopAuth(account));
+
+export const tokenClient = (token: string): Promise<SdkClient> => sdkClient(() => token);
+
+async function sdkClient(
+  auth: (sdk: Sdk) => string | InstanceType<Sdk["DesktopAuth"]>,
+): Promise<SdkClient> {
   const sdk = await import("@1password/sdk");
   const client = await sdk.createClient({
-    auth: new sdk.DesktopAuth(account),
+    auth: auth(sdk),
     integrationName: "keypin",
     integrationVersion: "0.0.0",
   });
@@ -59,4 +68,4 @@ export const desktopConnect: Connect = async (account) => {
         }),
     },
   };
-};
+}

@@ -423,7 +423,7 @@ function unprovenPins(signIn: SignIn, refs: readonly KeyRef[]): string[] {
       ];
     if (isSharedAddress(account) && isSharedAddress(signIn.address))
       return [
-        `every individual 1Password account signs in at ${signIn.address}, so keypin can't prove the service account belongs to the account ${MAP_FILE} pins; ${limit}`,
+        `individual 1Password accounts share the sign-in address ${signIn.address}, so keypin can't prove the service account belongs to the account ${MAP_FILE} pins; ${limit}`,
       ];
     return [];
   });

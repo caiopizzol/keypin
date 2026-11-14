@@ -2,7 +2,7 @@ import { isRecord } from "@keypin/core";
 import type { Connect, SdkClient } from "./sdk";
 
 const PREFIX = "ops_";
-const SHARED_ADDRESS = "my.1password.com";
+const SHARED_ADDRESSES = ["my.1password.com", "my.1password.ca", "my.1password.eu"];
 
 export type TokenClient = (token: string) => Promise<SdkClient>;
 
@@ -23,7 +23,7 @@ export function signInAddress(token: string): string {
 }
 
 export function isSharedAddress(address: string): boolean {
-  return address.toLowerCase() === SHARED_ADDRESS;
+  return SHARED_ADDRESSES.includes(address.toLowerCase());
 }
 
 export function isAccountId(account: string): boolean {

@@ -19,8 +19,8 @@ Without `KEYPIN_1PASSWORD=service-account`, keypin uses the desktop app even whe
 passes either variable to the command `keypin run` starts.
 
 Before it reads, keypin checks the token's sign-in address against a pinned address and refuses another account. A
-token has no account ID, so keypin can't check an ID pin, and every individual account signs in at
-`my.1password.com`, so it can't prove that one either. In both cases, the vaults you granted the service account
-are what limit it.
+token has no account ID, so keypin can't check an ID pin. Individual accounts share `my.1password.com`,
+`my.1password.ca` and `my.1password.eu`, so keypin can't prove those either. In both cases, the vaults you granted
+the service account are what limit it.
 
 1Password limits each token to a number of reads an hour (1,000 on Families and Teams).

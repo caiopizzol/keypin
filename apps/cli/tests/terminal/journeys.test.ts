@@ -134,7 +134,7 @@ describe("keypin in a real terminal", () => {
       expect(result.frames.some((frame) => frame.includes("Looking up"))).toBe(true);
       expect(result.raw).not.toContain("approve keypin");
       expect(result.screen).toContain(
-        "Note: every individual 1Password account signs in at my.1password.com",
+        "Note: individual 1Password accounts share the sign-in address my.1password.com",
       );
       clean(result);
     },

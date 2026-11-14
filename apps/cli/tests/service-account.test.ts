@@ -188,17 +188,28 @@ describe("keypin check with a service account", () => {
   test("my.1password.com: one note that keypin can't prove the account", async () => {
     const run = project();
     expect(await cli(["check"], run.deps)).toBe(0);
-    expect(run.stdout.text.match(/Note: every individual 1Password account/g)).toHaveLength(1);
+    expect(run.stdout.text.match(/Note: individual 1Password accounts share/g)).toHaveLength(1);
     expect(run.stdout.text).toContain(
-      "Note: every individual 1Password account signs in at my.1password.com, so keypin can't prove the service account belongs to the account keypin.toml pins; the vaults granted to the service account are what limit it\n",
+      "Note: individual 1Password accounts share the sign-in address my.1password.com, so keypin can't prove the service account belongs to the account keypin.toml pins; the vaults granted to the service account are what limit it\n",
     );
+  });
+
+  test("my.1password.ca and my.1password.eu are shared too, and get the same note", async () => {
+    for (const address of ["my.1password.ca", "MY.1password.eu"]) {
+      const env = { ...SERVICE, OP_SERVICE_ACCOUNT_TOKEN: tokenFor(address) };
+      const run = project(DEPLOY_MAP.replace("my.1password.com", address), env);
+      expect(await cli(["check"], run.deps)).toBe(0);
+      expect(run.stdout.text).toContain(
+        `Note: individual 1Password accounts share the sign-in address ${address.toLowerCase()}, so keypin can't prove`,
+      );
+    }
   });
 
   test("a team address gets no such note", async () => {
     const env = { ...SERVICE, OP_SERVICE_ACCOUNT_TOKEN: tokenFor("acme.1password.com") };
     const run = project(DEPLOY_MAP.replace("my.1password.com", "acme.1password.com"), env);
     expect(await cli(["check"], run.deps)).toBe(0);
-    expect(run.stdout.text).not.toContain("every individual 1Password account");
+    expect(run.stdout.text).not.toContain("individual 1Password accounts share");
   });
 
   test("a token while signed in with the desktop app: one note naming KEYPIN_1PASSWORD", async () => {
@@ -237,7 +248,7 @@ describe("keypin check with a service account", () => {
   test("an ID pin with a my.1password.com token gets one note, not two", async () => {
     const run = project(DEPLOY_MAP.replace("my.1password.com", ID));
     await cli(["check"], run.deps);
-    expect(run.stdout.text).not.toContain("every individual 1Password account");
+    expect(run.stdout.text).not.toContain("individual 1Password accounts share");
     expect(run.stdout.text.match(/what limit it/g)).toHaveLength(1);
   });
 

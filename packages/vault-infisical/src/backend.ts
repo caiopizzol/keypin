@@ -304,7 +304,10 @@ function metadataOf(secret: Json): Metadata[] {
 
 function withRotated(metadata: Metadata[], rotated: string | undefined): Metadata[] {
   if (rotated === undefined) return metadata;
-  return [...metadata.filter((entry) => entry.key !== ROTATED), { key: ROTATED, value: rotated }];
+  return [
+    ...metadata.filter((entry) => entry.key !== ROTATED),
+    { key: ROTATED, value: rotated, isEncrypted: true },
+  ];
 }
 
 function problem(response: { status: number; body: Json }): string {

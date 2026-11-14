@@ -22,7 +22,7 @@ const REF: InfisicalRef = {
 interface Stored {
   id: string;
   value: string;
-  metadata: { key: string; value: string }[];
+  metadata: { key: string; value: string; isEncrypted?: boolean }[];
 }
 
 interface Call {
@@ -40,6 +40,7 @@ function fakeInfisical(
     login?: number;
     hidden?: boolean;
     approval?: boolean;
+    encryptedMetadata?: boolean;
   } = {},
 ) {
   const secrets = new Map(Object.entries(options.secrets ?? {}));
@@ -103,10 +104,12 @@ function fakeInfisical(
     const metadata = Array.isArray(sentMetadata)
       ? sentMetadata.flatMap((m: unknown) =>
           isRecord(m) && typeof m.key === "string" && typeof m.value === "string"
-            ? [{ key: m.key, value: m.value }]
+            ? [{ key: m.key, value: m.value, isEncrypted: m.isEncrypted === true }]
             : [],
         )
       : (found?.metadata ?? []);
+    if (options.encryptedMetadata && metadata.some((m) => !m.isEncrypted))
+      return reply(400, { message: "Project requires all secret metadata to be encrypted" });
     const stored = { id: found?.id ?? `id-${name}`, value, metadata };
     secrets.set(key, stored);
     return reply(200, { secret: { id: stored.id, secretKey: name } });
@@ -285,7 +288,7 @@ describe("writing", () => {
       secretValue: "new-value-1234",
       secretMetadata: [
         { key: "owner", value: "billing" },
-        { key: "rotated", value: "2026-11-14" },
+        { key: "rotated", value: "2026-11-14", isEncrypted: true },
       ],
     });
     expect(
@@ -303,11 +306,36 @@ describe("writing", () => {
     });
     expect(fake.calls.at(-1)).toMatchObject({ method: "POST", path: "/api/v4/secrets/RESEND_KEY" });
     expect(fake.secrets.get("prod:/:RESEND_KEY")?.metadata).toEqual([
-      { key: "rotated", value: "2026-11-14" },
+      { key: "rotated", value: "2026-11-14", isEncrypted: true },
     ]);
     await expect(vault.write(REF, new Secret("x"), { newItem: true })).rejects.toThrow(
       "the secret already exists; keypin doesn't overwrite it",
     );
+  });
+
+  test("rotated is sent encrypted, so projects that require encrypted metadata accept it", async () => {
+    const fake = fakeInfisical({
+      encryptedMetadata: true,
+      secrets: {
+        "prod:/:STRIPE_KEY": {
+          ...STRIPE,
+          metadata: [{ key: "rotated", value: "2026-10-01", isEncrypted: true }],
+        },
+      },
+    });
+    const vault = infisicalBackend(CREDENTIALS, fake.fetch);
+    await vault.write(REF, new Secret("new-value-1234"), { rotated: "2026-11-14" });
+    await vault.write({ ...REF, name: "RESEND_KEY" }, new Secret("resend-value-99"), {
+      newItem: true,
+      rotated: "2026-11-14",
+    });
+    expect(fake.secrets.get("prod:/:STRIPE_KEY")?.metadata).toEqual([
+      { key: "rotated", value: "2026-11-14", isEncrypted: true },
+    ]);
+    expect(fake.secrets.get("prod:/:RESEND_KEY")?.metadata).toEqual([
+      { key: "rotated", value: "2026-11-14", isEncrypted: true },
+    ]);
+    expect(await vault.metadata(REF)).toEqual({ rotated: "2026-11-14" });
   });
 
   test("a change held for approval isn't reported as written", async () => {

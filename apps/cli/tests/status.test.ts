@@ -2,6 +2,7 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import { stripVTControlCharacters } from "node:util";
 import { isRecord } from "@keypin/core";
 import { cli } from "../src/cli";
+import type { Deps } from "../src/deps";
 import { TEMPLATE } from "../src/commands/init";
 import {
   fakeDeps,
@@ -289,7 +290,7 @@ dev = "op://Private/late/password"
 
 [keys.YESTERDAY]
 rotate_every = "30d"
-dev = "op://Private/yesterday/password"
+dev = { from = "op://Private/yesterday/password", issuer = { kind = "resend", admin = "op://Private/resend admin/password", permission = "full_access" } }
 
 [keys.TODAY]
 rotate_every = "30d"
@@ -382,6 +383,40 @@ dev = "op://Private/forever/password"
     expect(stdout.text).toContain(
       "  web SESSION_SECRET (prod): is due 2026-11-15 (rotated 2026-05-19, every 180d)\n    Put a new value in the 1Password item and set rotated to today, then run keypin publish SESSION_SECRET in /work/web.\n",
     );
+  });
+
+  function dueWithIssuer(deps: Partial<Deps> = {}) {
+    const issuer = `issuer = { kind = "resend", admin = "op://Private/resend admin/password", permission = "full_access" }`;
+    const files = memoryFiles({
+      [REGISTRY]: registryWith("/work/web"),
+      "/work/web/keypin.toml": WEB_MAP.replace("] }", `], ${issuer} }`),
+    });
+    return fakeDeps({
+      disk: files,
+      backend: fakeVault({
+        metadata: { ...METADATA, "web prod session secret": { rotated: "2026-05-19" } },
+      }).vault,
+      deps,
+    });
+  }
+
+  test("a due key with an issuer and destinations names the rotate to run", async () => {
+    const { deps, stdout } = dueWithIssuer();
+    expect(await cli(["status"], deps)).toBe(0);
+    expect(stdout.text).toContain(
+      "  web SESSION_SECRET (prod): is due 2026-11-15 (rotated 2026-05-19, every 180d)\n    Run keypin rotate SESSION_SECRET in /work/web.\n",
+    );
+  });
+
+  test("a 1Password service account gets the manual rotation, since rotate can't save the new key", async () => {
+    const { deps, stdout } = dueWithIssuer({
+      signIn: () => ({ mode: "service-account", address: "my.1password.com" }),
+    });
+    expect(await cli(["status"], deps)).toBe(0);
+    expect(stdout.text).toContain(
+      "  web SESSION_SECRET (prod): is due 2026-11-15 (rotated 2026-05-19, every 180d)\n    Put a new value in the 1Password item and set rotated to today, then run keypin publish SESSION_SECRET in /work/web.\n",
+    );
+    expect(stdout.text).not.toContain("keypin rotate");
   });
 
   test("groups keys under each project, in the registry's order", async () => {

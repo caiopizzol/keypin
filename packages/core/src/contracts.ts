@@ -60,6 +60,8 @@ export interface ItemIds {
   item: string;
 }
 
+export class HeldForApproval extends Error {}
+
 export interface VaultBackend {
   readonly capabilities: VaultCapabilities;
   read(ref: KeyRef): Promise<Secret>;

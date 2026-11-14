@@ -2,6 +2,7 @@ export { Secret, generationOf, type Generation } from "./secret";
 export {
   DEFAULT_ENVIRONMENTS,
   type AccountCheck,
+  HeldForApproval,
   type Destination,
   type Environment,
   type Evidence,
@@ -63,7 +64,13 @@ export {
   unfinishedOperations,
   type State,
 } from "./state";
-export { approvalsFor, planNewValue, planPublish, type PlanStep } from "./plan";
+export {
+  approvalsFor,
+  planNewValue,
+  planPublish,
+  type PlanStep,
+  type RemovedDestination,
+} from "./plan";
 export {
   buildStatus,
   type ProblemKind,

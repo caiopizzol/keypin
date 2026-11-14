@@ -1,5 +1,6 @@
 import {
   describeRef,
+  HeldForApproval,
   type InfisicalRef,
   isDay,
   isRecord,
@@ -210,7 +211,7 @@ export function infisicalBackend(
         },
       );
       if (written.status === 200 && isRecord(written.body.approval))
-        throw new Error(
+        throw new HeldForApproval(
           `${describeRef(ref)}: Infisical holds the change for approval; the secret keeps its old value until someone approves it`,
         );
       if (written.status !== 200 || !isRecord(written.body.secret))

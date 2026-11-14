@@ -81,9 +81,32 @@ Any field except `rotated` can hold the value, such as `password` or an API Cred
 **`rotated`** Date field with the day the value last changed; `keypin status` adds `rotate_every` to it to show when
 the key is due.
 
-To rotate a key:
+## Rotating a key
 
-1. Make a new value where the key comes from, such as the provider's dashboard.
+Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key. Resend is the only provider so far:
+
+```toml
+[keys.RESEND_API_KEY.prod]
+from = "op://Private/mailer resend key/credential"
+
+[keys.RESEND_API_KEY.prod.issuer]
+kind = "resend"
+admin = "op://Private/resend admin key/credential"
+permission = "sending_access"
+```
+
+- `admin`: a Resend key with full access, in its own 1Password item. keypin uses it to create and delete keys.
+- `permission`: what the new key may do, `full_access` or `sending_access`. Add `domain_id` to limit a sending key
+  to one domain.
+
+`rotate` checks every account, shows a plan and asks `y`. It then creates the key, saves it to the `from` reference
+with `rotated` set to today, and publishes it like `keypin publish`. It asks a second `y` before it deletes the old
+key, and only if every destination got the new one. A rerun picks up where a failed or declined run stopped. It
+deletes only a key it created itself; it doesn't know the key you made by hand, so delete that one at the provider.
+
+Without an issuer, rotate by hand:
+
+1. Make a new value at the provider.
 2. Put it in the 1Password field, and set `rotated` to today.
 3. Run `keypin publish <VARIABLE>`.
 4. Once everything uses the new value, revoke the old one at the provider.

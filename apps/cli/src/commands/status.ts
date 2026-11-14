@@ -18,7 +18,7 @@ import { registryPath, statePath } from "../paths";
 import { MAP_FILE } from "../project";
 import { messageOf } from "../errors";
 import { columns, type Output, output, tilde } from "../output";
-import { approval } from "../sign-in";
+import { approval, signInFor } from "../sign-in";
 import { distinctRefs, refKey } from "../vault";
 
 type Problem = Status["problems"][number];
@@ -94,13 +94,22 @@ export async function status(args: string[], deps: Deps): Promise<number> {
   if (values.json) {
     deps.stdout.write(`${JSON.stringify({ today, ...result }, null, 2)}\n`);
   } else {
-    const publish = (row: StatusRow) => {
+    const command = (name: string) => (row: StatusRow) => {
       const map = maps.get(row.project);
       const fallback = map?.ok ? publishEnvironment(map.map) : row.environment;
-      return `keypin publish ${row.keyId}${envFlag(row.environment, fallback)}`;
+      return `keypin ${name} ${row.keyId}${envFlag(row.environment, fallback)}`;
     };
     const out = output(deps.stdout, deps.styled.stdout);
-    deps.stdout.write(render(result, registry.projects, { today, home: deps.home, out, publish }));
+    deps.stdout.write(
+      render(result, registry.projects, {
+        today,
+        home: deps.home,
+        out,
+        publish: command("publish"),
+        rotate: command("rotate"),
+        rotates: rotatesHere(deps),
+      }),
+    );
   }
   return result.problems.some((p) => p.severity === "problem") ? 1 : 0;
 }
@@ -110,6 +119,19 @@ interface Context {
   home: string;
   out: Output;
   publish: (row: StatusRow) => string;
+  rotate: (row: StatusRow) => string;
+  rotates: (row: StatusRow) => boolean;
+}
+
+function rotatesHere(deps: Deps): (row: StatusRow) => boolean {
+  const savesNewKey = (row: StatusRow) => {
+    try {
+      return signInFor(deps, [row.ref])?.mode !== "service-account";
+    } catch {
+      return false;
+    }
+  };
+  return (row) => row.issuer !== null && row.destinations.length > 0 && savesNewKey(row);
 }
 
 function render(result: Status, projects: readonly string[], context: Context): string {
@@ -199,6 +221,7 @@ function nextStep(problem: Problem, rows: readonly StatusRow[], context: Context
   if (!row) return null;
   const infisical = row.ref.kind === "infisical";
   if (problem.kind === "overdue" || problem.kind === "due-soon") {
+    if (context.rotates(row)) return `Run ${context.rotate(row)} in ${row.project}.`;
     const rotate = infisical
       ? "Put a new value in the Infisical secret and set its rotated metadata to today"
       : "Put a new value in the 1Password item and set rotated to today";

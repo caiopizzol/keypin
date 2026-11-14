@@ -27,6 +27,7 @@ export interface Issued {
   generation: Generation;
   at: string;
   old: { id: string | null; generation: Generation; revoked: boolean };
+  held?: boolean;
 }
 
 export interface State {
@@ -164,7 +165,8 @@ function isIssued(i: unknown): i is Issued {
     isRecord(i.old) &&
     isTextOrNull(i.old.id) &&
     isText(i.old.generation) &&
-    typeof i.old.revoked === "boolean"
+    typeof i.old.revoked === "boolean" &&
+    (i.held === undefined || typeof i.held === "boolean")
   );
 }
 

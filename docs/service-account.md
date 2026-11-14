@@ -2,7 +2,8 @@
 
 On a server or in CI without the 1Password desktop app, keypin can sign in with a
 [1Password service account](https://developer.1password.com/docs/service-accounts/). It only reads: `run`, `check`,
-`status` and `publish` work; `import` needs the desktop app.
+`status` and `publish` work, and `rotate` can finish once its new key is in 1Password. `import` and making that new
+key need the desktop app.
 
 1. Move the items into a vault you create. Service accounts can't open the built-in Private, Personal or Employee
    vaults. Update each reference in `keypin.toml`.

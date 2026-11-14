@@ -8,9 +8,14 @@ export interface FakeSecret {
   rotated?: string;
 }
 
+type Projects = Record<string, Record<string, Record<string, FakeSecret>>>;
+
 export interface FakeInfisical {
   organization: string;
-  projects: Record<string, Record<string, Record<string, FakeSecret>>>;
+  projects: Projects;
+  importedForReads?: Projects;
+  heldByPolicy?: Stored[];
+  failWrites?: boolean;
 }
 
 export interface Stored {
@@ -34,15 +39,18 @@ export function infisicalFetch(
 ): Fetch {
   const reply = (status: number, body: unknown) =>
     Promise.resolve(new Response(JSON.stringify(body), { status }));
-  const secretsOf = (project: string, environment: string, path: string) => {
-    const base = Object.entries(fake.projects[project]?.[environment] ?? {})
+  const secretsOf = (
+    project: string,
+    environment: string,
+    path: string,
+    projects = fake.projects,
+  ) => {
+    const base = Object.entries(projects[project]?.[environment] ?? {})
       .filter(([key]) => pathOf(key) === path)
       .map(([key, secret]): [string, FakeSecret] => [nameOf(key), secret]);
-    const added = store
-      .load()
-      .filter(
-        (s) => s.project === project && s.environment === environment && (s.path ?? ROOT) === path,
-      );
+    const added = (projects === fake.projects ? store.load() : []).filter(
+      (s) => s.project === project && s.environment === environment && (s.path ?? ROOT) === path,
+    );
     return {
       ...Object.fromEntries(base),
       ...Object.fromEntries(added.map((s) => [s.name, s.secret])),
@@ -74,9 +82,13 @@ export function infisicalFetch(
     const environment = query.environment ?? text(body.environment);
     const path = query.secretPath ?? (text(body.secretPath) || ROOT);
     const secrets = secretsOf(project, environment, path);
+    const imported =
+      query.includeImports === "true" && !secrets[name]
+        ? secretsOf(project, environment, path, fake.importedForReads)[name]
+        : undefined;
     const found = secrets[name];
-    const shape = (key: string, secret: FakeSecret, value: boolean) => ({
-      id: `${project}/${environment}/${key}`,
+    const shape = (key: string, secret: FakeSecret, value: boolean, from = "") => ({
+      id: `${from}${project}/${environment}/${key}`,
       secretKey: key,
       secretValue: value ? secret.value : "",
       secretValueHidden: !value,
@@ -87,10 +99,13 @@ export function infisicalFetch(
       return reply(200, {
         secrets: Object.entries(secrets).map(([key, secret]) => shape(key, secret, false)),
       });
-    if (init.method === "GET")
-      return found
-        ? reply(200, { secret: shape(name, found, query.viewSecretValue === "true") })
-        : reply(404, { message: `Secret with name '${name}' not found` });
+    if (init.method === "GET") {
+      const view = query.viewSecretValue === "true";
+      if (found) return reply(200, { secret: shape(name, found, view) });
+      if (imported) return reply(200, { secret: shape(name, imported, view, "imported:") });
+      return reply(404, { message: `Secret with name '${name}' not found` });
+    }
+    if (fake.failWrites) return reply(500, { message: "internal error" });
     const metadata = Array.isArray(body.secretMetadata) ? body.secretMetadata : null;
     const rotated = metadata?.filter(isRecord).find((entry) => entry.key === "rotated")?.value;
     const secret: FakeSecret = {
@@ -101,12 +116,22 @@ export function infisicalFetch(
           ? { rotated: found.rotated }
           : {}),
     };
+    const change = `${init.method === "POST" ? "create" : "update"} ${project}/${environment}/${name}`;
+    if (fake.heldByPolicy) {
+      fake.heldByPolicy.push({ project, environment, path, name, secret });
+      store.effect(`infisical hold ${change}`);
+      return reply(200, {
+        approval: { id: `approval-${fake.heldByPolicy.length}`, status: "open" },
+      });
+    }
     store.save({ project, environment, path, name, secret });
-    store.effect(
-      `infisical ${init.method === "POST" ? "create" : "update"} ${project}/${environment}/${name}`,
-    );
+    store.effect(`infisical ${change}`);
     return reply(200, { secret: shape(name, secret, false) });
   };
+}
+
+export function mergeHeld(fake: FakeInfisical, store: { save(entry: Stored): void }): void {
+  for (const entry of fake.heldByPolicy?.splice(0) ?? []) store.save(entry);
 }
 
 export function memoryStore() {

@@ -111,7 +111,7 @@ describe("the destination IDs keypin saves in state.json never change", () => {
     const old = (destinationId: string, pinned: string): Receipt => ({
       keyId: "STRIPE_KEY",
       environment: "prod",
-      mapFile: "/work/web/keypin.toml",
+      mapFile: MAP_FILE,
       source: {
         kind: "1password",
         account: "my.1password.com",

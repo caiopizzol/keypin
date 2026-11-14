@@ -352,7 +352,7 @@ dev = "op://Private/forever/password"
         "  app LATE (dev): was due 2026-11-04 (rotated 2026-10-05, every 30d)",
         "    Put a new value in the 1Password item and set rotated to today.",
         "  app YESTERDAY (dev): was due 2026-11-08 (rotated 2026-10-09, every 30d)",
-        "    Run keypin rotate YESTERDAY --env dev in ~/code/app.",
+        "    Put a new value in the 1Password item and set rotated to today.",
         "  app UNDATED (dev): no rotated date",
         "    Add a rotated Date field to the 1Password item, with the day the value last changed.",
         "",
@@ -381,6 +381,24 @@ dev = "op://Private/forever/password"
     expect(stdout.text).toContain("  SESSION_SECRET  prod  due in 6 days    · Cloudflare");
     expect(stdout.text).toContain(
       "  web SESSION_SECRET (prod): is due 2026-11-15 (rotated 2026-05-19, every 180d)\n    Put a new value in the 1Password item and set rotated to today, then run keypin publish SESSION_SECRET in /work/web.\n",
+    );
+  });
+
+  test("a due key with an issuer and destinations names the rotate to run", async () => {
+    const issuer = `issuer = { kind = "resend", admin = "op://Private/resend admin/password", permission = "full_access" }`;
+    const files = memoryFiles({
+      [REGISTRY]: registryWith("/work/web"),
+      "/work/web/keypin.toml": WEB_MAP.replace("] }", `], ${issuer} }`),
+    });
+    const { deps, stdout } = fakeDeps({
+      disk: files,
+      backend: fakeVault({
+        metadata: { ...METADATA, "web prod session secret": { rotated: "2026-05-19" } },
+      }).vault,
+    });
+    expect(await cli(["status"], deps)).toBe(0);
+    expect(stdout.text).toContain(
+      "  web SESSION_SECRET (prod): is due 2026-11-15 (rotated 2026-05-19, every 180d)\n    Run keypin rotate SESSION_SECRET in /work/web.\n",
     );
   });
 

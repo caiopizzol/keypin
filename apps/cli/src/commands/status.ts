@@ -207,9 +207,9 @@ function nextStep(problem: Problem, rows: readonly StatusRow[], context: Context
   const row = rows.find((r) => sameRow(problem, r));
   if (!row) return null;
   const infisical = row.ref.kind === "infisical";
-  if ((problem.kind === "overdue" || problem.kind === "due-soon") && row.issuer !== null)
-    return `Run ${context.rotate(row)} in ${row.project}.`;
   if (problem.kind === "overdue" || problem.kind === "due-soon") {
+    if (row.issuer !== null && row.destinations.length)
+      return `Run ${context.rotate(row)} in ${row.project}.`;
     const rotate = infisical
       ? "Put a new value in the Infisical secret and set its rotated metadata to today"
       : "Put a new value in the 1Password item and set rotated to today";

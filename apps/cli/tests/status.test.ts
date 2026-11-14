@@ -46,8 +46,8 @@ describe("keypin status", () => {
         "  SESSION_SECRET  prod  due in 180 days  · Cloudflare not published",
         "",
         "2 notices",
-        "  billing STRIPE_API_KEY (prod): not published yet to cloudflare-worker:billing-worker:STRIPE_API_KEY, github-actions:acme/billing:STRIPE_API_KEY; run keypin publish STRIPE_API_KEY",
-        "  web SESSION_SECRET (prod): not published yet to cloudflare-worker:web:SESSION_SECRET; run keypin publish SESSION_SECRET",
+        "  billing STRIPE_API_KEY (prod): not published yet to the Worker billing-worker, GitHub acme/billing; run keypin publish STRIPE_API_KEY",
+        "  web SESSION_SECRET (prod): not published yet to the Worker web; run keypin publish SESSION_SECRET",
         "",
       ].join("\n"),
     );
@@ -141,6 +141,18 @@ describe("keypin status", () => {
         "",
       ].join("\n"),
     );
+  });
+
+  test("a sign-in that fails for every key prints its error once", async () => {
+    const { deps, stderr } = setup();
+    deps.vault = () => ({
+      ...fakeVault().vault,
+      metadata: async () => {
+        throw new Error('1Password account "my.1password.com": sign-in failed: no desktop app');
+      },
+    });
+    expect(await cli(["status"], deps)).toBe(1);
+    expect(stderr.text.match(/sign-in failed/g)).toHaveLength(1);
   });
 
   test("a key with no destinations has nothing to report", async () => {
@@ -387,6 +399,24 @@ dev = "op://Private/forever/password"
     expect(heads.slice(0, 2)).toEqual(["web /work/web", "billing ~/code/billing"]);
     expect(stdout.text).toMatch(
       /^web \/work\/web\n {2}SESSION_SECRET {2}dev .*\n {2}SESSION_SECRET {2}prod .*\nbilling ~\/code\/billing\n {2}STRIPE_API_KEY {2}dev .*\n {2}STRIPE_API_KEY {2}prod /,
+    );
+  });
+
+  test("a notice names the whole repository and environment, even when they contain environments/", async () => {
+    const files = memoryFiles({
+      [REGISTRY]: registryWith("/work/billing"),
+      "/work/billing/keypin.toml": BILLING_MAP.replace(
+        '{ to = "github-actions", repo = "acme/billing" },',
+        '{ to = "github-actions", repo = "acme/environments", environment = "production" },\n  { to = "github-actions", repo = "acme/billing", environment = "preview/environments/feature" },',
+      ),
+    });
+    const { deps, stdout } = fakeDeps({
+      disk: files,
+      backend: fakeVault({ metadata: METADATA }).vault,
+    });
+    await cli(["status"], deps);
+    expect(stdout.text).toContain(
+      "not published yet to the Worker billing-worker, GitHub acme/environments environment production, GitHub acme/billing environment preview/environments/feature;",
     );
   });
 

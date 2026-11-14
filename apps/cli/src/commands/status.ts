@@ -77,7 +77,7 @@ export async function status(args: string[], deps: Deps): Promise<number> {
       }),
       "1Password may be asking you to approve keypin",
     );
-    for (const error of errors) deps.stderr.write(`keypin: ${error}\n`);
+    for (const error of new Set(errors)) deps.stderr.write(`keypin: ${error}\n`);
   }
 
   const today = localDay(deps.now());
@@ -137,12 +137,37 @@ function render(result: Status, projects: readonly string[], context: Context): 
     lines.push("", severity === "problem" ? out.red(title) : out.bold(title));
     for (const p of found) {
       const where = p.keyId === undefined ? "" : `${out.dim(basename(p.project))} `;
-      lines.push(`  ${where}${tilde(p.message, home).replaceAll("\n", "\n    ")}`);
+      lines.push(
+        `  ${where}${tilde(message(p, result, context), home).replaceAll("\n", "\n    ")}`,
+      );
       const next = nextStep(p, result.rows, context);
       if (next) lines.push(`    ${tilde(next, home)}`);
     }
   }
   return `${lines.join("\n")}\n`;
+}
+
+function message(problem: Problem, result: Status, context: Context): string {
+  const row = result.rows.find((r) => sameRow(problem, r));
+  if (problem.kind !== "never-published" || !row) return problem.message;
+  const unknown = (id: string) =>
+    result.problems.some(
+      (p) => p.kind === "missing-receipt" && sameRow(p, row) && p.destinationId === id,
+    );
+  const names = row.destinations
+    .filter(({ destinationId, receipt }) => !receipt && !unknown(destinationId))
+    .map(({ destinationId }) => placeName(destinationId));
+  return `${row.keyId} (${row.environment}): not published yet to ${names.join(", ")}; run ${context.publish(row)}`;
+}
+
+function placeName(id: string): string {
+  const [kind = "", ...rest] = id.split(":");
+  const place = rest.slice(0, -1).join(":");
+  if (kind === "cloudflare-worker") return `the Worker ${place}`;
+  const [owner = "", name = "", ...more] = place.split("/");
+  const environment = more.length ? more.join("/").replace(/^environments\//, "") : null;
+  const repo = `${owner}/${name}`;
+  return environment === null ? `GitHub ${repo}` : `GitHub ${repo} environment ${environment}`;
 }
 
 function due(row: StatusRow, { out, today }: Context): string {

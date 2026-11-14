@@ -24,7 +24,7 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
     if (!pending) {
       pending = connect(account).catch((error: unknown) => {
         clients.delete(account);
-        throw new Error(`1Password account "${account}": sign-in failed: ${messageOf(error)}`);
+        throw new Error(`1Password account "${account}": sign-in failed: ${signInMessage(error)}`);
       });
       clients.set(account, pending);
     }
@@ -222,6 +222,16 @@ function toDay(value: string, ref: KeyRef): string {
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
   }
   throw new Error(`${where(ref)}: "${ROTATED}" isn't a date: "${value}"`);
+}
+
+const SDK_ERROR = /Error \{ msg: (.+?), inner: .*\}\s*$/s;
+
+function signInMessage(error: unknown): string {
+  const message = messageOf(error);
+  const inner = SDK_ERROR.exec(message)?.[1] ?? message;
+  return inner === "Account not found"
+    ? "the 1Password app has no account with this sign-in address or ID"
+    : inner;
 }
 
 function messageOf(error: unknown): string {

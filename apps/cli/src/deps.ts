@@ -50,6 +50,7 @@ export interface Deps {
   isFolder(path: string): Promise<boolean>;
   listFolder(path: string): Promise<FolderEntry[]>;
   git(folder: string, args: readonly string[]): Promise<string | null>;
+  sshHostname(host: string): Promise<string | null>;
   githubSecrets(repo: string, login: string | null, environment?: string): Promise<StoreRead>;
   workerSecrets(account: string, worker: string): Promise<StoreRead>;
   createFile: CreateFile;

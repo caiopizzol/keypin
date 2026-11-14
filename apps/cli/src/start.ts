@@ -27,6 +27,7 @@ import {
   isLink,
   listFolder,
   replaceFile,
+  sshHostname,
 } from "./disk";
 import { installProblem } from "./install";
 import { launch, onSignals } from "./launch";
@@ -151,6 +152,7 @@ export function realDeps(): Deps {
     isFolder,
     listFolder,
     git,
+    sshHostname,
     githubSecrets: (repo, login, environment) =>
       listRepoSecrets({ repo, environment, token: () => ghToken(login) }),
     workerSecrets: (account, worker) =>

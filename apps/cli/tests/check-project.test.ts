@@ -1132,10 +1132,102 @@ required = ["RESEND_API_KEY"]
       },
       {
         what: "the GitHub repository's Actions secrets",
-        reason: "the origin remote isn't on github.com",
+        reason: "the origin remote's host gitlab.com isn't github.com",
       },
     ]);
     expect(run.calls.some((c) => c.startsWith("github") || c.startsWith("worker"))).toBe(false);
+  });
+
+  describe("an origin behind an SSH host alias", () => {
+    function aliased(origin: string, resolve: (host: string) => Promise<string | null>) {
+      const asked: string[] = [];
+      const run = setup({
+        files: { [MAP]: MAPPED },
+        git: { "remote get-url origin": `${origin}\n` },
+        github: { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] },
+        deps: {
+          sshHostname: async (host) => {
+            asked.push(host);
+            return resolve(host);
+          },
+        },
+      });
+      return { run, asked };
+    }
+
+    function notChecked(stdout: string, reason: string) {
+      expect(json(stdout).unknown).toContainEqual({
+        what: "the GitHub repository's Actions secrets",
+        reason,
+      });
+    }
+
+    test("an scp-style alias that ssh resolves to github.com is the GitHub repo", async () => {
+      const { run, asked } = aliased("git@github-work:acme/billing.git", async () => "github.com");
+      await cli(["check", "--json"], run.deps);
+      expect(asked).toEqual(["github-work"]);
+      expect(run.calls).toContain("github acme/billing as null");
+      expect(json(run.stdout.text).github).toEqual({ repo: "acme/billing", login: null });
+    });
+
+    test("an ssh:// alias with a port resolves the same way", async () => {
+      const { run, asked } = aliased(
+        "ssh://git@github-work:2222/acme/billing.git",
+        async () => "GitHub.com",
+      );
+      await cli(["check", "--json"], run.deps);
+      expect(asked).toEqual(["github-work"]);
+      expect(run.calls).toContain("github acme/billing as null");
+    });
+
+    test("an alias that resolves elsewhere isn't checked, and the reason names the host", async () => {
+      const { run } = aliased("git@gitlab-work:acme/billing.git", async () => "gitlab.com");
+      await cli(["check", "--json"], run.deps);
+      notChecked(run.stdout.text, "the origin remote's host gitlab-work isn't github.com");
+      expect(run.calls.some((c) => c.startsWith("github"))).toBe(false);
+    });
+
+    test("when ssh can't resolve the alias, GitHub isn't checked", async () => {
+      const { run } = aliased("git@github-work:acme/billing.git", async () => null);
+      await cli(["check", "--json"], run.deps);
+      notChecked(run.stdout.text, "the origin remote's host github-work isn't github.com");
+      expect(run.calls.some((c) => c.startsWith("github"))).toBe(false);
+    });
+
+    test("a host that looks like an ssh option never reaches ssh", async () => {
+      for (const origin of [
+        "-oProxyCommand=x:acme/billing",
+        "ssh://-oProxyCommand=x/acme/billing",
+      ]) {
+        const { run, asked } = aliased(origin, async () => "github.com");
+        await cli(["check", "--json"], run.deps);
+        expect(asked).toEqual([]);
+        expect(run.calls.some((c) => c.startsWith("github"))).toBe(false);
+      }
+    });
+
+    test("github.com remotes need no ssh", async () => {
+      for (const origin of [
+        "git@github.com:acme/billing.git",
+        "ssh://git@github.com/acme/billing.git",
+        "https://github.com/acme/billing.git",
+      ]) {
+        const { run, asked } = aliased(origin, async () => null);
+        await cli(["check", "--json"], run.deps);
+        expect(asked).toEqual([]);
+        expect(run.calls).toContain("github acme/billing as null");
+      }
+    });
+
+    test("an https remote on another host isn't resolved through ssh", async () => {
+      const { run, asked } = aliased(
+        "https://github-work/acme/billing.git",
+        async () => "github.com",
+      );
+      await cli(["check", "--json"], run.deps);
+      expect(asked).toEqual([]);
+      notChecked(run.stdout.text, "the origin remote's host github-work isn't github.com");
+    });
   });
 
   test("a tracked env file is a problem", async () => {

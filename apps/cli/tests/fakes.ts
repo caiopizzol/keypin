@@ -222,6 +222,9 @@ export function fakeDeps(setup: FakeSetup = {}) {
     isFolder: async (path) => disk.folders.has(path),
     listFolder: async (path) => listMemoryFolder(disk, path),
     git: async () => null,
+    sshHostname: async () => {
+      throw new Error("this test resolves no SSH host");
+    },
     githubSecrets: async () => {
       throw new Error("this test reads no GitHub secrets");
     },

@@ -88,6 +88,42 @@ const cases: Record<string, { code: string; flags: string[] }> = {
     code: "export const at = new Date();\nexport const day = (now: () => Date) => new Date(now());",
     flags: [CLOCK],
   },
+  "packages/core/src/node.ts": {
+    code: 'export { env } from "node:process";\nexport { homedir } from "os";\nexport { randomUUID } from "node:crypto";\nexport { performance } from "perf_hooks";\nexport { lookup } from "node:dns/promises";\nexport { connect } from "node:tls";\nexport { Worker } from "worker_threads";\nexport { createInterface } from "node:readline";\nexport { isatty } from "tty";\nexport { runInNewContext } from "node:vm";\nexport { createSocket } from "dgram";',
+    flags: Array<string>(11).fill(IMPORTS),
+  },
+  "apps/cli/src/commands/node-process.ts": {
+    code: 'import process from "node:process";\nexport const key = process.env.KEY;',
+    flags: [IMPORTS],
+  },
+  "packages/core/src/global-this.ts": {
+    code: 'export const key = globalThis.process.env.KEY;\nexport const page = globalThis.fetch("https://example.com");\nexport const file = globalThis.Bun.file("x");\nexport const at = globalThis.Date.now();\nexport const roll = globalThis.Math.random();\nexport const id = self.crypto.randomUUID();\nexport const late = new window.Date();',
+    flags: [AMBIENT, AMBIENT, AMBIENT, CLOCK, CLOCK, CLOCK, CLOCK],
+  },
+  "apps/cli/src/commands/alias.ts": {
+    code: "export const { env } = process;\nconst p = process;\nexport const key = p.env.KEY;\nconst f = fetch;\nexport const page = f('https://example.com');\nexport const { now } = Date;\nexport const r = Math.random;\nexport const g = globalThis;",
+    flags: [AMBIENT, AMBIENT, AMBIENT, CLOCK, CLOCK, AMBIENT],
+  },
+  "packages/core/src/computed.ts": {
+    code: "export const key = process[`env`].KEY;\nexport const at = Date[`now`]();\nexport const roll = Math[`random`]();\nexport const ms = Date['now']();\nexport const { ['random']: random } = Math;",
+    flags: [AMBIENT, CLOCK, CLOCK, CLOCK, CLOCK],
+  },
+  "apps/cli/src/commands/random.ts": {
+    code: "export const id = crypto.randomUUID();\nexport const bytes = crypto.getRandomValues(new Uint8Array(4));\nexport const tick = performance.now();",
+    flags: [CLOCK, CLOCK, CLOCK],
+  },
+  "packages/core/src/types-only.ts": {
+    code: "type Date = string;\nexport type Day = Date;\nexport const ms = Date.now();\ninterface process { env: string }\nexport type P = process;\nexport const key = process.env;\ndeclare const fetch: (url: string) => Promise<Response>;\nexport const page = fetch('https://example.com');\nexport type F = typeof fetch;",
+    flags: [CLOCK, AMBIENT, AMBIENT],
+  },
+  "apps/cli/src/commands/local.ts": {
+    code: "const fetch = (url: string) => url;\nexport const page = fetch('https://example.com');\nexport const get = (process: { env: string }) => process.env;\nexport const epoch = new Date(0);\nexport const wide = Math.max(1, 2);\nexport const day = Date.UTC(2026, 0, 1);\nexport const digest = crypto.subtle.digest('SHA-256', new Uint8Array(1));",
+    flags: [],
+  },
+  "packages/core/src/files.ts": {
+    code: "export const temporary = `x.${crypto.randomUUID()}.tmp`;\nexport const bytes = crypto.getRandomValues(new Uint8Array(4));",
+    flags: [CLOCK],
+  },
 };
 
 let temp = "";
@@ -129,5 +165,5 @@ beforeAll(async () => {
 afterAll(() => rm(temp, { recursive: true, force: true }));
 
 test.each(Object.keys(cases))("%s", (path) => {
-  expect(flagged.get(path) ?? []).toEqual(cases[path]?.flags);
+  expect((flagged.get(path) ?? []).toSorted()).toEqual(cases[path]?.flags.toSorted());
 });

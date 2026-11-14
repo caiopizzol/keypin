@@ -29,10 +29,12 @@ bun run typecheck  # tsc in every package
 - A connector imports only `@keypin/core` among keypin packages. Put shared code in core.
 - In `apps/cli/src`, only `start.ts`, `sign-in.ts` and `commands/check.ts` import connectors. Elsewhere, take them
   from `deps`.
-- Core and `apps/cli/src/commands` don't import `fs`, `child_process`, `net`, `http(s)` or `bun`, and don't use
-  `process.env`, global `fetch` or `Bun.*`. Take files, env, launch and vault from `deps` so tests can fake them.
-- Core and commands don't call `new Date()`, `Date.now()` or `Math.random()`. Use `deps.now()` or take the value as
-  an argument.
+- Core and `apps/cli/src/commands` don't import Node or Bun I/O modules (`fs`, `child_process`, `net`, `process`,
+  `os`, `crypto`, `bun`…), and don't use `process`, global `fetch`, `Bun` or `globalThis`. Take files, env, launch
+  and vault from `deps` so tests can fake them.
+- Core and commands don't read `new Date()`, `Date.now`, `Math.random`, `crypto.randomUUID`,
+  `crypto.getRandomValues` or `performance.now`. Use `deps.now()` or take the value as an argument. Only
+  `packages/core/src/files.ts` calls `crypto.randomUUID()`, to name a temporary file no result depends on.
 
 ## Binary and npm packages
 

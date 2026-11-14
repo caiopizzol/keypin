@@ -20,6 +20,22 @@ bun run test       # tests
 bun run typecheck  # tsc in every package
 ```
 
+## Guardrails
+
+`vp lint` enforces these, so the code keeps its shape:
+
+- `packages/core` never imports a connector (`@keypin/destination-*`, `issuer-*`, `vault-*`). Core defines the
+  contracts; register connectors in `apps/cli/src/start.ts`.
+- A connector imports only `@keypin/core` among keypin packages. Put shared code in core.
+- In `apps/cli/src`, only `start.ts`, `sign-in.ts` and `commands/check.ts` import connectors. Elsewhere, take them
+  from `deps`.
+- Core and `apps/cli/src/commands` don't import Node or Bun I/O modules (`fs`, `child_process`, `net`, `process`,
+  `os`, `crypto`, `bun`…), and don't use `process`, global `fetch`, `Bun` or the global object (`globalThis`,
+  `self`, `window`, `global`). Take files, env, launch and vault from `deps` so tests can fake them.
+- Core and commands don't read `new Date()`, `Date.now`, `Math.random`, `crypto.randomUUID`,
+  `crypto.getRandomValues` or `performance.now`. Use `deps.now()` or take the value as an argument. There,
+  `crypto.randomUUID()` is allowed only in `packages/core/src/files.ts`, to name the temporary file of an atomic write.
+
 ## Binary and npm packages
 
 keypin ships as one executable with Bun inside.

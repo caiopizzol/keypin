@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
+import { generationOf, type Issuer, loadState, Secret } from "@keypin/core";
 import { credentialsFrom, infisicalBackend } from "@keypin/vault-infisical";
 import { cli } from "../src/cli";
 import { onePasswordFrom } from "../src/sign-in";
@@ -13,6 +14,7 @@ import {
   REGISTRY,
   registryWith,
   SENTINEL,
+  STATE,
 } from "./fakes";
 import { type FakeInfisical, infisicalFetch, memoryStore } from "./infisical-fake";
 
@@ -33,12 +35,17 @@ prod = { from = "infisical://billing/prod/STRIPE_API_KEY", publish = [
 ] }
 `;
 
+const ISSUED = "re_issued_sentinel_value_2c8f";
+
 const INFISICAL: FakeInfisical = {
   organization: "acme",
   projects: {
     billing: {
       dev: { STRIPE_API_KEY: { value: SENTINEL, rotated: "2026-10-01" } },
-      prod: { STRIPE_API_KEY: { value: `${SENTINEL}-prod`, rotated: "2026-08-01" } },
+      prod: {
+        STRIPE_API_KEY: { value: `${SENTINEL}-prod`, rotated: "2026-08-01" },
+        RESEND_ADMIN_KEY: { value: `${SENTINEL}-admin` },
+      },
     },
   },
 };
@@ -68,6 +75,20 @@ function project(
   );
   const launcher = fakeLauncher();
   const destinations = fakeDestinations();
+  const issued: string[] = [];
+  const issuer: Issuer = {
+    describe: () => "Resend",
+    dashboard: () => "https://resend.com/api-keys",
+    checkAccount: async () => ({ ok: true, facts: "the admin key lists 1 API key" }),
+    async create(name) {
+      issued.push(`create ${name}`);
+      return { id: "key-1", secret: new Secret(ISSUED) };
+    },
+    async revoke(id) {
+      issued.push(`revoke ${id}`);
+      return "revoked";
+    },
+  };
   const fake = fakeDeps({
     disk,
     backend: routedVault({
@@ -80,11 +101,12 @@ function project(
       launch: launcher.launch,
       onSignals: launcher.onSignals,
       destination: destinations.build,
+      issuer: () => issuer,
       isTerminal: true,
       ask: async () => "y",
     },
   });
-  return { ...fake, launcher, destinations, store, onePassword };
+  return { ...fake, launcher, destinations, store, onePassword, issued };
 }
 
 describe("keypin with Infisical", () => {
@@ -288,5 +310,40 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
       "import creates 1Password items, and /work/billing/keypin.toml reads from Infisical; add the secrets in Infisical and map them with infisical:// references (docs/infisical.md)",
     );
     expect(run.store.effects).toEqual([]);
+  });
+
+  test("rotate saves the new key to the Infisical secret and never signs in to 1Password", async () => {
+    const map = `${MAP}
+[keys.STRIPE_API_KEY.prod.issuer]
+kind = "resend"
+admin = "infisical://billing/prod/RESEND_ADMIN_KEY"
+permission = "sending_access"
+`.replace(
+      /prod = \{ from = "(.+?)", publish = \[\n(.+)\n\] \}\n/,
+      '[keys.STRIPE_API_KEY.prod]\nfrom = "$1"\npublish = [$2]\n',
+    );
+    const run = project({ map, env: { KEYPIN_1PASSWORD: "service-account" } });
+    expect(await cli(["rotate", "STRIPE_API_KEY"], run.deps)).toBe(0);
+    expect(run.issued).toEqual(["create STRIPE_API_KEY prod 2026-11-09"]);
+    expect(run.store.effects).toEqual(["infisical update billing/prod/STRIPE_API_KEY"]);
+    expect(run.store.load()[0]?.secret).toEqual({ value: ISSUED, rotated: "2026-11-09" });
+    expect(run.destinations.log).toEqual([
+      "check github-actions:acme/billing",
+      `write github-actions:acme/billing STRIPE_API_KEY (${ISSUED.length} chars)`,
+    ]);
+    expect(run.stderr.text).toContain(
+      "STRIPE_API_KEY prod  from infisical://billing/prod/STRIPE_API_KEY in Infisical organization acme at https://app.infisical.com",
+    );
+    expect(run.stderr.text).toContain(
+      "Infisical  infisical://billing/prod/STRIPE_API_KEY  saved, rotated 2026-11-09",
+    );
+    expect(run.stderr.text).toContain("the new key is in Infisical and the destination in the map");
+    expect(run.stderr.text + run.stdout.text).not.toContain("OP_SERVICE_ACCOUNT_TOKEN");
+    expect(run.stderr.text + run.stdout.text).not.toContain(ISSUED);
+    expect(run.onePassword.calls).toEqual([]);
+    const state = await loadState(run.disk.files, STATE);
+    expect(state.receipts.map((r) => r.generation)).toEqual([
+      await generationOf(new Secret(ISSUED)),
+    ]);
   });
 });

@@ -1,5 +1,12 @@
 import { describe, expect, test } from "vite-plus/test";
-import { generationOf, type Issuer, loadState, Secret, type VaultBackend } from "@keypin/core";
+import {
+  generationOf,
+  type Issuer,
+  type KeyRef,
+  loadState,
+  Secret,
+  type VaultBackend,
+} from "@keypin/core";
 import { cli } from "../src/cli";
 import { NEEDS_APPROVAL } from "../src/publishing";
 import {
@@ -85,6 +92,8 @@ function fakeIssuer(options: IssuerOptions, made: { count: number }) {
   return { build, log, admins };
 }
 
+const itemOf = (ref: KeyRef) => (ref.kind === "1password" ? ref.item : ref.name);
+
 function writableVault(failSave = false) {
   const values = new Map([
     ["mailer resend key", OLD],
@@ -98,25 +107,25 @@ function writableVault(failSave = false) {
   const vault: VaultBackend = {
     capabilities: { read: true, write: true, list: false, metadata: true },
     async read(ref) {
-      log.push(`read ${ref.item}`);
-      const value = values.get(ref.item);
-      if (value === undefined) throw new Error(`no item "${ref.item}"`);
+      log.push(`read ${itemOf(ref)}`);
+      const value = values.get(itemOf(ref));
+      if (value === undefined) throw new Error(`no item "${itemOf(ref)}"`);
       return new Secret(value);
     },
     async readItem(ref) {
-      return { secret: await vault.read(ref), ids: idsOf(ref.item) };
+      return { secret: await vault.read(ref), ids: idsOf(itemOf(ref)) };
     },
     async itemIds(ref) {
-      log.push(`ids ${ref.item}`);
-      return idsOf(ref.item);
+      log.push(`ids ${itemOf(ref)}`);
+      return idsOf(itemOf(ref));
     },
     async write(ref, secret, options = {}) {
       if (failSave) {
-        log.push(`save ${ref.item} failed`);
+        log.push(`save ${itemOf(ref)} failed`);
         throw new Error("1Password: the item is locked");
       }
-      log.push(`save ${ref.item}`);
-      values.set(ref.item, secret.reveal());
+      log.push(`save ${itemOf(ref)}`);
+      values.set(itemOf(ref), secret.reveal());
       if (options.rotated) rotated.push(options.rotated);
     },
     async list() {
@@ -136,6 +145,7 @@ interface Setup extends FakeDestinationOptions, IssuerOptions {
   vault?: ReturnType<typeof writableVault>;
   failSave?: boolean;
   made?: { count: number };
+  serviceAccount?: boolean;
 }
 
 function setup(options: Setup = {}) {
@@ -152,6 +162,9 @@ function setup(options: Setup = {}) {
       destination: destinations.build,
       issuer: issuer.build,
       isTerminal: options.terminal ?? true,
+      ...(options.serviceAccount
+        ? { signIn: () => ({ mode: "service-account", address: "my.1password.com" }) }
+        : {}),
       ask: async (question) => {
         asked.push(question);
         return answers.shift() ?? "";
@@ -448,12 +461,7 @@ describe("keypin rotate", () => {
   });
 
   test("a service account can't save a new key, so nothing is created", async () => {
-    const vault = writableVault();
-    const readOnly = {
-      ...vault,
-      vault: { ...vault.vault, capabilities: { ...vault.vault.capabilities, write: false } },
-    };
-    const run = setup({ vault: readOnly, answers: ["y"] });
+    const run = setup({ serviceAccount: true, answers: ["y"] });
     expect(await run.run()).toBe(1);
     expect(run.issuer.log).toEqual([]);
     expect(run.stderr.text).toContain("needs the desktop app");
@@ -469,14 +477,12 @@ describe("keypin rotate", () => {
       answers: ["y"],
     });
     expect(await failing.run()).toBe(1);
-    const readOnly = {
-      ...first.vault,
-      vault: {
-        ...first.vault.vault,
-        capabilities: { ...first.vault.vault.capabilities, write: false },
-      },
-    };
-    const resumed = setup({ disk: first.disk, vault: readOnly, answers: ["y", "y"] });
+    const resumed = setup({
+      disk: first.disk,
+      vault: first.vault,
+      serviceAccount: true,
+      answers: ["y", "y"],
+    });
     expect(await resumed.run()).toBe(0);
     expect(resumed.writes()).toEqual([`write ${GITHUB} RESEND_API_KEY (${NEW(2).length} chars)`]);
     expect(resumed.issuer.log).toEqual(["check key-2", "revoke key-1"]);

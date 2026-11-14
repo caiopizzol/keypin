@@ -99,7 +99,7 @@ permission = "sending_access"
 - `permission`: what the new key may do, `full_access` or `sending_access`. Add `domain_id` to limit a sending key
   to one domain.
 
-`rotate` checks every account, shows a plan and asks `y`. It then creates the key, saves it to the 1Password field
+`rotate` checks every account, shows a plan and asks `y`. It then creates the key, saves it to the `from` reference
 with `rotated` set to today, and publishes it like `keypin publish`. It asks a second `y` before it deletes the old
 key, and only if every destination got the new one. A rerun picks up where a failed or declined run stopped. It
 deletes only a key it created itself; it doesn't know the key you made by hand, so delete that one at the provider.

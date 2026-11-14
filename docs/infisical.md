@@ -1,10 +1,11 @@
 # Infisical
 
-keypin can read keys from [Infisical](https://infisical.com) instead of 1Password. `run`, `check`, `status` and
-`publish` work; `import` creates 1Password items, so add the secrets in Infisical yourself.
+keypin can read keys from [Infisical](https://infisical.com) instead of 1Password. `run`, `check`, `status`,
+`publish` and `rotate` work; `import` creates 1Password items, so add the secrets in Infisical yourself.
 
 1. Create a [machine identity](https://infisical.com/docs/documentation/platform/identities/universal-auth) with
-   Universal Auth, and add it to each project keypin reads, with read access to its environments.
+   Universal Auth, and add it to each project keypin reads, with read access to its environments. `keypin rotate`
+   also needs write access, to save the new key.
 2. Pin your organization in `keypin.toml`, and reference each secret by project, environment and name:
 
    ```toml

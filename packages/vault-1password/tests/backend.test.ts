@@ -2,8 +2,13 @@ import { inspect } from "node:util";
 import { assert, describe, expect, test } from "vite-plus/test";
 import type { KeyRef } from "@keypin/core";
 import { Secret, SignInFailed } from "@keypin/core";
-import type { CreateParams, Field, FullItem, SdkClient } from "../src/index";
-import { desktopLibrary, onePasswordBackend, requireDesktopApp } from "../src/index";
+import {
+  desktopLibrary,
+  onePasswordBackend,
+  requireDesktopApp,
+  type SdkClient,
+} from "../src/index";
+import { fakeOnePassword, field, item } from "../src/testing";
 
 const VALUE = "fake-value-7f3a9c";
 const ACCOUNT = "my.1password.com";
@@ -17,62 +22,7 @@ const ref: KeyRef = {
 };
 const scope = { kind: "1password" as const, account: ACCOUNT, vault: "Private" };
 
-function field(title: string, fieldType: Field["fieldType"], value: string): Field {
-  return { id: title, title, fieldType, value };
-}
-
-function item(title: string, fields: Field[], id = `id-${title}`): FullItem {
-  return {
-    id,
-    title,
-    category: "Password",
-    vaultId: "vault-1",
-    fields,
-    sections: [],
-    notes: "",
-    tags: ["app/demo"],
-    websites: [],
-    version: 1,
-    files: [],
-    createdAt: new Date("2026-11-01T00:00:00Z"),
-    updatedAt: new Date("2026-11-09T12:00:00Z"),
-  };
-}
-
-function fake(items: FullItem[] = [], vaults = ["Private", "Shared"]) {
-  const calls: { create: CreateParams[]; put: FullItem[]; get: number } = {
-    create: [],
-    put: [],
-    get: 0,
-  };
-  const client: SdkClient = {
-    vaults: {
-      list: async () =>
-        vaults.map((title, index) => ({ id: index === 0 ? "vault-1" : `vault-${title}`, title })),
-    },
-    items: {
-      list: async (vaultId) =>
-        items
-          .filter((candidate) => candidate.vaultId === vaultId)
-          .map((candidate) => ({ ...candidate, state: "active", password: VALUE })),
-      get: async (_vaultId, itemId) => {
-        calls.get += 1;
-        const found = items.find((candidate) => candidate.id === itemId);
-        if (!found) throw new Error("not found");
-        return found;
-      },
-      create: async (params) => {
-        calls.create.push(params);
-        return item(params.title, params.fields ?? []);
-      },
-      put: async (updated) => {
-        calls.put.push(updated);
-        return updated;
-      },
-    },
-  };
-  return { client, calls };
-}
+const fake = fakeOnePassword;
 
 function backendFor(client: SdkClient) {
   const accounts: string[] = [];
@@ -348,6 +298,49 @@ describe("write", () => {
     const { client, calls } = fake();
     await backendFor(client).backend.write(ref, new Secret(VALUE), { rotated: "2028-02-29" });
     expect(calls.create[0]?.fields).toContainEqual(field("rotated", "Date", "2028-02-29"));
+  });
+});
+
+describe("the fake 1Password", () => {
+  const twin = (vault: string, value: string) => ({
+    ...item("demo dev token", [field("password", "Concealed", value)], "same-id"),
+    vaultId: vault,
+  });
+  const shared = { ...ref, vault: "Shared" };
+
+  test("keeps items with the same ID in different vaults apart", async () => {
+    const { client } = fake([twin("vault-1", "private-value"), twin("vault-Shared", VALUE)]);
+    const { backend } = backendFor(client);
+    expect((await backend.read(shared)).reveal()).toBe(VALUE);
+    await backend.write(shared, new Secret("fake-new"));
+    expect((await backend.read(shared)).reveal()).toBe("fake-new");
+    expect((await backend.read(ref)).reveal()).toBe("private-value");
+  });
+
+  test("refuses a read or write that names the wrong vault", async () => {
+    const { client } = fake([twin("vault-Shared", VALUE)]);
+    const swapped: SdkClient = {
+      ...client,
+      items: {
+        ...client.items,
+        get: (_vault, id) => client.items.get("vault-1", id),
+        put: (updated) => client.items.put({ ...updated, vaultId: "vault-1" }),
+      },
+    };
+    const { backend } = backendFor(swapped);
+    await expect(backend.read(shared)).rejects.toThrow("not found");
+    const real = await client.items.get("vault-Shared", "same-id");
+    await expect(swapped.items.put(real)).rejects.toThrow("not found");
+  });
+
+  test("gives created items IDs unique across vaults", async () => {
+    const { client } = fake();
+    const { backend } = backendFor(client);
+    await backend.write(ref, new Secret(VALUE));
+    await backend.write(shared, new Secret(VALUE));
+    const [mine, theirs] = await Promise.all([backend.itemIds(ref), backend.itemIds(shared)]);
+    expect(mine.item).not.toBe(theirs.item);
+    expect((await backend.read(shared)).reveal()).toBe(VALUE);
   });
 });
 

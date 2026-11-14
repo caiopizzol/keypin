@@ -2,6 +2,7 @@ import {
   type AccountCheck,
   type Destination,
   type Evidence,
+  type Fetch,
   isRecord,
   type Secret,
 } from "@keypin/core";
@@ -10,11 +11,6 @@ import { wranglerToken } from "./token";
 const API = "https://api.cloudflare.com/client/v4";
 const ACCOUNT_ID = /^[0-9a-f]{32}$/;
 const WORKER = /^[A-Za-z0-9_-]+$/;
-
-export type Fetch = (
-  url: string,
-  init: { method: string; headers: Record<string, string>; body?: string },
-) => Promise<Response>;
 
 export interface WorkerSecretOptions {
   account: string;

@@ -1,6 +1,6 @@
 import { envValues } from "@keypin/core";
 import { localDay } from "../../src/deps";
-import type { FakeInfisical } from "../infisical-fake";
+import type { FakeInfisical } from "@keypin/vault-infisical/testing";
 
 export interface FakeItem {
   title: string;

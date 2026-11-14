@@ -1,5 +1,5 @@
-import { isRecord, type StoreRead } from "@keypin/core";
-import { type Fetch, secretsPath } from "./github";
+import { type Fetch, isRecord, type StoreRead } from "@keypin/core";
+import { secretsPath } from "./github";
 
 const API = "https://api.github.com";
 const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;

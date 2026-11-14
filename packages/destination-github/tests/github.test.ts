@@ -1,7 +1,7 @@
 import sodium from "libsodium-wrappers";
 import { assert, beforeAll, describe, expect, test } from "vite-plus/test";
-import { isRecord, Secret } from "@keypin/core";
-import { type Fetch, GitHubSecretDestination, sealedBox } from "../src/index";
+import { type Fetch, isRecord, Secret } from "@keypin/core";
+import { GitHubSecretDestination, sealedBox } from "../src/index";
 
 const SENTINEL = "sentinel-value-7f3a9c";
 const TOKEN = "token-sentinel-41b2";

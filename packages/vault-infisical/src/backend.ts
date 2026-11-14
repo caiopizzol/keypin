@@ -1,5 +1,6 @@
 import {
   describeRef,
+  type Fetch,
   HeldForApproval,
   type InfisicalRef,
   isDay,
@@ -15,11 +16,6 @@ import {
 export const CLIENT_ID = "INFISICAL_UNIVERSAL_AUTH_CLIENT_ID";
 export const CLIENT_SECRET = "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET";
 export const ROTATED = "rotated";
-
-export type Fetch = (
-  url: string,
-  init: { method: string; headers: Record<string, string>; body?: string },
-) => Promise<Response>;
 
 export interface Credentials {
   clientId: string;

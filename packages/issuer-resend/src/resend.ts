@@ -1,13 +1,15 @@
-import { type IssuedKey, type Issuer, type IssuerCheck, isRecord, Secret } from "@keypin/core";
+import {
+  type Fetch,
+  type IssuedKey,
+  type Issuer,
+  type IssuerCheck,
+  isRecord,
+  Secret,
+} from "@keypin/core";
 
 const API = "https://api.resend.com";
 const NAME_LIMIT = 50;
 const DASHBOARD = "https://resend.com/api-keys";
-
-export type Fetch = (
-  url: string,
-  init: { method: string; headers: Record<string, string>; body?: string },
-) => Promise<Response>;
 
 export interface ResendIssuerOptions {
   admin: () => Promise<Secret>;

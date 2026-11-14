@@ -1,5 +1,4 @@
-import { isRecord, type StoreRead } from "@keypin/core";
-import type { Fetch } from "./cloudflare";
+import { type Fetch, isRecord, type StoreRead } from "@keypin/core";
 
 const API = "https://api.cloudflare.com/client/v4";
 const ACCOUNT_ID = /^[0-9a-f]{32}$/;

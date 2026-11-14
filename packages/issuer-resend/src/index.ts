@@ -1,1 +1,1 @@
-export { ResendIssuer, type Fetch, type ResendIssuerOptions } from "./resend";
+export { ResendIssuer, type ResendIssuerOptions } from "./resend";

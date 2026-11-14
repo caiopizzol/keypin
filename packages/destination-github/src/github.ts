@@ -3,6 +3,7 @@ import {
   type AccountCheck,
   type Destination,
   type Evidence,
+  type Fetch,
   isRecord,
   type Secret,
 } from "@keypin/core";
@@ -11,11 +12,6 @@ import { ghToken } from "./token";
 const API = "https://api.github.com";
 const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 const SECRET_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-export type Fetch = (
-  url: string,
-  init: { method: string; headers: Record<string, string>; body?: string },
-) => Promise<Response>;
 
 export interface GitHubSecretOptions {
   repo: string;

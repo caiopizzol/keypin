@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
-import { type Fetch, listRepoSecrets } from "../src/index";
+import type { Fetch } from "@keypin/core";
+import { listRepoSecrets } from "../src/index";
 
 const TOKEN = "token-sentinel-41b2";
 

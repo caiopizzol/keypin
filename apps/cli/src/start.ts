@@ -2,7 +2,7 @@ import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline/promises";
-import type { Destination, Issuer, IssuerSpec, PublishTarget, Secret } from "@keypin/core";
+import type { Destination, Fetch, Issuer, IssuerSpec, PublishTarget, Secret } from "@keypin/core";
 import {
   CloudflareReader,
   currentWranglerToken,
@@ -10,7 +10,7 @@ import {
   wranglerConfigFile,
 } from "@keypin/destination-cloudflare";
 import { ghToken, GitHubSecretDestination, listRepoSecrets } from "@keypin/destination-github";
-import { type Fetch, ResendIssuer } from "@keypin/issuer-resend";
+import { ResendIssuer } from "@keypin/issuer-resend";
 import {
   type Connect,
   desktopConnect,

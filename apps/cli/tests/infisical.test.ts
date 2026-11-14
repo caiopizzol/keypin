@@ -16,7 +16,12 @@ import {
   SENTINEL,
   STATE,
 } from "./fakes";
-import { type FakeInfisical, infisicalFetch, memoryStore, mergeHeld } from "./infisical-fake";
+import {
+  type FakeInfisical,
+  infisicalFetch,
+  memoryStore,
+  mergeHeld,
+} from "@keypin/vault-infisical/testing";
 
 const CREDENTIALS = {
   INFISICAL_UNIVERSAL_AUTH_CLIENT_ID: "client-id-1",

@@ -1,12 +1,12 @@
 import { describe, expect, test } from "vite-plus/test";
-import { type InfisicalRef, isRecord, Secret } from "@keypin/core";
-import { credentialsFrom, type Fetch, infisicalBackend } from "../src/index";
+import { type Fetch, type InfisicalRef, isRecord, Secret } from "@keypin/core";
+import { credentialsFrom, infisicalBackend } from "../src/index";
+import { type FakeInfisical, type FakeSecret, infisicalFetch, memoryStore } from "../src/testing";
 
 const URL = "https://app.infisical.com";
 const PROJECT_ID = "6f1c2a4e-1111-4222-8333-944455556666";
 const SENTINEL = "sentinel-value-3c9e1f";
 const CLIENT_SECRET = "client-secret-sentinel-7a2d";
-const TOKEN = "access-token-sentinel-55b1";
 const CREDENTIALS = { clientId: "client-id-1", clientSecret: CLIENT_SECRET };
 
 const REF: InfisicalRef = {
@@ -19,12 +19,6 @@ const REF: InfisicalRef = {
   name: "STRIPE_KEY",
 };
 
-interface Stored {
-  id: string;
-  value: string;
-  metadata: { key: string; value: string; isEncrypted?: boolean }[];
-}
-
 interface Call {
   method: string;
   path: string;
@@ -35,7 +29,7 @@ interface Call {
 
 function fakeInfisical(
   options: {
-    secrets?: Record<string, Stored>;
+    secrets?: Record<string, FakeSecret>;
     organization?: string;
     login?: number;
     hidden?: boolean;
@@ -43,86 +37,45 @@ function fakeInfisical(
     encryptedMetadata?: boolean;
   } = {},
 ) {
-  const secrets = new Map(Object.entries(options.secrets ?? {}));
+  const store = memoryStore();
+  const fake: FakeInfisical = {
+    organization: options.organization ?? "acme",
+    projects: { billing: { prod: {}, dev: {} } },
+    projectIds: { billing: PROJECT_ID },
+    ...(options.login ? { refuseLogin: options.login } : {}),
+    ...(options.hidden ? { hideValues: true } : {}),
+    ...(options.approval ? { heldByPolicy: [] } : {}),
+    ...(options.encryptedMetadata ? { requireEncryptedMetadata: true } : {}),
+  };
+  for (const [where, secret] of Object.entries(options.secrets ?? {})) {
+    const [environment = "", path = "/", name = ""] = where.split(":");
+    const key = path === "/" ? name : `${path}/${name}`;
+    const environments = (fake.projects.billing ??= {});
+    (environments[environment] ??= {})[key] = secret;
+  }
   const calls: Call[] = [];
-  const reply = (status: number, body: unknown) =>
-    Promise.resolve(new Response(JSON.stringify(body), { status }));
+  const served = infisicalFetch(fake, store);
   const fetch: Fetch = (url, init) => {
     const parsed = new globalThis.URL(url);
     const sent: unknown = init.body ? JSON.parse(init.body) : null;
-    const body = isRecord(sent) ? sent : null;
-    const text = (field: string) => {
-      const value = body?.[field];
-      return typeof value === "string" ? value : "";
-    };
-    const auth = init.headers.Authorization ?? null;
-    const query = Object.fromEntries(parsed.searchParams);
-    calls.push({ method: init.method, path: parsed.pathname, query, auth, body });
-    const where = `${query.environment ?? text("environment")}:${query.secretPath ?? text("secretPath")}`;
-    if (parsed.pathname === "/api/v1/auth/universal-auth/login") {
-      if (options.login) return reply(options.login, { message: "Invalid credentials" });
-      return reply(200, { accessToken: TOKEN, expiresIn: 7200, tokenType: "Bearer" });
-    }
-    if (auth !== `Bearer ${TOKEN}`) return reply(401, { message: "Unauthorized" });
-    if (parsed.pathname === "/api/v1/identities/details")
-      return reply(200, {
-        identityDetails: {
-          organization: { id: "o1", name: "Acme", slug: options.organization ?? "acme" },
-        },
-      });
-    if (parsed.pathname === "/api/v1/projects/slug/billing") return reply(200, { id: PROJECT_ID });
-    if (parsed.pathname.startsWith("/api/v1/projects/slug/"))
-      return reply(404, { message: "Project not found" });
-    if (parsed.pathname === "/api/v4/secrets")
-      return reply(200, {
-        secrets: [...secrets]
-          .filter(([key]) => key.startsWith(`${where}:`) && query.projectId === PROJECT_ID)
-          .map(([key, s]) => ({
-            id: s.id,
-            secretKey: key.split(":").at(-1),
-            tags: [{ id: "t", slug: "billing", name: "billing" }],
-            updatedAt: "2026-11-01T00:00:00.000Z",
-          })),
-      });
-    const name = decodeURIComponent(parsed.pathname.replace("/api/v4/secrets/", ""));
-    const key = `${where}:${name}`;
-    const found = secrets.get(key);
-    if (init.method === "GET") {
-      if (!found) return reply(404, { message: `Secret with name '${name}' not found` });
-      const shown = query.viewSecretValue === "true" && !options.hidden;
-      return reply(200, {
-        secret: {
-          id: found.id,
-          secretKey: name,
-          secretValue: shown ? found.value : "<hidden-by-infisical>",
-          secretValueHidden: !shown,
-          secretMetadata: found.metadata,
-        },
-      });
-    }
-    if (options.approval) return reply(200, { approval: { id: "a1", status: "open" } });
-    const value = text("secretValue");
-    const sentMetadata = body?.secretMetadata;
-    const metadata = Array.isArray(sentMetadata)
-      ? sentMetadata.flatMap((m: unknown) =>
-          isRecord(m) && typeof m.key === "string" && typeof m.value === "string"
-            ? [{ key: m.key, value: m.value, isEncrypted: m.isEncrypted === true }]
-            : [],
-        )
-      : (found?.metadata ?? []);
-    if (options.encryptedMetadata && metadata.some((m) => !m.isEncrypted))
-      return reply(400, { message: "Project requires all secret metadata to be encrypted" });
-    const stored = { id: found?.id ?? `id-${name}`, value, metadata };
-    secrets.set(key, stored);
-    return reply(200, { secret: { id: stored.id, secretKey: name } });
+    calls.push({
+      method: init.method,
+      path: parsed.pathname,
+      query: Object.fromEntries(parsed.searchParams),
+      auth: init.headers.Authorization ?? null,
+      body: isRecord(sent) ? sent : null,
+    });
+    return served(url, init);
   };
-  return { fetch, calls, secrets };
+  const saved = (name: string) => store.load().find((entry) => entry.name === name)?.secret;
+  return { fetch, calls, saved, effects: store.effects };
 }
 
-const STRIPE = {
+const STRIPE: FakeSecret = {
   id: "secret-1",
   value: SENTINEL,
-  metadata: [{ key: "rotated", value: "2026-10-01" }],
+  rotated: "2026-10-01",
+  tags: ["billing"],
 };
 
 describe("signing in", () => {
@@ -239,7 +192,7 @@ describe("reading", () => {
     );
     const bad = fakeInfisical({
       secrets: {
-        "prod:/:STRIPE_KEY": { ...STRIPE, metadata: [{ key: "rotated", value: "soon" }] },
+        "prod:/:STRIPE_KEY": { ...STRIPE, rotated: "soon" },
       },
     });
     await expect(infisicalBackend(CREDENTIALS, bad.fetch).metadata(REF)).rejects.toThrow(
@@ -248,7 +201,7 @@ describe("reading", () => {
   });
 
   test("no rotated metadata is no rotated date", async () => {
-    const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": { ...STRIPE, metadata: [] } } });
+    const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": { ...STRIPE, rotated: "" } } });
     expect(await infisicalBackend(CREDENTIALS, fake.fetch).metadata(REF)).toEqual({
       rotated: null,
     });
@@ -275,7 +228,7 @@ describe("writing", () => {
       secrets: {
         "prod:/:STRIPE_KEY": {
           ...STRIPE,
-          metadata: [{ key: "owner", value: "billing" }, ...STRIPE.metadata],
+          metadata: [{ key: "owner", value: "billing" }],
         },
       },
     });
@@ -307,9 +260,7 @@ describe("writing", () => {
       rotated: "2026-11-14",
     });
     expect(fake.calls.at(-1)).toMatchObject({ method: "POST", path: "/api/v4/secrets/RESEND_KEY" });
-    expect(fake.secrets.get("prod:/:RESEND_KEY")?.metadata).toEqual([
-      { key: "rotated", value: "2026-11-14", isEncrypted: true },
-    ]);
+    expect(fake.saved("RESEND_KEY")).toMatchObject({ rotated: "2026-11-14" });
     await expect(vault.write(REF, new Secret("x"), { newItem: true })).rejects.toThrow(
       "the secret already exists; keypin doesn't overwrite it",
     );
@@ -321,6 +272,7 @@ describe("writing", () => {
       secrets: {
         "prod:/:STRIPE_KEY": {
           ...STRIPE,
+          rotated: "",
           metadata: [{ key: "rotated", value: "2026-10-01", isEncrypted: true }],
         },
       },
@@ -331,12 +283,8 @@ describe("writing", () => {
       newItem: true,
       rotated: "2026-11-14",
     });
-    expect(fake.secrets.get("prod:/:STRIPE_KEY")?.metadata).toEqual([
-      { key: "rotated", value: "2026-11-14", isEncrypted: true },
-    ]);
-    expect(fake.secrets.get("prod:/:RESEND_KEY")?.metadata).toEqual([
-      { key: "rotated", value: "2026-11-14", isEncrypted: true },
-    ]);
+    expect(fake.saved("STRIPE_KEY")).toMatchObject({ rotated: "2026-11-14" });
+    expect(fake.saved("RESEND_KEY")).toMatchObject({ rotated: "2026-11-14" });
     expect(await vault.metadata(REF)).toEqual({ rotated: "2026-11-14" });
   });
 
@@ -379,7 +327,7 @@ test("list names the secrets of a project, environment and path, without values"
       id: "secret-1",
       title: "STRIPE_KEY",
       tags: ["billing"],
-      updatedAt: "2026-11-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
     },
   ]);
   expect(fake.calls.at(-1)?.query).toMatchObject({

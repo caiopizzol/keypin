@@ -245,8 +245,13 @@ async function readWorkflows(deps: Deps, root: string, top: string | null, unkno
   return workflows;
 }
 
-const GITHUB_REMOTE =
-  /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/;
+const OWNER_REPO = String.raw`([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?`;
+const HTTPS_REMOTE = new RegExp(
+  String.raw`^https:\/\/(?:[^@/]+@)?([^@/:]+)(?::\d+)?\/${OWNER_REPO}$`,
+);
+const SSH_REMOTE = new RegExp(String.raw`^ssh:\/\/(?:[^@/]+@)?([^@/:]+)(?::\d+)?\/${OWNER_REPO}$`);
+const SCP_REMOTE = new RegExp(String.raw`^(?:[^@/:]+@)?([^@/:]+):${OWNER_REPO}$`);
+const SSH_HOST = /^[A-Za-z0-9_][A-Za-z0-9._-]*$/;
 
 async function githubOrigin(
   deps: Deps,
@@ -254,7 +259,15 @@ async function githubOrigin(
 ): Promise<{ repo: string } | { reason: string } | null> {
   const url = (await deps.git(folder, ["remote", "get-url", "origin"]))?.trim();
   if (!url) return null;
-  const match = GITHUB_REMOTE.exec(url);
-  if (!match?.[1] || !match[2]) return { reason: "the origin remote isn't on github.com" };
-  return { repo: `${match[1]}/${match[2]}` };
+  const https = HTTPS_REMOTE.exec(url);
+  const ssh = https ? null : (SSH_REMOTE.exec(url) ?? SCP_REMOTE.exec(url));
+  const [, host, owner, repo] = https ?? ssh ?? [];
+  if (!host || !owner || !repo) return { reason: "the origin remote isn't on github.com" };
+  if (isGitHub(host) || (ssh && SSH_HOST.test(host) && isGitHub(await deps.sshHostname(host))))
+    return { repo: `${owner}/${repo}` };
+  return { reason: `the origin remote's host ${host} isn't github.com` };
+}
+
+function isGitHub(host: string | null): boolean {
+  return host?.toLowerCase() === "github.com";
 }

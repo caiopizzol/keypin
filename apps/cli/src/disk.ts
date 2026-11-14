@@ -173,6 +173,15 @@ export function git(folder: string, args: readonly string[]): Promise<string | n
   });
 }
 
+export function sshHostname(host: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    execFile("ssh", ["-G", "--", host], { timeout: 5000 }, (error, stdout) => {
+      const line = error ? undefined : /^hostname (\S+)$/m.exec(String(stdout));
+      resolve(line?.[1] ?? null);
+    });
+  });
+}
+
 export const diskLock: Lock = async (path) => {
   await privateFolder(dirname(path));
   if (await take(path)) return { held: true, lock: held(path) };

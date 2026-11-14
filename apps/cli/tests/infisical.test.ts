@@ -72,6 +72,7 @@ function project(
     map?: string;
     infisical?: FakeInfisical;
     after?: Earlier;
+    failWrite?: string[];
     isTerminal?: boolean;
   } = {},
 ) {
@@ -98,7 +99,7 @@ function project(
     infisicalFetch(options.infisical ?? INFISICAL, store),
   );
   const launcher = fakeLauncher();
-  const destinations = fakeDestinations();
+  const destinations = fakeDestinations({ failWrite: options.failWrite ?? [] });
   const issued: string[] = [];
   const keys = options.after?.keys ?? new Set<string>();
   const issuer: Issuer = {
@@ -457,6 +458,60 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
       ]);
       const state = await loadState(resumed.disk.files, STATE);
       expect(state.issued).toMatchObject([{ id: "key-2", held: false, old: { revoked: true } }]);
+    });
+  });
+
+  describe("a source Infisical imports from another environment", () => {
+    const IMPORTED_MAP = ISSUER_MAP.replace(
+      '{ to = "github-actions", repo = "acme/billing" },]',
+      '{ to = "github-actions", repo = "acme/billing" }, { to = "github-actions", repo = "acme/web" }]',
+    );
+    const imported = (): FakeInfisical => {
+      const { STRIPE_API_KEY, ...prod } = structuredClone(INFISICAL.projects.billing?.prod ?? {});
+      return {
+        organization: "acme",
+        projects: { billing: { prod } },
+        importedForReads: {
+          billing: { prod: { STRIPE_API_KEY: STRIPE_API_KEY ?? { value: "" } } },
+        },
+      };
+    };
+    const LOCAL = { vault: "billing", item: "billing/prod/STRIPE_API_KEY" };
+
+    test("receipts carry the local secret rotate saves, so the next plan sees no item change", async () => {
+      const infisical = imported();
+      const run = project({ map: ISSUER_MAP, infisical });
+      expect(await cli(["rotate", "STRIPE_API_KEY"], run.deps)).toBe(0);
+      expect(run.store.effects).toEqual(["infisical create billing/prod/STRIPE_API_KEY"]);
+      const state = await loadState(run.disk.files, STATE);
+      expect(state.receipts.map((r) => r.sourceIds)).toEqual([LOCAL]);
+      const plan = project({ map: ISSUER_MAP, infisical, after: run, isTerminal: false });
+      expect(await cli(["publish", "STRIPE_API_KEY", "--plan"], plan.deps)).toBe(0);
+      expect(plan.stderr.text).not.toContain("was last published from");
+      const again = project({ map: ISSUER_MAP, infisical, after: run, isTerminal: false });
+      await cli(["rotate", "STRIPE_API_KEY", "--yes"], again.deps);
+      expect(again.stderr.text).not.toContain("Needs approval");
+      expect(again.issued).toEqual(["create STRIPE_API_KEY prod 2026-11-09"]);
+    });
+
+    test("a resumed partial publish writes only the destination that failed", async () => {
+      const infisical = imported();
+      const failed = project({
+        map: IMPORTED_MAP,
+        infisical,
+        failWrite: ["github-actions:acme/web"],
+      });
+      expect(await cli(["rotate", "STRIPE_API_KEY"], failed.deps)).toBe(1);
+      const resumed = project({ map: IMPORTED_MAP, infisical, after: failed });
+      expect(await cli(["rotate", "STRIPE_API_KEY"], resumed.deps)).toBe(0);
+      expect(resumed.issued).toEqual([]);
+      expect(resumed.destinations.log).toEqual([
+        "check github-actions:acme/billing",
+        "check github-actions:acme/web",
+        `write github-actions:acme/web STRIPE_API_KEY (${ISSUED.length} chars)`,
+      ]);
+      const state = await loadState(resumed.disk.files, STATE);
+      expect(state.receipts.map((r) => r.sourceIds)).toEqual([LOCAL, LOCAL]);
     });
   });
 });

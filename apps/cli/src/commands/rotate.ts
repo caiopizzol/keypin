@@ -259,7 +259,16 @@ async function rotateLocked(job: Job): Promise<number> {
     );
     return 1;
   }
-  return publishThenRevoke(job, ready, issued, created.secret, steps, state);
+  let ids: ItemIds;
+  try {
+    ids = await deps.vault().itemIds(entry.ref);
+  } catch (error) {
+    say(
+      `    ${messageOf(error)}\nStopped. The new key is in ${vaultName(entry.ref)}, and the old key still works. To continue, run:\n  ${commandLine(deps, "rotate", job.args)}`,
+    );
+    return 1;
+  }
+  return publishThenRevoke(job, { ...ready, ids }, issued, created.secret, steps, state);
 }
 
 function heldSteps(job: Job, issuer: Issuer, id: string): string {

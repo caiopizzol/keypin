@@ -124,7 +124,7 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
     });
     expect(await cli(["check"], run.deps)).toBe(1);
     expect(run.stdout.text).toContain(
-      "  As acme, pinned acme, reaches unknown; alice (git config github.account).\n",
+      "  keypin.toml pins acme; the login is alice (git config github.account), signed in as acme.\n",
     );
   });
 
@@ -262,11 +262,52 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
     expect(run.stdout.text).toContain(`1 thing to do:
 1 Fix the login for the Worker billing-worker
   The login can't reach ${ACCOUNT}.
-  As me@example.com, pinned ${ACCOUNT}, reaches unknown; the wrangler login in ${TILDE_WRANGLER}.
+  keypin.toml pins ${ACCOUNT}; the login is the wrangler login in ${TILDE_WRANGLER}, signed in as me@example.com.
   Used by STRIPE_API_KEY (prod).
 `);
     expect(run.log.filter((l) => l.startsWith("check"))).toHaveLength(2);
     run.unchanged();
+  });
+
+  test("a step that fails says so, instead of saying it finished", async () => {
+    const run = setup({ values: {}, badAccount: ["cloudflare-worker:billing-worker"] });
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(run.stderr.text).toBe(
+      [
+        "FAILED Couldn't look up 1 of 1 item in 1Password account my.1password.com, not the values",
+        "FAILED 1 of 2 accounts failed the check",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  test("a GitHub login that can't publish is one step with the gh sign-in, not two", async () => {
+    const run = setup({
+      badAccount: ["github-actions:acme/billing"],
+      deps: { ghLogin: async () => "not logged in" },
+    });
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(run.stdout.text).toContain("1 thing to do:\n1 Sign in to GitHub\n");
+    expect(run.stdout.text).not.toContain("Fix the login");
+    await cli(["check", "--json"], run.deps);
+    const data = report(run.stdout.text.slice(run.stdout.text.indexOf("{")));
+    expect(data.problems).toHaveLength(1);
+  });
+
+  test("an account the 1Password app doesn't have says to fix the map, not the app", async () => {
+    const vault = onePasswordBackend(async () => {
+      throw new Error(
+        "An error occurred when processing SDK request: Error { msg: Account not found, inner: None }",
+      );
+    });
+    const run = setup({ deps: { vault: () => vault } });
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(run.stdout.text).toContain(`1 Sign in to 1Password
+  Set account under [1password] in keypin.toml to a sign-in address or account ID the 1Password app lists, under Settings → Accounts.
+  1Password account "my.1password.com": sign-in failed: the 1Password app has no account with this sign-in address or ID.
+`);
+    expect(run.stdout.text).not.toContain("Error {");
+    expect(run.stdout.text).not.toContain("Integrate with other apps");
   });
 
   test("a map that doesn't parse lists its errors, reads nothing, exit 1", async () => {

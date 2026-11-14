@@ -95,6 +95,8 @@ interface Step {
   body: string[];
   toml?: string;
   covers: string[];
+  to?: PublishTarget["to"];
+  service?: Prerequisite["name"];
 }
 
 const ORDER = {
@@ -212,10 +214,13 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
     async () => {
       for (const ref of refs) items.set(refKey(ref), await checkItem(ref, deps));
     },
-    () => ({
-      ok: [...items.values()].every((item) => item.ok),
-      text: `Looked up ${lookup}`,
-    }),
+    () => {
+      const failed = [...items.values()].filter((item) => !item.ok).length;
+      return {
+        ok: !failed,
+        text: failed ? `Couldn't look up ${failed} of ${lookup}` : `Looked up ${lookup}`,
+      };
+    },
     "1Password may be asking you to approve keypin",
   );
 
@@ -246,10 +251,13 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
           destinations.set(place, await checkDestination(place, target, login, publisher, deps));
         }
       },
-      () => ({
-        ok: [...destinations.values()].every((d) => d.ok),
-        text: `Checked ${accounts}`,
-      }),
+      () => {
+        const failed = [...destinations.values()].filter((d) => !d.ok).length;
+        return {
+          ok: !failed,
+          text: failed ? `${failed} of ${accounts} failed the check` : `Checked ${accounts}`,
+        };
+      },
     );
 
   for (const { key, environment, entry } of entries) {
@@ -283,17 +291,20 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
     const target = targets.get(place);
     const by = usedBy(`place ${place}`);
     const fix = result.fix ? `; fix: ${result.fix}` : "";
-    problem(
-      ORDER.account,
-      `Fix the login for ${target ? where(target) : place}`,
-      [
+    const text = `${place}: ${result.problem}${fix} (${by})`;
+    report.problems.push(text);
+    steps.push({
+      order: ORDER.account,
+      title: `Fix the login for ${target ? where(target) : place}`,
+      body: [
         sentence(result.problem ?? "the account check failed"),
-        `As ${result.publisher ?? "unknown"}, pinned ${result.pinned}, reaches ${result.reached ?? "unknown"}; ${result.login}.`,
+        loginLine(result),
         ...(result.fix ? [`Fix: ${sentence(result.fix)}`] : []),
         `Used by ${by}.`,
       ],
-      `${place}: ${result.problem}${fix} (${by})`,
-    );
+      covers: [text],
+      to: result.to,
+    });
   }
   gaps(map);
   return done();
@@ -311,7 +322,7 @@ async function prerequisites(
 ): Promise<(Prerequisite & { step: Step })[]> {
   const list: (Prerequisite & { step: Step })[] = [];
   const add = (p: Prerequisite, title: string, body: string[]) =>
-    list.push({ ...p, step: { order: ORDER.setup, title, body, covers: [] } });
+    list.push({ ...p, step: { order: ORDER.setup, title, body, covers: [], service: p.name } });
   const to = (kind: PublishTarget["to"]) => [...targets.values()].some((t) => t.to === kind);
   if (usesSecrets(scanned.scan.workflows) || to("github-actions")) {
     const login = await githubLogin(deps, root);
@@ -343,6 +354,10 @@ async function prerequisites(
       "Set up 1Password",
       [`keypin needs ${INTEGRATION}.`],
     );
+  else if ([...items.values()].some((item) => item.problem?.includes(NO_ACCOUNT)))
+    add({ name: "1Password", status: "sign-in failed", fix: ACCOUNT_FIX }, SIGN_IN, [
+      sentence(ACCOUNT_FIX),
+    ]);
   else if ([...items.values()].some((item) => item.problem?.includes("sign-in failed")))
     add(
       {
@@ -357,6 +372,17 @@ async function prerequisites(
 }
 
 const SIGN_IN = "Sign in to 1Password";
+const NO_ACCOUNT = "has no account with this sign-in address or ID";
+const ACCOUNT_FIX = `set account under [1password] in ${MAP_FILE} to a sign-in address or account ID the 1Password app lists, under Settings → Accounts`;
+
+function loginLine(result: DestinationResult): string {
+  const signedIn = result.publisher === null ? "" : `, signed in as ${result.publisher}`;
+  const reaches =
+    result.reached === null || result.reached === result.pinned
+      ? ""
+      : `, and it reaches ${result.reached}`;
+  return `${MAP_FILE} pins ${result.pinned}; the login is ${result.login}${signedIn}${reaches}.`;
+}
 
 function finish(report: Report): Report {
   report.ok = !report.problems.length;
@@ -412,10 +438,13 @@ function placeOf(target: PublishTarget): string {
 function plan(report: Report, found: Step[], fixes: Fix[], empty: string | null): Step[] {
   const steps: Step[] = [];
   const signIn = found.find((step) => step.title === SIGN_IN);
+  const github = found.find((step) => step.service === "GitHub");
   for (const step of found) {
     const signs =
       step.order === ORDER.item && step.covers.every((c) => c.includes("sign-in failed"));
-    if (!signIn || !signs) steps.push(step);
+    if (github && step.order === ORDER.account && step.to === "github-actions")
+      github.covers.push(...step.covers);
+    else if (!signIn || !signs) steps.push(step);
     else {
       signIn.covers.push(...step.covers);
       for (const line of step.body.slice(0, 1))

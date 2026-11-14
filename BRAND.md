@@ -38,13 +38,13 @@ Your vault holds the values; GitHub and Cloudflare receive them; keypin knows th
 - The map holds names and places, never values.
 - It checks the account before every write.
 - It shows a plan before every publish, and a first write waits for you to answer `y`.
-- The CLI needs no server and no account. The hosted console is optional.
+- The CLI needs no keypin server and no keypin account. The hosted console is optional.
 
 ### Pricing
 
 - Free for personal accounts and open source.
 - One flat price per organization. Never per seat or per user.
-- Any paid limit lives in the hosted console. The open-source CLI stays fully usable without a login.
+- Any paid limit lives in the hosted console. The open-source CLI stays fully usable without a keypin login.
 
 ### Personality
 
@@ -58,9 +58,9 @@ The careful operator. Exact, plain, cautious, quiet. Not alarmist, not clever, n
 
 ### Promise
 
-keypin never holds your keys. Values stay in your vault and your infrastructure, and the CLI reads one only while a
-command runs or a publish writes it. The hosted console sees only names, destinations and dates. Anything keypin
-automates runs in your own cloud, never on keypin's servers.
+keypin never stores your keys. Values stay in your vault and your infrastructure, and the CLI reads one only while
+a command runs or a publish writes it. The hosted console reads `keypin.toml`, workflow files, and secret names and
+dates, never a value. When keypin automates rotation, it will run in your own cloud, never on keypin's servers.
 
 Your vault is the source for each key, and publishing sends it only to the destinations in the map. Nothing is
 published without a plan, and a first write or a changed account waits for you to answer `y`.

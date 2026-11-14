@@ -1,7 +1,7 @@
 import { inspect } from "node:util";
 import { assert, describe, expect, test } from "vite-plus/test";
 import type { KeyRef } from "@keypin/core";
-import { Secret } from "@keypin/core";
+import { Secret, SignInFailed } from "@keypin/core";
 import type { CreateParams, Field, FullItem, SdkClient } from "../src/index";
 import { desktopLibrary, onePasswordBackend, requireDesktopApp } from "../src/index";
 
@@ -429,8 +429,9 @@ describe("errors", () => {
     );
     const backend = onePasswordBackend(sdk);
     await expect(backend.read(ref)).rejects.toThrow(
-      new Error(
+      new SignInFailed(
         `1Password account "${ACCOUNT}": sign-in failed: the 1Password desktop app isn't installed`,
+        { kind: "no-desktop-app" },
       ),
     );
     await expect(backend.read({ ...ref, item: "second" })).rejects.toThrow("isn't installed");

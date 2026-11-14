@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { isRecord, parseMap, type StoreRead } from "@keypin/core";
+import { isRecord, parseMap, SignInFailed, type StoreRead } from "@keypin/core";
 import { CloudflareReader } from "@keypin/destination-cloudflare";
 import { cli } from "../src/cli";
 import { AFTER_IMPORT, PASTE, THEN } from "../src/commands/check";
@@ -1591,7 +1591,10 @@ describe("keypin check's prerequisites", () => {
         vault: () => ({
           ...fakeVault().vault,
           itemIds: async () => {
-            throw new Error('1Password account "my.1password.com": sign-in failed: no desktop app');
+            throw new SignInFailed(
+              '1Password account "my.1password.com": sign-in failed: no desktop app',
+              { kind: "other" },
+            );
           },
         }),
       },
@@ -1604,5 +1607,33 @@ describe("keypin check's prerequisites", () => {
         fix: "check the 1Password desktop app, with Settings → Developer → Integrate with other apps selected, and that it's unlocked",
       },
     ]);
+  });
+
+  test("a sign-in failure is classified by its type, not its wording", async () => {
+    const failing = (error: Error) =>
+      setup({
+        files: { [MAP]: MAPPED },
+        deps: {
+          wranglerLoginFile: async () => "/home/me/.wrangler/config/default.toml",
+          vault: () => ({
+            ...fakeVault().vault,
+            itemIds: async () => {
+              throw error;
+            },
+          }),
+        },
+      });
+    const typed = failing(new SignInFailed("the account is gone", { kind: "unknown-account" }));
+    expect(await cli(["check"], typed.deps)).toBe(1);
+    expect(steps(typed.stdout.text)[0]).toBe("1 Sign in to 1Password");
+    expect(typed.stdout.text).not.toContain("Fix the vault item");
+    expect(typed.stdout.text).toContain(
+      "Set account under [1password] in keypin.toml to a sign-in address or account ID the 1Password app lists",
+    );
+    expect(typed.stdout.text).toContain("The account is gone.");
+    const plain = failing(new Error("sign-in failed: the app has no account"));
+    expect(await cli(["check"], plain.deps)).toBe(1);
+    expect(steps(plain.stdout.text)[0]).toMatch(/^1 Fix the vault item /);
+    expect(plain.stdout.text).not.toContain("Sign in to 1Password");
   });
 });

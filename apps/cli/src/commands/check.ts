@@ -12,9 +12,10 @@ import {
   parseMap,
   type PublishTarget,
   secretKey,
+  SignInFailed,
+  type SignInReason,
   vaultAccounts,
 } from "@keypin/core";
-import { DESKTOP_APP_MISSING } from "@keypin/vault-1password";
 import { type Deps, UsageError } from "../deps";
 import { messageOf } from "../errors";
 import { type Output, output, tilde } from "../output";
@@ -31,6 +32,10 @@ interface ItemResult {
   reference: string;
   ok: boolean;
   problem: string | null;
+}
+
+interface CheckedItem extends ItemResult {
+  signIn: SignInReason | null;
 }
 
 interface DestinationResult {
@@ -103,6 +108,7 @@ interface Step {
   covers: string[];
   to?: PublishTarget["to"];
   service?: Prerequisite["name"];
+  signIn?: KeyRef["kind"];
 }
 
 const ORDER = {
@@ -125,9 +131,15 @@ const ITEM_NOTE =
 async function build(folder: string, deps: Deps): Promise<{ report: Report; steps: Step[] }> {
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);
   const steps: Step[] = [];
-  const problem = (order: number, title: string, body: string[], text: string) => {
+  const problem = (
+    order: number,
+    title: string,
+    body: string[],
+    text: string,
+    signIn?: KeyRef["kind"],
+  ) => {
     report.problems.push(text);
-    steps.push({ order, title, body, covers: [text] });
+    steps.push({ order, title, body, covers: [text], signIn });
   };
   let fixes: Fix[] = [];
   let empty: string | null = null;
@@ -164,7 +176,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
   };
   report.notes.push(...signInNotes(signIn));
   const targets = new Map<string, PublishTarget>();
-  const items = new Map<string, ItemResult>();
+  const items = new Map<string, CheckedItem>();
   const kinds = new Map<string, KeyRef["kind"]>();
   const done = async () => {
     const setup = await prerequisites(root, scanned, targets, items, kinds, signIn, deps);
@@ -294,7 +306,12 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
       if (!result) throw new Error(`no account check for ${placeOf(target)}`);
       return { ...result, destination: secretKey(target, key) };
     });
-    report.keys.push({ key, environment, from, destinations: reached });
+    report.keys.push({
+      key,
+      environment,
+      from: { reference: from.reference, ok: from.ok, problem: from.problem },
+      destinations: reached,
+    });
   }
 
   const usedBy = (id: string) => users.get(id)?.join(", ") ?? "unused";
@@ -307,6 +324,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
       `Fix the vault item ${item.reference}`,
       [sentence(item.problem), `Used by ${by}.`],
       `${item.problem} (${by})`,
+      item.signIn ? ref.kind : undefined,
     );
   }
   for (const [place, result] of destinations) {
@@ -340,7 +358,7 @@ async function prerequisites(
   root: string,
   scanned: ScanResult,
   targets: Map<string, PublishTarget>,
-  everyItem: Map<string, ItemResult>,
+  everyItem: Map<string, CheckedItem>,
   kinds: Map<string, KeyRef["kind"]>,
   signIn: SignIn | null,
   deps: Deps,
@@ -348,9 +366,7 @@ async function prerequisites(
   const of = (kind: KeyRef["kind"]) =>
     new Map([...everyItem].filter(([key]) => kinds.get(key) === kind));
   const items = of("1password");
-  const infisical = [...of("infisical").values()].flatMap((item) =>
-    item.problem?.includes("sign-in failed") ? [item.problem] : [],
-  );
+  const infisical = signInFailures(of("infisical"));
   const list: (Prerequisite & { step: Step })[] = [];
   const add = (p: Prerequisite, title: string, body: string[]) =>
     list.push({ ...p, step: { order: ORDER.setup, title, body, covers: [], service: p.name } });
@@ -384,8 +400,9 @@ async function prerequisites(
     add({ name: "Infisical", status: "sign-in failed", fix }, INFISICAL_SIGN_IN, [sentence(fix)]);
   }
   if (signIn === null || (everyItem.size && !items.size)) return list;
+  const failed = signInFailures(items);
   if (signIn.mode === "service-account") {
-    const fixes = tokenFixes(items, signIn);
+    const fixes = tokenFixes(failed, signIn);
     if (fixes.length)
       add(
         { name: "1Password", status: "sign-in failed", fix: fixes.join("; ") },
@@ -398,11 +415,11 @@ async function prerequisites(
       "Set up 1Password",
       [`keypin needs ${INTEGRATION}.`],
     );
-  else if ([...items.values()].some((item) => item.problem?.includes(NO_ACCOUNT)))
+  else if (failed.some((reason) => reason.kind === "unknown-account"))
     add({ name: "1Password", status: "sign-in failed", fix: ACCOUNT_FIX }, SIGN_IN, [
       sentence(ACCOUNT_FIX),
     ]);
-  else if ([...items.values()].some((item) => item.problem?.includes(DESKTOP_APP_MISSING)))
+  else if (failed.some((reason) => reason.kind === "no-desktop-app"))
     add(
       {
         name: "1Password",
@@ -412,7 +429,7 @@ async function prerequisites(
       SIGN_IN,
       [sentence(INSTALL_FIX), sentence(SERVICE_ACCOUNT_FIX)],
     );
-  else if ([...items.values()].some((item) => item.problem?.includes("sign-in failed")))
+  else if (failed.length)
     add(
       {
         name: "1Password",
@@ -428,10 +445,14 @@ async function prerequisites(
 const SIGN_IN = "Sign in to 1Password";
 const INFISICAL_SIGN_IN = "Sign in to Infisical";
 
-function infisicalFix(problems: readonly string[]): string {
-  if (problems.some((p) => p.includes(CLIENT_ID)))
+function signInFailures(items: Map<string, CheckedItem>): SignInReason[] {
+  return [...items.values()].flatMap((item) => (item.signIn ? [item.signIn] : []));
+}
+
+function infisicalFix(failed: readonly SignInReason[]): string {
+  if (failed.some((reason) => reason.kind === "no-credentials"))
     return `set ${CLIENT_ID} and ${CLIENT_SECRET} to a machine identity's Universal Auth client ID and secret (docs/infisical.md)`;
-  if (problems.some((p) => p.includes(OTHER_PIN)))
+  if (failed.some((reason) => reason.kind === "wrong-account"))
     return `use a machine identity from the organization ${MAP_FILE} pins under [infisical]`;
   return `check ${CLIENT_ID}, ${CLIENT_SECRET} and the url under [infisical] in ${MAP_FILE}`;
 }
@@ -464,25 +485,20 @@ function unprovenPins(signIn: SignIn | null, refs: readonly KeyRef[]): string[] 
   });
 }
 
-function tokenFixes(items: Map<string, ItemResult>, signIn: SignIn): string[] {
+function tokenFixes(failed: readonly SignInReason[], signIn: SignIn): string[] {
   const address = signIn.mode === "service-account" ? signIn.address : "";
-  const problems = [...items.values()].flatMap((item) =>
-    item.problem?.includes("sign-in failed") ? [item.problem] : [],
-  );
   const fixes: string[] = [];
-  if (problems.some((p) => p.includes(OTHER_PIN)))
+  if (failed.some((reason) => reason.kind === "wrong-account"))
     fixes.push(
       `use a service account token for the account ${MAP_FILE} pins; OP_SERVICE_ACCOUNT_TOKEN signs in to ${address}`,
     );
-  if (problems.some((p) => !p.includes(OTHER_PIN)))
+  if (failed.some((reason) => reason.kind !== "wrong-account"))
     fixes.push(
       "check that OP_SERVICE_ACCOUNT_TOKEN holds a current service account token; a revoked or expired token can't sign in",
     );
   return fixes;
 }
 
-const OTHER_PIN = "but keypin.toml pins";
-const NO_ACCOUNT = "has no account with this sign-in address or ID";
 const INSTALL_FIX = "install the 1Password desktop app";
 const SERVICE_ACCOUNT_FIX =
   "on a server or in CI, use a 1Password service account instead (docs/service-account.md)";
@@ -502,13 +518,14 @@ function finish(report: Report): Report {
   return report;
 }
 
-async function checkItem(ref: KeyRef, deps: Deps): Promise<ItemResult> {
+async function checkItem(ref: KeyRef, deps: Deps): Promise<CheckedItem> {
   const reference = formatReference(ref);
   try {
     await deps.vault().itemIds(ref);
-    return { reference, ok: true, problem: null };
+    return { reference, ok: true, problem: null, signIn: null };
   } catch (error) {
-    return { reference, ok: false, problem: messageOf(error) };
+    const signIn = error instanceof SignInFailed ? error.reason : null;
+    return { reference, ok: false, problem: messageOf(error), signIn };
   }
 }
 
@@ -554,14 +571,10 @@ function plan(report: Report, found: Step[], fixes: Fix[], empty: string | null)
   const infisical = found.find((s) => s.title === INFISICAL_SIGN_IN);
   const github = found.find((step) => step.service === "GitHub");
   for (const step of found) {
-    const signs =
-      step.order === ORDER.item && step.covers.every((c) => c.includes("sign-in failed"));
-    const signIn = step.covers.some((c) => c.includes("Infisical organization"))
-      ? infisical
-      : onePassword;
+    const signIn = step.signIn === "infisical" ? infisical : onePassword;
     if (github && step.order === ORDER.account && step.to === "github-actions")
       github.covers.push(...step.covers);
-    else if (!signIn || !signs) steps.push(step);
+    else if (!signIn || !step.signIn) steps.push(step);
     else {
       signIn.covers.push(...step.covers);
       for (const line of step.body.slice(0, 1))

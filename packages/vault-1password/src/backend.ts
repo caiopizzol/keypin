@@ -7,7 +7,14 @@ import type {
   VaultMetadata,
   VaultScope,
 } from "@keypin/core";
-import { describeRef, formatReference, isDay, Secret } from "@keypin/core";
+import {
+  describeRef,
+  formatReference,
+  isDay,
+  Secret,
+  SignInFailed,
+  type SignInReason,
+} from "@keypin/core";
 import type { Connect, Field, FullItem, SdkClient } from "./sdk";
 import { desktopConnect } from "./desktop";
 
@@ -31,9 +38,7 @@ export function onePasswordBackend(
     let pending = clients.get(account);
     if (!pending) {
       pending = connect(account).catch((error: unknown) => {
-        throw new Error(
-          `1Password account "${account}": sign-in failed: ${signInMessage(error, mode)}`,
-        );
+        throw signInFailed(account, error, mode);
       });
       clients.set(account, pending);
     }
@@ -267,12 +272,14 @@ function toDay(value: string, ref: OnePasswordRef): string {
 
 const SDK_ERROR = /Error \{ msg: (.+?), inner: .*\}\s*$/s;
 
-function signInMessage(error: unknown, mode: SignInMode): string {
+function signInFailed(account: string, error: unknown, mode: SignInMode): SignInFailed {
   const message = messageOf(error);
   const inner = SDK_ERROR.exec(message)?.[1] ?? message;
-  return mode === "desktop" && inner === "Account not found"
-    ? "the 1Password app has no account with this sign-in address or ID"
-    : inner;
+  const unknown = mode === "desktop" && inner === "Account not found";
+  const why = unknown ? "the 1Password app has no account with this sign-in address or ID" : inner;
+  const reason: SignInReason =
+    error instanceof SignInFailed ? error.reason : { kind: unknown ? "unknown-account" : "other" };
+  return new SignInFailed(`1Password account "${account}": sign-in failed: ${why}`, reason);
 }
 
 function messageOf(error: unknown): string {

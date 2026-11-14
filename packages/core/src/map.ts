@@ -22,9 +22,22 @@ export interface KeyEntry {
   environments: Partial<Record<Environment, EnvEntry>>;
 }
 
+export interface InfisicalPin {
+  url: string;
+  organization: string;
+}
+
+export interface VaultPins {
+  account?: string;
+  infisical?: InfisicalPin;
+}
+
+export const INFISICAL_CLOUD = "https://app.infisical.com";
+
 export interface KeysMap {
   file: string;
   account: string | null;
+  infisical?: InfisicalPin;
   environments: readonly Environment[];
   keys: KeyEntry[];
 }
@@ -130,7 +143,7 @@ function validateMap(data: unknown, file: string): MapResult {
   const fail = (where: string, message: string) => errors.push(`${file}: ${where}${message}`);
 
   if (!isRecord(data)) return { ok: false, errors: [`${file}: expected a table at the top level`] };
-  unknownFields(data, ["environments", "1password", "keys"], (field) =>
+  unknownFields(data, ["environments", "1password", "infisical", "keys"], (field) =>
     fail(
       "",
       field === "vaults"
@@ -142,6 +155,11 @@ function validateMap(data: unknown, file: string): MapResult {
   );
   const environments = validateEnvironments(data.environments, (message) => fail("", message));
   const account = validateAccount(data["1password"], (message) => fail("[1password]: ", message));
+  const infisical = validateInfisical(data.infisical, (message) => fail("[infisical]: ", message));
+  const pins: VaultPins = {
+    ...(account === undefined ? {} : { account }),
+    ...(infisical === undefined ? {} : { infisical }),
+  };
 
   const keys: KeyEntry[] = [];
   const rawKeys = data.keys ?? {};
@@ -149,7 +167,7 @@ function validateMap(data: unknown, file: string): MapResult {
   else {
     Object.entries(rawKeys).forEach(([id, raw], index) => {
       const label = VARIABLE_NAME.test(id) ? `key "${id}"` : `keys[${index}]`;
-      const entry = validateKey(id, raw, account, environments, (where, message) =>
+      const entry = validateKey(id, raw, pins, environments, (where, message) =>
         fail(`${label}${where}: `, message),
       );
       if (entry) keys.push(entry);
@@ -159,7 +177,10 @@ function validateMap(data: unknown, file: string): MapResult {
   sharedDestinations(keys, environments, (where, message) => fail(where, message));
   return errors.length
     ? { ok: false, errors }
-    : { ok: true, map: { file, account: account ?? null, environments, keys } };
+    : {
+        ok: true,
+        map: { file, account: account ?? null, ...pinsOnly(infisical), environments, keys },
+      };
 }
 
 function validateAccount(raw: unknown, fail: (message: string) => void): string | undefined {
@@ -177,6 +198,51 @@ function validateAccount(raw: unknown, fail: (message: string) => void): string 
     fail,
   );
   return account;
+}
+
+const pinsOnly = (infisical: InfisicalPin | undefined) => (infisical ? { infisical } : {});
+
+function validateInfisical(
+  raw: unknown,
+  fail: (message: string) => void,
+): InfisicalPin | undefined {
+  if (raw === undefined) return undefined;
+  if (!isRecord(raw)) {
+    fail("must be a table");
+    return undefined;
+  }
+  unknownFields(raw, ["url", "organization"], (field) => fail(`unknown field "${field}"`));
+  const url = filledIn(
+    optionalString(raw, "url", fail),
+    "url",
+    "your Infisical address, such as https://eu.infisical.com",
+    fail,
+  );
+  const organization = filledIn(
+    requiredString(raw, "organization", fail),
+    "organization",
+    "your Infisical organization's slug, from its settings page",
+    fail,
+  );
+  const origin = url === undefined ? INFISICAL_CLOUD : httpsOrigin(url);
+  if (origin === null) {
+    fail(`field "url" must be an https:// address such as https://eu.infisical.com, with no path`);
+    return undefined;
+  }
+  if (organization === undefined) return undefined;
+  return { url: origin, organization };
+}
+
+function httpsOrigin(text: string): string | null {
+  if (!/^https:\/\/[^/?#\\]+\/?$/.test(text)) return null;
+  try {
+    const url = new URL(text);
+    return url.protocol === "https:" && url.pathname === "/" && !url.username && !url.password
+      ? url.origin
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function validateEnvironments(
@@ -223,7 +289,7 @@ function sharedDestinations(
 function validateKey(
   id: string,
   raw: unknown,
-  account: string | undefined,
+  pins: VaultPins,
   environmentNames: readonly Environment[],
   fail: (where: string, message: string) => void,
 ): KeyEntry | undefined {
@@ -260,7 +326,7 @@ function validateKey(
   Reflect.setPrototypeOf(environments, null);
   const declared = environmentNames.filter((name) => Object.hasOwn(raw, name));
   for (const name of declared) {
-    const entry = validateEnv(raw[name], account, (m) => err(` ${name}`, m));
+    const entry = validateEnv(raw[name], pins, (m) => err(` ${name}`, m));
     if (entry) environments[name] = entry;
   }
   for (const [name, entry] of Object.entries(environments)) {
@@ -282,12 +348,12 @@ function validateKey(
 
 function validateEnv(
   given: unknown,
-  account: string | undefined,
+  pins: VaultPins,
   fail: (message: string) => void,
 ): EnvEntry | undefined {
   const raw = typeof given === "string" ? { from: given } : given;
   if (!isRecord(raw)) {
-    fail(`must be an op:// reference, or a table with "from"`);
+    fail(`must be an op:// or infisical:// reference, or a table with "from"`);
     return undefined;
   }
   let failed = false;
@@ -304,7 +370,7 @@ function validateEnv(
           : `unknown field "${field}"`,
     ),
   );
-  const ref = reference(raw, "from", account, err);
+  const ref = reference(raw, "from", pins, err);
 
   const publish: PublishTarget[] = [];
   const firstAt = new Map<string, number>();
@@ -330,7 +396,7 @@ function validateEnv(
 function reference(
   table: Table,
   field: string,
-  account: string | undefined,
+  pins: VaultPins,
   fail: (message: string) => void,
 ): KeyRef | undefined {
   const text = requiredString(table, field, fail);
@@ -340,20 +406,33 @@ function reference(
     fail(`field "${field}" ${parsed}`);
     return undefined;
   }
-  const parts = (["vault", "item", "section", "field"] as const).filter((part) =>
-    PLACEHOLDER.test(parsed[part] ?? ""),
-  );
+  const parts = Object.entries(parsed)
+    .filter(([part, value]) => part !== "kind" && PLACEHOLDER.test(value ?? ""))
+    .map(([part]) => part);
   if (parts.length) {
+    const copy =
+      parsed.kind === "1password"
+        ? "the field's secret reference (in 1Password, open the field's menu and select Copy Secret Reference)"
+        : "the project's slug, the environment's slug, and the secret's name";
     fail(
-      `field "${field}" has a <...> placeholder for its ${parts.join(" and ")}: replace it with the field's secret reference (in 1Password, open the field's menu and select Copy Secret Reference)`,
+      `field "${field}" has a <...> placeholder for its ${parts.join(" and ")}: replace it with ${copy}`,
     );
     return undefined;
   }
-  if (account === undefined) {
+  if (parsed.kind === "infisical") {
+    if (pins.infisical === undefined) {
+      fail(
+        `field "${field}" needs your Infisical organization: add [infisical] with organization = "..."`,
+      );
+      return undefined;
+    }
+    return { ...parsed, ...pins.infisical };
+  }
+  if (pins.account === undefined) {
     fail(`field "${field}" needs your 1Password account: add [1password] with account = "..."`);
     return undefined;
   }
-  return { kind: "1password", account, ...parsed };
+  return { ...parsed, account: pins.account };
 }
 
 const ACCOUNT_ID = /^[0-9a-f]{32}$/;

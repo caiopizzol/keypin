@@ -11,10 +11,12 @@ import {
   isEnvironmentName,
   isVariableName,
   type KeyRef,
+  type OnePasswordRef,
   type KeysMap,
   parseMap,
   runEnvironment,
   type Secret,
+  vaultAccounts,
 } from "@keypin/core";
 import { type Deps, localDay, UsageError } from "../deps";
 import { messageOf } from "../errors";
@@ -38,7 +40,7 @@ interface Request {
 
 interface Import {
   name: string;
-  ref: KeyRef;
+  ref: OnePasswordRef;
   value: Secret;
   existing: boolean;
 }
@@ -339,8 +341,7 @@ function planRows(
 async function compareMapped(deps: Deps, out: Output, skips: readonly Skip[]): Promise<Skip[]> {
   const refs = skips.flatMap((skip) => (skip.mapped ? [skip.mapped.ref] : []));
   if (!refs.length) return [...skips];
-  const accounts = [...new Set(refs.map((ref) => ref.account))].join(", ");
-  const values = `${count(refs.length, "mapped value")} from 1Password account ${accounts}, to compare with the file`;
+  const values = `${count(refs.length, "mapped value")} from ${vaultAccounts(refs)}, to compare with the file`;
   const { compared } = await out.step(
     `Reading ${count(refs.length, "mapped value")}`,
     () => compareEach(deps, skips),
@@ -490,7 +491,7 @@ function extendsKey(
   return parseMap(mapText(target, [entry], environment), target.file).ok;
 }
 
-function refFor(account: string, vault: string, item: string): KeyRef {
+function refFor(account: string, vault: string, item: string): OnePasswordRef {
   return { kind: "1password", account, vault, item, section: null, field: "password" };
 }
 

@@ -3,6 +3,7 @@ import {
   type Destination,
   type Files,
   type KeyRef,
+  type OnePasswordRef,
   type PublishTarget,
   Secret,
   type VaultBackend,
@@ -52,7 +53,7 @@ export interface FakeVaultOptions {
 }
 
 interface CreatedItem {
-  ref: KeyRef;
+  ref: OnePasswordRef;
   value: Secret;
   rotated: string | undefined;
 }
@@ -60,12 +61,18 @@ interface CreatedItem {
 export function fakeVault(options: FakeVaultOptions = {}) {
   const calls: string[] = [];
   const created: CreatedItem[] = [];
+  const own = (ref: KeyRef) => {
+    if (ref.kind !== "1password") throw new Error("the fake vault holds only 1Password items");
+    return ref;
+  };
   const titles = () => [...(options.items ?? []), ...created.map((c) => c.ref.item)];
-  const fail = (ref: KeyRef) => {
+  const fail = (given: KeyRef) => {
+    const ref = own(given);
     if (options.failing?.includes(ref.item))
       throw new Error(`1Password: "${ref.item}" isn't readable`);
   };
-  const stored = (ref: KeyRef) => {
+  const stored = (given: KeyRef) => {
+    const ref = own(given);
     const made = created.find((c) => c.ref.item.toLowerCase() === ref.item.toLowerCase());
     if (made) return made.value;
     const found = options.values?.[ref.item];
@@ -73,14 +80,17 @@ export function fakeVault(options: FakeVaultOptions = {}) {
     return new Secret(found);
   };
   const value = (ref: KeyRef) => {
-    calls.push(`read ${ref.item}`);
+    calls.push(`read ${own(ref).item}`);
     fail(ref);
     return stored(ref);
   };
-  const idsOf = (ref: KeyRef) => ({
-    vault: `id-${ref.vault.toLowerCase()}`,
-    item: options.ids?.[ref.item] ?? `id-${ref.item.toLowerCase()}`,
-  });
+  const idsOf = (given: KeyRef) => {
+    const ref = own(given);
+    return {
+      vault: `id-${ref.vault.toLowerCase()}`,
+      item: options.ids?.[ref.item] ?? `id-${ref.item.toLowerCase()}`,
+    };
+  };
   const vault: VaultBackend = {
     capabilities: { read: true, write: false, list: false, metadata: true },
     async read(ref) {
@@ -90,12 +100,13 @@ export function fakeVault(options: FakeVaultOptions = {}) {
       return { secret: value(ref), ids: idsOf(ref) };
     },
     async itemIds(ref) {
-      calls.push(`ids ${ref.item}`);
+      calls.push(`ids ${own(ref).item}`);
       fail(ref);
       stored(ref);
       return idsOf(ref);
     },
-    async write(ref, secret, writeOptions = {}) {
+    async write(given, secret, writeOptions = {}) {
+      const ref = own(given);
       if (!options.items) throw new Error("the fake vault doesn't write");
       calls.push(`write ${ref.item}`);
       fail(ref);
@@ -106,10 +117,12 @@ export function fakeVault(options: FakeVaultOptions = {}) {
     },
     async list(scope) {
       if (!options.items) throw new Error("the fake vault doesn't list");
+      if (scope.kind !== "1password") throw new Error("the fake vault lists only 1Password");
       calls.push(`list ${scope.account} ${scope.vault}`);
       return titles().map((title) => ({ id: title, title, tags: [], updatedAt: "" }));
     },
-    async metadata(ref) {
+    async metadata(given) {
+      const ref = own(given);
       calls.push(`metadata ${ref.item}`);
       fail(ref);
       return options.metadata?.[ref.item] ?? { rotated: null };

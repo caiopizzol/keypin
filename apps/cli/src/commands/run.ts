@@ -8,6 +8,7 @@ import {
   runEnvironment,
   type Secret,
   SIGN_IN_VARIABLES,
+  vaultAccounts,
   withoutSignIn,
 } from "@keypin/core";
 import { type Child, type Deps, UsageError } from "../deps";
@@ -112,7 +113,7 @@ async function readValues(
   out: Output,
 ): Promise<string[]> {
   const refs = keys.map((k) => k.ref);
-  const accounts = [...new Set(refs.map((ref) => ref.account))].join(", ");
+  const accounts = vaultAccounts(refs);
   const values = `${keys.length} ${environment} ${keys.length === 1 ? "value" : "values"}`;
   const references = [...new Set(refs.map(formatReference))].join(", ");
   return out.step(
@@ -132,8 +133,8 @@ async function readValues(
     (failures) => ({
       ok: !failures.length,
       text: failures.length
-        ? `Couldn't read from 1Password account ${accounts}`
-        : `Read ${values} from 1Password account ${accounts}  ${out.dim(references)}`,
+        ? `Couldn't read from ${accounts}`
+        : `Read ${values} from ${accounts}  ${out.dim(references)}`,
     }),
     approval(deps),
   );

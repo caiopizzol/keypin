@@ -212,6 +212,30 @@ const OTHER_ITEM = {
   field: "password",
 } as const;
 
+const INFISICAL_ITEM = {
+  kind: "infisical",
+  url: "https://app.infisical.com",
+  organization: "acme",
+  project: "billing",
+  environment: "prod",
+  path: "/",
+  name: "STRIPE_KEY",
+} as const;
+
+test("a destination last published from Infisical, and now from 1Password, names both vaults", () => {
+  const plan = planPublish({
+    key: KEY,
+    environment: "prod",
+    mapFile: KEY_MAP,
+    receipts: [receipt(WORKER, NEW, { source: INFISICAL_ITEM })],
+    generation: NEW,
+    ids: null,
+  });
+  expect(summary(plan)[0]?.approval).toBe(
+    `${WORKER} was last published from infisical://billing/prod/STRIPE_KEY (Infisical organization acme at https://app.infisical.com), and now from op://Private/billing stripe api key/password (1Password account my.1password.com)`,
+  );
+});
+
 test("a destination last published from another item needs approval, even with the same generation", () => {
   for (const generation of [NEW, OLD]) {
     const plan = planPublish({
@@ -254,6 +278,7 @@ test("a receipt with item IDs compares the item read now by ID, and still compar
     "item changed",
   );
   expect(reasons({ ...OTHER_ITEM, account: "other.1password.com" }, IDS)).toBe("item changed");
+  expect(reasons(INFISICAL_ITEM, IDS)).toBe("item changed");
   expect(reasons(undefined, null)).toBe("receipt already has this generation");
   expect(reasons(OTHER_ITEM, null)).toBe("receipt already has this generation");
 });

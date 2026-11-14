@@ -5,8 +5,10 @@ export {
   type Destination,
   type Environment,
   type Evidence,
+  type InfisicalRef,
   type ItemIds,
   type KeyRef,
+  type OnePasswordRef,
   type Receipt,
   type VaultBackend,
   type VaultItem,
@@ -16,6 +18,7 @@ export {
 export {
   destinationId,
   envFlag,
+  INFISICAL_CLOUD,
   isEnvironmentName,
   isVariableName,
   parseMap,
@@ -23,13 +26,20 @@ export {
   runEnvironment,
   secretKey,
   type EnvEntry,
+  type InfisicalPin,
   type KeyEntry,
   type KeysMap,
   type MapResult,
   type PublishTarget,
 } from "./map";
 export { addDays, isDay, periodDays } from "./rotation";
-export { formatReference } from "./reference";
+export {
+  describeRef,
+  formatReference,
+  REFERENCE_SCHEMES,
+  vaultAccount,
+  vaultAccounts,
+} from "./reference";
 export { type Files } from "./files";
 export { isRecord } from "./record";
 export { loadRegistry, register, unregister, type Registry } from "./registry";

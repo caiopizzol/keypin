@@ -5,7 +5,7 @@ export type KeyId = string;
 export type Environment = string;
 export const DEFAULT_ENVIRONMENTS: readonly Environment[] = ["dev", "prod"];
 
-export interface KeyRef {
+export interface OnePasswordRef {
   kind: "1password";
   account: string;
   vault: string;
@@ -14,11 +14,28 @@ export interface KeyRef {
   field: string;
 }
 
-export interface VaultScope {
-  kind: "1password";
-  account: string;
-  vault: string;
+export interface InfisicalRef {
+  kind: "infisical";
+  url: string;
+  organization: string;
+  project: string;
+  environment: string;
+  path: string;
+  name: string;
 }
+
+export type KeyRef = OnePasswordRef | InfisicalRef;
+
+export type VaultScope =
+  | { kind: "1password"; account: string; vault: string }
+  | {
+      kind: "infisical";
+      url: string;
+      organization: string;
+      project: string;
+      environment: string;
+      path: string;
+    };
 
 export interface VaultCapabilities {
   read: boolean;

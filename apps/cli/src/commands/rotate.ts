@@ -237,16 +237,17 @@ async function rotateLocked(job: Job): Promise<number> {
     at: deps.now().toISOString(),
     old: { id: next.current, generation, revoked: false },
   };
-  state = recordIssued(state, issued);
+  const mayHold = entry.ref.kind === "infisical";
   try {
-    await saveState(deps.files, job.path, state);
+    const pending = mayHold ? { ...issued, held: true } : issued;
+    await saveState(deps.files, job.path, recordIssued(state, pending));
   } catch (error) {
     return undoCreate(job, issuer, created.id, messageOf(error));
   }
 
   const saved = await saveKey(job, created.secret);
+  state = recordIssued(state, issued);
   if (saved === "held") {
-    await saveState(deps.files, job.path, recordIssued(state, { ...issued, held: true }));
     say(
       `Stopped. The new key ${created.id} at ${issuer.describe()} stays valid: the change holds it.`,
     );
@@ -254,6 +255,7 @@ async function rotateLocked(job: Job): Promise<number> {
     return NEEDS_APPROVAL;
   }
   if (saved === "failed") {
+    if (mayHold) await saveState(deps.files, job.path, state).catch(() => {});
     say(
       `Stopped: the new key ${created.id} exists at ${issuer.describe()} but isn't in ${vaultName(entry.ref)}, and keypin can't show it again. Delete it at ${issuer.dashboard()}, then run this again:\n  ${commandLine(deps, "rotate", job.args)}`,
     );

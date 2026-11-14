@@ -421,6 +421,74 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
       expect(held.keys.has("key-2")).toBe(true);
     });
 
+    function stateWritesFail(disk: Earlier["disk"], after: number) {
+      const files = { ...disk.files };
+      let left = after;
+      disk.files.write = async (path, text) => {
+        if (path.startsWith(STATE) && left-- <= 0)
+          throw new Error("ENOSPC: no space left on device");
+        return files.write(path, text);
+      };
+      return () => (left = Infinity);
+    }
+
+    test("a state write that fails after the save is held still waits on the rerun", async () => {
+      const infisical = policy();
+      const first = project({ map: ISSUER_MAP, infisical });
+      expect(await cli(["rotate", "STRIPE_API_KEY"], first.deps)).toBe(0);
+      infisical.heldByPolicy = [];
+      const restore = stateWritesFail(first.disk, 1);
+      const held = project({ map: ISSUER_MAP, infisical, after: first });
+      expect(await cli(["rotate", "STRIPE_API_KEY"], held.deps)).not.toBe(0);
+      expect(held.store.effects.at(-1)).toBe("infisical hold update billing/prod/STRIPE_API_KEY");
+      restore();
+
+      const again = project({ map: ISSUER_MAP, infisical, after: held });
+      expect(await cli(["rotate", "STRIPE_API_KEY"], again.deps)).toBe(3);
+      expect(again.issued).toEqual([]);
+      expect(again.stderr.text).toContain(
+        "Stopped: Infisical still holds the change that saves key key-2 for approval. Nothing was created.",
+      );
+      expect(again.stderr.text).not.toContain("If nothing uses it, delete it");
+      expect((await loadState(again.disk.files, STATE)).issued).toMatchObject([
+        { id: "key-2", held: true },
+      ]);
+    });
+
+    test("a failed save whose state write also fails says to delete the key, then creates a new one", async () => {
+      const infisical = policy();
+      const first = project({ map: ISSUER_MAP, infisical });
+      expect(await cli(["rotate", "STRIPE_API_KEY"], first.deps)).toBe(0);
+      infisical.failWrites = true;
+      const restore = stateWritesFail(first.disk, 1);
+      const failed = project({ map: ISSUER_MAP, infisical, after: first });
+      expect(await cli(["rotate", "STRIPE_API_KEY"], failed.deps)).toBe(1);
+      expect(failed.stderr.text).toContain(
+        "Stopped: the new key key-2 exists at Resend but isn't in Infisical, and keypin can't show it again. Delete it at https://resend.com/api-keys, then run this again:",
+      );
+      restore();
+      infisical.failWrites = false;
+      failed.keys.delete("key-2");
+
+      const again = project({ map: ISSUER_MAP, infisical, after: failed });
+      expect(await cli(["rotate", "STRIPE_API_KEY"], again.deps)).toBe(0);
+      expect(again.stderr.text).toContain(
+        "Key key-2 is gone from Resend, so keypin creates a new one.",
+      );
+      expect(again.issued).toEqual(["create STRIPE_API_KEY prod 2026-11-09", "revoke key-1"]);
+    });
+
+    test("a saved key leaves no pending mark, and the next rotation replaces it", async () => {
+      const infisical = policy();
+      const first = project({ map: ISSUER_MAP, infisical });
+      expect(await cli(["rotate", "STRIPE_API_KEY"], first.deps)).toBe(0);
+      expect((await loadState(first.disk.files, STATE)).issued[0]).not.toHaveProperty("held");
+      const next = project({ map: ISSUER_MAP, infisical, after: first });
+      expect(await cli(["rotate", "STRIPE_API_KEY"], next.deps)).toBe(0);
+      expect(next.issued).toEqual(["create STRIPE_API_KEY prod 2026-11-09", "revoke key-1"]);
+      expect(next.stderr.text).not.toContain("If nothing uses it, delete it");
+    });
+
     test("a rerun before the change is merged waits and creates no key", async () => {
       const { infisical, held } = await heldRotation();
       const waiting = project({ map: ISSUER_MAP, infisical, after: held });

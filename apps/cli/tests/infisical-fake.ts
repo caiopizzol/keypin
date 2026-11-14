@@ -15,6 +15,7 @@ export interface FakeInfisical {
   projects: Projects;
   importedForReads?: Projects;
   heldByPolicy?: Stored[];
+  failWrites?: boolean;
 }
 
 export interface Stored {
@@ -104,6 +105,7 @@ export function infisicalFetch(
       if (imported) return reply(200, { secret: shape(name, imported, view, "imported:") });
       return reply(404, { message: `Secret with name '${name}' not found` });
     }
+    if (fake.failWrites) return reply(500, { message: "internal error" });
     const metadata = Array.isArray(body.secretMetadata) ? body.secretMetadata : null;
     const rotated = metadata?.filter(isRecord).find((entry) => entry.key === "rotated")?.value;
     const secret: FakeSecret = {

@@ -176,6 +176,10 @@ export default defineConfig({
           "no-restricted-imports": ["error", { patterns: [...TESTING_ONLY, ...NO_OUTSIDE_WORLD] }],
         },
       },
+      {
+        files: ["packages/*/src/**", "apps/*/src/**"],
+        rules: { "keypin/no-error-text-matching": "error" },
+      },
     ],
     options: { typeAware: true, typeCheck: true, denyWarnings: true },
   },

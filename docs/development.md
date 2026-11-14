@@ -22,7 +22,7 @@ bun run typecheck  # tsc in every package
 
 ## Guardrails
 
-`vp lint` enforces these, so the code keeps its shape:
+`bun run check` fails when code breaks one of these, so the code keeps its shape:
 
 - `packages/core` never imports a connector (`@keypin/destination-*`, `issuer-*`, `vault-*`). Core defines the
   contracts; register connectors in `apps/cli/src/start.ts`.
@@ -35,6 +35,14 @@ bun run typecheck  # tsc in every package
 - Core and commands don't read `new Date()`, `Date.now`, `Math.random`, `crypto.randomUUID`,
   `crypto.getRandomValues` or `performance.now`. Use `deps.now()` or take the value as an argument. There,
   `crypto.randomUUID()` is allowed only in `packages/core/src/files.ts`, to name the temporary file of an atomic write.
+- Errors are classified by type, not text (`keypin/no-error-text-matching`). Message wording changes and breaks the
+  check silently. Throw a typed error from `@keypin/core`, like `SignInFailed`, and check it with `instanceof`. Match
+  a third-party error's text only where you translate it into a typed error, and list that file in
+  `TEXT_MATCH_ALLOWED` in `lint-plugin.ts`.
+- Every `destination-*`, `issuer-*` and `vault-*` package ships its fake as a `./testing` export and runs the shared
+  contract in `tests/contract.test.ts` (`scripts/check-connectors.ts`), so each connector behaves the same way.
+- README.md and skills/keypin/SKILL.md grow by at most 5 lines per PR (`scripts/check-docs-growth.ts`), per
+  [AGENTS.md](../AGENTS.md). Remove a line for each one you add, or add a `Docs-Growth: <reason>` trailer to a commit.
 
 ## Binary and npm packages
 

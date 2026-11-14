@@ -21,6 +21,7 @@ export interface Scenario {
     accounts: Record<string, Record<string, FakeItem[]>>;
     slowMs?: number;
     signIn?: string;
+    noDesktopApp?: boolean;
   };
   gh: "ok" | "not installed" | "not logged in";
   wrangler: boolean;
@@ -104,6 +105,11 @@ export const scenarios: Record<string, Scenario> = {
     ...ready,
     about: "ready, but 1Password takes 1.5s to answer, as when it asks to approve keypin",
     onePassword: { ...ready.onePassword, slowMs: 1500 },
+  },
+  "no-1password-app": {
+    ...ready,
+    about: "a server without the 1Password desktop app, as on CI",
+    onePassword: { ...ready.onePassword, noDesktopApp: true },
   },
   "unknown-account": {
     ...ready,

@@ -13,6 +13,7 @@ import {
   type PublishTarget,
   secretKey,
 } from "@keypin/core";
+import { DESKTOP_APP_MISSING } from "@keypin/vault-1password";
 import { type Deps, UsageError } from "../deps";
 import { messageOf } from "../errors";
 import { type Output, output, tilde } from "../output";
@@ -358,6 +359,10 @@ async function prerequisites(
     add({ name: "1Password", status: "sign-in failed", fix: ACCOUNT_FIX }, SIGN_IN, [
       sentence(ACCOUNT_FIX),
     ]);
+  else if ([...items.values()].some((item) => item.problem?.includes(DESKTOP_APP_MISSING)))
+    add({ name: "1Password", status: "sign-in failed", fix: INSTALL_FIX }, SIGN_IN, [
+      sentence(INSTALL_FIX),
+    ]);
   else if ([...items.values()].some((item) => item.problem?.includes("sign-in failed")))
     add(
       {
@@ -373,6 +378,7 @@ async function prerequisites(
 
 const SIGN_IN = "Sign in to 1Password";
 const NO_ACCOUNT = "has no account with this sign-in address or ID";
+const INSTALL_FIX = "install the 1Password desktop app";
 const ACCOUNT_FIX = `set account under [1password] in ${MAP_FILE} to a sign-in address or account ID the 1Password app lists, under Settings → Accounts`;
 
 function loginLine(result: DestinationResult): string {

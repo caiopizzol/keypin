@@ -3,7 +3,7 @@ import { assert, describe, expect, test } from "vite-plus/test";
 import type { KeyRef } from "@keypin/core";
 import { Secret } from "@keypin/core";
 import type { CreateParams, Field, FullItem, SdkClient } from "../src/index";
-import { onePasswordBackend } from "../src/index";
+import { desktopLibrary, onePasswordBackend, requireDesktopApp } from "../src/index";
 
 const VALUE = "fake-value-7f3a9c";
 const ACCOUNT = "my.1password.com";
@@ -401,6 +401,58 @@ describe("errors", () => {
     await expect(backend.list({ ...scope, account: "wrong.1password.com" })).rejects.toThrow(
       '1Password account "wrong.1password.com": sign-in failed: no signed-in account named wrong.1password.com',
     );
+  });
+
+  test("tries a failed sign-in once per account, however many items it reads", async () => {
+    const accounts: string[] = [];
+    const backend = onePasswordBackend(async (account) => {
+      accounts.push(account);
+      throw new Error("the app is locked");
+    });
+    const other = { ...ref, account: "other.1password.com" };
+    for (const each of [ref, { ...ref, item: "second" }, other, { ...other, item: "second" }]) {
+      await expect(backend.read(each)).rejects.toThrow("sign-in failed: the app is locked");
+    }
+    expect(accounts).toEqual([ACCOUNT, "other.1password.com"]);
+  });
+
+  test("without the desktop app, says so and never loads the SDK, which prints a trace", async () => {
+    const printed: string[] = [];
+    const sdk = requireDesktopApp(
+      async () => {
+        printed.push(
+          "A critical error occurred while loading the native addon: find1PasswordLibPath",
+        );
+        throw new Error("Native library is not available.");
+      },
+      () => null,
+    );
+    const backend = onePasswordBackend(sdk);
+    await expect(backend.read(ref)).rejects.toThrow(
+      new Error(
+        `1Password account "${ACCOUNT}": sign-in failed: the 1Password desktop app isn't installed`,
+      ),
+    );
+    await expect(backend.read({ ...ref, item: "second" })).rejects.toThrow("isn't installed");
+    expect(printed).toEqual([]);
+  });
+
+  test("looks for the desktop app's library where the SDK does", () => {
+    const seen: string[] = [];
+    const look = (os: string, found: string | null) =>
+      desktopLibrary(os, "/home/me", (path) => {
+        seen.push(path);
+        return path === found;
+      });
+    expect(look("linux", "/opt/1Password/libop_sdk_ipc_client.so")).toBe(
+      "/opt/1Password/libop_sdk_ipc_client.so",
+    );
+    expect(look("linux", null)).toBeNull();
+    expect(look("darwin", null)).toBeNull();
+    expect(seen).toContain(
+      "/home/me/Applications/1Password.app/Contents/Frameworks/libop_sdk_ipc_client.dylib",
+    );
+    expect(look("freebsd", null)).toBeNull();
   });
 
   test("names the account and vault when the vault is missing", async () => {

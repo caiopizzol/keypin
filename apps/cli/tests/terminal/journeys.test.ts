@@ -141,6 +141,22 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
+    "check without the 1Password desktop app says to install it, with no SDK trace",
+    async () => {
+      const result = await drive({ scenario: "no-1password-app", args: ["check"] });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        "1 Sign in to 1Password\n  Install the 1Password desktop app.\n",
+      );
+      expect(result.screen.match(/sign-in failed/g)).toHaveLength(1);
+      expect(result.screen).not.toContain("critical error");
+      expect(result.screen).not.toContain("find1PasswordLibPath");
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "status names a sign-in failure once and places by name",
     async () => {
       const failed = await drive({ scenario: "unknown-account", args: ["status"] });

@@ -175,6 +175,18 @@ describe("write", () => {
     expect(evidence.note).toMatch(/all of its secrets/);
     expectNoSentinel(evidence, worker.describe());
   });
+
+  test("a new secret answers HTTP 201, and write still returns the newest version", async () => {
+    const routes = happyRoutes();
+    routes[`PUT ${BASE}/secrets`] = {
+      status: 201,
+      body: { success: true, errors: [], result: { name: "NEW_KEY", type: "secret_text" } },
+    };
+    const { worker } = destination(routes);
+    await worker.checkAccount();
+    const evidence = await worker.write("NEW_KEY", new Secret(SENTINEL));
+    expect(evidence).toMatchObject({ secret: "NEW_KEY", versionId: "v-new" });
+  });
 });
 
 describe("no value or token in any output", () => {

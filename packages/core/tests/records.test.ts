@@ -347,6 +347,12 @@ describe("nextRotation", () => {
     expect(next(found, "bbbbbbbbbbbbbbbb")).toEqual({ action: "resume", issued: found });
   });
 
+  test("held for approval and the vault still has the old key: wait, create nothing", () => {
+    const found = issued({ held: true });
+    expect(next(found, "aaaaaaaaaaaaaaaa")).toEqual({ action: "wait", issued: found });
+    expect(next(issued(), "aaaaaaaaaaaaaaaa")).toMatchObject({ action: "create" });
+  });
+
   test("published and the old key revoked: the next rotation replaces the issued key", () => {
     const found = issued({ old: { id: "key-old", generation: "a", revoked: true } });
     expect(next(found, "bbbbbbbbbbbbbbbb")).toEqual({

@@ -4,6 +4,7 @@ import {
   type EnvEntry,
   formatReference,
   generationOf,
+  HeldForApproval,
   type Issued,
   issuedFor,
   type Issuer,
@@ -143,12 +144,34 @@ async function rotateLocked(job: Job): Promise<number> {
   }
   const generation = await generationOf(read.secret);
   const { steps: unpublished, removed } = planPublish({ ...input, generation, ids: read.ids });
-  const next = nextRotation({
+  let next = nextRotation({
     issued: issuedFor(state, owner),
     issuer: spec.kind,
     generation,
     published: unpublished.every((step) => step.action === "skip"),
   });
+  const issuer = deps.issuer(spec, read.admin);
+  if (next.action === "wait") {
+    const held = next.issued;
+    const listed = await issuerLists(issuer, held.id, out);
+    if (listed === null) return 1;
+    if (listed) {
+      say(
+        `\nStopped: Infisical still holds the change that saves key ${held.id} for approval. Nothing was created.`,
+      );
+      say(heldSteps(job, issuer, held.id));
+      return NEEDS_APPROVAL;
+    }
+    say(
+      out.dim(`\nKey ${held.id} is gone from ${issuer.describe()}, so keypin creates a new one.`),
+    );
+    next = { action: "create", current: held.old.id, abandoned: null };
+  }
+  if (next.action === "resume" && next.issued.held) {
+    next = { action: "resume", issued: { ...next.issued, held: false } };
+    state = recordIssued(state, next.issued);
+    await saveState(deps.files, job.path, state);
+  }
   if (
     next.action === "create" &&
     entry.ref.kind === "1password" &&
@@ -160,7 +183,6 @@ async function rotateLocked(job: Job): Promise<number> {
     return 1;
   }
 
-  const issuer = deps.issuer(spec, read.admin);
   const inVault = next.action === "resume" ? next.issued.id : next.current;
   const issuerOk = await checkIssuer(issuer, inVault, out);
   const checked = await checkAccounts(key, entry, deps, out, job.label);
@@ -222,13 +244,38 @@ async function rotateLocked(job: Job): Promise<number> {
     return undoCreate(job, issuer, created.id, messageOf(error));
   }
 
-  if (!(await saveKey(job, created.secret))) {
+  const saved = await saveKey(job, created.secret);
+  if (saved === "held") {
+    await saveState(deps.files, job.path, recordIssued(state, { ...issued, held: true }));
+    say(
+      `Stopped. The new key ${created.id} at ${issuer.describe()} stays valid: the change holds it.`,
+    );
+    say(heldSteps(job, issuer, created.id));
+    return NEEDS_APPROVAL;
+  }
+  if (saved === "failed") {
     say(
       `Stopped: the new key ${created.id} exists at ${issuer.describe()} but isn't in ${vaultName(entry.ref)}, and keypin can't show it again. Delete it at ${issuer.dashboard()}, then run this again:\n  ${commandLine(deps, "rotate", job.args)}`,
     );
     return 1;
   }
   return publishThenRevoke(job, ready, issued, created.secret, steps, state);
+}
+
+function heldSteps(job: Job, issuer: Issuer, id: string): string {
+  const again = commandLine(job.deps, "rotate", job.args);
+  return `Once someone approves it, run this again to publish the new key and revoke the old one:\n  ${again}\nIf the change is rejected or cancelled, delete key ${id} at ${issuer.dashboard()}, then run this again.`;
+}
+
+async function issuerLists(issuer: Issuer, id: string, out: Output): Promise<boolean | null> {
+  try {
+    return (await issuer.checkAccount(id)).ok;
+  } catch (error) {
+    out.line(
+      `Stopped: couldn't check key ${id} at ${issuer.describe()}: ${messageOf(error)}. Nothing was created.`,
+    );
+    return null;
+  }
 }
 
 async function resume(
@@ -446,7 +493,10 @@ async function undoCreate(job: Job, issuer: Issuer, id: string, why: string): Pr
   return 1;
 }
 
-async function saveKey({ entry, deps, out }: Job, secret: Secret): Promise<boolean> {
+async function saveKey(
+  { entry, deps, out }: Job,
+  secret: Secret,
+): Promise<"saved" | "held" | "failed"> {
   const place = `${vaultName(entry.ref)}  ${formatReference(entry.ref)}`;
   const today = localDay(deps.now());
   try {
@@ -456,9 +506,9 @@ async function saveKey({ entry, deps, out }: Job, secret: Secret): Promise<boole
       () => ({ ok: true, text: `${place}  saved, rotated ${today}` }),
       approval(deps, [entry.ref]),
     );
-    return true;
+    return "saved";
   } catch (error) {
     out.line(`    ${messageOf(error)}`);
-    return false;
+    return error instanceof HeldForApproval ? "held" : "failed";
   }
 }

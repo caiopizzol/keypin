@@ -2,6 +2,7 @@ export { Secret, generationOf, type Generation } from "./secret";
 export {
   DEFAULT_ENVIRONMENTS,
   type AccountCheck,
+  HeldForApproval,
   type Destination,
   type Environment,
   type Evidence,

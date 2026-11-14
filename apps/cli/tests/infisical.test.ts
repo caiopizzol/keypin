@@ -16,7 +16,7 @@ import {
   SENTINEL,
   STATE,
 } from "./fakes";
-import { type FakeInfisical, infisicalFetch, memoryStore } from "./infisical-fake";
+import { type FakeInfisical, infisicalFetch, memoryStore, mergeHeld } from "./infisical-fake";
 
 const CREDENTIALS = {
   INFISICAL_UNIVERSAL_AUTH_CLIENT_ID: "client-id-1",
@@ -60,14 +60,28 @@ const INFISICAL: FakeInfisical = {
   },
 };
 
+interface Earlier {
+  disk: ReturnType<typeof memoryFiles>;
+  store: ReturnType<typeof memoryStore>;
+  keys: Set<string>;
+}
+
 function project(
-  options: { env?: Record<string, string>; map?: string; infisical?: FakeInfisical } = {},
+  options: {
+    env?: Record<string, string>;
+    map?: string;
+    infisical?: FakeInfisical;
+    after?: Earlier;
+    isTerminal?: boolean;
+  } = {},
 ) {
-  const disk = memoryFiles({
-    "/work/billing/keypin.toml": options.map ?? MAP,
-    [REGISTRY]: registryWith("/work/billing"),
-  });
-  const store = memoryStore();
+  const disk =
+    options.after?.disk ??
+    memoryFiles({
+      "/work/billing/keypin.toml": options.map ?? MAP,
+      [REGISTRY]: registryWith("/work/billing"),
+    });
+  const store = options.after?.store ?? memoryStore();
   const env = { PATH: "/usr/bin", ...CREDENTIALS, ...options.env };
   const onePassword = fakeVault();
   const signIn = () =>
@@ -86,16 +100,26 @@ function project(
   const launcher = fakeLauncher();
   const destinations = fakeDestinations();
   const issued: string[] = [];
+  const keys = options.after?.keys ?? new Set<string>();
   const issuer: Issuer = {
     describe: () => "Resend",
     dashboard: () => "https://resend.com/api-keys",
-    checkAccount: async () => ({ ok: true, facts: "the admin key lists 1 API key" }),
+    checkAccount: async (id) => ({
+      ok: id === null || keys.has(id),
+      facts: `the admin key lists ${keys.size} API keys`,
+    }),
     async create(name) {
       issued.push(`create ${name}`);
-      return { id: "key-1", secret: new Secret(ISSUED) };
+      const count = keys.size + 1;
+      keys.add(`key-${count}`);
+      return {
+        id: `key-${count}`,
+        secret: new Secret(count === 1 ? ISSUED : `${ISSUED}-${count}`),
+      };
     },
     async revoke(id) {
       issued.push(`revoke ${id}`);
+      keys.delete(id);
       return "revoked";
     },
   };
@@ -112,11 +136,11 @@ function project(
       onSignals: launcher.onSignals,
       destination: destinations.build,
       issuer: () => issuer,
-      isTerminal: true,
+      isTerminal: options.isTerminal ?? true,
       ask: async () => "y",
     },
   });
-  return { ...fake, launcher, destinations, store, onePassword, issued };
+  return { ...fake, launcher, destinations, store, onePassword, issued, keys };
 }
 
 describe("keypin with Infisical", () => {
@@ -355,5 +379,84 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
     expect(state.receipts.map((r) => r.generation)).toEqual([
       await generationOf(new Secret(ISSUED)),
     ]);
+  });
+
+  describe("an Infisical change policy holds the save for approval", () => {
+    const policy = (): FakeInfisical => structuredClone(INFISICAL);
+    const SECOND = `${ISSUED}-2`;
+
+    async function heldRotation() {
+      const infisical = policy();
+      const first = project({ map: ISSUER_MAP, infisical });
+      expect(await cli(["rotate", "STRIPE_API_KEY"], first.deps)).toBe(0);
+      infisical.heldByPolicy = [];
+      const held = project({ map: ISSUER_MAP, infisical, after: first });
+      const code = await cli(["rotate", "STRIPE_API_KEY"], held.deps);
+      return { infisical, first, held, code };
+    }
+
+    test("keeps the new key, doesn't say to delete it, and exits 3", async () => {
+      const { infisical, held, code } = await heldRotation();
+      expect(code).toBe(3);
+      expect(held.issued).toEqual(["create STRIPE_API_KEY prod 2026-11-09"]);
+      expect(held.store.effects.at(-1)).toBe("infisical hold update billing/prod/STRIPE_API_KEY");
+      expect(infisical.heldByPolicy?.[0]?.secret.value).toBe(SECOND);
+      expect(held.stderr.text).toContain("Infisical holds the change for approval");
+      expect(held.stderr.text).toContain(
+        "The new key key-2 at Resend stays valid: the change holds it.",
+      );
+      expect(held.stderr.text).toContain(
+        "Once someone approves it, run this again to publish the new key and revoke the old one:",
+      );
+      expect(held.stderr.text).toContain(
+        "If the change is rejected or cancelled, delete key key-2 at https://resend.com/api-keys, then run this again.",
+      );
+      expect(held.stderr.text).not.toContain("isn't in Infisical");
+      expect(held.destinations.log).toEqual(["check github-actions:acme/billing"]);
+      const state = await loadState(held.disk.files, STATE);
+      expect(state.issued).toMatchObject([
+        { id: "key-2", generation: await generationOf(new Secret(SECOND)), held: true },
+      ]);
+      expect(held.keys.has("key-2")).toBe(true);
+    });
+
+    test("a rerun before the change is merged waits and creates no key", async () => {
+      const { infisical, held } = await heldRotation();
+      const waiting = project({ map: ISSUER_MAP, infisical, after: held });
+      expect(await cli(["rotate", "STRIPE_API_KEY"], waiting.deps)).toBe(3);
+      expect(waiting.issued).toEqual([]);
+      expect(waiting.destinations.log).toEqual([]);
+      expect(waiting.stderr.text).toContain(
+        "Stopped: Infisical still holds the change that saves key key-2 for approval. Nothing was created.",
+      );
+      expect(infisical.heldByPolicy).toHaveLength(1);
+    });
+
+    test("a rerun after the change is rejected and its key deleted creates a new key", async () => {
+      const { infisical, held } = await heldRotation();
+      infisical.heldByPolicy = undefined;
+      held.keys.delete("key-2");
+      const again = project({ map: ISSUER_MAP, infisical, after: held });
+      expect(await cli(["rotate", "STRIPE_API_KEY"], again.deps)).toBe(0);
+      expect(again.stderr.text).toContain(
+        "Key key-2 is gone from Resend, so keypin creates a new one.",
+      );
+      expect(again.issued).toEqual(["create STRIPE_API_KEY prod 2026-11-09", "revoke key-1"]);
+    });
+
+    test("a rerun after the change is merged publishes and revokes, with no second key", async () => {
+      const { infisical, held } = await heldRotation();
+      mergeHeld(infisical, held.store);
+      const resumed = project({ map: ISSUER_MAP, infisical, after: held });
+      expect(await cli(["rotate", "STRIPE_API_KEY"], resumed.deps)).toBe(0);
+      expect(resumed.stderr.text).toContain("Resuming: keypin created key key-2 at Resend");
+      expect(resumed.issued).toEqual(["revoke key-1"]);
+      expect(resumed.destinations.log).toEqual([
+        "check github-actions:acme/billing",
+        `write github-actions:acme/billing STRIPE_API_KEY (${SECOND.length} chars)`,
+      ]);
+      const state = await loadState(resumed.disk.files, STATE);
+      expect(state.issued).toMatchObject([{ id: "key-2", held: false, old: { revoked: true } }]);
+    });
   });
 });

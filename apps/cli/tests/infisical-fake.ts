@@ -11,6 +11,7 @@ export interface FakeSecret {
 export interface FakeInfisical {
   organization: string;
   projects: Record<string, Record<string, Record<string, FakeSecret>>>;
+  heldByPolicy?: Stored[];
 }
 
 export interface Stored {
@@ -101,12 +102,22 @@ export function infisicalFetch(
           ? { rotated: found.rotated }
           : {}),
     };
+    const change = `${init.method === "POST" ? "create" : "update"} ${project}/${environment}/${name}`;
+    if (fake.heldByPolicy) {
+      fake.heldByPolicy.push({ project, environment, path, name, secret });
+      store.effect(`infisical hold ${change}`);
+      return reply(200, {
+        approval: { id: `approval-${fake.heldByPolicy.length}`, status: "open" },
+      });
+    }
     store.save({ project, environment, path, name, secret });
-    store.effect(
-      `infisical ${init.method === "POST" ? "create" : "update"} ${project}/${environment}/${name}`,
-    );
+    store.effect(`infisical ${change}`);
     return reply(200, { secret: shape(name, secret, false) });
   };
+}
+
+export function mergeHeld(fake: FakeInfisical, store: { save(entry: Stored): void }): void {
+  for (const entry of fake.heldByPolicy?.splice(0) ?? []) store.save(entry);
 }
 
 export function memoryStore() {

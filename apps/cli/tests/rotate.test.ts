@@ -284,7 +284,7 @@ describe("keypin rotate", () => {
     const again = setup({ disk: first.disk, vault: fixed, answers: ["y", "n"] });
     expect(await again.run()).toBe(0);
     expect(again.stderr.text).toContain(
-      "keypin created key key-1 at Resend on 2026-11-09T15:00:00.000Z, but 1Password doesn't hold it. If nothing uses it, delete it at https://resend.com/api-keys.",
+      `keypin created key key-1 at Resend on ${again.deps.now().toISOString()}, but 1Password doesn't hold it. If nothing uses it, delete it at https://resend.com/api-keys.`,
     );
     expect(fixed.values.get("mailer resend key")).toBe(NEW(1));
   });

@@ -66,6 +66,15 @@
         "@types/node": "26.6.6",
       },
     },
+    "packages/vault-infisical": {
+      "name": "@keypin/vault-infisical",
+      "dependencies": {
+        "@keypin/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "26.6.6",
+      },
+    },
   },
   "overrides": {
     "vite": "catalog:",
@@ -102,6 +111,8 @@
     "@keypin/destination-github": ["@keypin/destination-github@workspace:packages/destination-github"],
 
     "@keypin/vault-1password": ["@keypin/vault-1password@workspace:packages/vault-1password"],
+
+    "@keypin/vault-infisical": ["@keypin/vault-infisical@workspace:packages/vault-infisical"],
 
     "@oxc-project/runtime": ["@oxc-project/runtime@0.157.0", "", {}, "sha512-srnUknwVoji5JdmU664pA4XyjBJXmgxP8rWlnZhFovzw6XQxaICGWAuScZdlLmIHI+ZRc7WgeiC2CURF4tAszQ=="],
 

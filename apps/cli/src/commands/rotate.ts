@@ -216,7 +216,11 @@ async function rotateLocked(job: Job): Promise<number> {
     old: { id: next.current, generation, revoked: false },
   };
   state = recordIssued(state, issued);
-  await saveState(deps.files, job.path, state);
+  try {
+    await saveState(deps.files, job.path, state);
+  } catch (error) {
+    return undoCreate(job, issuer, created.id, messageOf(error));
+  }
 
   if (!(await saveKey(job, created.secret))) {
     say(
@@ -419,6 +423,27 @@ async function createKey({ key, owner, deps, out }: Job, issuer: Issuer) {
     out.line(`    ${messageOf(error)}`);
     return null;
   }
+}
+
+async function undoCreate(job: Job, issuer: Issuer, id: string, why: string): Promise<number> {
+  const { out } = job;
+  const where = issuer.describe();
+  const unrecorded = `Stopped: couldn't record the new key in ${job.path}: ${why}`;
+  try {
+    await out.step(
+      `${where}  revoking the new key ${id}`,
+      () => issuer.revoke(id),
+      () => ({ ok: true, text: `${where}  revoked the new key ${id}` }),
+    );
+  } catch (error) {
+    out.line(`    ${messageOf(error)}`);
+    out.line(
+      `${unrecorded}. keypin couldn't revoke it either: delete key ${id} at ${issuer.dashboard()}. The old key still works.`,
+    );
+    return 1;
+  }
+  out.line(`${unrecorded}. Revoked it at ${where}. Nothing changed.`);
+  return 1;
 }
 
 async function saveKey({ entry, deps, out }: Job, secret: Secret): Promise<boolean> {

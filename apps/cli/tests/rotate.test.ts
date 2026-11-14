@@ -138,6 +138,16 @@ function writableVault(failSave = false) {
   return { vault, values, rotated, log, made, itemIds };
 }
 
+function unwritableState() {
+  const disk = memoryFiles({ "/work/billing/keypin.toml": MAP });
+  const files = { ...disk.files };
+  disk.files.write = async (path, text) => {
+    if (path.startsWith(STATE)) throw new Error("EACCES: permission denied");
+    return files.write(path, text);
+  };
+  return disk;
+}
+
 interface Setup extends FakeDestinationOptions, IssuerOptions {
   answers?: string[];
   terminal?: boolean;
@@ -309,6 +319,34 @@ describe("keypin rotate", () => {
     ]);
     expect(fixed.values.get("mailer resend key")).toBe(NEW(2));
     expect((await again.state()).issued).toEqual([expect.objectContaining({ id: "key-2" })]);
+  });
+
+  test("a state file that can't be written revokes the new key and saves nothing", async () => {
+    const disk = unwritableState();
+    const run = setup({ disk, answers: ["y"] });
+    expect(await run.run()).toBe(1);
+    expect(run.issuer.log).toEqual([
+      "check none",
+      "create RESEND_API_KEY prod 2026-11-09 -> key-1",
+      "revoke key-1",
+    ]);
+    expect(run.vault.log.some((l) => l.startsWith("save"))).toBe(false);
+    expect(run.vault.values.get("mailer resend key")).toBe(OLD);
+    expect(run.writes()).toEqual([]);
+    expect(run.stderr.text).toContain(
+      `Stopped: couldn't record the new key in ${STATE}: EACCES: permission denied. Revoked it at Resend. Nothing changed.`,
+    );
+  });
+
+  test("a state file that can't be written and a failed revoke name the key to delete", async () => {
+    const disk = unwritableState();
+    const run = setup({ disk, failRevoke: true, answers: ["y"] });
+    expect(await run.run()).toBe(1);
+    expect(run.issuer.log).toContain("revoke key-1 failed");
+    expect(run.vault.log.some((l) => l.startsWith("save"))).toBe(false);
+    expect(run.stderr.text).toContain(
+      `Stopped: couldn't record the new key in ${STATE}: EACCES: permission denied. keypin couldn't revoke it either: delete key key-1 at https://resend.com/api-keys. The old key still works.`,
+    );
   });
 
   test("a key another issuer made is reported at that issuer, not the configured one", async () => {

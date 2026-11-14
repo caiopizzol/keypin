@@ -1,6 +1,6 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { Secret } from "@keypin/core";
-import { type Fetch, ResendIssuer, type ResendIssuerOptions } from "../src/index";
+import { type Fetch, Secret } from "@keypin/core";
+import { ResendIssuer, type ResendIssuerOptions } from "../src/index";
 
 const ADMIN = "re_admin_sentinel_5c1f";
 const ISSUED = "re_issued_sentinel_8a2d";

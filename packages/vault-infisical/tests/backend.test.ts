@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
-import { type InfisicalRef, isRecord, Secret } from "@keypin/core";
-import { credentialsFrom, type Fetch, infisicalBackend } from "../src/index";
+import { type Fetch, type InfisicalRef, isRecord, Secret } from "@keypin/core";
+import { credentialsFrom, infisicalBackend } from "../src/index";
 
 const URL = "https://app.infisical.com";
 const PROJECT_ID = "6f1c2a4e-1111-4222-8333-944455556666";

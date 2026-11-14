@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
-import { CloudflareReader, type Fetch } from "../src/index";
+import type { Fetch } from "@keypin/core";
+import { CloudflareReader } from "../src/index";
 
 const TOKEN = "token-sentinel-41b2";
 const ACCOUNT = "11111111111111111111111111111111";

@@ -1,5 +1,4 @@
-import { isRecord } from "@keypin/core";
-import type { Fetch } from "@keypin/vault-infisical";
+import { type Fetch, isRecord } from "@keypin/core";
 
 export const INFISICAL_TOKEN = "infisical-access-token-5d8e";
 

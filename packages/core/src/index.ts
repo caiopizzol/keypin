@@ -1,4 +1,5 @@
 export { Secret, generationOf, type Generation } from "./secret";
+export { type Fetch } from "./fetch";
 export {
   DEFAULT_ENVIRONMENTS,
   type AccountCheck,

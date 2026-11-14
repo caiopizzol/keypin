@@ -26,17 +26,18 @@ bun apps/cli/tests/terminal/drive.ts --scenario ready --answer y publish STRIPE_
 - `--cols <n>`: terminal width (default 100). `--plain`: no terminal. `--no-color`: `NO_COLOR=1`.
 - Everything after these options goes to keypin.
 
-The output ends with:
+The screen ends with a summary. For the command above:
 
 ```
---- exit 3 · effects 0 · leaks 0 · overlong frames 0
-effect: <one line per write to fake 1Password or a destination>
+--- exit 0 · effects 1 · leaks 0 · overlong frames 0
+effect: destination write github-actions:acme/billing STRIPE_KEY (23 chars)
 evidence: .verify/<run>/
 ```
 
-`effects` is the only proof of whether keypin wrote anything. `leaks` and `overlong frames` must be 0; if not,
-`drive.ts` exits 1. The evidence folder holds `screen.txt`, `raw.txt` (with escape codes) and `frames.txt` (each
-spinner frame).
+`effects` lists each write to fake 1Password or a destination; it's the proof that keypin wrote, or didn't.
+`files.json` in the evidence folder holds `keypin.toml`, `.env`, the registry and `state.json` after the run,
+for local changes. `leaks` and `overlong frames` must be 0; if not, `drive.ts` exits 1. The folder also holds
+`screen.txt`, `raw.txt` (with escape codes) and `frames.txt` (each spinner frame).
 
 ## Lock it in a test
 

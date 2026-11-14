@@ -35,6 +35,16 @@ prod = { from = "infisical://billing/prod/STRIPE_API_KEY", publish = [
 ] }
 `;
 
+const ISSUER_MAP = `${MAP}
+[keys.STRIPE_API_KEY.prod.issuer]
+kind = "resend"
+admin = "infisical://billing/prod/RESEND_ADMIN_KEY"
+permission = "sending_access"
+`.replace(
+  /prod = \{ from = "(.+?)", publish = \[\n(.+)\n\] \}\n/,
+  '[keys.STRIPE_API_KEY.prod]\nfrom = "$1"\npublish = [$2]\n',
+);
+
 const ISSUED = "re_issued_sentinel_value_2c8f";
 
 const INFISICAL: FakeInfisical = {
@@ -312,16 +322,16 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
     expect(run.store.effects).toEqual([]);
   });
 
+  test("status names rotate for an Infisical key with an issuer, even with a 1Password service account set", async () => {
+    const run = project({ map: ISSUER_MAP, env: { KEYPIN_1PASSWORD: "service-account" } });
+    expect(await cli(["status"], run.deps)).toBe(1);
+    expect(run.stdout.text).toContain("    Run keypin rotate STRIPE_API_KEY in /work/billing.\n");
+    expect(run.stderr.text + run.stdout.text).not.toContain("OP_SERVICE_ACCOUNT_TOKEN");
+    expect(run.onePassword.calls).toEqual([]);
+  });
+
   test("rotate saves the new key to the Infisical secret and never signs in to 1Password", async () => {
-    const map = `${MAP}
-[keys.STRIPE_API_KEY.prod.issuer]
-kind = "resend"
-admin = "infisical://billing/prod/RESEND_ADMIN_KEY"
-permission = "sending_access"
-`.replace(
-      /prod = \{ from = "(.+?)", publish = \[\n(.+)\n\] \}\n/,
-      '[keys.STRIPE_API_KEY.prod]\nfrom = "$1"\npublish = [$2]\n',
-    );
+    const map = ISSUER_MAP;
     const run = project({ map, env: { KEYPIN_1PASSWORD: "service-account" } });
     expect(await cli(["rotate", "STRIPE_API_KEY"], run.deps)).toBe(0);
     expect(run.issued).toEqual(["create STRIPE_API_KEY prod 2026-11-09"]);

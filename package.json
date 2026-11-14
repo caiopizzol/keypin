@@ -1,6 +1,6 @@
 {
   "name": "keypin",
-  "version": "0.14.1",
+  "version": "0.15.0",
   "private": true,
   "description": "Get your team's keys out of .env files. keypin runs your apps with keys from your vault, and keeps one map of every key your team uses.",
   "homepage": "https://github.com/caiopizzol/keypin#readme",

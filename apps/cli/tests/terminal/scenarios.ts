@@ -149,6 +149,7 @@ export function placeOf(target: {
 }
 
 export const SHORTEST_VALUE = 8;
+export const SANDBOX_MARKER = ".keypin-verify-sandbox";
 
 export function valuesOf(scenario: Scenario): string[] {
   const items = Object.values(scenario.onePassword.accounts).flatMap((vaults) =>

@@ -1,9 +1,10 @@
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { type ParseArgsOptionsConfig, parseArgs, stripVTControlCharacters } from "node:util";
-import { scenarios, valuesOf } from "./scenarios";
+import { SANDBOX_MARKER, scenarios, valuesOf } from "./scenarios";
 
 const HERE = dirname(new URL(import.meta.url).pathname);
 const REPO = resolve(HERE, "../../../..");
@@ -55,6 +56,8 @@ function setUp(name: string) {
   mkdirSync(home, { recursive: true });
   mkdirSync(project, { recursive: true });
   writeFileSync(join(sandbox, "effects.txt"), "");
+  const nonce = randomUUID();
+  writeFileSync(join(sandbox, SANDBOX_MARKER), nonce);
   git(project, "init", "-q", "-b", "main");
   if (scenario.git.origin) git(project, "remote", "add", "origin", scenario.git.origin);
   if (scenario.git.account) git(project, "config", "github.account", scenario.git.account);
@@ -69,12 +72,13 @@ function setUp(name: string) {
       JSON.stringify({ version: 1, projects: [project], shared: [] }),
     );
   }
-  return { scenario, sandbox, home, project };
+  return { scenario, sandbox, home, project, nonce };
 }
 
-function environment(sandbox: string, home: string, name: string, cols: number) {
+function environment(sandbox: string, home: string, name: string, cols: number, nonce: string) {
   return {
     PATH: process.env.PATH ?? "/usr/bin:/bin",
+    TMPDIR: tmpdir(),
     HOME: home,
     XDG_CONFIG_HOME: join(home, ".config"),
     XDG_STATE_HOME: join(home, ".local/state"),
@@ -84,6 +88,7 @@ function environment(sandbox: string, home: string, name: string, cols: number) 
     LANG: "en_US.UTF-8",
     KEYPIN_VERIFY_SANDBOX: sandbox,
     KEYPIN_VERIFY_SCENARIO: name,
+    KEYPIN_VERIFY_NONCE: nonce,
   };
 }
 
@@ -135,8 +140,8 @@ function snapshot(project: string, paths: string[]): Record<string, string> {
 
 export async function drive(options: DriveOptions): Promise<Drive> {
   const cols = options.cols ?? 100;
-  const { scenario, sandbox, home, project } = setUp(options.scenario);
-  const env = { ...environment(sandbox, home, options.scenario, cols), ...options.env };
+  const { scenario, sandbox, home, project, nonce } = setUp(options.scenario);
+  const env = { ...environment(sandbox, home, options.scenario, cols, nonce), ...options.env };
   const command = ["bun", "--no-env-file", CHILD, ...options.args];
   const answers = [...(options.answers ?? [])];
   let raw = "";

@@ -1,5 +1,5 @@
-import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { appendFileSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { isRecord, type PublishTarget } from "@keypin/core";
 import {
@@ -10,14 +10,29 @@ import {
 } from "@keypin/vault-1password";
 import { cli } from "../../src/cli";
 import { realDeps } from "../../src/start";
-import { type FakeItem, placeOf, type Scenario, scenarios } from "./scenarios";
+import { type FakeItem, placeOf, SANDBOX_MARKER, type Scenario, scenarios } from "./scenarios";
 
 export const ACCOUNT_NOT_FOUND =
   "An error occurred when processing SDK request: Error { msg: Account not found, inner: None }";
 
 const sandbox = process.env.KEYPIN_VERIFY_SANDBOX ?? "";
 const scenario = scenarios[process.env.KEYPIN_VERIFY_SCENARIO ?? ""];
-if (!sandbox || !scenario || !homedir().startsWith(`${sandbox}/`)) {
+const inside = (path: string) => path.startsWith(`${sandbox}/`);
+function marked(): boolean {
+  try {
+    return readFileSync(join(sandbox, SANDBOX_MARKER), "utf8") === process.env.KEYPIN_VERIFY_NONCE;
+  } catch {
+    return false;
+  }
+}
+if (
+  !sandbox ||
+  !scenario ||
+  !inside(homedir()) ||
+  !inside(realpathSync(process.cwd())) ||
+  !sandbox.startsWith(realpathSync(tmpdir())) ||
+  !marked()
+) {
   process.stderr.write("child.ts runs only inside a sandbox that drive.ts made\n");
   process.exit(70);
 }

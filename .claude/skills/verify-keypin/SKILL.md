@@ -17,15 +17,17 @@ the gh login, the wrangler login, reading GitHub/Cloudflare secrets, and each de
 ## Never touch the real accounts
 
 - The 1Password SDK talks to the desktop app directly. A sandboxed HOME does not stop it. Never run the real
-  `keypin` binary or `apps/cli/src/main.ts` against a map to check output. Use `drive.ts`, whose child
-  refuses to start outside a sandbox it made.
+  `keypin` binary or `apps/cli/src/main.ts` against a map to check output. Use `drive.ts`. Its child never
+  loads the real SDK, gh or APIs, and refuses to start unless HOME and the working folder are inside a temp
+  sandbox holding the marker file `drive.ts` wrote for that run. That guard stops accidents, such as running
+  `child.ts` from the repository; it isn't a security boundary.
 - Never add a scenario that calls the real `desktopConnect`, `gh`, or a real API.
 - Each drive makes its own sandbox under the OS temp folder (`keypin-verify-*`, with its own HOME and
   XDG folders and a git repository named `billing`) and deletes it afterwards. Drives can run side by side.
 
 ## Launch
 
-From the repository root, once per checkout:
+From the repository root, before the first drive and after each `git pull`:
 
 ```sh
 bunx --package vite-plus@1.5.1 vp install

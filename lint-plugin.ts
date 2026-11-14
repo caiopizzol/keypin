@@ -1,5 +1,5 @@
 import { definePlugin, defineRule } from "vite-plus/lint/plugins";
-import type { Definition, ESTree, Reference, SourceCode } from "vite-plus/lint/plugins";
+import type { Definition, ESTree, Reference, Scope, SourceCode } from "vite-plus/lint/plugins";
 
 const noComments = defineRule({
   meta: { messages: { comment: "Remove this comment; make the code say it." } },
@@ -215,6 +215,144 @@ const noHiddenClock = defineRule({
   },
 });
 
+const TEXT_TESTS = new Set(["includes", "startsWith", "endsWith", "search"]);
+const CASE_CHANGES = new Set(["toLowerCase", "toUpperCase", "trim"]);
+const EQUALITY = new Set(["===", "!==", "==", "!="]);
+
+const TEXT_MATCH_ALLOWED = [/^packages\/vault-1password\/src\/backend\.ts$/];
+
+type Held = "text" | "match" | null;
+
+function propertyName(node: ESTree.MemberExpression): string | null {
+  if (!node.computed && node.property.type === "Identifier") return node.property.name;
+  if (node.property.type === "Literal" && typeof node.property.value === "string")
+    return node.property.value;
+  return null;
+}
+
+const isNullish = (node: ESTree.Node) =>
+  (node.type === "Literal" && node.value === null) ||
+  (node.type === "Identifier" && node.name === "undefined");
+
+const noErrorTextMatching = defineRule({
+  meta: {
+    messages: {
+      text: "Don't branch on an error's text. Throw a typed error from @keypin/core, like SignInFailed or HeldForApproval, and check it with instanceof. See docs/development.md#guardrails.",
+    },
+  },
+  create(context) {
+    if (TEXT_MATCH_ALLOWED.some((allowed) => allowed.test(repoPath(context.physicalFilename))))
+      return {};
+    const report = (node: ESTree.Node) => context.report({ messageId: "text", node });
+
+    const constant = (node: ESTree.Node, name: string): ESTree.Expression | null => {
+      for (
+        let scope: Scope | null = context.sourceCode.getScope(node);
+        scope;
+        scope = scope.upper
+      ) {
+        const variable = scope.set.get(name);
+        if (!variable) continue;
+        const [def] = variable.defs;
+        if (variable.defs.length !== 1 || def?.type !== "Variable") return null;
+        if (def.parent?.type !== "VariableDeclaration" || def.parent.kind !== "const") return null;
+        return def.node.type === "VariableDeclarator" ? def.node.init : null;
+      }
+      return null;
+    };
+
+    const held = (node: ESTree.Node, seen = new Set<ESTree.Node>()): Held => {
+      if (seen.has(node)) return null;
+      seen.add(node);
+      const either = (...nodes: ESTree.Node[]): Held => {
+        const kinds = nodes.map((each) => held(each, seen));
+        return kinds.includes("match") ? "match" : kinds.includes("text") ? "text" : null;
+      };
+      if (
+        node.type === "ChainExpression" ||
+        node.type === "TSNonNullExpression" ||
+        node.type === "TSAsExpression"
+      )
+        return held(node.expression, seen);
+      if (node.type === "LogicalExpression") return either(node.left, node.right);
+      if (node.type === "ConditionalExpression") return either(node.consequent, node.alternate);
+      if (node.type === "Identifier") {
+        const init = constant(node, node.name);
+        return init ? held(init, seen) : null;
+      }
+      if (node.type === "MemberExpression") {
+        if (node.property.type === "Literal" && typeof node.property.value === "number")
+          return held(node.object, seen) === null ? null : "text";
+        const name = propertyName(node);
+        return name === "message" || name === "problem" ? "text" : null;
+      }
+      if (node.type !== "CallExpression") return null;
+      if (node.callee.type === "Identifier")
+        return node.callee.name === "messageOf" ? "text" : null;
+      if (node.callee.type !== "MemberExpression") return null;
+      const name = propertyName(node.callee);
+      if (CASE_CHANGES.has(name ?? "")) return held(node.callee.object, seen);
+      if (name === "match") return held(node.callee.object, seen) ? "match" : null;
+      if (name === "exec" && node.arguments[0])
+        return held(node.arguments[0], seen) ? "match" : null;
+      return null;
+    };
+
+    const reported = new Set<ESTree.Node>();
+    const tested = (node: ESTree.Node) => {
+      if (reported.has(node) || held(node) !== "match") return;
+      reported.add(node);
+      report(node);
+    };
+
+    const condition = (node: ESTree.Node | null | undefined) => {
+      if (!node) return;
+      if (node.type === "UnaryExpression" && node.operator === "!") return condition(node.argument);
+      if (node.type === "LogicalExpression") {
+        condition(node.left);
+        return condition(node.right);
+      }
+      tested(node);
+    };
+
+    return {
+      CallExpression(node) {
+        if (
+          node.callee.type === "Identifier" &&
+          node.callee.name === "Boolean" &&
+          node.arguments[0]
+        )
+          tested(node.arguments[0]);
+        if (node.callee.type !== "MemberExpression") return;
+        const name = propertyName(node.callee);
+        if (TEXT_TESTS.has(name ?? "") && held(node.callee.object)) report(node);
+        else if (name === "test" && node.arguments[0] && held(node.arguments[0])) report(node);
+      },
+      BinaryExpression(node) {
+        if (!EQUALITY.has(node.operator)) return;
+        const [text, other] = held(node.left) ? [node.left, node.right] : [node.right, node.left];
+        const kind = held(text);
+        if (kind === "match" || (kind === "text" && !isNullish(other))) report(node);
+      },
+      SwitchStatement(node) {
+        if (held(node.discriminant)) report(node.discriminant);
+      },
+      UnaryExpression(node) {
+        if (node.operator === "!" && node.argument.type !== "UnaryExpression")
+          tested(node.argument);
+      },
+      LogicalExpression(node) {
+        if (node.operator !== "??") tested(node.left);
+      },
+      IfStatement: (node) => condition(node.test),
+      ConditionalExpression: (node) => condition(node.test),
+      WhileStatement: (node) => condition(node.test),
+      DoWhileStatement: (node) => condition(node.test),
+      ForStatement: (node) => condition(node.test),
+    };
+  },
+});
+
 export default definePlugin({
   meta: { name: "keypin" },
   rules: {
@@ -222,5 +360,6 @@ export default definePlugin({
     "no-reveal": noReveal,
     "no-ambient": noAmbient,
     "no-hidden-clock": noHiddenClock,
+    "no-error-text-matching": noErrorTextMatching,
   },
 });

@@ -80,7 +80,7 @@ export class WorkerSecretDestination implements Destination {
       text: secret.reveal(),
       type: "secret_text",
     });
-    if (put.status !== 200) throw failure("PUT", path, put);
+    if (put.status !== 200 && put.status !== 201) throw failure("PUT", path, put);
 
     const versions = await this.#request("GET", `${this.#base()}/versions?per_page=10`);
     if (versions.status !== 200) throw failure("GET", `${this.#base()}/versions`, versions);

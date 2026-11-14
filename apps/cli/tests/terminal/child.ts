@@ -6,6 +6,7 @@ import {
   type Field,
   type FullItem,
   onePasswordBackend,
+  requireDesktopApp,
   type SdkClient,
 } from "@keypin/vault-1password";
 import { cli } from "../../src/cli";
@@ -150,11 +151,16 @@ function owner(target: PublishTarget): string {
 }
 
 const run = scenario;
-const vault = onePasswordBackend(async (account) => {
-  if (run.onePassword.slowMs) await Bun.sleep(run.onePassword.slowMs);
-  if (!run.onePassword.accounts[account]) throw new Error(ACCOUNT_NOT_FOUND);
-  return client(account, run);
-});
+const vault = onePasswordBackend(
+  requireDesktopApp(
+    async (account) => {
+      if (run.onePassword.slowMs) await Bun.sleep(run.onePassword.slowMs);
+      if (!run.onePassword.accounts[account]) throw new Error(ACCOUNT_NOT_FOUND);
+      return client(account, run);
+    },
+    () => (run.onePassword.noDesktopApp ? null : "fake 1Password app"),
+  ),
+);
 const real = realDeps();
 
 process.exitCode = await cli(process.argv.slice(2), {

@@ -8,7 +8,7 @@ import type {
 } from "@keypin/core";
 import { formatReference, isDay, Secret } from "@keypin/core";
 import type { Connect, Field, FullItem, SdkClient } from "./sdk";
-import { desktopConnect } from "./sdk";
+import { desktopConnect } from "./desktop";
 
 const VALUE_FIELD = "password";
 const ROTATED = "rotated";
@@ -23,7 +23,6 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
     let pending = clients.get(account);
     if (!pending) {
       pending = connect(account).catch((error: unknown) => {
-        clients.delete(account);
         throw new Error(`1Password account "${account}": sign-in failed: ${signInMessage(error)}`);
       });
       clients.set(account, pending);

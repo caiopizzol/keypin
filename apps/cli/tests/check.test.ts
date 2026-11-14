@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, assert, describe, expect, test, vi } from "vite-plus/test";
 import { isRecord, type PublishTarget } from "@keypin/core";
 import { GitHubSecretDestination } from "@keypin/destination-github";
-import { type FullItem, onePasswordBackend } from "@keypin/vault-1password";
+import { type FullItem, onePasswordBackend, requireDesktopApp } from "@keypin/vault-1password";
 import { cli } from "../src/cli";
 import { destination as realDestination } from "../src/start";
 import type { Deps } from "../src/deps";
@@ -308,6 +308,35 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
 `);
     expect(run.stdout.text).not.toContain("Error {");
     expect(run.stdout.text).not.toContain("Integrate with other apps");
+  });
+
+  test("without the 1Password desktop app, says to install it or use a service account", async () => {
+    let tries = 0;
+    const vault = onePasswordBackend(
+      requireDesktopApp(
+        async () => {
+          tries += 1;
+          throw new Error("Native library is not available.");
+        },
+        () => null,
+      ),
+    );
+    const run = setup({
+      map: `${BILLING_MAP}\n[keys.OTHER]\ndev = "op://Private/other key/password"\n`,
+      deps: { vault: () => vault },
+    });
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(run.stdout.text).toContain(`1 Sign in to 1Password
+  Install the 1Password desktop app, or on a server or CI use a 1Password service account (docs/service-account.md).
+  1Password account "my.1password.com": sign-in failed: the 1Password desktop app isn't installed.
+`);
+    expect(run.stdout.text).not.toContain("Integrate with other apps");
+    expect(run.stdout.text).not.toContain("Native library");
+    expect(tries).toBe(0);
+    for (const text of [run.stdout.text, run.stderr.text]) {
+      expect(text).not.toContain("critical error");
+      expect(text).not.toContain("find1PasswordLibPath");
+    }
   });
 
   test("a map that doesn't parse lists its errors, reads nothing, exit 1", async () => {

@@ -117,23 +117,19 @@ function full(vault: string, item: FakeItem): FullItem {
   };
 }
 
-function changed(password: string | undefined, credential: string | undefined): string {
-  return credential !== undefined && credential !== password ? credential : (password ?? "");
-}
-
 function client(account: string, scenario: Scenario): SdkClient {
   const vaults = () => Object.keys(scenario.onePassword.accounts[account] ?? {});
   const value = (fields: readonly Field[] | undefined, title: string) =>
     fields?.find((field) => field.title === title)?.value;
-  const keep = (vault: string, title: string, fields: readonly Field[] | undefined) => {
+  const keep = (vault: string, title: string, fields: readonly Field[] | undefined): number => {
+    const before = itemsOf(account, vault, scenario).find((item) => item.title === title)?.value;
+    const edited = ["password", "credential"]
+      .map((field) => value(fields, field))
+      .find((v) => v !== undefined && v !== before);
     const rotated = value(fields, "rotated");
-    save({
-      account,
-      vault,
-      title,
-      value: changed(value(fields, "password"), value(fields, "credential")),
-      ...(rotated ? { rotated } : {}),
-    });
+    const saved = edited ?? before ?? "";
+    save({ account, vault, title, value: saved, ...(rotated ? { rotated } : {}) });
+    return saved.length;
   };
   return {
     vaults: { list: async () => vaults().map((title) => ({ id: title, title })) },
@@ -151,13 +147,13 @@ function client(account: string, scenario: Scenario): SdkClient {
         return full(vault, item);
       },
       create: async (params) => {
-        keep(params.vaultId, params.title, params.fields);
-        effect(`1password create ${account}/${params.vaultId}/${params.title}`);
+        const chars = keep(params.vaultId, params.title, params.fields);
+        effect(`1password create ${account}/${params.vaultId}/${params.title} (${chars} chars)`);
         return {};
       },
       put: async (item) => {
-        keep(item.vaultId, item.title, item.fields);
-        effect(`1password update ${account}/${item.vaultId}/${item.title}`);
+        const chars = keep(item.vaultId, item.title, item.fields);
+        effect(`1password update ${account}/${item.vaultId}/${item.title} (${chars} chars)`);
         return item;
       },
     },

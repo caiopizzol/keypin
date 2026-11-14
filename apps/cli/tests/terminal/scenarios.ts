@@ -135,7 +135,12 @@ worker = "mailer"
 const RESEND_OLD = "re_verify_old_key_3c7e";
 export const ISSUED_PREFIX = "re_verify_new_";
 
-const resendReceipt = (destinationId: string, pinned: string, generation: string) => ({
+const resendReceipt = (
+  destinationId: string,
+  pinned: string,
+  generation: string,
+  field = "credential",
+) => ({
   keyId: "RESEND_API_KEY",
   environment: "prod",
   mapFile: "<project>/keypin.toml",
@@ -145,7 +150,7 @@ const resendReceipt = (destinationId: string, pinned: string, generation: string
     vault: "Private",
     item: "mailer resend key",
     section: null,
-    field: "credential",
+    field,
   },
   sourceIds: { vault: "Private", item: "mailer resend key" },
   destinationId,
@@ -282,6 +287,43 @@ export const scenarios: Record<string, Scenario> = {
     },
   },
   resend,
+  "resend-password": {
+    ...resend,
+    about: "resend, but keypin.toml reads the key from the item's password field",
+    files: {
+      "keypin.toml": RESEND_MAP.replace(
+        "mailer resend key/credential",
+        "mailer resend key/password",
+      ),
+    },
+    state: {
+      ...resend.state,
+      receipts: [
+        resendReceipt(
+          "github-actions:acme/mailer:RESEND_API_KEY",
+          "acme",
+          RESEND_OLD_GENERATION,
+          "password",
+        ),
+        resendReceipt(
+          "cloudflare-worker:mailer:RESEND_API_KEY",
+          "11111111111111111111111111111111",
+          RESEND_OLD_GENERATION,
+          "password",
+        ),
+      ],
+    },
+  },
+  "resend-removed": {
+    ...resend,
+    about: "resend, but acme/mailer left keypin.toml after it got the old key",
+    files: {
+      "keypin.toml": RESEND_MAP.replace(
+        '[[keys.RESEND_API_KEY.prod.publish]]\nto = "github-actions"\nrepo = "acme/mailer"\n\n',
+        "",
+      ),
+    },
+  },
   "resend-worker-down": {
     ...resend,
     about: "resend, but the Cloudflare Worker rejects the write",

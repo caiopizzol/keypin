@@ -220,7 +220,7 @@ describe("keypin in a real terminal", () => {
       expect(result.exit).toBe(0);
       expect(result.screen).toContain("Create 1 item in 1Password? [y/N] y");
       expect(result.effects).toEqual([
-        "1password create my.1password.com/Private/billing dev resend api key",
+        "1password create my.1password.com/Private/billing dev resend api key (18 chars)",
       ]);
       expect(result.files["keypin.toml"]).toContain("[keys.RESEND_API_KEY]");
       clean(result);
@@ -336,10 +336,55 @@ describe("keypin rotate in a real terminal", () => {
       expect(result.screen).toMatch(/^✓ Resend {2}revoked re-old {2}\d+\.\ds$/m);
       expect(result.effects).toEqual([
         "resend create re-new-1",
-        "1password update my.1password.com/Private/mailer resend key",
+        "1password update my.1password.com/Private/mailer resend key (20 chars)",
         "destination write github-actions:acme/mailer RESEND_API_KEY (20 chars)",
         "destination write cloudflare-worker:mailer RESEND_API_KEY (20 chars)",
         "resend revoke re-old",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "a key read from the password field saves the new key to that field",
+    async () => {
+      const result = await drive({
+        scenario: "resend-password",
+        args: ["rotate", "RESEND_API_KEY"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.effects).toContain(
+        "1password update my.1password.com/Private/mailer resend key (20 chars)",
+      );
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "a destination that left the map is named in the plan and again before the revoke prompt",
+    async () => {
+      const result = await drive({
+        scenario: "resend-removed",
+        args: ["rotate", "RESEND_API_KEY"],
+        answers: ["y", "n"],
+      });
+      expect(result.exit).toBe(0);
+      const gone =
+        "- github-actions:acme/mailer:RESEND_API_KEY: not in the map any more (last got 5f85700cd2d85825 at 2026-08-01T12:00:00.000Z). keypin doesn't delete it.";
+      expect(result.screen.split(gone)).toHaveLength(3);
+      expect(result.screen).toContain(
+        "the new key is in 1Password and the destination in the map.\nNot in the map any more, so keypin didn't write them; they may still use the old key:",
+      );
+      expect(result.screen.lastIndexOf(gone)).toBeLessThan(
+        result.screen.indexOf("Revoke the old key at Resend?"),
+      );
+      expect(result.effects).toEqual([
+        "resend create re-new-1",
+        "1password update my.1password.com/Private/mailer resend key (20 chars)",
+        "destination write cloudflare-worker:mailer RESEND_API_KEY (20 chars)",
       ]);
       clean(result);
     },
@@ -382,7 +427,7 @@ describe("keypin rotate in a real terminal", () => {
       expect(result.screen).not.toContain("Revoke the old key");
       expect(result.effects).toEqual([
         "resend create re-new-1",
-        "1password update my.1password.com/Private/mailer resend key",
+        "1password update my.1password.com/Private/mailer resend key (20 chars)",
         "destination write github-actions:acme/mailer RESEND_API_KEY (20 chars)",
       ]);
       clean(result);

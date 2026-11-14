@@ -12,16 +12,21 @@ language: en
 
 ### Overview
 
-keypin is a command-line tool that gets a team's keys out of `.env` files. Each project lists its keys in a
-`keypin.toml`: names, vault items and destinations, never values. Before: every laptop has a copy of every key in a
-`.env` file, more copies sit in chats, notes and commits, and nobody has the full list. After: each value is kept
-once, in the team's vault; one map says where every key comes from, where it goes and when it's due; and keypin
-reads a value only while a command runs.
+keypin is a command-line tool that gets keys out of `.env` files. Each project lists its keys in a `keypin.toml`:
+names, vault items and destinations, never values. Before: every laptop has a copy of every key in a `.env` file,
+more copies sit in chats, notes and commits, and nobody has the full list. After: each value is kept once, in your
+vault; one map says where every key comes from, where it goes and when it's due; and keypin reads a value only
+while a command runs.
+
+Direction: get keys out of files, keep one map of every key, and rotate keys with the vault you already use. Today
+keypin reads 1Password and shows when a key is due; you rotate it. Rotation and other vaults, such as Infisical,
+come next, and stay out of the README until the code does them.
 
 ### Audience
 
-A developer or a small team with `.env` files on their machines and keys in production on GitHub Actions and
-Cloudflare Workers, who already keep secrets in a vault. Today that vault is 1Password. They distrust tools that ask
+Anyone building software with coding agents, from one developer to a company. An agent creates a provider key
+(Resend, Neon, Supabase, OpenAI) in minutes, so keys pile up in `.env` files and dashboards faster than anyone tracks
+them. They ship to GitHub Actions and Cloudflare Workers, and keep secrets in a vault. They distrust tools that ask
 to hold their secrets. Not for teams that want a hosted secrets manager.
 
 ### Positioning
@@ -33,7 +38,13 @@ Your vault holds the values; GitHub and Cloudflare receive them; keypin knows th
 - The map holds names and places, never values.
 - It checks the account before every write.
 - It shows a plan before every publish, and a first write waits for you to answer `y`.
-- No server and no account to sign up for.
+- The CLI needs no server and no account. The hosted console is optional.
+
+### Pricing
+
+- Free for personal accounts and open source.
+- One flat price per organization. Never per seat or per user.
+- Any paid limit lives in the hosted console. The open-source CLI stays fully usable without a login.
 
 ### Personality
 
@@ -46,6 +57,10 @@ The careful operator. Exact, plain, cautious, quiet. Not alarmist, not clever, n
 - **Anti-reference, security-vendor marketing:** reject shields, padlocks, "military-grade", and selling fear.
 
 ### Promise
+
+keypin never holds your keys. Values stay in your vault and your infrastructure, and the CLI reads one only while a
+command runs or a publish writes it. The hosted console sees only names, destinations and dates. Anything keypin
+automates runs in your own cloud, never on keypin's servers.
 
 Your vault is the source for each key, and publishing sends it only to the destinations in the map. Nothing is
 published without a plan, and a first write or a changed account waits for you to answer `y`.

@@ -123,6 +123,15 @@ export function planPublish(input: ReadPlanInput): PublishPlan {
   };
 }
 
+export function planNewValue(input: PlanInput, ids: ItemIds | null): PlanStep[] {
+  return judge(input, ids).map(({ id, target, approval }) => ({
+    action: "write",
+    destinationId: id,
+    target,
+    ...(approval ?? { reason: "different generation", approval: null }),
+  }));
+}
+
 function judge(input: PlanInput, ids: ItemIds | null) {
   const { key, environment } = input;
   const entry = key.environments[environment];

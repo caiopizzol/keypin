@@ -6,6 +6,9 @@ export {
   type Environment,
   type Evidence,
   type InfisicalRef,
+  type IssuedKey,
+  type Issuer,
+  type IssuerCheck,
   type ItemIds,
   type KeyRef,
   type OnePasswordRef,
@@ -27,12 +30,14 @@ export {
   secretKey,
   type EnvEntry,
   type InfisicalPin,
+  type IssuerSpec,
   type KeyEntry,
   type KeysMap,
   type MapResult,
   type PublishTarget,
 } from "./map";
 export { addDays, isDay, periodDays } from "./rotation";
+export { nextRotation, type NextRotation } from "./rotations";
 export {
   describeRef,
   formatReference,
@@ -46,16 +51,19 @@ export { loadRegistry, register, unregister, type Registry } from "./registry";
 export {
   emptyState,
   finishOperation,
+  type Issued,
+  issuedFor,
   type KeyOwner,
   loadState,
   receiptsFor,
+  recordIssued,
   recordReceipt,
   saveState,
   startOperation,
   unfinishedOperations,
   type State,
 } from "./state";
-export { approvalsFor, planPublish, type PlanStep } from "./plan";
+export { approvalsFor, planNewValue, planPublish, type PlanStep } from "./plan";
 export {
   buildStatus,
   type ProblemKind,

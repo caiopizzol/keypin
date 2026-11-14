@@ -554,7 +554,7 @@ describe("wrong kinds and values", () => {
   });
 });
 
-describe("a rotate section, from before keypin rotate was removed", () => {
+describe("a rotate section, from an older keypin", () => {
   const mapWith = (section: string) => `${VAULTS}
 [keys.CLOUDFLARE_API_TOKEN]
 rotate_every = "90d"
@@ -568,9 +568,9 @@ account = "e48c9afabc4ff0cda321d0cf69b8943f"
 admin = "op://Private/shared cloudflare token admin/password"
 `;
   const gone = (section: string) =>
-    `${MAP_FILE}: key "CLOUDFLARE_API_TOKEN" prod: the "${section}" section is no longer supported, because keypin rotate is gone; delete it. To rotate the key by hand, replace the value in 1Password, set the item's rotated date to today, then run keypin publish`;
+    `${MAP_FILE}: key "CLOUDFLARE_API_TOKEN" prod: the "${section}" section is from an older keypin; delete it. To let keypin rotate the key, add an "issuer" table instead (see docs/configuration.md for the current format)`;
 
-  test("says to delete it and how to rotate by hand", () => {
+  test("says to delete it and points to issuer", () => {
     expect(errorsOf(mapWith("rotate"))).toEqual([gone("rotate")]);
   });
 
@@ -587,6 +587,103 @@ admin = "op://Private/shared cloudflare token admin/password"
     expect(result.map.keys[0]).toMatchObject({ name: "CLOUDFLARE_API_TOKEN", rotateEvery: "90d" });
     const ref: unknown = expect.objectContaining({ item: "site deploy token" });
     expect(result.map.keys[0]?.environments.prod).toEqual({ ref, publish: [] });
+  });
+});
+
+describe("issuer", () => {
+  const mapWith = (issuer: string) => `${VAULTS}
+[keys.RESEND_API_KEY.prod]
+from = "op://Private/billing resend key/credential"
+
+[keys.RESEND_API_KEY.prod.issuer]
+${issuer}
+`;
+  const KIND = `kind = "resend"\nadmin = "op://Private/resend admin key/credential"`;
+  const where = `${MAP_FILE}: key "RESEND_API_KEY" prod: issuer: `;
+
+  test("a resend issuer names its admin key's reference and the new key's permission", () => {
+    const result = parseMap(mapWith(`${KIND}\npermission = "sending_access"`), MAP_FILE);
+    assert(result.ok, JSON.stringify(result));
+    expect(result.map.keys[0]?.environments.prod?.issuer).toEqual({
+      kind: "resend",
+      admin: {
+        kind: "1password",
+        account: "my.1password.com",
+        vault: "Private",
+        item: "resend admin key",
+        section: null,
+        field: "credential",
+      },
+      permission: "sending_access",
+    });
+  });
+
+  test("an inline table works the same, with a domain for a sending key", () => {
+    const text = `${VAULTS}
+[keys.RESEND_API_KEY]
+prod = { from = "op://Private/billing resend key/credential", issuer = { kind = "resend", admin = "op://Private/resend admin key/credential", permission = "sending_access", domain_id = "d-1" } }
+`;
+    const result = parseMap(text, MAP_FILE);
+    assert(result.ok, JSON.stringify(result));
+    expect(result.map.keys[0]?.environments.prod?.issuer).toMatchObject({
+      permission: "sending_access",
+      domainId: "d-1",
+    });
+  });
+
+  test("an environment without an issuer has none", () => {
+    const result = parseMap(VALID_MAP, MAP_FILE);
+    assert(result.ok);
+    expect(result.map.keys[0]?.environments.prod).not.toHaveProperty("issuer");
+  });
+
+  test("a missing kind, admin or permission", () => {
+    expect(errorsOf(mapWith(`admin = "op://Private/a/credential"`))).toEqual([
+      `${where}missing field "kind"`,
+    ]);
+    expect(errorsOf(mapWith(`kind = "resend"`))).toEqual([
+      `${where}missing field "admin"`,
+      `${where}missing field "permission"`,
+    ]);
+  });
+
+  test("an unknown kind, permission or field", () => {
+    expect(errorsOf(mapWith(`kind = "openai"`))).toEqual([
+      `${where}field "kind" must be one of: resend`,
+    ]);
+    expect(errorsOf(mapWith(`${KIND}\npermission = "admin"\nname = "x"`))).toEqual([
+      `${where}unknown field "name" for resend`,
+      `${where}field "permission" must be one of: full_access, sending_access, as the key has at Resend`,
+    ]);
+  });
+
+  test("a domain only with sending_access", () => {
+    expect(errorsOf(mapWith(`${KIND}\npermission = "full_access"\ndomain_id = "d-1"`))).toEqual([
+      `${where}field "domain_id" works only with permission = "sending_access"`,
+    ]);
+  });
+
+  test("a domain_id left as a <...> placeholder", () => {
+    expect(
+      errorsOf(mapWith(`${KIND}\npermission = "sending_access"\ndomain_id = "<domain id>"`)),
+    ).toEqual([
+      `${where}field "domain_id" is a <...> placeholder: replace it with the Resend domain ID`,
+    ]);
+  });
+
+  test("the admin key can't be the key's own item", () => {
+    const own = `kind = "resend"\nadmin = "op://Private/billing resend key/password"\npermission = "full_access"`;
+    expect(errorsOf(mapWith(own))).toEqual([
+      `${where}field "admin" names the key's own item; the admin key needs its own item`,
+    ]);
+  });
+
+  test("a bad admin reference, and an issuer that isn't a table", () => {
+    expect(
+      errorsOf(mapWith(`kind = "resend"\nadmin = "Private/a"\npermission = "full_access"`)),
+    ).toEqual([`${where}field "admin" must start with op:// or infisical://`]);
+    const text = `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", issuer = "resend" }\n`;
+    expect(errorsOf(text)).toEqual([`${MAP_FILE}: key "A" prod: issuer: must be a table`]);
   });
 });
 

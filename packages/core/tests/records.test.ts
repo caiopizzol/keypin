@@ -2,9 +2,13 @@ import { assert, describe, expect, test } from "vite-plus/test";
 import {
   emptyState,
   finishOperation,
+  type Issued,
+  issuedFor,
   loadRegistry,
   loadState,
+  nextRotation,
   receiptsFor,
+  recordIssued,
   recordReceipt,
   register,
   saveState,
@@ -80,27 +84,28 @@ describe("state", () => {
 
   test("another schema version gives a clear error", async () => {
     const fake = fakeFiles({
-      [STATE]: JSON.stringify({ version: 5, receipts: [], operations: [] }),
+      [STATE]: JSON.stringify({ version: 6, receipts: [], operations: [] }),
     });
     await expect(loadState(fake.files, STATE)).rejects.toThrow(
-      `${STATE}: the state file has schema version 5, and this keypin reads version 1 or 2 or 3 or 4`,
+      `${STATE}: the state file has schema version 6, and this keypin reads version 1 or 2 or 3 or 4 or 5`,
     );
   });
 
-  test("a version 1 file loads, with receipts that record neither item nor project, and saves as version 4", async () => {
+  test("a version 1 file loads, with receipts that record neither item nor project, and saves as version 5", async () => {
     const old = withoutSource(receipt(WORKER, "aaaaaaaaaaaaaaaa"));
     const fake = fakeFiles({
       [STATE]: JSON.stringify({ version: 1, receipts: [old], operations: [] }),
     });
     const state = await loadState(fake.files, STATE);
     expect(state).toEqual({
-      version: 4,
+      version: 5,
       receipts: [{ ...old, mapFile: null, source: null, sourceIds: null }],
       operations: [],
+      issued: [],
     });
     await saveState(fake.files, STATE, state);
     expect(await loadState(fake.files, STATE)).toEqual(state);
-    expect(fake.contents.get(STATE)).toContain('"version": 4');
+    expect(fake.contents.get(STATE)).toContain('"version": 5');
   });
 
   test("a version 2 file loads with no project on its receipts and operations, so none is any project's own", async () => {
@@ -119,9 +124,10 @@ describe("state", () => {
     });
     const state = await loadState(fake.files, STATE);
     expect(state).toEqual({
-      version: 4,
+      version: 5,
       receipts: [{ ...old, mapFile: null }],
       operations: [{ ...operation, mapFile: null }],
+      issued: [],
     });
     expect(receiptsFor(state, OWNER)).toEqual([]);
     expect(unfinishedOperations(state, OWNER)).toEqual([]);
@@ -270,3 +276,115 @@ function withoutSource(receipt: Receipt): Omit<Receipt, "source" | "sourceIds" |
   const { keyId, environment, destinationId, generation, account, at, evidence } = receipt;
   return { keyId, environment, destinationId, generation, account, at, evidence };
 }
+
+describe("issued keys", () => {
+  const issued = (overrides: Partial<Issued> = {}): Issued => ({
+    ...OWNER,
+    issuer: "resend",
+    id: "key-new",
+    generation: "bbbbbbbbbbbbbbbb",
+    at: "2026-11-14T12:00:00Z",
+    old: { id: "key-old", generation: "aaaaaaaaaaaaaaaa", revoked: false },
+    ...overrides,
+  });
+
+  test("a version 4 file has none, and a version 5 file keeps them", async () => {
+    const v4 = fakeFiles({
+      [STATE]: JSON.stringify({ version: 4, receipts: [], operations: [] }),
+    });
+    expect((await loadState(v4.files, STATE)).issued).toEqual([]);
+    const state = recordIssued(emptyState(), issued());
+    const fake = fakeFiles();
+    await saveState(fake.files, STATE, state);
+    expect(await loadState(fake.files, STATE)).toEqual(state);
+    const bad = JSON.stringify({ ...state, issued: [{ ...issued(), old: { id: 7 } }] });
+    await expect(loadState(fakeFiles({ [STATE]: bad }).files, STATE)).rejects.toThrow(
+      `"issued" must be a list of issued keys`,
+    );
+  });
+
+  test("one per key, environment and project: a newer one replaces it", () => {
+    let state = recordIssued(emptyState(), issued());
+    state = recordIssued(state, issued({ mapFile: WEB_MAP }));
+    state = recordIssued(state, issued({ id: "key-newer" }));
+    expect(state.issued.map((i) => [i.mapFile, i.id])).toEqual([
+      [WEB_MAP, "key-new"],
+      [KEY_MAP, "key-newer"],
+    ]);
+    expect(issuedFor(state, OWNER)?.id).toBe("key-newer");
+    expect(issuedFor(state, { ...OWNER, environment: "dev" })).toBeUndefined();
+  });
+});
+
+describe("nextRotation", () => {
+  const issued = (overrides: Partial<Issued> = {}): Issued => ({
+    ...OWNER,
+    issuer: "resend",
+    id: "key-new",
+    generation: "bbbbbbbbbbbbbbbb",
+    at: "2026-11-14T12:00:00Z",
+    old: { id: "key-old", generation: "aaaaaaaaaaaaaaaa", revoked: false },
+    ...overrides,
+  });
+  const next = (found: Issued | undefined, generation: string, published = true) =>
+    nextRotation({ issued: found, issuer: "resend", generation, published });
+
+  test("no record: create, and the current key's ID is unknown", () => {
+    expect(next(undefined, "aaaaaaaaaaaaaaaa")).toEqual({
+      action: "create",
+      current: null,
+      abandoned: null,
+    });
+  });
+
+  test("the vault holds the issued key, not yet published everywhere: resume", () => {
+    const found = issued();
+    expect(next(found, "bbbbbbbbbbbbbbbb", false)).toEqual({ action: "resume", issued: found });
+  });
+
+  test("published, but the old key isn't revoked yet: resume, to offer the revoke", () => {
+    const found = issued();
+    expect(next(found, "bbbbbbbbbbbbbbbb")).toEqual({ action: "resume", issued: found });
+  });
+
+  test("published and the old key revoked: the next rotation replaces the issued key", () => {
+    const found = issued({ old: { id: "key-old", generation: "a", revoked: true } });
+    expect(next(found, "bbbbbbbbbbbbbbbb")).toEqual({
+      action: "create",
+      current: "key-new",
+      abandoned: null,
+    });
+  });
+
+  test("published, and the old key's ID was never known: the next rotation replaces the issued key", () => {
+    const found = issued({ old: { id: null, generation: "a", revoked: false } });
+    expect(next(found, "bbbbbbbbbbbbbbbb")).toMatchObject({ action: "create", current: "key-new" });
+  });
+
+  test("the vault still holds the old value: the issued key was never saved", () => {
+    const found = issued();
+    expect(next(found, "aaaaaaaaaaaaaaaa")).toEqual({
+      action: "create",
+      current: "key-old",
+      abandoned: found,
+    });
+  });
+
+  test("the vault holds a value keypin didn't issue: the record is stale", () => {
+    const found = issued();
+    expect(next(found, "cccccccccccccccc")).toEqual({
+      action: "create",
+      current: null,
+      abandoned: found,
+    });
+  });
+
+  test("another issuer's record is stale", () => {
+    const found = issued({ issuer: "openai" });
+    expect(next(found, "bbbbbbbbbbbbbbbb")).toEqual({
+      action: "create",
+      current: null,
+      abandoned: found,
+    });
+  });
+});

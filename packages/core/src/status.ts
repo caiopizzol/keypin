@@ -52,6 +52,7 @@ export interface StatusRow {
   rotated: string | null;
   rotateEvery: string | null;
   due: string | null;
+  issuer: string | null;
   destinations: DestinationRow[];
 }
 
@@ -186,6 +187,7 @@ export function buildStatus(input: StatusInput): Status {
           rotated,
           rotateEvery,
           due,
+          issuer: entry.issuer?.kind ?? null,
           destinations,
         });
       }

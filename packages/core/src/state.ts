@@ -5,7 +5,7 @@ import { isRecord } from "./record";
 import { storedRefWithPasswordDefault } from "./reference";
 import type { Generation } from "./secret";
 
-const STATE_VERSION = 4;
+const STATE_VERSION = 5;
 
 export interface Operation {
   id: string;
@@ -18,16 +18,33 @@ export interface Operation {
   done: string[];
 }
 
+export interface Issued {
+  keyId: KeyId;
+  environment: Environment;
+  mapFile: string;
+  issuer: string;
+  id: string;
+  generation: Generation;
+  at: string;
+  old: { id: string | null; generation: Generation; revoked: boolean };
+}
+
 export interface State {
   version: typeof STATE_VERSION;
   receipts: Receipt[];
   operations: Operation[];
+  issued: Issued[];
 }
 
-export const emptyState = (): State => ({ version: STATE_VERSION, receipts: [], operations: [] });
+export const emptyState = (): State => ({
+  version: STATE_VERSION,
+  receipts: [],
+  operations: [],
+  issued: [],
+});
 
 export async function loadState(files: Files, path: string): Promise<State> {
-  const data = await readVersionedJson(files, path, [1, 2, 3, STATE_VERSION], "state file");
+  const data = await readVersionedJson(files, path, [1, 2, 3, 4, STATE_VERSION], "state file");
   if (!data) return emptyState();
   const version = Number(data.version);
   const mapFile = (r: Record<string, unknown>) => (version >= 3 ? r.mapFile : null);
@@ -38,7 +55,7 @@ export async function loadState(files: Files, path: string): Promise<State> {
               ...r,
               mapFile: mapFile(r),
               source: version === 1 ? null : storedSource(r.source),
-              sourceIds: version === STATE_VERSION ? r.sourceIds : null,
+              sourceIds: version >= 4 ? r.sourceIds : null,
             }
           : r,
       )
@@ -52,7 +69,11 @@ export async function loadState(files: Files, path: string): Promise<State> {
   if (!Array.isArray(operations) || !operations.every(isOperation)) {
     throw new Error(`${path}: the state file's "operations" must be a list of operations`);
   }
-  return { version: STATE_VERSION, receipts, operations };
+  const issued = version >= 5 ? data.issued : [];
+  if (!Array.isArray(issued) || !issued.every(isIssued)) {
+    throw new Error(`${path}: the state file's "issued" must be a list of issued keys`);
+  }
+  return { version: STATE_VERSION, receipts, operations, issued };
 }
 
 export async function saveState(files: Files, path: string, state: State): Promise<void> {
@@ -104,6 +125,14 @@ export function unfinishedOperations(state: State, owner: KeyOwner): Operation[]
   return state.operations.filter((o) => ownedBy(o, owner));
 }
 
+export function issuedFor(state: State, owner: KeyOwner): Issued | undefined {
+  return state.issued.find((i) => ownedBy(i, owner));
+}
+
+export function recordIssued(state: State, issued: Issued): State {
+  return { ...state, issued: [...state.issued.filter((i) => !ownedBy(i, issued)), issued] };
+}
+
 const isText = (value: unknown) => typeof value === "string";
 const isTextOrNull = (value: unknown) => value === null || typeof value === "string";
 
@@ -126,6 +155,17 @@ function isReceipt(r: unknown): r is Receipt {
 
 function storedSource(source: unknown): unknown {
   return source === null ? null : (storedRefWithPasswordDefault(source) ?? source);
+}
+
+function isIssued(i: unknown): i is Issued {
+  return (
+    isRecord(i) &&
+    [i.keyId, i.environment, i.mapFile, i.issuer, i.id, i.generation, i.at].every(isText) &&
+    isRecord(i.old) &&
+    isTextOrNull(i.old.id) &&
+    isText(i.old.generation) &&
+    typeof i.old.revoked === "boolean"
+  );
 }
 
 function isOperation(o: unknown): o is Operation {

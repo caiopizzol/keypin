@@ -24,6 +24,7 @@ const tokenFor = (address: string) =>
   `ops_${Buffer.from(JSON.stringify({ signInAddress: address })).toString("base64url")}`;
 const TOKEN = tokenFor("my.1password.com");
 const SERVICE = { KEYPIN_1PASSWORD: "service-account", OP_SERVICE_ACCOUNT_TOKEN: TOKEN };
+const ID = "4Q6Z73JHSJESBM36AP3W57YOOU";
 const DEPLOY_MAP = BILLING_MAP.replaceAll("op://Private/", "op://Deploy/");
 
 function sdk(items: string[] = ["billing stripe api key"]) {
@@ -223,13 +224,21 @@ describe("keypin check with a service account", () => {
     expect(run.stdout.text).not.toContain("1Password app lists");
   });
 
-  test("a map pinning an account ID is refused: pin the sign-in address", async () => {
-    const run = project(DEPLOY_MAP.replace("my.1password.com", "ABCDEFGHIJKLMNOPQRSTUVWXYZ"));
-    expect(await cli(["check"], run.deps)).toBe(1);
-    expect(run.calls).toEqual([]);
-    expect(run.stdout.text).toContain(
-      "Set account under [1password] in keypin.toml to the account's sign-in address; a service account can't be checked against an account ID.",
-    );
+  test("a map pinning an account ID is accepted, with one note that the ID can't be checked", async () => {
+    const run = project(DEPLOY_MAP.replace("my.1password.com", ID));
+    expect(await cli(["check"], run.deps)).toBe(0);
+    expect(run.connects).toEqual(["token"]);
+    expect(run.calls).toEqual(["vaults.list", "items.list"]);
+    expect(run.stdout.text.match(/^Note: .*service account.*$/gm)).toEqual([
+      `Note: keypin.toml pins the account ID ${ID}, which a service account token can't be checked against, so the vaults granted to the service account are what limit it`,
+    ]);
+  });
+
+  test("an ID pin with a my.1password.com token gets one note, not two", async () => {
+    const run = project(DEPLOY_MAP.replace("my.1password.com", ID));
+    await cli(["check"], run.deps);
+    expect(run.stdout.text).not.toContain("every individual 1Password account");
+    expect(run.stdout.text.match(/what limit it/g)).toHaveLength(1);
   });
 
   test("an item in Private says service accounts can't open built-in vaults", async () => {

@@ -31,7 +31,7 @@ export function onePasswordBackend(
     if (!pending) {
       pending = connect(account).catch((error: unknown) => {
         throw new Error(
-          `1Password account "${account}": sign-in failed: ${mode === "desktop" ? signInMessage(error) : messageOf(error)}`,
+          `1Password account "${account}": sign-in failed: ${signInMessage(error, mode)}`,
         );
       });
       clients.set(account, pending);
@@ -242,10 +242,10 @@ function toDay(value: string, ref: KeyRef): string {
 
 const SDK_ERROR = /Error \{ msg: (.+?), inner: .*\}\s*$/s;
 
-function signInMessage(error: unknown): string {
+function signInMessage(error: unknown, mode: SignInMode): string {
   const message = messageOf(error);
   const inner = SDK_ERROR.exec(message)?.[1] ?? message;
-  return inner === "Account not found"
+  return mode === "desktop" && inner === "Account not found"
     ? "the 1Password app has no account with this sign-in address or ID"
     : inner;
 }

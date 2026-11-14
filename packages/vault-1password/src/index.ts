@@ -2,6 +2,7 @@ export { onePasswordBackend, type SignInMode } from "./backend";
 export { DESKTOP_APP_MISSING, desktopConnect, desktopLibrary, requireDesktopApp } from "./desktop";
 export { tokenClient } from "./sdk";
 export {
+  isAccountId,
   isSharedAddress,
   serviceAccountConnect,
   signInAddress,

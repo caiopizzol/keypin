@@ -26,16 +26,15 @@ export function isSharedAddress(address: string): boolean {
   return address.toLowerCase() === SHARED_ADDRESS;
 }
 
+export function isAccountId(account: string): boolean {
+  return !account.includes(".");
+}
+
 export function serviceAccountConnect(token: string, open: TokenClient): Connect {
   const address = signInAddress(token);
   let client: Promise<SdkClient> | undefined;
   return async (account) => {
-    if (!account.includes(".")) {
-      throw new Error(
-        `keypin.toml pins the account ID ${account}, which a service account can't be checked against; pin its sign-in address, ${address}, for service-account mode`,
-      );
-    }
-    if (account.toLowerCase() !== address) {
+    if (!isAccountId(account) && account.toLowerCase() !== address) {
       throw new Error(
         `the service account signs in to ${address}, but keypin.toml pins ${account}`,
       );

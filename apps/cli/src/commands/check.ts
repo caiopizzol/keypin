@@ -22,7 +22,7 @@ import { locateMap, MAP_FILE } from "../project";
 import { describeLogin, githubLogin, publisherFor } from "../publisher";
 import { type ScanResult, scanProject, type Unknown, usesSecrets } from "../scan";
 import { approval, type SignIn } from "../sign-in";
-import { isSharedAddress } from "@keypin/vault-1password";
+import { isAccountId, isSharedAddress } from "@keypin/vault-1password";
 import { distinctRefs, refKey } from "../vault";
 
 interface ItemResult {
@@ -217,6 +217,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
   const use = (id: string, label: string) => users.set(id, [...(users.get(id) ?? []), label]);
 
   const refs = distinctRefs(entries.map(({ entry }) => entry.ref));
+  report.notes.push(...unprovenPins(signIn, refs));
   report.notes.push(ITEM_NOTE);
   const lookup = `${count(refs.length, "item")} in 1Password account ${[...new Set(refs.map((ref) => ref.account))].join(", ")}, not the values`;
   await out.step(
@@ -409,11 +410,23 @@ function signInNotes(signIn: SignIn): string[] {
           "OP_SERVICE_ACCOUNT_TOKEN is set, but keypin signed in with the 1Password desktop app; set KEYPIN_1PASSWORD=service-account to use the service account",
         ]
       : [];
-  return isSharedAddress(signIn.address)
-    ? [
-        `every individual 1Password account signs in at ${signIn.address}, so keypin can't prove the service account belongs to the account ${MAP_FILE} pins; the vaults granted to the service account are what limit it`,
-      ]
-    : [];
+  return [];
+}
+
+function unprovenPins(signIn: SignIn, refs: readonly KeyRef[]): string[] {
+  if (signIn.mode !== "service-account") return [];
+  const limit = "the vaults granted to the service account are what limit it";
+  return [...new Set(refs.map((ref) => ref.account))].flatMap((account) => {
+    if (isAccountId(account))
+      return [
+        `${MAP_FILE} pins the account ID ${account}, which a service account token can't be checked against, so ${limit}`,
+      ];
+    if (isSharedAddress(account) && isSharedAddress(signIn.address))
+      return [
+        `every individual 1Password account signs in at ${signIn.address}, so keypin can't prove the service account belongs to the account ${MAP_FILE} pins; ${limit}`,
+      ];
+    return [];
+  });
 }
 
 function tokenFixes(items: Map<string, ItemResult>, signIn: SignIn): string[] {
@@ -422,22 +435,17 @@ function tokenFixes(items: Map<string, ItemResult>, signIn: SignIn): string[] {
     item.problem?.includes("sign-in failed") ? [item.problem] : [],
   );
   const fixes: string[] = [];
-  if (problems.some((p) => p.includes(ID_PIN)))
-    fixes.push(
-      `set account under [1password] in ${MAP_FILE} to the account's sign-in address; a service account can't be checked against an account ID`,
-    );
   if (problems.some((p) => p.includes(OTHER_PIN)))
     fixes.push(
       `use a service account token for the account ${MAP_FILE} pins; OP_SERVICE_ACCOUNT_TOKEN signs in to ${address}`,
     );
-  if (problems.some((p) => !p.includes(ID_PIN) && !p.includes(OTHER_PIN)))
+  if (problems.some((p) => !p.includes(OTHER_PIN)))
     fixes.push(
       "check that OP_SERVICE_ACCOUNT_TOKEN holds a current service account token; a revoked or expired token can't sign in",
     );
   return fixes;
 }
 
-const ID_PIN = "which a service account can't be checked against";
 const OTHER_PIN = "but keypin.toml pins";
 const NO_ACCOUNT = "has no account with this sign-in address or ID";
 const INSTALL_FIX = "install the 1Password desktop app";

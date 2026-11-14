@@ -89,13 +89,15 @@ describe("a service account sign-in", () => {
     expect(opened).toEqual([]);
   });
 
-  test("a map pinning an account ID is refused: it can't be checked against a token", async () => {
+  test("a map pinning an account ID is accepted: a token has no ID to check it against", async () => {
     const { backend, calls, opened } = fakeSdk();
-    await expect(backend.itemIds(ref("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))).rejects.toThrow(
-      "pin its sign-in address, acme.1password.com, for service-account mode",
-    );
-    expect(calls).toEqual([]);
-    expect(opened).toEqual([]);
+    await backend.list({
+      kind: "1password",
+      account: "4Q6Z73JHSJESBM36AP3W57YOOU",
+      vault: "Deploy",
+    });
+    expect(opened).toEqual(["the token"]);
+    expect(calls).toEqual(["vaults.list", "items.list"]);
   });
 
   test("the pinned address matches in any case, and the client opens once", async () => {
@@ -116,6 +118,34 @@ describe("a service account sign-in", () => {
     const failure = backend.itemIds(ref("acme.1password.com"));
     await expect(failure).rejects.toThrow("sign-in failed: invalid token [the token]");
     await expect(failure).rejects.not.toThrow(TOKEN);
+  });
+
+  test("a sign-in error is unwrapped from the SDK's Error { msg } text", async () => {
+    const backend = onePasswordBackend(
+      serviceAccountConnect(TOKEN, async () => {
+        throw new Error(
+          "An error occurred when processing SDK request: Error { msg: invalid service account token, inner: None }",
+        );
+      }),
+      "service-account",
+    );
+    const failure = backend.itemIds(ref("acme.1password.com"));
+    await expect(failure).rejects.toThrow(
+      '1Password account "acme.1password.com": sign-in failed: invalid service account token',
+    );
+    await expect(failure).rejects.not.toThrow("Error {");
+  });
+
+  test("Account not found keeps the SDK's words: the desktop app's hint doesn't apply", async () => {
+    const backend = onePasswordBackend(
+      serviceAccountConnect(TOKEN, async () => {
+        throw new Error("Error { msg: Account not found, inner: None }");
+      }),
+      "service-account",
+    );
+    await expect(backend.itemIds(ref("acme.1password.com"))).rejects.toThrow(
+      "sign-in failed: Account not found",
+    );
   });
 
   test("only reads: it says it can't write, and a write never reaches 1Password", async () => {

@@ -29,7 +29,8 @@ values from 1Password only while a command runs.
    and the sign-in address if `keypin.toml` has no account; whether they use staging; and, for each prod or staging
    secret no env file sets, whether it's in 1Password. If it's only in GitHub or Cloudflare, they make a new key at
    the provider and put it in 1Password.
-4. Import first: keypin won't import into a map with a `<...>`. For each env file, run check's suggested
+4. Import first, unless the machine uses a service account: import needs the desktop app, so there the user
+   creates the items and you map them in step 5. keypin won't import into a map with a `<...>`. For each env file, run check's suggested
    `keypin import`, with `--env <name>` for another environment's file (`.env.staging` gets `--env staging`, once
    `environments` lists it; use the line check prints). Run each without `--yes`; it exits 3 with a command for the
    user. Give the user all of these commands together; each also asks for a 1Password approval. If import can't

@@ -210,6 +210,47 @@ describe("keypin with Infisical", () => {
     }
   });
 
+  test("check says to add an env file's key in Infisical, not to import it", async () => {
+    const map = MAP.replace('dev = "infisical://billing/dev/STRIPE_API_KEY"\n', "");
+    const run = project({ map });
+    run.disk.contents.set(
+      "/work/billing/.env",
+      `STRIPE_API_KEY=${SENTINEL}\nRESEND_KEY=${SENTINEL}\n`,
+    );
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(run.stdout.text).not.toContain("keypin import");
+    expect(run.stdout.text).toContain(
+      ".env sets STRIPE_API_KEY, which keypin.toml maps with no dev entry; for a key add the secrets in Infisical and map them with infisical:// references (docs/infisical.md).",
+    );
+    expect(run.stdout.text).toContain(
+      "Note: .env sets RESEND_KEY, which keypin.toml doesn't map; a plain setting can stay, and for a key add the secrets in Infisical and map them with infisical:// references (docs/infisical.md)",
+    );
+  });
+
+  test("check's TOML for an Infisical key's publish table pins no 1Password account", async () => {
+    const map = `
+[infisical]
+organization = "acme"
+
+[keys.STRIPE_API_KEY]
+rotate_every = "90d"
+dev = "infisical://billing/dev/STRIPE_API_KEY"
+
+[keys.STRIPE_API_KEY.prod]
+from = "infisical://billing/prod/STRIPE_API_KEY"
+`;
+    const run = project({ map });
+    run.disk.folders.add("/work/billing/.github");
+    run.disk.folders.add("/work/billing/.github/workflows");
+    run.disk.contents.set(
+      "/work/billing/.github/workflows/deploy.yml",
+      "on: push\njobs:\n  deploy:\n    runs-on: ubuntu-latest\n    steps:\n      - run: deploy\n        env:\n          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}\n",
+    );
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(run.stdout.text).toContain("[[keys.STRIPE_API_KEY.prod.publish]]");
+    expect(run.stdout.text).not.toContain("[1password]");
+  });
+
   test("import says it creates 1Password items when the map reads from Infisical", async () => {
     const run = project();
     run.disk.contents.set("/work/billing/.env", "RESEND_KEY=resend-value-1234\n");

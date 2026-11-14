@@ -88,6 +88,8 @@ const PLACEHOLDER = {
 };
 
 const ROTATE_EVERY = "90d";
+const IN_INFISICAL =
+  "add the secrets in Infisical and map them with infisical:// references (docs/infisical.md)";
 
 interface Found {
   need: Need;
@@ -282,6 +284,7 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
 
   const environments = keys?.environments ?? DEFAULT_ENVIRONMENTS;
   const run = runEnvironment({ environments });
+  const infisicalOnly = keys?.infisical !== undefined && !keys.account;
   const local: LocalFile[] = [];
   for (const file of scan.envFiles) {
     if (file.kind !== "set") continue;
@@ -318,7 +321,10 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
       options: `${flag} --vault ${PLACEHOLDER.vault}${account}`,
       caveat: caveat && `That command ${caveat}`,
     });
-    if (unmapped.length) {
+    if (unmapped.length && infisicalOnly) {
+      const sets = `${file.path} sets ${unmapped.join(", ")}, which keypin.toml doesn't map`;
+      notes.push(`${sets}; a plain setting can stay, and for a key ${IN_INFISICAL}`);
+    } else if (unmapped.length) {
       const account = keys?.account ? "" : ` --account ${PLACEHOLDER.account}`;
       const sets = `${file.path} sets ${unmapped.join(", ")}, which keypin.toml doesn't map`;
       const found = importing(sets, unmapped, account);
@@ -326,7 +332,10 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
       notes.push(text);
       fixes.push({ ...found, text });
     }
-    if (elsewhere.length) {
+    if (elsewhere.length && infisicalOnly) {
+      const why = `${file.path} sets ${elsewhere.join(", ")}, which keypin.toml maps with no ${env} entry`;
+      fix({ kind: "edit", text: `${why}; for a key ${IN_INFISICAL}` });
+    } else if (elsewhere.length) {
       const why = `${file.path} sets ${elsewhere.join(", ")}, which keypin.toml maps with no ${env} entry`;
       const found = importing(why, elsewhere, "");
       fix({
@@ -499,7 +508,9 @@ function tomlToAdd(
     blocks.push(...own);
   }
   if (!blocks.length) return { text: null, edits };
-  if (!map?.account) blocks.unshift(["[1password]", `account = ${str(PLACEHOLDER.account)}`]);
+  const onePassword = blocks.some((block) => block.includes(`from = ${str(PLACEHOLDER.from)}`));
+  if (onePassword && !map?.account)
+    blocks.unshift(["[1password]", `account = ${str(PLACEHOLDER.account)}`]);
   return { text: `${blocks.map((block) => block.join("\n")).join("\n\n")}\n`, edits };
 }
 

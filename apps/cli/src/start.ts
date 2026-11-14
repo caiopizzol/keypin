@@ -10,7 +10,7 @@ import {
   wranglerConfigFile,
 } from "@keypin/destination-cloudflare";
 import { ghToken, GitHubSecretDestination, listRepoSecrets } from "@keypin/destination-github";
-import { ResendIssuer } from "@keypin/issuer-resend";
+import { type Fetch, ResendIssuer } from "@keypin/issuer-resend";
 import {
   type Connect,
   desktopConnect,
@@ -65,11 +65,12 @@ export function destination(target: PublishTarget, publisher: Publisher): Destin
   }
 }
 
-export function issuer(spec: IssuerSpec, admin: Secret): Issuer {
+export function issuer(spec: IssuerSpec, admin: Secret, fetch?: Fetch): Issuer {
   return new ResendIssuer({
     admin: async () => admin,
     permission: spec.permission,
     ...(spec.domainId === undefined ? {} : { domainId: spec.domainId }),
+    ...(fetch === undefined ? {} : { fetch }),
   });
 }
 

@@ -364,6 +364,21 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "a key limited to one domain is created for that domain",
+    async () => {
+      const result = await drive({
+        scenario: "resend-domain",
+        args: ["rotate", "RESEND_API_KEY"],
+        answers: ["y", "n"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.effects[0]).toBe("resend create re-new-1 for domain dom-verify");
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "a destination that left the map is named in the plan and again before the revoke prompt",
     async () => {
       const result = await drive({

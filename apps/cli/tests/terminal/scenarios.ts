@@ -324,6 +324,16 @@ export const scenarios: Record<string, Scenario> = {
       ),
     },
   },
+  "resend-domain": {
+    ...resend,
+    about: "resend, but the new key may send only from the Resend domain dom-verify",
+    files: {
+      "keypin.toml": RESEND_MAP.replace(
+        'permission = "sending_access"\n',
+        'permission = "sending_access"\ndomain_id = "dom-verify"\n',
+      ),
+    },
+  },
   "resend-worker-down": {
     ...resend,
     about: "resend, but the Cloudflare Worker rejects the write",

@@ -9,11 +9,10 @@ import {
   type SdkClient,
   signInAddress,
 } from "@keypin/vault-1password";
-import { ResendIssuer } from "@keypin/issuer-resend";
 import { credentialsFrom, infisicalBackend } from "@keypin/vault-infisical";
 import { cli } from "../../src/cli";
 import { onePasswordFrom } from "../../src/sign-in";
-import { realDeps } from "../../src/start";
+import { issuer, realDeps } from "../../src/start";
 import { routedVault } from "../../src/vault";
 import { infisicalFetch, type Stored as InfisicalStored } from "../infisical-fake";
 import {
@@ -242,8 +241,10 @@ const resendFetch = async (url: string, init: { method: string; body?: string })
   if (init.method === "POST" && path === "/api-keys") {
     if (run.resend?.failCreate) return reply(500, { name: "internal_server_error" });
     const id = `re-new-${keys.length}`;
+    const asked: unknown = JSON.parse(init.body ?? "{}");
+    const domain = isRecord(asked) && typeof asked.domain_id === "string" ? asked.domain_id : null;
     writeFileSync(RESEND, JSON.stringify([...keys, id]));
-    effect(`resend create ${id}`);
+    effect(`resend create ${id}${domain === null ? "" : ` for domain ${domain}`}`);
     return reply(201, { id, object: "api_key", token: `${ISSUED_PREFIX}${keys.length}_7d1b` });
   }
   const id = decodeURIComponent(path.replace(/^\/api-keys\//, ""));
@@ -273,12 +274,7 @@ process.exitCode = await cli(process.argv.slice(2), {
           reason: "gh has no token for an active login; run: gh auth login --hostname github.com",
         },
   workerSecrets: async () => ({ ok: false, reason: "this scenario has no Cloudflare account" }),
-  issuer: (spec, admin) =>
-    new ResendIssuer({
-      admin: async () => admin,
-      permission: spec.permission,
-      fetch: resendFetch,
-    }),
+  issuer: (spec, admin) => issuer(spec, admin, resendFetch),
   destination: (target) => {
     const place = placeOf(target);
     const scripted = run.places[place] ?? {};

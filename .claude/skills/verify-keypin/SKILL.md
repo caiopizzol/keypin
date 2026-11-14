@@ -41,7 +41,8 @@ spinner frame).
 ## Lock it in a test
 
 Add or update the journey in `apps/cli/tests/terminal/journeys.test.ts`, which CI runs. `drive()` takes the same
-options and returns `exit`, `screen`, `effects`, `files`, `frames`, `leaks` and `overlong`.
+options and returns `exit`, `screen`, `effects`, `files`, `frames`, `leaks` and `overlong`. Undo your source
+change once and confirm the new test fails, so you know it checks the change.
 
 ```sh
 bun --bun vp test apps/cli/tests/terminal

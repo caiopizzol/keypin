@@ -30,6 +30,7 @@ export function fakeOnePassword(items: FullItem[] = [], vaults = ["Private", "Sh
   };
   const effects: string[] = [];
   const held = [...items];
+  let created = 0;
   const client: SdkClient = {
     vaults: {
       list: async () =>
@@ -44,22 +45,30 @@ export function fakeOnePassword(items: FullItem[] = [], vaults = ["Private", "Sh
             state: "active",
             password: candidate.fields.find((each) => each.title === "password")?.value ?? "",
           })),
-      get: async (_vaultId, itemId) => {
+      get: async (vaultId, itemId) => {
         calls.get += 1;
-        const found = held.find((candidate) => candidate.id === itemId);
+        const found = held.find(
+          (candidate) => candidate.vaultId === vaultId && candidate.id === itemId,
+        );
         if (!found) throw new Error("not found");
         return found;
       },
       create: async (params) => {
         calls.create.push(params);
-        const created = { ...item(params.title, params.fields ?? []), vaultId: params.vaultId };
-        held.push(created);
+        created += 1;
+        const made = {
+          ...item(params.title, params.fields ?? [], `${params.vaultId}-item-${created}`),
+          vaultId: params.vaultId,
+        };
+        held.push(made);
         effects.push(`1password create ${params.vaultId}/${params.title}`);
-        return created;
+        return made;
       },
       put: async (updated) => {
         calls.put.push(updated);
-        const at = held.findIndex((candidate) => candidate.id === updated.id);
+        const at = held.findIndex(
+          (candidate) => candidate.vaultId === updated.vaultId && candidate.id === updated.id,
+        );
         if (at === -1) throw new Error("not found");
         held[at] = updated;
         effects.push(`1password update ${updated.vaultId}/${updated.title}`);

@@ -301,6 +301,49 @@ describe("write", () => {
   });
 });
 
+describe("the fake 1Password", () => {
+  const twin = (vault: string, value: string) => ({
+    ...item("demo dev token", [field("password", "Concealed", value)], "same-id"),
+    vaultId: vault,
+  });
+  const shared = { ...ref, vault: "Shared" };
+
+  test("keeps items with the same ID in different vaults apart", async () => {
+    const { client } = fake([twin("vault-1", "private-value"), twin("vault-Shared", VALUE)]);
+    const { backend } = backendFor(client);
+    expect((await backend.read(shared)).reveal()).toBe(VALUE);
+    await backend.write(shared, new Secret("fake-new"));
+    expect((await backend.read(shared)).reveal()).toBe("fake-new");
+    expect((await backend.read(ref)).reveal()).toBe("private-value");
+  });
+
+  test("refuses a read or write that names the wrong vault", async () => {
+    const { client } = fake([twin("vault-Shared", VALUE)]);
+    const swapped: SdkClient = {
+      ...client,
+      items: {
+        ...client.items,
+        get: (_vault, id) => client.items.get("vault-1", id),
+        put: (updated) => client.items.put({ ...updated, vaultId: "vault-1" }),
+      },
+    };
+    const { backend } = backendFor(swapped);
+    await expect(backend.read(shared)).rejects.toThrow("not found");
+    const real = await client.items.get("vault-Shared", "same-id");
+    await expect(swapped.items.put(real)).rejects.toThrow("not found");
+  });
+
+  test("gives created items IDs unique across vaults", async () => {
+    const { client } = fake();
+    const { backend } = backendFor(client);
+    await backend.write(ref, new Secret(VALUE));
+    await backend.write(shared, new Secret(VALUE));
+    const [mine, theirs] = await Promise.all([backend.itemIds(ref), backend.itemIds(shared)]);
+    expect(mine.item).not.toBe(theirs.item);
+    expect((await backend.read(shared)).reveal()).toBe(VALUE);
+  });
+});
+
 describe("metadata", () => {
   test("reads the rotated date only", async () => {
     const { client } = fake([

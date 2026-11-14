@@ -86,6 +86,9 @@ the key is due.
 Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key. Resend is the only provider so far:
 
 ```toml
+[keys.RESEND_API_KEY.prod]
+from = "op://Private/mailer resend key/credential"
+
 [keys.RESEND_API_KEY.prod.issuer]
 kind = "resend"
 admin = "op://Private/resend admin key/credential"

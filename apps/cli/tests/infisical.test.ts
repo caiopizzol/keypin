@@ -247,6 +247,15 @@ describe("keypin with Infisical", () => {
     );
   });
 
+  test("an unused [1password] pin doesn't make check suggest keypin import", async () => {
+    const map = `[1password]\naccount = "my.1password.com"\n\n${MAP.replace('dev = "infisical://billing/dev/STRIPE_API_KEY"\n', "")}`;
+    const run = project({ map });
+    run.disk.contents.set("/work/billing/.env", `STRIPE_API_KEY=${SENTINEL}\n`);
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(run.stdout.text).not.toContain("keypin import");
+    expect(run.stdout.text).toContain("add the secrets in Infisical");
+  });
+
   test("check's TOML for an Infisical key's publish table pins no 1Password account", async () => {
     const map = `
 [infisical]

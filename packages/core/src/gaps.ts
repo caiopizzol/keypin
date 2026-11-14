@@ -284,7 +284,11 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
 
   const environments = keys?.environments ?? DEFAULT_ENVIRONMENTS;
   const run = runEnvironment({ environments });
-  const infisicalOnly = keys?.infisical !== undefined && !keys.account;
+  const refs = (keys?.keys ?? []).flatMap((key) =>
+    Object.values(key.environments).flatMap((entry) => (entry ? [entry.ref] : [])),
+  );
+  const infisicalOnly =
+    keys?.infisical !== undefined && !refs.some((ref) => ref.kind === "1password");
   const local: LocalFile[] = [];
   for (const file of scan.envFiles) {
     if (file.kind !== "set") continue;

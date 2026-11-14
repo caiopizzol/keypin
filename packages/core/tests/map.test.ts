@@ -663,6 +663,14 @@ prod = { from = "op://Private/billing resend key/credential", issuer = { kind = 
     ]);
   });
 
+  test("a domain_id left as a <...> placeholder", () => {
+    expect(
+      errorsOf(mapWith(`${KIND}\npermission = "sending_access"\ndomain_id = "<domain id>"`)),
+    ).toEqual([
+      `${where}field "domain_id" is a <...> placeholder: replace it with the Resend domain ID`,
+    ]);
+  });
+
   test("the admin key can't be the key's own item", () => {
     const own = `kind = "resend"\nadmin = "op://Private/billing resend key/password"\npermission = "full_access"`;
     expect(errorsOf(mapWith(own))).toEqual([

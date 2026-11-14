@@ -441,7 +441,12 @@ function validateIssuer(
     err(
       `field "permission" must be one of: ${RESEND_PERMISSIONS.join(", ")}, as the key has at Resend`,
     );
-  const domainId = optionalString(raw, "domain_id", err);
+  const domainId = filledIn(
+    optionalString(raw, "domain_id", err),
+    "domain_id",
+    "the Resend domain ID",
+    err,
+  );
   if (domainId !== undefined && permission === "full_access")
     err(`field "domain_id" works only with permission = "sending_access"`);
   if (failed || !admin || !permission) return undefined;

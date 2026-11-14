@@ -1,6 +1,7 @@
 import { assert, describe, expect, test, vi } from "vite-plus/test";
 import { formatReference, loadRegistry, parseMap } from "@keypin/core";
 import { cli } from "../src/cli";
+import { destinations } from "../src/start";
 import { TEMPLATE } from "../src/commands/init";
 import {
   ESC,
@@ -88,7 +89,7 @@ describe("keypin import", () => {
 
     const written = disk.contents.get(MAP);
     assert(written !== undefined);
-    const parsed = parseMap(written, MAP);
+    const parsed = parseMap(written, MAP, destinations);
     assert(parsed.ok, JSON.stringify(parsed));
     expect(parsed.map.account).toBe(ACCOUNT);
     expect(
@@ -224,7 +225,7 @@ describe("keypin import", () => {
     expect(await cli([...NEW, "--yes"], deps)).toBe(0);
     const written = disk.contents.get(MAP);
     assert(written !== undefined && written !== TEMPLATE);
-    const parsed = parseMap(written, MAP);
+    const parsed = parseMap(written, MAP, destinations);
     assert(parsed.ok);
     expect(parsed.map.keys.map((k) => k.name)).toEqual(["STRIPE_KEY", "WEBHOOK_SECRET"]);
     expect((await loadRegistry(disk.files, REGISTRY)).projects).toEqual([ROOT]);
@@ -243,7 +244,7 @@ describe("keypin import", () => {
     expect(written.slice(REAL_MAP.length)).toBe(
       `\n[keys.WEBHOOK_SECRET]\nrotate_every = "90d"\ndev = "op://App Secrets/billing dev webhook secret/password"\n`,
     );
-    const parsed = parseMap(written, MAP);
+    const parsed = parseMap(written, MAP, destinations);
     assert(parsed.ok);
     expect(parsed.map.keys.find((k) => k.name === "STRIPE_KEY")?.rotateEvery).toBe("30d");
     expect(squash(text())).toContain(
@@ -336,7 +337,7 @@ describe("keypin import", () => {
     expect(squash(text())).toContain(
       `- STRIPE_KEY  skipped: "billing dev stripe key" already exists in vault App Secrets with another value; keypin doesn't overwrite it`,
     );
-    const parsed = parseMap(disk.contents.get(MAP) ?? "", MAP);
+    const parsed = parseMap(disk.contents.get(MAP) ?? "", MAP, destinations);
     assert(parsed.ok);
     expect(parsed.map.keys.map((k) => k.name)).toEqual(["WEBHOOK_SECRET"]);
     expect(text()).toContain("app.key, STRIPE_KEY are still only in that file");
@@ -408,14 +409,14 @@ describe("keypin import", () => {
     expect(text()).toContain("Stopped. Created A_KEY; not created: B_KEY, C_KEY.");
     const first = disk.contents.get(MAP);
     assert(first !== undefined);
-    const parsed = parseMap(first, MAP);
+    const parsed = parseMap(first, MAP, destinations);
     assert(parsed.ok);
     expect(parsed.map.keys.map((k) => k.name)).toEqual(["A_KEY"]);
     expect(leaks(text(), first)).toBe(false);
 
     const again = fakeDeps({ disk, backend: fakeVault({ items: ["billing dev a key"] }).vault });
     expect(await cli(["import", ".env", "--vault", "App Secrets", "--yes"], again.deps)).toBe(0);
-    const second = parseMap(disk.contents.get(MAP) ?? "", MAP);
+    const second = parseMap(disk.contents.get(MAP) ?? "", MAP, destinations);
     assert(second.ok);
     expect(second.map.keys.map((k) => k.name)).toEqual(["A_KEY", "B_KEY", "C_KEY"]);
     expect(disk.contents.get(MAP)?.startsWith(first)).toBe(true);
@@ -437,7 +438,7 @@ describe("keypin import", () => {
     expect(await cli(["import", ".env", "--vault", "App Secrets"], again.deps)).toBe(0);
     expect(fake.created).toHaveLength(1);
     expect(fake.calls.filter((c) => c.startsWith("write"))).toHaveLength(1);
-    const parsed = parseMap(disk.contents.get(MAP) ?? "", MAP);
+    const parsed = parseMap(disk.contents.get(MAP) ?? "", MAP, destinations);
     assert(parsed.ok);
     expect(parsed.map.keys.map((k) => k.name)).toEqual(["STRIPE_KEY", "WEBHOOK_SECRET"]);
     const out = again.stdout.text + again.stderr.text;
@@ -495,7 +496,7 @@ describe("keypin import", () => {
     expect(stderr.text).toContain(`Add this at the end of ${MAP} by hand:`);
     expect(stdout.text).toContain("[keys.WEBHOOK_SECRET]");
     expect(stdout.text).not.toContain("[1password]");
-    const pasted = parseMap(`${REAL_MAP}# edited\n${stdout.text}`, MAP);
+    const pasted = parseMap(`${REAL_MAP}# edited\n${stdout.text}`, MAP, destinations);
     assert(pasted.ok, JSON.stringify(pasted));
     expect(leaks(stdout.text, stderr.text)).toBe(false);
   });
@@ -510,7 +511,7 @@ describe("keypin import", () => {
     expect(await cli([...NEW, "--yes"], deps)).toBe(1);
     expect(disk.contents.get(MAP)).toBe("# someone else's\n");
     expect(stderr.text).toContain(`Save this as ${MAP} by hand:`);
-    const pasted = parseMap(stdout.text, MAP);
+    const pasted = parseMap(stdout.text, MAP, destinations);
     assert(pasted.ok, JSON.stringify(pasted));
     expect(pasted.map.account).toBe(ACCOUNT);
     expect(pasted.map.keys.map((k) => k.name)).toEqual(["STRIPE_KEY", "WEBHOOK_SECRET"]);
@@ -530,7 +531,7 @@ describe("keypin import", () => {
     expect(written.slice(map.length)).toContain(
       `\n[keys.STRIPE_KEY.dev]\nfrom = "op://App Secrets/billing dev stripe key/password"\n`,
     );
-    const parsed = parseMap(written, MAP);
+    const parsed = parseMap(written, MAP, destinations);
     assert(parsed.ok, JSON.stringify(parsed));
     const stripe = parsed.map.keys.find((k) => k.name === "STRIPE_KEY");
     expect(stripe?.rotateEvery).toBe("30d");
@@ -564,7 +565,7 @@ describe("keypin import", () => {
       expect(written).toContain(
         `[keys.STRIPE_KEY]\nrotate_every = "90d"\n\n[keys.STRIPE_KEY.prod]\nfrom = "op://App Secrets/billing prod stripe key/password"\n`,
       );
-      const parsed = parseMap(written, MAP);
+      const parsed = parseMap(written, MAP, destinations);
       assert(parsed.ok, JSON.stringify(parsed));
       expect(parsed.map.keys.map((k) => [k.name, Object.keys(k.environments)])).toEqual([
         ["STRIPE_KEY", ["prod"]],
@@ -586,7 +587,7 @@ describe("keypin import", () => {
       const written = disk.contents.get(MAP) ?? "";
       expect(written.startsWith(REAL_MAP)).toBe(true);
       expect(written.match(/^\[keys\.STRIPE_KEY\]/gm)).toHaveLength(1);
-      const parsed = parseMap(written, MAP);
+      const parsed = parseMap(written, MAP, destinations);
       assert(parsed.ok, JSON.stringify(parsed));
       const stripe = parsed.map.keys.find((k) => k.name === "STRIPE_KEY");
       expect(stripe?.rotateEvery).toBe("30d");
@@ -599,7 +600,7 @@ describe("keypin import", () => {
       expect(text()).toContain("Map: add 1 key, and prod for STRIPE_KEY at the end of");
 
       const withDestination = `${written}\n[[keys.STRIPE_KEY.prod.publish]]\nto = "github-actions"\nrepo = "acme/billing"\n`;
-      const later = parseMap(withDestination, MAP);
+      const later = parseMap(withDestination, MAP, destinations);
       assert(later.ok, JSON.stringify(later));
       expect(
         later.map.keys.find((k) => k.name === "STRIPE_KEY")?.environments.prod?.publish,
@@ -637,7 +638,7 @@ repo = "acme/billing"
       expect(squash(text())).toContain(
         `- STRIPE_KEY  skipped: mapped in ${MAP} without prod, in a form keypin can't add a table to; add its prod reference by hand`,
       );
-      const parsed = parseMap(disk.contents.get(MAP) ?? "", MAP);
+      const parsed = parseMap(disk.contents.get(MAP) ?? "", MAP, destinations);
       assert(parsed.ok, JSON.stringify(parsed));
       expect(parsed.map.keys.map((k) => [k.name, Object.keys(k.environments)])).toEqual([
         ["STRIPE_KEY", ["dev"]],
@@ -738,7 +739,7 @@ repo = "acme/billing"
       "billing dev stripe key",
       "billing dev webhook secret",
     ]);
-    const parsed = parseMap(disk.contents.get(MAP) ?? "", MAP);
+    const parsed = parseMap(disk.contents.get(MAP) ?? "", MAP, destinations);
     assert(parsed.ok);
     expect(parsed.map.keys.map((k) => k.name)).toEqual(["STRIPE_KEY", "WEBHOOK_SECRET"]);
     expect(disk.contents.get(ENV)).toBe(env);

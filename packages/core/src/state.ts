@@ -1,6 +1,6 @@
 import type { Environment, KeyId, Receipt } from "./contracts";
 import { type Files, readVersionedJson, writeJsonAtomic } from "./files";
-import { receiptSecretKey } from "./map";
+import { type DestinationKinds, receiptSecretKey } from "./destination";
 import { isRecord } from "./record";
 import { storedRefWithPasswordDefault } from "./reference";
 import type { Generation } from "./secret";
@@ -108,8 +108,14 @@ export function startOperation(state: State, operation: Omit<Operation, "done">)
   return { ...state, operations: [...state.operations, { ...operation, done: [] }] };
 }
 
-export function recordReceipt(state: State, receipt: Receipt, operationId?: string): State {
-  const same = (r: Receipt) => receiptSecretKey(r) === receiptSecretKey(receipt);
+export function recordReceipt(
+  state: State,
+  receipt: Receipt,
+  kinds: DestinationKinds,
+  operationId?: string,
+): State {
+  const key = receiptSecretKey(receipt, kinds);
+  const same = (r: Receipt) => receiptSecretKey(r, kinds) === key;
   const operations = state.operations.map((o) =>
     o.id === operationId && !o.done.includes(receipt.destinationId)
       ? { ...o, done: [...o.done, receipt.destinationId] }

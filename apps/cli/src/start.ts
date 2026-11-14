@@ -2,14 +2,22 @@ import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline/promises";
-import type { Destination, Fetch, Issuer, IssuerSpec, PublishTarget, Secret } from "@keypin/core";
 import {
+  connectTo,
+  type Destination,
+  type Fetch,
+  type Issuer,
+  type IssuerSpec,
+  type PublishTarget,
+  type Secret,
+} from "@keypin/core";
+import {
+  cloudflareWorker,
   CloudflareReader,
   currentWranglerToken,
-  WorkerSecretDestination,
   wranglerConfigFile,
 } from "@keypin/destination-cloudflare";
-import { ghToken, GitHubSecretDestination, listRepoSecrets } from "@keypin/destination-github";
+import { ghToken, githubActions, listRepoSecrets } from "@keypin/destination-github";
 import { ResendIssuer } from "@keypin/issuer-resend";
 import {
   type Connect,
@@ -43,26 +51,10 @@ let onePassword: ReturnType<typeof onePasswordFrom> | undefined;
 let cloudflare: CloudflareReader | undefined;
 let infisical: ReturnType<typeof infisicalBackend> | undefined;
 
+export const destinations = [cloudflareWorker, githubActions];
+
 export function destination(target: PublishTarget, publisher: Publisher): Destination {
-  switch (target.to) {
-    case "cloudflare-worker":
-      return new WorkerSecretDestination({
-        account: target.account,
-        worker: target.worker,
-        ...(publisher.refreshLogins ? {} : { token: () => currentWranglerToken() }),
-      });
-    case "github-actions":
-      return new GitHubSecretDestination({
-        repo: target.repo,
-        ...(target.environment === undefined ? {} : { environment: target.environment }),
-        login: publisher.githubLogin,
-        refresh: publisher.refreshLogins,
-      });
-    default: {
-      const unknown: never = target;
-      throw new Error(`unknown destination ${JSON.stringify(unknown)}`);
-    }
-  }
+  return connectTo(destinations, target, publisher);
 }
 
 export function issuer(spec: IssuerSpec, admin: Secret, fetch?: Fetch): Issuer {
@@ -184,6 +176,7 @@ export function realDeps(): Deps {
     stderr: process.stderr,
     launch,
     onSignals,
+    destinations,
     destination,
     issuer,
     wranglerLoginFile: async () => {

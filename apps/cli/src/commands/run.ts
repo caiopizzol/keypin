@@ -25,7 +25,7 @@ export async function run(args: string[], deps: Deps): Promise<number> {
   });
   if (!positionals.length) throw new UsageError("keypin run needs a command after --");
 
-  const map = await findMap(deps.files, deps.cwd);
+  const map = await findMap(deps);
   const environment = pickEnvironment(map, values.env, runEnvironment(map));
   const available = map.keys.flatMap((key) => {
     const entry = key.environments[environment];

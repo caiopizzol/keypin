@@ -13,6 +13,7 @@ import { type FullItem, onePasswordBackend } from "@keypin/vault-1password";
 import { cli } from "../src/cli";
 import type { Publisher } from "../src/deps";
 import { NEEDS_APPROVAL, rerun } from "../src/publishing";
+import { destinations } from "../src/start";
 import {
   fakeDeps,
   type FakeDestinationOptions,
@@ -493,7 +494,7 @@ describe("keypin publish", () => {
     const logins: (string | null)[] = [];
     const github = (target: PublishTarget, publisher: Publisher) => {
       logins.push(publisher.githubLogin);
-      assert(target.to === "github-actions");
+      assert(target.to === "github-actions" && target.repo !== undefined);
       return new GitHubSecretDestination({
         repo: target.repo,
         login: publisher.githubLogin,
@@ -556,7 +557,11 @@ describe("keypin publish", () => {
       at: "2026-11-01T00:00:00.000Z",
       evidence: {},
     };
-    await saveState(disk.files, STATE, recordReceipt(await loadState(disk.files, STATE), old));
+    await saveState(
+      disk.files,
+      STATE,
+      recordReceipt(await loadState(disk.files, STATE), old, destinations),
+    );
     const run = setup({ disk });
     expect(await cli(["publish", "STRIPE_API_KEY"], run.deps)).toBe(NEEDS_APPROVAL);
     expect(run.stderr.text).toContain(

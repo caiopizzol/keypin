@@ -1,6 +1,7 @@
 import { parse as parseToml } from "smol-toml";
 import type { Environment } from "./contracts";
 import { DEFAULT_ENVIRONMENTS } from "./contracts";
+import type { PublishTarget } from "./destination";
 import {
   envFlag,
   isEnvironmentName,
@@ -8,7 +9,6 @@ import {
   type KeyEntry,
   type KeysMap,
   publishEnvironment,
-  type PublishTarget,
   runEnvironment,
 } from "./map";
 import { isRecord } from "./record";
@@ -399,7 +399,7 @@ function githubPlace(scan: ProjectScan, environment: string | null): Place & { h
     fields,
     covers: (target) =>
       target.to === "github-actions" &&
-      (repo === null || target.repo.toLowerCase() === repo.toLowerCase()) &&
+      (repo === null || target.repo?.toLowerCase() === repo.toLowerCase()) &&
       target.environment?.toLowerCase() === env,
     holds: (name) => (held ? held.has(name.toUpperCase()) : null),
     onlyFrom: [],
@@ -471,7 +471,8 @@ function tomlToAdd(
     const id = key?.name ?? name;
     const workers = new Map<string, string>();
     for (const target of key?.environments[environment]?.publish ?? [])
-      if (target.to === "cloudflare-worker") workers.set(target.worker, target.account);
+      if (target.to === "cloudflare-worker" && target.worker !== undefined)
+        workers.set(target.worker, target.account);
     const found = all.filter(({ place }) => {
       const worker = fieldOf(place, "worker");
       const account = fieldOf(place, "account");

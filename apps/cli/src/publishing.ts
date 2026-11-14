@@ -2,10 +2,12 @@ import {
   type AccountCheck,
   type Destination,
   destinationId,
+  type DestinationKinds,
   type EnvEntry,
   type Environment,
   finishOperation,
   type Generation,
+  kindOf,
   type ItemIds,
   type KeyEntry,
   type KeyOwner,
@@ -65,21 +67,14 @@ function lockedMessage(file: string, holder: LockHolder): string {
 
 export type Label = (target: PublishTarget) => string;
 
-export function labels(targets: readonly PublishTarget[]): Label {
-  const padded = columns(targets.map(placeCells));
+export function labels(targets: readonly PublishTarget[], kinds: DestinationKinds): Label {
+  const cells = (target: PublishTarget) => {
+    const kind = kindOf(kinds, target.to);
+    return [kind.label, kind.describe(target)];
+  };
+  const padded = columns(targets.map(cells));
   const known = new Map(targets.map((target, i) => [target, padded[i]?.join("  ") ?? ""]));
-  return (target) => known.get(target) ?? placeCells(target).join("  ");
-}
-
-function placeCells(target: PublishTarget): string[] {
-  return target.to === "cloudflare-worker"
-    ? ["Cloudflare", target.worker]
-    : [
-        "GitHub",
-        target.environment === undefined
-          ? target.repo
-          : `${target.repo} environment ${target.environment}`,
-      ];
+  return (target) => known.get(target) ?? cells(target).join("  ");
 }
 
 export async function checkAccounts(
@@ -101,7 +96,11 @@ export async function checkAccounts(
         () => destination.checkAccount(),
         (result) => ({ ok: result.ok, text: `${place}  ${out.dim(accountFacts(result))}` }),
       );
-      checked.set(destinationId(target, key.name), { target, destination, check });
+      checked.set(destinationId(target, key.name, deps.destinations), {
+        target,
+        destination,
+        check,
+      });
       if (!check.ok) {
         failed = true;
         out.line(`    ${check.reason ?? "the account check failed"}`);
@@ -184,6 +183,7 @@ export async function writeAll(input: {
           at: deps.now().toISOString(),
           evidence,
         },
+        deps.destinations,
         id,
       );
       await saveState(deps.files, path, state);

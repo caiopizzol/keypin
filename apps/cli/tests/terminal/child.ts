@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { isRecord, type PublishTarget } from "@keypin/core";
+import { isRecord, placeId, type PublishTarget } from "@keypin/core";
 import {
   type Field,
   type FullItem,
@@ -14,12 +14,11 @@ import { credentialsFrom, infisicalBackend } from "@keypin/vault-infisical";
 import { fileStore, infisicalFetch } from "@keypin/vault-infisical/testing";
 import { cli } from "../../src/cli";
 import { onePasswordFrom } from "../../src/sign-in";
-import { issuer, realDeps } from "../../src/start";
+import { destinations, issuer, realDeps } from "../../src/start";
 import { routedVault } from "../../src/vault";
 import {
   type FakeItem,
   ISSUED_PREFIX,
-  placeOf,
   SANDBOX_MARKER,
   type Scenario,
   scenarios,
@@ -161,7 +160,7 @@ function client(account: string, scenario: Scenario): SdkClient {
 }
 
 function owner(target: PublishTarget): string {
-  return target.to === "cloudflare-worker" ? target.account : (target.repo.split("/")[0] ?? "");
+  return target.account;
 }
 
 const run = scenario;
@@ -238,7 +237,7 @@ process.exitCode = await cli(process.argv.slice(2), {
   workerSecrets: async () => ({ ok: false, reason: "this scenario has no Cloudflare account" }),
   issuer: (spec, admin) => issuer(spec, admin, resend),
   destination: (target) => {
-    const place = placeOf(target);
+    const place = placeId(target, destinations);
     const scripted = run.places[place] ?? {};
     return {
       capabilities: { write: true, accountCheck: true, evidence: true },

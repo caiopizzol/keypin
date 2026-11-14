@@ -23,7 +23,19 @@ export {
   type VaultScope,
 } from "./contracts";
 export {
+  checkId,
+  connectTo,
   destinationId,
+  type DestinationKind,
+  type DestinationKinds,
+  kindOf,
+  placeId,
+  type PublishTarget,
+  secretKey,
+  type TableReader,
+  targetOf,
+} from "./destination";
+export {
   envFlag,
   INFISICAL_CLOUD,
   isEnvironmentName,
@@ -31,14 +43,12 @@ export {
   parseMap,
   publishEnvironment,
   runEnvironment,
-  secretKey,
   type EnvEntry,
   type InfisicalPin,
   type IssuerSpec,
   type KeyEntry,
   type KeysMap,
   type MapResult,
-  type PublishTarget,
 } from "./map";
 export { addDays, isDay, periodDays } from "./rotation";
 export { nextRotation, type NextRotation } from "./rotations";

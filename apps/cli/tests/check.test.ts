@@ -224,7 +224,7 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
     const run = setup({
       deps: {
         destination: (target, publisher) =>
-          target.to === "github-actions"
+          target.to === "github-actions" && target.repo !== undefined
             ? new GitHubSecretDestination({
                 repo: target.repo,
                 login: publisher.githubLogin,

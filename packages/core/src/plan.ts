@@ -1,11 +1,12 @@
 import type { Environment, ItemIds, KeyId, KeyRef, Receipt } from "./contracts";
 import {
   destinationId,
-  type KeyEntry,
+  type DestinationKinds,
   type PublishTarget,
   receiptSecretKey,
   secretKey,
-} from "./map";
+} from "./destination";
+import type { KeyEntry } from "./map";
 import { describeRef, sameAccount, sameField, sameRef } from "./reference";
 import type { Generation } from "./secret";
 import { type KeyOwner, ownedBy } from "./state";
@@ -50,6 +51,7 @@ export interface PublishPlan {
 }
 
 export interface PlanInput {
+  kinds: DestinationKinds;
   key: KeyEntry;
   environment: Environment;
   mapFile: string;
@@ -77,7 +79,7 @@ export function approvalsFor(
 }
 
 export function planPublish(input: ReadPlanInput): PublishPlan {
-  const { key, environment, generation } = input;
+  const { key, environment, generation, kinds } = input;
   const steps = judge(input, input.ids).map(({ id, target, receipt, approval }): PlanStep => {
     if (approval) {
       return { action: "write", destinationId: id, target, ...approval };
@@ -100,10 +102,12 @@ export function planPublish(input: ReadPlanInput): PublishPlan {
     };
   });
 
-  const listed = new Set(steps.flatMap((s) => [secretKey(s.target, key.name), s.destinationId]));
-  const removed = latestPerSecret(input.receipts)
+  const listed = new Set(
+    steps.flatMap((s) => [secretKey(s.target, key.name, kinds), s.destinationId]),
+  );
+  const removed = latestPerSecret(input.receipts, kinds)
     .filter((r) => ownedBy(r, ownerOf(input)))
-    .filter((r) => !listed.has(receiptSecretKey(r)) && !listed.has(r.destinationId))
+    .filter((r) => !listed.has(receiptSecretKey(r, kinds)) && !listed.has(r.destinationId))
     .map((r) => ({
       destinationId: r.destinationId,
       lastReceipt: {
@@ -133,19 +137,19 @@ export function planNewValue(input: PlanInput, ids: ItemIds | null): PlanStep[] 
 }
 
 function judge(input: PlanInput, ids: ItemIds | null) {
-  const { key, environment } = input;
+  const { key, environment, kinds } = input;
   const entry = key.environments[environment];
   if (!entry) throw new Error(`key "${key.name}" has no ${environment} entry in the map`);
-  const newest = latestPerSecret(input.receipts);
-  const latest = new Map(newest.map((r) => [receiptSecretKey(r), r]));
+  const newest = latestPerSecret(input.receipts, kinds);
+  const latest = new Map(newest.map((r) => [receiptSecretKey(r, kinds), r]));
   const owner = ownerOf(input);
   const ours = newest.filter((r) => ownedBy(r, owner));
   const published = input.receipts.some((r) => ownedBy(r, owner));
 
   return entry.publish.map((target) => {
-    const id = destinationId(target, key.name);
+    const id = destinationId(target, key.name, kinds);
     const receipt =
-      latest.get(secretKey(target, key.name)) ?? ours.find((r) => r.destinationId === id);
+      latest.get(secretKey(target, key.name, kinds)) ?? ours.find((r) => r.destinationId === id);
     const needs = (reason: ApprovalReason, approval: string) => ({
       id,
       target,
@@ -181,11 +185,12 @@ function itemChange(receipt: Receipt, ref: KeyRef, ids: ItemIds | null): string 
   return `${describeRef(source)} (item ${sourceIds.item} in vault ${sourceIds.vault}), and now from ${describeRef(ref)} (item ${ids.item} in vault ${ids.vault})`;
 }
 
-export function latestPerSecret(receipts: readonly Receipt[]): Receipt[] {
+export function latestPerSecret(receipts: readonly Receipt[], kinds: DestinationKinds): Receipt[] {
   const latest = new Map<string, Receipt>();
   for (const receipt of receipts) {
-    const seen = latest.get(receiptSecretKey(receipt));
-    if (!seen || seen.at < receipt.at) latest.set(receiptSecretKey(receipt), receipt);
+    const key = receiptSecretKey(receipt, kinds);
+    const seen = latest.get(key);
+    if (!seen || seen.at < receipt.at) latest.set(key, receipt);
   }
   return [...latest.values()];
 }

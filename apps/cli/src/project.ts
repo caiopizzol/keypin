@@ -1,21 +1,23 @@
 import { dirname, join } from "node:path";
-import { type Environment, type Files, type KeysMap, parseMap } from "@keypin/core";
-import { UsageError } from "./deps";
+import { type Environment, type KeysMap, parseMap } from "@keypin/core";
+import { type Deps, UsageError } from "./deps";
 
 export const MAP_FILE = "keypin.toml";
 
-export async function findMap(files: Files, cwd: string): Promise<KeysMap> {
-  const found = await locateMap(files, cwd);
+export async function findMap(deps: Deps): Promise<KeysMap> {
+  const found = await locateMap(deps.files, deps.cwd);
   if (!found) {
-    throw new Error(`no ${MAP_FILE} in ${cwd} or any folder above it; run "keypin init" first`);
+    throw new Error(
+      `no ${MAP_FILE} in ${deps.cwd} or any folder above it; run "keypin init" first`,
+    );
   }
-  const result = parseMap(found.text, found.file);
+  const result = parseMap(found.text, found.file, deps.destinations);
   if (!result.ok) throw new Error(result.errors.join("\n"));
   return result.map;
 }
 
 export async function locateMap(
-  files: Files,
+  files: Deps["files"],
   cwd: string,
 ): Promise<{ file: string; text: string } | null> {
   for (let folder = cwd; ; folder = dirname(folder)) {

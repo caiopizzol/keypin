@@ -17,7 +17,7 @@ import {
   unregister,
   type Receipt,
 } from "../src/index";
-import { fakeFiles, GITHUB, KEY, KEY_MAP, receipt, WORKER } from "./fixtures";
+import { fakeFiles, GITHUB, KEY, KEY_MAP, KINDS, receipt, WORKER } from "./fixtures";
 
 const STATE = "/state/keypin/state.json";
 const REGISTRY = "/config/keypin/registry.json";
@@ -31,7 +31,7 @@ describe("state", () => {
 
   test("saving writes a temporary file, then renames it over the state file", async () => {
     const fake = fakeFiles();
-    const state = recordReceipt(emptyState(), receipt(WORKER, "aaaaaaaaaaaaaaaa"));
+    const state = recordReceipt(emptyState(), receipt(WORKER, "aaaaaaaaaaaaaaaa"), KINDS);
     await saveState(fake.files, STATE, state);
     expect(fake.log).toHaveLength(2);
     const [write, rename] = fake.log;
@@ -44,10 +44,10 @@ describe("state", () => {
   });
 
   test("a crash before the rename leaves the old state whole", async () => {
-    const before = recordReceipt(emptyState(), receipt(WORKER, "aaaaaaaaaaaaaaaa"));
+    const before = recordReceipt(emptyState(), receipt(WORKER, "aaaaaaaaaaaaaaaa"), KINDS);
     const fake = fakeFiles({ [STATE]: JSON.stringify(before) });
     fake.fail("rename");
-    const after = recordReceipt(before, receipt(GITHUB, "aaaaaaaaaaaaaaaa"));
+    const after = recordReceipt(before, receipt(GITHUB, "aaaaaaaaaaaaaaaa"), KINDS);
     await expect(saveState(fake.files, STATE, after)).rejects.toThrow("crashed before rename");
     expect(await loadState(fake.files, STATE)).toEqual(before);
   });
@@ -77,7 +77,11 @@ describe("state", () => {
       name: "STRIPE_KEY",
     };
     const fake = fakeFiles();
-    const state = recordReceipt(emptyState(), receipt(WORKER, "aaaaaaaaaaaaaaaa", { source }));
+    const state = recordReceipt(
+      emptyState(),
+      receipt(WORKER, "aaaaaaaaaaaaaaaa", { source }),
+      KINDS,
+    );
     await saveState(fake.files, STATE, state);
     expect((await loadState(fake.files, STATE)).receipts[0]?.source).toEqual(source);
   });
@@ -155,23 +159,24 @@ describe("state", () => {
   });
 
   test("one receipt per destination secret: a write from another key replaces the last one", () => {
-    let state = recordReceipt(emptyState(), receipt(WORKER, "aaaaaaaaaaaaaaaa"));
-    state = recordReceipt(state, receipt(WORKER, "bbbbbbbbbbbbbbbb", { keyId: "deploy" }));
+    let state = recordReceipt(emptyState(), receipt(WORKER, "aaaaaaaaaaaaaaaa"), KINDS);
+    state = recordReceipt(state, receipt(WORKER, "bbbbbbbbbbbbbbbb", { keyId: "deploy" }), KINDS);
     expect(state.receipts).toEqual([receipt(WORKER, "bbbbbbbbbbbbbbbb", { keyId: "deploy" })]);
   });
 
   test("a GitHub secret in another case is the same secret; a Worker in another account isn't", () => {
     const aliased = receipt("github-actions:Acme/Billing:stripe_api_key", "bbbbbbbbbbbbbbbb");
-    let state = recordReceipt(emptyState(), receipt(GITHUB, "aaaaaaaaaaaaaaaa"));
-    state = recordReceipt(state, aliased);
+    let state = recordReceipt(emptyState(), receipt(GITHUB, "aaaaaaaaaaaaaaaa"), KINDS);
+    state = recordReceipt(state, aliased, KINDS);
     expect(state.receipts).toEqual([aliased]);
 
     const elsewhere = receipt(WORKER, "bbbbbbbbbbbbbbbb", {
       account: { pinned: "ffff", publisher: "acme", destinationAccount: "ffff" },
     });
     state = recordReceipt(
-      recordReceipt(emptyState(), receipt(WORKER, "aaaaaaaaaaaaaaaa")),
+      recordReceipt(emptyState(), receipt(WORKER, "aaaaaaaaaaaaaaaa"), KINDS),
       elsewhere,
+      KINDS,
     );
     expect(state.receipts).toHaveLength(2);
   });
@@ -207,8 +212,8 @@ describe("state", () => {
       startedAt: "2026-11-09T15:30:00Z",
       planned: [WORKER, GITHUB],
     });
-    state = recordReceipt(state, receipt(WORKER, "bbbbbbbbbbbbbbbb"));
-    state = recordReceipt(state, receipt(WORKER, "aaaaaaaaaaaaaaaa"), "op-1");
+    state = recordReceipt(state, receipt(WORKER, "bbbbbbbbbbbbbbbb"), KINDS);
+    state = recordReceipt(state, receipt(WORKER, "aaaaaaaaaaaaaaaa"), KINDS, "op-1");
     expect(receiptsFor(state, OWNER)).toEqual([receipt(WORKER, "aaaaaaaaaaaaaaaa")]);
     expect(unfinishedOperations(state, OWNER)).toEqual([
       expect.objectContaining({ id: "op-1", planned: [WORKER, GITHUB], done: [WORKER] }),
@@ -228,7 +233,7 @@ describe("state", () => {
       startedAt: "2026-11-09T15:30:00Z",
       planned: [WORKER],
     });
-    state = recordReceipt(state, receipt(GITHUB, "aaaaaaaaaaaaaaaa", { mapFile: WEB_MAP }));
+    state = recordReceipt(state, receipt(GITHUB, "aaaaaaaaaaaaaaaa", { mapFile: WEB_MAP }), KINDS);
     expect(receiptsFor(state, OWNER)).toEqual([]);
     expect(unfinishedOperations(state, OWNER)).toEqual([]);
     expect(receiptsFor(state, web)).toHaveLength(1);

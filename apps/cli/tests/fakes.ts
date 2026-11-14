@@ -1,15 +1,18 @@
 import {
   type AccountCheck,
   type Destination,
+  type DestinationKinds,
   type Files,
   type KeyRef,
   type OnePasswordRef,
+  placeId,
   type PublishTarget,
   Secret,
   type VaultBackend,
   type VaultMetadata,
 } from "@keypin/core";
 import type { Deps, FolderEntry, Launch, Lock } from "../src/deps";
+import { destinations } from "../src/start";
 
 export const SENTINEL = "sentinel-value-7f3a9c2e1d";
 
@@ -174,14 +177,14 @@ export interface FakeDestinationOptions {
   failWrite?: string[];
 }
 
-export function fakeDestinations(options: FakeDestinationOptions = {}) {
+export function fakeDestinations(
+  options: FakeDestinationOptions = {},
+  kinds: DestinationKinds = destinations,
+) {
   const log: string[] = [];
   const build = (target: PublishTarget): Destination => {
-    const place =
-      target.to === "cloudflare-worker"
-        ? `cloudflare-worker:${target.worker}`
-        : `github-actions:${target.repo}${target.environment === undefined ? "" : `/environments/${target.environment}`}`;
-    const owner = target.to === "cloudflare-worker" ? target.account : target.repo.split("/")[0];
+    const place = placeId(target, kinds);
+    const owner = target.account;
     let checked = false;
     return {
       capabilities: { write: true, accountCheck: true, evidence: true },
@@ -192,7 +195,7 @@ export function fakeDestinations(options: FakeDestinationOptions = {}) {
         checked = ok;
         return {
           publisher: target.to === "cloudflare-worker" ? "me@example.com" : target.account,
-          destinationAccount: ok ? (owner ?? null) : null,
+          destinationAccount: ok ? owner : null,
           expected: target.account,
           ok,
           ...(ok ? {} : { reason: `the login can't reach ${target.account}` }),
@@ -263,6 +266,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
       throw new Error("this test launches nothing");
     },
     onSignals: () => () => {},
+    destinations,
     destination: () => {
       throw new Error("this test publishes nothing");
     },

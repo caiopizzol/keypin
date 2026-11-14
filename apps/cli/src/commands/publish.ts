@@ -71,7 +71,7 @@ interface Planned extends Checks {
 
 export async function publish(args: string[], deps: Deps): Promise<number> {
   const { keyId, env, yes, plan } = parseRequest(args);
-  const map = await findMap(deps.files, deps.cwd);
+  const map = await findMap(deps);
   const environment = pickEnvironment(map, env, publishEnvironment(map));
   const request = { keyId, environment, yes, plan, args };
   return locked(deps, (path) => publishLocked(request, map, path, deps));
@@ -148,7 +148,10 @@ async function publishLocked(
     deps,
     jobs.map((job) => job.entry.ref),
   );
-  const label = labels(jobs.flatMap((job) => job.entry.publish));
+  const label = labels(
+    jobs.flatMap((job) => job.entry.publish),
+    deps.destinations,
+  );
 
   let state = await loadState(deps.files, path);
   for (const { owner } of jobs) {
@@ -176,7 +179,13 @@ async function publishLocked(
   const approvalsOf = (ids: (ItemIds | null)[]) =>
     jobs.flatMap(({ key, owner }, index) =>
       approvalsFor(
-        { key, environment, mapFile: owner.mapFile, receipts: state.receipts },
+        {
+          kinds: deps.destinations,
+          key,
+          environment,
+          mapFile: owner.mapFile,
+          receipts: state.receipts,
+        },
         ids[index] ?? null,
       ),
     );
@@ -219,6 +228,7 @@ async function publishLocked(
     const { key, owner, checked, secret, ids } = job;
     const generation = await generationOf(secret);
     const plan = planPublish({
+      kinds: deps.destinations,
       key,
       environment,
       mapFile: owner.mapFile,

@@ -9,7 +9,7 @@ import {
   type StatusInput,
   type VaultMetadata,
 } from "../src/index";
-import { GITHUB, KEY, receipt, WORKER } from "./fixtures";
+import { GITHUB, KEY, KINDS, receipt, WORKER } from "./fixtures";
 
 const TODAY = "2026-11-09";
 const PROJECT = "/work/billing";
@@ -32,6 +32,7 @@ function status(rotation: Rotation | null, overrides: Partial<StatusInput> = {})
   };
   const metadata: VaultMetadata | null = rotation && { rotated: rotation.rotated };
   return buildStatus({
+    kinds: KINDS,
     registry: { version: 1, projects: [PROJECT], shared: [] },
     maps: new Map([[PROJECT, map]]),
     receipts: [receipt(WORKER, "aaaaaaaaaaaaaaaa"), receipt(GITHUB, "aaaaaaaaaaaaaaaa")],
@@ -323,6 +324,7 @@ describe("status", () => {
 
   test("a project with no map, a bad map, or no keys is a problem, not silence", () => {
     const result = buildStatus({
+      kinds: KINDS,
       registry: { version: 1, projects: ["/work/a", "/work/b", "/work/c"], shared: [] },
       maps: new Map<string, MapResult>([
         ["/work/b", { ok: false, errors: ["/work/b/keypin.toml: missing field"] }],

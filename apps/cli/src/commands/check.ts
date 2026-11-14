@@ -1,11 +1,13 @@
 import { basename, dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import {
+  checkId,
   type Environment,
   findGaps,
   type Fix,
   formatReference,
   type Gaps,
+  kindOf,
   type KeyRef,
   type KeysMap,
   loadRegistry,
@@ -21,7 +23,7 @@ import { messageOf } from "../errors";
 import { type Output, output, tilde } from "../output";
 import { registryPath } from "../paths";
 import { locateMap, MAP_FILE } from "../project";
-import { describeLogin, githubLogin, publisherFor } from "../publisher";
+import { githubLogin, publisherFor } from "../publisher";
 import { type ScanResult, scanProject, type Unknown, usesSecrets } from "../scan";
 import { approval, type SignIn, signInFor } from "../sign-in";
 import { isAccountId, isSharedAddress } from "@keypin/vault-1password";
@@ -40,7 +42,7 @@ interface CheckedItem extends ItemResult {
 
 interface DestinationResult {
   destination: string;
-  to: PublishTarget["to"];
+  to: string;
   login: string;
   publisher: string | null;
   pinned: string;
@@ -106,7 +108,7 @@ interface Step {
   body: string[];
   toml?: string;
   covers: string[];
-  to?: PublishTarget["to"];
+  to?: string;
   service?: Prerequisite["name"];
   signIn?: KeyRef["kind"];
 }
@@ -144,7 +146,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
   let fixes: Fix[] = [];
   let empty: string | null = null;
   const found = await locateMap(deps.files, folder);
-  const parsed = found ? parseMap(found.text, found.file) : null;
+  const parsed = found ? parseMap(found.text, found.file, deps.destinations) : null;
   const mapped = parsed?.ok
     ? parsed.map.keys.flatMap((key) =>
         Object.values(key.environments).flatMap((e) => (e ? [e.ref] : [])),
@@ -259,15 +261,17 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
     approval(deps, refs),
   );
 
+  const placeOf = (target: PublishTarget) => checkId(target, deps.destinations);
   for (const { entry } of entries)
     for (const target of entry.publish) targets.set(placeOf(target), target);
-  const publisher = {
-    ...(await publisherFor([...targets.values()], deps, folder)),
-    refreshLogins: false,
-  };
   const wrangler = [...targets.values()].some((t) => t.to === "cloudflare-worker")
     ? await deps.wranglerLoginFile()
     : null;
+  const publisher = {
+    ...(await publisherFor([...targets.values()], deps, folder)),
+    refreshLogins: false,
+    wranglerFile: wrangler,
+  };
   if (wrangler !== null)
     report.notes.push(
       `the wrangler login is an OAuth token stored in plain text in ${wrangler}; wrangler logout removes it`,
@@ -279,10 +283,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
       `Checking ${accounts}`,
       async () => {
         for (const [place, target] of targets) {
-          const login =
-            target.to === "github-actions"
-              ? describeLogin(publisher.githubLogin)
-              : `the wrangler login${wrangler === null ? "" : ` in ${wrangler}`}`;
+          const login = kindOf(deps.destinations, target.to).login(target, publisher);
           destinations.set(place, await checkDestination(place, target, login, publisher, deps));
         }
       },
@@ -304,7 +305,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
       use(`place ${placeOf(target)}`, name);
       const result = destinations.get(placeOf(target));
       if (!result) throw new Error(`no account check for ${placeOf(target)}`);
-      return { ...result, destination: secretKey(target, key) };
+      return { ...result, destination: secretKey(target, key, deps.destinations) };
     });
     report.keys.push({
       key,
@@ -336,7 +337,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
     report.problems.push(text);
     steps.push({
       order: ORDER.account,
-      title: `Fix the login for ${target ? where(target) : place}`,
+      title: `Fix the login for ${target ? kindOf(deps.destinations, target.to).where(target) : place}`,
       body: [
         sentence(result.problem ?? "the account check failed"),
         loginLine(result),
@@ -559,12 +560,6 @@ async function checkDestination(
   }
 }
 
-function placeOf(target: PublishTarget): string {
-  return target.to === "cloudflare-worker"
-    ? `cloudflare-worker:${target.account}/${target.worker}`
-    : `github-actions:${target.repo.toLowerCase()}${target.environment === undefined ? "" : `/environments/${target.environment.toLowerCase()}`}`;
-}
-
 function plan(report: Report, found: Step[], fixes: Fix[], empty: string | null): Step[] {
   const steps: Step[] = [];
   const onePassword = found.find((s) => s.title === SIGN_IN || s.title === TOKEN_SIGN_IN);
@@ -713,12 +708,6 @@ function sentence(text: string): string {
     ? `${text[0]?.toUpperCase()}${text.slice(1)}`
     : text;
   return /[.:]$/.test(first) ? first : `${first}.`;
-}
-
-function where(target: PublishTarget): string {
-  return target.to === "cloudflare-worker"
-    ? `the Worker ${target.worker}`
-    : `${target.repo}${target.environment === undefined ? "" : ` (environment ${target.environment})`}`;
 }
 
 function count(n: number, noun: string): string {

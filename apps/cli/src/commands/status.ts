@@ -2,7 +2,9 @@ import { basename, join } from "node:path";
 import { parseArgs } from "node:util";
 import {
   buildStatus,
+  type DestinationKinds,
   envFlag,
+  kindOf,
   loadRegistry,
   loadState,
   type MapResult,
@@ -10,6 +12,7 @@ import {
   publishEnvironment,
   type Status,
   type StatusRow,
+  targetOf,
   type VaultMetadata,
   vaultAccounts,
 } from "@keypin/core";
@@ -38,7 +41,7 @@ export async function status(args: string[], deps: Deps): Promise<number> {
     const file = join(project, MAP_FILE);
     try {
       const text = await deps.files.read(file);
-      if (text !== null) maps.set(project, parseMap(text, file));
+      if (text !== null) maps.set(project, parseMap(text, file, deps.destinations));
     } catch (error) {
       deps.stderr.write(`keypin: couldn't read ${file}: ${messageOf(error)}\n`);
     }
@@ -84,6 +87,7 @@ export async function status(args: string[], deps: Deps): Promise<number> {
 
   const today = localDay(deps.now());
   const result = buildStatus({
+    kinds: deps.destinations,
     registry,
     maps,
     receipts: state.receipts,
@@ -104,6 +108,7 @@ export async function status(args: string[], deps: Deps): Promise<number> {
       render(result, registry.projects, {
         today,
         home: deps.home,
+        kinds: deps.destinations,
         out,
         publish: command("publish"),
         rotate: command("rotate"),
@@ -117,6 +122,7 @@ export async function status(args: string[], deps: Deps): Promise<number> {
 interface Context {
   today: string;
   home: string;
+  kinds: DestinationKinds;
   out: Output;
   publish: (row: StatusRow) => string;
   rotate: (row: StatusRow) => string;
@@ -142,7 +148,7 @@ function render(result: Status, projects: readonly string[], context: Context): 
       row.keyId,
       row.environment,
       due(row, context),
-      ...places(row, result.problems, out),
+      ...places(row, result.problems, context),
     ]),
   );
 
@@ -180,18 +186,13 @@ function message(problem: Problem, result: Status, context: Context): string {
     );
   const names = row.destinations
     .filter(({ destinationId, receipt }) => !receipt && !unknown(destinationId))
-    .map(({ destinationId }) => placeName(destinationId));
+    .map(({ destinationId, account }) => placeName(destinationId, account, context.kinds));
   return `${row.keyId} (${row.environment}): not published yet to ${names.join(", ")}; run ${context.publish(row)}`;
 }
 
-function placeName(id: string): string {
-  const [kind = "", ...rest] = id.split(":");
-  const place = rest.slice(0, -1).join(":");
-  if (kind === "cloudflare-worker") return `the Worker ${place}`;
-  const [owner = "", name = "", ...more] = place.split("/");
-  const environment = more.length ? more.join("/").replace(/^environments\//, "") : null;
-  const repo = `${owner}/${name}`;
-  return environment === null ? `GitHub ${repo}` : `GitHub ${repo} environment ${environment}`;
+function placeName(id: string, account: string, kinds: DestinationKinds): string {
+  const found = targetOf(id, account, kinds);
+  return found ? found.kind.named(found.target) : id;
 }
 
 function due(row: StatusRow, { out, today }: Context): string {
@@ -202,8 +203,9 @@ function due(row: StatusRow, { out, today }: Context): string {
   return days === 0 ? "due today" : `due in ${count(days, "day")}`;
 }
 
-function places(row: StatusRow, problems: readonly Problem[], out: Output): string[] {
-  const service = (id: string) => (id.startsWith("cloudflare-worker:") ? "Cloudflare" : "GitHub");
+function places(row: StatusRow, problems: readonly Problem[], context: Context): string[] {
+  const { out, kinds } = context;
+  const service = (id: string) => kindOf(kinds, id.split(":")[0] ?? "").label;
   return row.destinations.map(({ destinationId: id, receipt }) => {
     const shared = row.destinations.filter((d) => service(d.destinationId) === service(id));
     const name =

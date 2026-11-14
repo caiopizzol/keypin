@@ -80,7 +80,7 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
   const [keyId, ...extra] = positionals;
   if (keyId === undefined || extra.length)
     throw new UsageError("keypin rotate takes one key: the variable name");
-  const map = await findMap(deps.files, deps.cwd);
+  const map = await findMap(deps);
   const environment = pickEnvironment(map, values.env, publishEnvironment(map));
   const key = map.keys.find((k) => k.name === keyId);
   if (!key) throw new Error(`${map.file} has no key "${keyId}"`);
@@ -97,7 +97,7 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
     );
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);
   const owner = { keyId, environment, mapFile: map.file };
-  const label = labels(entry.publish);
+  const label = labels(entry.publish, deps.destinations);
   const base = { key, entry, spec, owner, yes: values.yes, args, deps, out, label };
   return locked(deps, (path) => rotateLocked({ ...base, path }));
 }
@@ -107,6 +107,7 @@ async function rotateLocked(job: Job): Promise<number> {
   const say = (text: string) => out.line(text);
   let state = await loadState(deps.files, job.path);
   const input = {
+    kinds: deps.destinations,
     key,
     environment: owner.environment,
     mapFile: owner.mapFile,

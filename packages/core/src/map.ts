@@ -1,15 +1,17 @@
 import { parse as parseToml, TomlError } from "smol-toml";
 import type { Environment, KeyId, KeyRef } from "./contracts";
 import { DEFAULT_ENVIRONMENTS } from "./contracts";
+import {
+  type DestinationKind,
+  type DestinationKinds,
+  placeId,
+  type PublishTarget,
+  secretKey,
+  type TableReader,
+} from "./destination";
 import { isRecord } from "./record";
 import { parseReference, sameItem } from "./reference";
 import { periodDays } from "./rotation";
-
-export type PublishTarget =
-  | { to: "cloudflare-worker"; account: string; worker: string }
-  | { to: "github-actions"; repo: string; account: string; environment?: string };
-
-const DESTINATION_KINDS = ["cloudflare-worker", "github-actions"] as const;
 
 export type IssuerSpec = {
   kind: "resend";
@@ -67,46 +69,6 @@ export function envFlag(environment: Environment, fallback: Environment): string
   return environment === fallback ? "" : ` --env ${environment}`;
 }
 
-export function destinationId(target: PublishTarget, secretName: string): string {
-  return `${placeId(target)}:${secretName}`;
-}
-
-export function secretKey(target: PublishTarget, secretName: string): string {
-  if (target.to === "cloudflare-worker")
-    return `cloudflare-worker:${target.account}:${target.worker}:${secretName}`;
-  const place = githubPlace(target.repo.toLowerCase(), target.environment?.toLowerCase());
-  return `github-actions:${place}:${secretName.toUpperCase()}`;
-}
-
-function githubPlace(repo: string, environment: string | undefined): string {
-  return environment === undefined ? repo : `${repo}/environments/${environment}`;
-}
-
-const GITHUB_PLACE = /^([^/]+\/[^/]+)(?:\/environments\/(.+))?$/;
-
-export function receiptSecretKey(receipt: {
-  destinationId: string;
-  account: { pinned: string };
-}): string {
-  const [to, ...parts] = receipt.destinationId.split(":");
-  const name = parts.pop();
-  if (to === "cloudflare-worker" && parts.length === 1 && parts[0] && name) {
-    return secretKey({ to, account: receipt.account.pinned, worker: parts[0] }, name);
-  }
-  const github = GITHUB_PLACE.exec(parts.join(":"));
-  if (to === "github-actions" && github?.[1] && name) {
-    const [, repo, environment] = github;
-    return secretKey({ to, repo, account: receipt.account.pinned, environment }, name);
-  }
-  return receipt.destinationId;
-}
-
-function placeId(target: PublishTarget): string {
-  return target.to === "cloudflare-worker"
-    ? `cloudflare-worker:${target.worker}`
-    : `github-actions:${githubPlace(target.repo, target.environment)}`;
-}
-
 export function isEnvironmentName(name: string): boolean {
   return ENVIRONMENT_NAME.test(name);
 }
@@ -115,7 +77,7 @@ export function isVariableName(name: string): boolean {
   return VARIABLE_NAME.test(name);
 }
 
-export function parseMap(text: string, file: string): MapResult {
+export function parseMap(text: string, file: string, kinds: DestinationKinds): MapResult {
   let data: unknown;
   try {
     data = parseToml(text);
@@ -125,7 +87,7 @@ export function parseMap(text: string, file: string): MapResult {
       errors: [`${file}: not valid TOML: ${tomlProblem(error)}`],
     };
   }
-  return validateMap(data, file);
+  return validateMap(data, file, kinds);
 }
 
 type Table = Record<string, unknown>;
@@ -133,7 +95,6 @@ type Table = Record<string, unknown>;
 const ENVIRONMENT_NAME = /^[a-z][a-z0-9-]*$/;
 const KEY_FIELDS: readonly string[] = ["rotate_every"];
 const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 const REMOVED_KEY_FIELDS: readonly string[] = ["owner", "consumers"];
 const OLD_FORMAT = "see docs/configuration.md for the current format";
 const PLACEHOLDER = /<[^<>]*>/;
@@ -149,7 +110,7 @@ function filledIn(
   return undefined;
 }
 
-function validateMap(data: unknown, file: string): MapResult {
+function validateMap(data: unknown, file: string, kinds: DestinationKinds): MapResult {
   const errors: string[] = [];
   const fail = (where: string, message: string) => errors.push(`${file}: ${where}${message}`);
 
@@ -178,14 +139,14 @@ function validateMap(data: unknown, file: string): MapResult {
   else {
     Object.entries(rawKeys).forEach(([id, raw], index) => {
       const label = VARIABLE_NAME.test(id) ? `key "${id}"` : `keys[${index}]`;
-      const entry = validateKey(id, raw, pins, environments, (where, message) =>
+      const entry = validateKey(id, raw, { pins, environments, kinds }, (where, message) =>
         fail(`${label}${where}: `, message),
       );
       if (entry) keys.push(entry);
     });
   }
 
-  sharedDestinations(keys, environments, (where, message) => fail(where, message));
+  sharedDestinations(keys, environments, kinds, (where, message) => fail(where, message));
   return errors.length
     ? { ok: false, errors }
     : {
@@ -281,6 +242,7 @@ function validateEnvironments(
 function sharedDestinations(
   keys: KeyEntry[],
   environments: readonly Environment[],
+  kinds: DestinationKinds,
   fail: (where: string, message: string) => void,
 ) {
   const owners = new Map<string, string>();
@@ -288,7 +250,7 @@ function sharedDestinations(
     for (const environment of environments) {
       key.environments[environment]?.publish.forEach((target, i) => {
         const where = `key "${key.name}" ${environment} publish[${i}]`;
-        const secret = secretKey(target, key.name);
+        const secret = secretKey(target, key.name, kinds);
         const owner = owners.get(secret);
         if (owner === undefined) owners.set(secret, where);
         else fail(`${where}: `, `writes the same destination secret as ${owner}`);
@@ -297,13 +259,19 @@ function sharedDestinations(
   }
 }
 
+interface MapContext {
+  pins: VaultPins;
+  environments: readonly Environment[];
+  kinds: DestinationKinds;
+}
+
 function validateKey(
   id: string,
   raw: unknown,
-  pins: VaultPins,
-  environmentNames: readonly Environment[],
+  context: MapContext,
   fail: (where: string, message: string) => void,
 ): KeyEntry | undefined {
+  const environmentNames = context.environments;
   let failures = 0;
   const err = (where: string, message: string) => {
     failures++;
@@ -337,17 +305,17 @@ function validateKey(
   Reflect.setPrototypeOf(environments, null);
   const declared = environmentNames.filter((name) => Object.hasOwn(raw, name));
   for (const name of declared) {
-    const entry = validateEnv(raw[name], pins, (m) => err(` ${name}`, m));
+    const entry = validateEnv(raw[name], context, (m) => err(` ${name}`, m));
     if (entry) environments[name] = entry;
   }
   for (const [name, entry] of Object.entries(environments)) {
-    const index = entry.publish.findIndex((target) => target.to === "github-actions");
-    if (index !== -1 && /^GITHUB_/i.test(id)) {
-      err(
-        ` ${name}`,
-        `publish[${index}]: github-actions can't take this key, because GitHub reserves secret names that start with GITHUB_`,
-      );
-    }
+    const refused = new Set<string>();
+    entry.publish.forEach((target, index) => {
+      const why = context.kinds.find((k) => k.kind === target.to)?.refuses?.(id);
+      if (why === undefined || refused.has(target.to)) return;
+      refused.add(target.to);
+      err(` ${name}`, `publish[${index}]: ${target.to} can't take this key, because ${why}`);
+    });
   }
   if (!declared.length) {
     err("", `needs at least one of ${environmentNames.map((n) => `"${n}"`).join(", ")}`);
@@ -359,7 +327,7 @@ function validateKey(
 
 function validateEnv(
   given: unknown,
-  pins: VaultPins,
+  { pins, kinds }: MapContext,
   fail: (message: string) => void,
 ): EnvEntry | undefined {
   const raw = typeof given === "string" ? { from: given } : given;
@@ -389,12 +357,13 @@ function validateEnv(
     if (!Array.isArray(raw.publish)) err(`field "publish" must be a list`);
     else {
       raw.publish.forEach((t: unknown, i: number) => {
-        const target = destination(t, (m) => err(`publish[${i}]: ${m}`));
+        const target = destination(t, kinds, (m) => err(`publish[${i}]: ${m}`));
         if (!target) return;
-        const same = firstAt.get(placeId(target));
+        const place = placeId(target, kinds);
+        const same = firstAt.get(place);
         if (same !== undefined) err(`publish[${i}]: the same destination as publish[${same}]`);
         else {
-          firstAt.set(placeId(target), i);
+          firstAt.set(place, i);
           publish.push(target);
         }
       });
@@ -497,9 +466,11 @@ function reference(
   return { ...parsed, account: pins.account };
 }
 
-const ACCOUNT_ID = /^[0-9a-f]{32}$/;
-
-function destination(raw: unknown, fail: (message: string) => void): PublishTarget | undefined {
+function destination(
+  raw: unknown,
+  kinds: DestinationKinds,
+  fail: (message: string) => void,
+): PublishTarget | undefined {
   if (typeof raw === "string") {
     fail(
       `names a shared target, which is no longer supported; write the destination inline, such as { to = "github-actions", repo = "owner/name" } (${OLD_FORMAT})`,
@@ -517,60 +488,30 @@ function destination(raw: unknown, fail: (message: string) => void): PublishTarg
     failed = true;
     fail(message);
   };
-  if (to === "cloudflare-worker") {
-    unknownFields(raw, ["to", "account", "worker"], (field) =>
-      err(`unknown field "${field}" for ${to}`),
-    );
-    const account = filledIn(
-      requiredString(raw, "account", err),
-      "account",
-      "the Cloudflare account ID the Worker belongs to (32 hex characters; wrangler whoami lists it)",
-      err,
-    );
-    const worker = filledIn(
-      requiredString(raw, "worker", err),
-      "worker",
-      `the Worker's name, the "name" in its wrangler config`,
-      err,
-    );
-    if (account !== undefined && !ACCOUNT_ID.test(account))
-      err(`field "account" must be a Cloudflare account ID (32 hex characters)`);
-    return failed || account === undefined || worker === undefined
-      ? undefined
-      : { to, account, worker };
+  const kind = kinds.find((k) => k.kind === to);
+  if (!kind) {
+    err(`field "to" must be one of: ${kinds.map((k) => k.kind).join(", ")}`);
+    return undefined;
   }
-  if (to === "github-actions") {
-    unknownFields(raw, ["to", "repo", "environment"], (field) =>
-      err(
-        field === "account"
-          ? `field "account" is from keypin 0.6; the map pins only repo = "owner/name", and each machine publishes as its own GitHub login (git config github.account, else the active gh login). Delete it (${OLD_FORMAT})`
-          : `unknown field "${field}" for ${to}`,
+  const target = kind.parse(tableReader(raw, kind, err));
+  return failed ? undefined : target;
+}
+
+function tableReader(table: Table, kind: DestinationKind, fail: (m: string) => void): TableReader {
+  return {
+    required: (field) => requiredString(table, field, fail),
+    optional: (field) => optionalString(table, field, fail),
+    filledIn: (value, field, what) => filledIn(value, field, what, fail),
+    only: (fields, outdated = {}) =>
+      unknownFields(table, ["to", ...fields], (field) =>
+        fail(
+          Object.hasOwn(outdated, field)
+            ? (outdated[field] ?? "")
+            : `unknown field "${field}" for ${kind.kind}`,
+        ),
       ),
-    );
-    const repo = filledIn(
-      requiredString(raw, "repo", err),
-      "repo",
-      `the GitHub repository as "owner/name", such as "acme/billing"`,
-      err,
-    );
-    if (repo !== undefined && !REPO.test(repo)) err(`field "repo" must be "owner/name"`);
-    const environment = filledIn(
-      optionalString(raw, "environment", err),
-      "environment",
-      "the name of a GitHub environment of the repository, such as production",
-      err,
-    );
-    if (environment !== undefined && (environment.length > 255 || /^\.\.?$/.test(environment)))
-      err(
-        `field "environment" must be a GitHub environment name, at most 255 characters and not . or ..`,
-      );
-    if (failed || repo === undefined) return undefined;
-    const [account = ""] = repo.split("/");
-    const target: PublishTarget = { to, repo, account };
-    return environment === undefined ? target : { ...target, environment };
-  }
-  err(`field "to" must be one of: ${DESTINATION_KINDS.join(", ")}`);
-  return undefined;
+    fail,
+  };
 }
 
 function tomlProblem(error: unknown): string {

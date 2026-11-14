@@ -1,12 +1,6 @@
 import type { Environment, KeyId, KeyRef, Receipt, VaultMetadata } from "./contracts";
-import {
-  destinationId,
-  envFlag,
-  type MapResult,
-  publishEnvironment,
-  receiptSecretKey,
-  secretKey,
-} from "./map";
+import { destinationId, type DestinationKinds, receiptSecretKey, secretKey } from "./destination";
+import { envFlag, type MapResult, publishEnvironment } from "./map";
 import { latestPerSecret } from "./plan";
 import { sameRef } from "./reference";
 import type { Registry } from "./registry";
@@ -57,6 +51,7 @@ export interface StatusRow {
 }
 
 export interface StatusInput {
+  kinds: DestinationKinds;
   registry: Registry;
   maps: ReadonlyMap<string, MapResult>;
   receipts: readonly Receipt[];
@@ -106,7 +101,10 @@ export function buildStatus(input: StatusInput): Status {
       });
       continue;
     }
-    const latest = new Map(latestPerSecret(input.receipts).map((r) => [receiptSecretKey(r), r]));
+    const { kinds } = input;
+    const latest = new Map(
+      latestPerSecret(input.receipts, kinds).map((r) => [receiptSecretKey(r, kinds), r]),
+    );
     for (const key of result.map.keys) {
       for (const environment of result.map.environments) {
         const entry = key.environments[environment];
@@ -133,8 +131,8 @@ export function buildStatus(input: StatusInput): Status {
         const unpublished: string[] = [];
         const publish = `keypin publish ${key.name}${envFlag(environment, publishEnvironment(result.map))}`;
         const destinations = entry.publish.map((target): DestinationRow => {
-          const id = destinationId(target, key.name);
-          const last = latest.get(secretKey(target, key.name));
+          const id = destinationId(target, key.name, kinds);
+          const last = latest.get(secretKey(target, key.name, kinds));
           const ours =
             last &&
             (ownedBy(last, owner) || (last.source !== null && sameRef(last.source, entry.ref)));

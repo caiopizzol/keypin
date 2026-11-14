@@ -1,5 +1,6 @@
 import type {
   Destination,
+  DestinationKind,
   Files,
   Issuer,
   IssuerSpec,
@@ -71,6 +72,7 @@ export interface Deps {
   stderr: Writer;
   launch: Launch;
   onSignals: OnSignals;
+  destinations: readonly DestinationKind<PublishTarget, Publisher>[];
   destination(target: PublishTarget, publisher: Publisher): Destination;
   issuer(spec: IssuerSpec, admin: Secret): Issuer;
   wranglerLoginFile(): Promise<string | null>;
@@ -85,6 +87,7 @@ export interface Deps {
 export interface Publisher {
   githubLogin: string | null;
   refreshLogins: boolean;
+  wranglerFile?: string | null;
 }
 
 export class UsageError extends Error {}

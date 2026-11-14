@@ -350,17 +350,6 @@ export const scenarios: Record<string, Scenario> = {
   },
 };
 
-export function placeOf(target: {
-  to: string;
-  repo?: string;
-  worker?: string;
-  environment?: string;
-}): string {
-  return target.to === "cloudflare-worker"
-    ? `cloudflare-worker:${target.worker ?? ""}`
-    : `github-actions:${target.repo ?? ""}${target.environment === undefined ? "" : `/environments/${target.environment}`}`;
-}
-
 export const SHORTEST_VALUE = 8;
 export const SANDBOX_MARKER = ".keypin-verify-sandbox";
 

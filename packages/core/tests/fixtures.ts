@@ -1,3 +1,5 @@
+import { cloudflareWorker } from "@keypin/destination-cloudflare";
+import { githubActions } from "@keypin/destination-github";
 import type { Files, KeyEntry, Receipt } from "../src/index";
 
 export const MAP_FILE = "/work/web/keypin.toml";
@@ -98,3 +100,5 @@ export function fakeFiles(initial: Record<string, string> = {}) {
     },
   };
 }
+
+export const KINDS = [cloudflareWorker, githubActions];

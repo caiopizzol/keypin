@@ -1,0 +1,378 @@
+import { describe, expect, test } from "vite-plus/test";
+import { type InfisicalRef, isRecord, Secret } from "@keypin/core";
+import { credentialsFrom, type Fetch, infisicalBackend } from "../src/index";
+
+const URL = "https://app.infisical.com";
+const PROJECT_ID = "6f1c2a4e-1111-4222-8333-944455556666";
+const SENTINEL = "sentinel-value-3c9e1f";
+const CLIENT_SECRET = "client-secret-sentinel-7a2d";
+const TOKEN = "access-token-sentinel-55b1";
+const CREDENTIALS = { clientId: "client-id-1", clientSecret: CLIENT_SECRET };
+
+const REF: InfisicalRef = {
+  kind: "infisical",
+  url: URL,
+  organization: "acme",
+  project: "billing",
+  environment: "prod",
+  path: "/",
+  name: "STRIPE_KEY",
+};
+
+interface Stored {
+  id: string;
+  value: string;
+  metadata: { key: string; value: string; isEncrypted?: boolean }[];
+}
+
+interface Call {
+  method: string;
+  path: string;
+  query: Record<string, string>;
+  auth: string | null;
+  body: Record<string, unknown> | null;
+}
+
+function fakeInfisical(
+  options: {
+    secrets?: Record<string, Stored>;
+    organization?: string;
+    login?: number;
+    hidden?: boolean;
+    approval?: boolean;
+    encryptedMetadata?: boolean;
+  } = {},
+) {
+  const secrets = new Map(Object.entries(options.secrets ?? {}));
+  const calls: Call[] = [];
+  const reply = (status: number, body: unknown) =>
+    Promise.resolve(new Response(JSON.stringify(body), { status }));
+  const fetch: Fetch = (url, init) => {
+    const parsed = new globalThis.URL(url);
+    const sent: unknown = init.body ? JSON.parse(init.body) : null;
+    const body = isRecord(sent) ? sent : null;
+    const text = (field: string) => {
+      const value = body?.[field];
+      return typeof value === "string" ? value : "";
+    };
+    const auth = init.headers.Authorization ?? null;
+    const query = Object.fromEntries(parsed.searchParams);
+    calls.push({ method: init.method, path: parsed.pathname, query, auth, body });
+    const where = `${query.environment ?? text("environment")}:${query.secretPath ?? text("secretPath")}`;
+    if (parsed.pathname === "/api/v1/auth/universal-auth/login") {
+      if (options.login) return reply(options.login, { message: "Invalid credentials" });
+      return reply(200, { accessToken: TOKEN, expiresIn: 7200, tokenType: "Bearer" });
+    }
+    if (auth !== `Bearer ${TOKEN}`) return reply(401, { message: "Unauthorized" });
+    if (parsed.pathname === "/api/v1/identities/details")
+      return reply(200, {
+        identityDetails: {
+          organization: { id: "o1", name: "Acme", slug: options.organization ?? "acme" },
+        },
+      });
+    if (parsed.pathname === "/api/v1/projects/slug/billing") return reply(200, { id: PROJECT_ID });
+    if (parsed.pathname.startsWith("/api/v1/projects/slug/"))
+      return reply(404, { message: "Project not found" });
+    if (parsed.pathname === "/api/v4/secrets")
+      return reply(200, {
+        secrets: [...secrets].map(([key, s]) => ({
+          id: s.id,
+          secretKey: key.split(":").at(-1),
+          tags: [{ id: "t", slug: "billing", name: "billing" }],
+          updatedAt: "2026-11-01T00:00:00.000Z",
+        })),
+      });
+    const name = decodeURIComponent(parsed.pathname.replace("/api/v4/secrets/", ""));
+    const key = `${where}:${name}`;
+    const found = secrets.get(key);
+    if (init.method === "GET") {
+      if (!found) return reply(404, { message: `Secret with name '${name}' not found` });
+      const shown = query.viewSecretValue === "true" && !options.hidden;
+      return reply(200, {
+        secret: {
+          id: found.id,
+          secretKey: name,
+          secretValue: shown ? found.value : "<hidden-by-infisical>",
+          secretValueHidden: !shown,
+          secretMetadata: found.metadata,
+        },
+      });
+    }
+    if (options.approval) return reply(200, { approval: { id: "a1", status: "open" } });
+    const value = text("secretValue");
+    const sentMetadata = body?.secretMetadata;
+    const metadata = Array.isArray(sentMetadata)
+      ? sentMetadata.flatMap((m: unknown) =>
+          isRecord(m) && typeof m.key === "string" && typeof m.value === "string"
+            ? [{ key: m.key, value: m.value, isEncrypted: m.isEncrypted === true }]
+            : [],
+        )
+      : (found?.metadata ?? []);
+    if (options.encryptedMetadata && metadata.some((m) => !m.isEncrypted))
+      return reply(400, { message: "Project requires all secret metadata to be encrypted" });
+    const stored = { id: found?.id ?? `id-${name}`, value, metadata };
+    secrets.set(key, stored);
+    return reply(200, { secret: { id: stored.id, secretKey: name } });
+  };
+  return { fetch, calls, secrets };
+}
+
+const STRIPE = {
+  id: "secret-1",
+  value: SENTINEL,
+  metadata: [{ key: "rotated", value: "2026-10-01" }],
+};
+
+describe("signing in", () => {
+  test("logs in with Universal Auth once, checks the organization, and resolves the project slug once", async () => {
+    const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": STRIPE } });
+    const vault = infisicalBackend(CREDENTIALS, fake.fetch);
+    expect((await vault.read(REF)).equals(new Secret(SENTINEL))).toBe(true);
+    await vault.read(REF);
+    expect(fake.calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      "POST /api/v1/auth/universal-auth/login",
+      "GET /api/v1/identities/details",
+      "GET /api/v1/projects/slug/billing",
+      "GET /api/v4/secrets/STRIPE_KEY",
+      "GET /api/v4/secrets/STRIPE_KEY",
+    ]);
+    expect(fake.calls[0]?.body).toEqual({ clientId: "client-id-1", clientSecret: CLIENT_SECRET });
+    expect(fake.calls[3]?.query).toMatchObject({
+      projectId: PROJECT_ID,
+      environment: "prod",
+      secretPath: "/",
+      viewSecretValue: "true",
+    });
+  });
+
+  test("a project ID in the reference skips the slug lookup", async () => {
+    const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": STRIPE } });
+    await infisicalBackend(CREDENTIALS, fake.fetch).read({ ...REF, project: PROJECT_ID });
+    expect(fake.calls.some((c) => c.path.startsWith("/api/v1/projects"))).toBe(false);
+  });
+
+  test("a self-hosted url is where every request goes", async () => {
+    const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": STRIPE } });
+    const urls: string[] = [];
+    await infisicalBackend(CREDENTIALS, (url, init) => {
+      urls.push(url);
+      return fake.fetch(url, init);
+    }).read({ ...REF, url: "https://vault.acme.dev" });
+    expect(urls.every((url) => url.startsWith("https://vault.acme.dev/api/"))).toBe(true);
+  });
+
+  test("no credentials name the variables to set", async () => {
+    await expect(infisicalBackend(null, fakeInfisical().fetch).read(REF)).rejects.toThrow(
+      "Infisical organization acme at https://app.infisical.com: sign-in failed: set INFISICAL_UNIVERSAL_AUTH_CLIENT_ID and INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET to a machine identity's Universal Auth client ID and secret",
+    );
+  });
+
+  test("refused credentials say so, without the secret", async () => {
+    const fake = fakeInfisical({ login: 401 });
+    const error = await infisicalBackend(CREDENTIALS, fake.fetch)
+      .read(REF)
+      .catch((e: unknown) => e);
+    expect(String(error)).toContain(
+      "sign-in failed: Infisical returned HTTP 401: Invalid credentials",
+    );
+    expect(String(error)).not.toContain(CLIENT_SECRET);
+  });
+
+  test("an identity from another organization is refused before any secret is read", async () => {
+    const fake = fakeInfisical({ organization: "other", secrets: { "prod:/:STRIPE_KEY": STRIPE } });
+    await expect(infisicalBackend(CREDENTIALS, fake.fetch).read(REF)).rejects.toThrow(
+      "sign-in failed: the machine identity belongs to the organization other, but keypin.toml pins acme",
+    );
+    expect(fake.calls.some((c) => c.path.startsWith("/api/v4"))).toBe(false);
+  });
+
+  test("an unknown project names the slug", async () => {
+    await expect(
+      infisicalBackend(CREDENTIALS, fakeInfisical().fetch).read({ ...REF, project: "nope" }),
+    ).rejects.toThrow(`no project with the slug "nope", or the machine identity isn't a member`);
+  });
+
+  test("credentials come from both variables, or not at all", () => {
+    expect(
+      credentialsFrom({
+        INFISICAL_UNIVERSAL_AUTH_CLIENT_ID: "a",
+        INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET: "b",
+      }),
+    ).toEqual({ clientId: "a", clientSecret: "b" });
+    expect(credentialsFrom({ INFISICAL_UNIVERSAL_AUTH_CLIENT_ID: "a" })).toBeNull();
+  });
+});
+
+describe("reading", () => {
+  test("readItem gives the value and the project and secret IDs", async () => {
+    const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": STRIPE } });
+    const { secret, ids } = await infisicalBackend(CREDENTIALS, fake.fetch).readItem(REF);
+    expect(secret.equals(new Secret(SENTINEL))).toBe(true);
+    expect(ids).toEqual({ vault: PROJECT_ID, item: "secret-1" });
+  });
+
+  test("itemIds and metadata never ask for the value", async () => {
+    const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": STRIPE } });
+    const vault = infisicalBackend(CREDENTIALS, fake.fetch);
+    expect(await vault.itemIds(REF)).toEqual({ vault: PROJECT_ID, item: "secret-1" });
+    expect(await vault.metadata(REF)).toEqual({ rotated: "2026-10-01" });
+    const reads = fake.calls.filter((c) => c.path === "/api/v4/secrets/STRIPE_KEY");
+    expect(reads.map((c) => c.query.viewSecretValue)).toEqual(["false", "false"]);
+  });
+
+  test("a folder reference reads that secret path", async () => {
+    const fake = fakeInfisical({ secrets: { "prod:/payments/stripe:STRIPE_KEY": STRIPE } });
+    const ref = { ...REF, path: "/payments/stripe" };
+    expect((await infisicalBackend(CREDENTIALS, fake.fetch).read(ref)).isEmpty()).toBe(false);
+  });
+
+  test("a missing secret, a hidden value, and a bad rotated date are clear errors", async () => {
+    const missing = infisicalBackend(CREDENTIALS, fakeInfisical().fetch);
+    await expect(missing.read(REF)).rejects.toThrow(
+      "infisical://billing/prod/STRIPE_KEY (Infisical organization acme at https://app.infisical.com): no such secret",
+    );
+    const hidden = fakeInfisical({ hidden: true, secrets: { "prod:/:STRIPE_KEY": STRIPE } });
+    await expect(infisicalBackend(CREDENTIALS, hidden.fetch).read(REF)).rejects.toThrow(
+      "the machine identity can see this secret but not its value",
+    );
+    const bad = fakeInfisical({
+      secrets: {
+        "prod:/:STRIPE_KEY": { ...STRIPE, metadata: [{ key: "rotated", value: "soon" }] },
+      },
+    });
+    await expect(infisicalBackend(CREDENTIALS, bad.fetch).metadata(REF)).rejects.toThrow(
+      `the metadata "rotated" isn't a YYYY-MM-DD date: "soon"`,
+    );
+  });
+
+  test("no rotated metadata is no rotated date", async () => {
+    const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": { ...STRIPE, metadata: [] } } });
+    expect(await infisicalBackend(CREDENTIALS, fake.fetch).metadata(REF)).toEqual({
+      rotated: null,
+    });
+  });
+
+  test("a 1Password reference is refused", async () => {
+    const ref = {
+      kind: "1password" as const,
+      account: "my.1password.com",
+      vault: "Private",
+      item: "i",
+      section: null,
+      field: "password",
+    };
+    await expect(infisicalBackend(CREDENTIALS, fakeInfisical().fetch).read(ref)).rejects.toThrow(
+      "keypin's Infisical vault can't read this reference",
+    );
+  });
+});
+
+describe("writing", () => {
+  test("updating keeps other metadata and sets rotated", async () => {
+    const fake = fakeInfisical({
+      secrets: {
+        "prod:/:STRIPE_KEY": {
+          ...STRIPE,
+          metadata: [{ key: "owner", value: "billing" }, ...STRIPE.metadata],
+        },
+      },
+    });
+    await infisicalBackend(CREDENTIALS, fake.fetch).write(REF, new Secret("new-value-1234"), {
+      rotated: "2026-11-14",
+    });
+    const patch = fake.calls.find((c) => c.method === "PATCH");
+    expect(patch?.body).toEqual({
+      projectId: PROJECT_ID,
+      environment: "prod",
+      secretPath: "/",
+      secretValue: "new-value-1234",
+      secretMetadata: [
+        { key: "owner", value: "billing" },
+        { key: "rotated", value: "2026-11-14", isEncrypted: true },
+      ],
+    });
+    expect(
+      fake.calls.find((c) => c.method === "GET" && c.path.endsWith("/STRIPE_KEY"))?.query
+        .includeImports,
+    ).toBe("false");
+  });
+
+  test("a new secret is created, and newItem refuses one that exists", async () => {
+    const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": STRIPE } });
+    const vault = infisicalBackend(CREDENTIALS, fake.fetch);
+    await vault.write({ ...REF, name: "RESEND_KEY" }, new Secret("resend-value-99"), {
+      newItem: true,
+      rotated: "2026-11-14",
+    });
+    expect(fake.calls.at(-1)).toMatchObject({ method: "POST", path: "/api/v4/secrets/RESEND_KEY" });
+    expect(fake.secrets.get("prod:/:RESEND_KEY")?.metadata).toEqual([
+      { key: "rotated", value: "2026-11-14", isEncrypted: true },
+    ]);
+    await expect(vault.write(REF, new Secret("x"), { newItem: true })).rejects.toThrow(
+      "the secret already exists; keypin doesn't overwrite it",
+    );
+  });
+
+  test("rotated is sent encrypted, so projects that require encrypted metadata accept it", async () => {
+    const fake = fakeInfisical({
+      encryptedMetadata: true,
+      secrets: {
+        "prod:/:STRIPE_KEY": {
+          ...STRIPE,
+          metadata: [{ key: "rotated", value: "2026-10-01", isEncrypted: true }],
+        },
+      },
+    });
+    const vault = infisicalBackend(CREDENTIALS, fake.fetch);
+    await vault.write(REF, new Secret("new-value-1234"), { rotated: "2026-11-14" });
+    await vault.write({ ...REF, name: "RESEND_KEY" }, new Secret("resend-value-99"), {
+      newItem: true,
+      rotated: "2026-11-14",
+    });
+    expect(fake.secrets.get("prod:/:STRIPE_KEY")?.metadata).toEqual([
+      { key: "rotated", value: "2026-11-14", isEncrypted: true },
+    ]);
+    expect(fake.secrets.get("prod:/:RESEND_KEY")?.metadata).toEqual([
+      { key: "rotated", value: "2026-11-14", isEncrypted: true },
+    ]);
+    expect(await vault.metadata(REF)).toEqual({ rotated: "2026-11-14" });
+  });
+
+  test("a change held for approval isn't reported as written", async () => {
+    const fake = fakeInfisical({ approval: true, secrets: { "prod:/:STRIPE_KEY": STRIPE } });
+    await expect(
+      infisicalBackend(CREDENTIALS, fake.fetch).write(REF, new Secret("new-value-1234")),
+    ).rejects.toThrow("Infisical holds the change for approval");
+  });
+
+  test("a bad rotated day is refused before any request", async () => {
+    const fake = fakeInfisical();
+    await expect(
+      infisicalBackend(CREDENTIALS, fake.fetch).write(REF, new Secret("v"), {
+        rotated: "2026-02-30",
+      }),
+    ).rejects.toThrow(`rotated must be a real day as YYYY-MM-DD, got "2026-02-30"`);
+    expect(fake.calls).toEqual([]);
+  });
+});
+
+test("list names the secrets of a project, environment and path, without values", async () => {
+  const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": STRIPE } });
+  const items = await infisicalBackend(CREDENTIALS, fake.fetch).list({
+    kind: "infisical",
+    url: URL,
+    organization: "acme",
+    project: "billing",
+    environment: "prod",
+    path: "/",
+  });
+  expect(items).toEqual([
+    {
+      id: "secret-1",
+      title: "STRIPE_KEY",
+      tags: ["billing"],
+      updatedAt: "2026-11-01T00:00:00.000Z",
+    },
+  ]);
+  expect(fake.calls.at(-1)?.query.viewSecretValue).toBe("false");
+});

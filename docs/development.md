@@ -20,6 +20,20 @@ bun run test       # tests
 bun run typecheck  # tsc in every package
 ```
 
+## Guardrails
+
+`vp lint` enforces these, so the code keeps its shape:
+
+- `packages/core` never imports a connector (`@keypin/destination-*`, `issuer-*`, `vault-*`). Core defines the
+  contracts; register connectors in `apps/cli/src/start.ts`.
+- A connector imports only `@keypin/core` among keypin packages. Put shared code in core.
+- In `apps/cli/src`, only `start.ts`, `sign-in.ts` and `commands/check.ts` import connectors. Elsewhere, take them
+  from `deps`.
+- Core and `apps/cli/src/commands` don't import `fs`, `child_process`, `net`, `http(s)` or `bun`, and don't use
+  `process.env`, global `fetch` or `Bun.*`. Take files, env, launch and vault from `deps` so tests can fake them.
+- Core and commands don't call `new Date()`, `Date.now()` or `Math.random()`. Use `deps.now()` or take the value as
+  an argument.
+
 ## Binary and npm packages
 
 keypin ships as one executable with Bun inside.

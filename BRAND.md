@@ -30,7 +30,7 @@ GitHub and Cloudflare receive them; keypin knows the path between them.
 
 - The map holds names and places, never values.
 - It checks the account before every write.
-- It shows a plan before every publish, and a first write waits for you to type `yes`.
+- It shows a plan before every publish, and a first write waits for you to answer `y`.
 - No server and no account to sign up for.
 
 ### Personality
@@ -46,7 +46,7 @@ The careful operator. Exact, plain, cautious, quiet. Not alarmist, not clever, n
 ### Promise
 
 Values stay in your vault. Nothing is published without a plan, and a first write or a changed account waits for
-you to type `yes`.
+you to answer `y`.
 
 Base message: keypin knows where every key goes, never what it is.
 
@@ -102,7 +102,7 @@ The name is always lowercase: keypin.
 | We Say                          | We Never Say                    |
 | ------------------------------- | ------------------------------- |
 | "Values stay in your vault."    | "Bank-grade security."          |
-| "It waits for you to type yes." | "Seamless, effortless deploys." |
+| "It waits for you to answer y." | "Seamless, effortless deploys." |
 
 ## Visual
 

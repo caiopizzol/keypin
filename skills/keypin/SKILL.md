@@ -63,8 +63,9 @@ also deploys.
 ## Over time
 
 - `keypin status --json`: every project's keys and when each is due.
-- To rotate a key: the user makes a new value at the provider, puts it in the 1Password field and sets `rotated` to
-  today; then publish it. Once everything uses the new value, remind the user to revoke the old one.
+- To rotate a key with an `issuer`, give the user `keypin rotate NAME` to run in a terminal; it asks `y` to rotate
+  and again to revoke the old key. Without one, the user makes a new value at the provider, puts it in the
+  1Password field and sets `rotated` to today; then publish it, and remind them to revoke the old one.
 
 Details: [Configuration](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md),
 [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md),

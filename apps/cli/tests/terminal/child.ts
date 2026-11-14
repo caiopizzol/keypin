@@ -9,13 +9,21 @@ import {
   type SdkClient,
   signInAddress,
 } from "@keypin/vault-1password";
+import { ResendIssuer } from "@keypin/issuer-resend";
 import { credentialsFrom, infisicalBackend } from "@keypin/vault-infisical";
 import { cli } from "../../src/cli";
 import { onePasswordFrom } from "../../src/sign-in";
 import { realDeps } from "../../src/start";
 import { routedVault } from "../../src/vault";
 import { infisicalFetch, type Stored as InfisicalStored } from "../infisical-fake";
-import { type FakeItem, placeOf, SANDBOX_MARKER, type Scenario, scenarios } from "./scenarios";
+import {
+  type FakeItem,
+  ISSUED_PREFIX,
+  placeOf,
+  SANDBOX_MARKER,
+  type Scenario,
+  scenarios,
+} from "./scenarios";
 
 export const ACCOUNT_NOT_FOUND =
   "An error occurred when processing SDK request: Error { msg: Account not found, inner: None }";
@@ -44,6 +52,7 @@ if (
 
 const EFFECTS = join(sandbox, "effects.txt");
 const VAULT = join(sandbox, "onepassword.json");
+const RESEND = join(sandbox, "resend.json");
 
 function effect(line: string): void {
   appendFileSync(EFFECTS, `${line}\n`);
@@ -87,6 +96,7 @@ function itemsOf(account: string, vault: string, scenario: Scenario): FakeItem[]
 function full(vault: string, item: FakeItem): FullItem {
   const fields: Field[] = [
     { id: "password", title: "password", fieldType: "Concealed", value: item.value },
+    { id: "credential", title: "credential", fieldType: "Concealed", value: item.value },
   ];
   if (item.rotated)
     fields.push({ id: "rotated", title: "rotated", fieldType: "Date", value: item.rotated });
@@ -107,6 +117,10 @@ function full(vault: string, item: FakeItem): FullItem {
   };
 }
 
+function changed(password: string | undefined, credential: string | undefined): string {
+  return credential !== undefined && credential !== password ? credential : (password ?? "");
+}
+
 function client(account: string, scenario: Scenario): SdkClient {
   const vaults = () => Object.keys(scenario.onePassword.accounts[account] ?? {});
   const value = (fields: readonly Field[] | undefined, title: string) =>
@@ -117,7 +131,7 @@ function client(account: string, scenario: Scenario): SdkClient {
       account,
       vault,
       title,
-      value: value(fields, "password") ?? "",
+      value: changed(value(fields, "password"), value(fields, "credential")),
       ...(rotated ? { rotated } : {}),
     });
   };
@@ -213,6 +227,38 @@ const infisical = infisicalBackend(
   }),
 );
 const vault = routedVault({ "1password": () => signedIn().vault, infisical: () => infisical });
+
+function resendKeys(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(RESEND, "utf8"));
+    return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
+  } catch {
+    return run.resend?.keys ?? [];
+  }
+}
+
+const resendFetch = async (url: string, init: { method: string; body?: string }) => {
+  const keys = resendKeys();
+  const path = new URL(url).pathname;
+  const reply = (status: number, body: object) => new Response(JSON.stringify(body), { status });
+  if (init.method === "GET" && path === "/api-keys")
+    return reply(200, { object: "list", has_more: false, data: keys.map((id) => ({ id })) });
+  if (init.method === "POST" && path === "/api-keys") {
+    if (run.resend?.failCreate) return reply(500, { name: "internal_server_error" });
+    const id = `re-new-${keys.length}`;
+    writeFileSync(RESEND, JSON.stringify([...keys, id]));
+    effect(`resend create ${id}`);
+    return reply(201, { id, object: "api_key", token: `${ISSUED_PREFIX}${keys.length}_7d1b` });
+  }
+  const id = decodeURIComponent(path.replace(/^\/api-keys\//, ""));
+  if (init.method === "DELETE" && keys.includes(id)) {
+    writeFileSync(RESEND, JSON.stringify(keys.filter((k) => k !== id)));
+    effect(`resend revoke ${id}`);
+    return reply(200, { object: "api_key", id, deleted: true });
+  }
+  return reply(404, { name: "not_found" });
+};
+
 const real = realDeps();
 
 process.exitCode = await cli(process.argv.slice(2), {
@@ -231,6 +277,12 @@ process.exitCode = await cli(process.argv.slice(2), {
           reason: "gh has no token for an active login; run: gh auth login --hostname github.com",
         },
   workerSecrets: async () => ({ ok: false, reason: "this scenario has no Cloudflare account" }),
+  issuer: (spec, admin) =>
+    new ResendIssuer({
+      admin: async () => admin,
+      permission: spec.permission,
+      fetch: resendFetch,
+    }),
   destination: (target) => {
     const place = placeOf(target);
     const scripted = run.places[place] ?? {};

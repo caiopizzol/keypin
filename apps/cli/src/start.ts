@@ -2,7 +2,7 @@ import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline/promises";
-import type { Destination, PublishTarget } from "@keypin/core";
+import type { Destination, Issuer, IssuerSpec, PublishTarget, Secret } from "@keypin/core";
 import {
   CloudflareReader,
   currentWranglerToken,
@@ -10,6 +10,7 @@ import {
   wranglerConfigFile,
 } from "@keypin/destination-cloudflare";
 import { ghToken, GitHubSecretDestination, listRepoSecrets } from "@keypin/destination-github";
+import { ResendIssuer } from "@keypin/issuer-resend";
 import {
   type Connect,
   desktopConnect,
@@ -62,6 +63,14 @@ export function destination(target: PublishTarget, publisher: Publisher): Destin
       throw new Error(`unknown destination ${JSON.stringify(unknown)}`);
     }
   }
+}
+
+export function issuer(spec: IssuerSpec, admin: Secret): Issuer {
+  return new ResendIssuer({
+    admin: async () => admin,
+    permission: spec.permission,
+    ...(spec.domainId === undefined ? {} : { domainId: spec.domainId }),
+  });
 }
 
 function installed<T>(pending: Promise<T>): Promise<T> {
@@ -175,6 +184,7 @@ export function realDeps(): Deps {
     launch,
     onSignals,
     destination,
+    issuer,
     wranglerLoginFile: async () => {
       try {
         const file = wranglerConfigFile();

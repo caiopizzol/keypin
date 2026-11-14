@@ -2,6 +2,7 @@ import { check } from "./commands/check";
 import { importEnv } from "./commands/import";
 import { init } from "./commands/init";
 import { publish } from "./commands/publish";
+import { rotate } from "./commands/rotate";
 import { run } from "./commands/run";
 import { status } from "./commands/status";
 import { unregister } from "./commands/unregister";
@@ -66,6 +67,14 @@ const COMMAND_USAGE: [string, string][] = [
                            the same for every key with destinations, with one plan and one approval
 `,
   ],
+  [
+    "rotate",
+    `  keypin rotate <VARIABLE> [--env <name>] [--yes]
+                           replace a key that has an issuer: create a new key at the provider, save
+                           it to 1Password, publish it, then ask before revoking the old key; run it
+                           again to continue after a failure or to revoke the old key later
+`,
+  ],
 ];
 
 export const USAGE = `Usage:
@@ -88,6 +97,7 @@ const COMMANDS = new Map<string, (args: string[], deps: Deps) => Promise<number>
   ["import", importEnv],
   ["run", run],
   ["publish", publish],
+  ["rotate", rotate],
 ]);
 
 export async function cli(argv: string[], deps: Deps): Promise<number> {

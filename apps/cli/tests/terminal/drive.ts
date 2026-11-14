@@ -65,6 +65,13 @@ function setUp(name: string) {
     mkdirSync(dirname(join(project, path)), { recursive: true });
     writeFileSync(join(project, path), text);
   }
+  if (scenario.state) {
+    mkdirSync(join(home, ".local/state/keypin"), { recursive: true });
+    writeFileSync(
+      join(home, ".local/state/keypin/state.json"),
+      JSON.stringify(scenario.state).replaceAll("<project>", project),
+    );
+  }
   if (scenario.registered) {
     mkdirSync(join(home, ".config/keypin"), { recursive: true });
     writeFileSync(

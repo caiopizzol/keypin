@@ -21,7 +21,7 @@ import {
 import type { Deps, LockHolder } from "./deps";
 import { messageOf } from "./errors";
 import { statePath } from "./paths";
-import { columns, type Output } from "./output";
+import { columns, confirm, type Output } from "./output";
 import { publisherFor } from "./publisher";
 
 export const NEEDS_APPROVAL = 3;
@@ -201,8 +201,12 @@ export function finishAll(state: State, owner: KeyOwner): State {
 export function rerun(deps: Deps, command: string, args: readonly string[]): string {
   const end = args.includes("--") ? args.indexOf("--") : args.length;
   const approve = [...args.slice(0, end).filter((arg) => arg !== "--plan"), ...args.slice(end)];
-  const words = [...deps.self.command, command, ...approve].map(shellWord).join(" ");
-  return `To approve, run this in a terminal:\n  cd ${shellWord(deps.self.folder)} && ${words}`;
+  return `To approve, run this in a terminal:\n  ${commandLine(deps, command, approve)}`;
+}
+
+export function commandLine(deps: Deps, command: string, args: readonly string[]): string {
+  const words = [...deps.self.command, command, ...args].map(shellWord).join(" ");
+  return `cd ${shellWord(deps.self.folder)} && ${words}`;
 }
 
 export function planOnly(
@@ -230,4 +234,70 @@ export function accountFacts(check: AccountCheck): string {
   return check.ok
     ? `as ${check.publisher}, account ${check.destinationAccount ?? check.expected}`
     : `as ${check.publisher}, pinned ${check.expected}, reaches ${check.destinationAccount ?? "unknown"}`;
+}
+
+const WHY: Record<PlanStep["reason"], string> = {
+  "no receipt": "first write",
+  "new destination": "first write",
+  "account changed": "account changed",
+  "item changed": "vault item changed",
+  "different generation": "new value",
+  "receipt already has this generation": "already has this value",
+};
+
+export interface PlanRow {
+  sign: "+" | "~" | "=" | "-";
+  place: string;
+  why: string;
+  approval: boolean;
+  detail: string | null;
+}
+
+export function publishRows(steps: readonly PlanStep[], label: Label): PlanRow[] {
+  return steps.map((step) => ({
+    sign: step.action === "skip" ? "=" : step.approval ? "+" : "~",
+    place: label(step.target),
+    why: WHY[step.reason],
+    approval: step.approval !== null,
+    detail:
+      step.reason === "account changed" || step.reason === "item changed" ? step.approval : null,
+  }));
+}
+
+export function showPlan(out: Output, rows: readonly PlanRow[]): void {
+  const cells = columns(rows.map((row) => [row.place]));
+  rows.forEach((row, index) => {
+    const [place = ""] = cells[index] ?? [];
+    const text = `${row.sign} ${place}  ${row.why}`;
+    const approval = row.approval ? `  ${out.bold("needs approval")}` : "";
+    out.line(`  ${row.sign === "=" ? out.dim(text.trimEnd()) : `${text}${approval}`}`);
+    if (row.detail !== null) out.line(`    ${out.dim(row.detail)}`);
+  });
+}
+
+export async function confirmed(
+  deps: Deps,
+  request: {
+    yes: boolean;
+    args: string[];
+    command: string;
+    needsApproval: boolean;
+    question: string;
+  },
+  nothing = "Nothing was written.",
+): Promise<boolean> {
+  const say = (text: string) => deps.stderr.write(`${text}\n`);
+  if (request.yes && !request.needsApproval) return true;
+  if (deps.isTerminal) {
+    if (await confirm(deps, request.question)) return true;
+    say(`Not confirmed. ${nothing}`);
+    return false;
+  }
+  say(
+    request.needsApproval
+      ? `Stopped: this plan needs approval, and --yes can't give it. ${nothing}`
+      : `Stopped: no terminal to confirm on. ${nothing} Add --yes, or confirm in a terminal.`,
+  );
+  say(rerun(deps, request.command, request.args));
+  return false;
 }

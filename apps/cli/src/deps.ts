@@ -1,4 +1,13 @@
-import type { Destination, Files, PublishTarget, StoreRead, VaultBackend } from "@keypin/core";
+import type {
+  Destination,
+  Files,
+  Issuer,
+  IssuerSpec,
+  PublishTarget,
+  Secret,
+  StoreRead,
+  VaultBackend,
+} from "@keypin/core";
 import type { Self } from "./self";
 import type { SignIn } from "./sign-in";
 
@@ -63,6 +72,7 @@ export interface Deps {
   launch: Launch;
   onSignals: OnSignals;
   destination(target: PublishTarget, publisher: Publisher): Destination;
+  issuer(spec: IssuerSpec, admin: Secret): Issuer;
   wranglerLoginFile(): Promise<string | null>;
   ghLogin(login: string | null): Promise<"ok" | "not installed" | "not logged in">;
   lock: Lock;

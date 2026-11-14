@@ -11,7 +11,6 @@ import {
   type KeyEntry,
   type KeyOwner,
   type KeysMap,
-  type PlanStep,
   generationOf,
   loadState,
   planPublish,
@@ -24,17 +23,20 @@ import { type Deps, UsageError } from "../deps";
 import { messageOf } from "../errors";
 import { findMap, pickEnvironment } from "../project";
 import { approval, signInFor } from "../sign-in";
-import { columns, confirm, type Output, output } from "../output";
+import { type Output, output } from "../output";
 import {
   type Checked,
   checkAccounts,
+  confirmed,
   finishAll,
   labels,
   locked,
   NEEDS_APPROVAL,
   planOnly,
+  publishRows,
   rerun,
   type Say,
+  showPlan,
   type Write,
   writeAll,
   writesFor,
@@ -220,15 +222,7 @@ async function publishLocked(
     say(
       `\nPlan${many ? ` for ${out.bold(key.name)}` : ""}  ${out.dim(`generation ${generation}`)}`,
     );
-    const rows = columns(plan.steps.map((step) => [label(step.target), WHY[step.reason]]));
-    plan.steps.forEach((step, index) => {
-      const [place = "", why = ""] = rows[index] ?? [];
-      const text = `${step.action === "skip" ? "=" : step.approval ? "+" : "~"} ${place}  ${why}`;
-      const approval = step.approval ? `  ${out.bold("needs approval")}` : "";
-      say(`  ${step.action === "skip" ? out.dim(text.trimEnd()) : `${text}${approval}`}`);
-      if (step.reason === "account changed" || step.reason === "item changed")
-        say(`    ${out.dim(step.approval ?? "")}`);
-    });
+    showPlan(out, publishRows(plan.steps, label));
     for (const removed of plan.removed) {
       say(
         `  ${out.dim(`- ${removed.destinationId}: not in the map any more (last got ${removed.lastReceipt.generation} at ${removed.lastReceipt.at}). keypin doesn't delete it.`)}`,
@@ -257,7 +251,9 @@ async function publishLocked(
 
   const total = pending.reduce((sum, job) => sum + job.writes.length, 0);
   say("");
-  if (!(await confirmed(deps, needsApproval, request, total))) return NEEDS_APPROVAL;
+  const question = `Write ${count(total, "secret")}?`;
+  if (!(await confirmed(deps, { ...request, command: "publish", needsApproval, question })))
+    return NEEDS_APPROVAL;
 
   for (const [index, job] of pending.entries()) {
     const written = await writeAll({
@@ -290,15 +286,6 @@ async function publishLocked(
   }
   return 0;
 }
-
-const WHY: Record<PlanStep["reason"], string> = {
-  "no receipt": "first write",
-  "new destination": "first write",
-  "account changed": "account changed",
-  "item changed": "vault item changed",
-  "different generation": "new value",
-  "receipt already has this generation": "already has this value",
-};
 
 type Read =
   | { ok: true; jobs: (Checks & { secret: Secret; ids: ItemIds })[] }
@@ -352,28 +339,6 @@ function readValues(checks: Checks[], deps: Deps, out: Output): Promise<Read> {
       checks.map((job) => job.entry.ref),
     ),
   );
-}
-
-async function confirmed(
-  deps: Deps,
-  needsApproval: boolean,
-  request: { yes: boolean; args: string[] },
-  total: number,
-): Promise<boolean> {
-  const say = (text: string) => deps.stderr.write(`${text}\n`);
-  if (request.yes && !needsApproval) return true;
-  if (deps.isTerminal) {
-    if (await confirm(deps, `Write ${count(total, "secret")}?`)) return true;
-    say("Not confirmed. Nothing was written.");
-    return false;
-  }
-  say(
-    needsApproval
-      ? "Stopped: this plan needs approval, and --yes can't give it. Nothing was written."
-      : "Stopped: no terminal to confirm on. Nothing was written. Add --yes, or confirm in a terminal.",
-  );
-  say(rerun(deps, "publish", request.args));
-  return false;
 }
 
 function count(n: number, noun: string): string {

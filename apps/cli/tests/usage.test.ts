@@ -77,7 +77,16 @@ describe("the full usage", () => {
   });
 
   test("names every command", () => {
-    for (const command of ["init", "unregister", "status", "check", "import", "run", "publish"]) {
+    for (const command of [
+      "init",
+      "unregister",
+      "status",
+      "check",
+      "import",
+      "run",
+      "publish",
+      "rotate",
+    ]) {
       expect(USAGE).toContain(`  keypin ${command} `);
     }
     expect(USAGE).toContain("  keypin --version ");

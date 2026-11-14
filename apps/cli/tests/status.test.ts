@@ -289,7 +289,7 @@ dev = "op://Private/late/password"
 
 [keys.YESTERDAY]
 rotate_every = "30d"
-dev = "op://Private/yesterday/password"
+dev = { from = "op://Private/yesterday/password", issuer = { kind = "resend", admin = "op://Private/resend admin/password", permission = "full_access" } }
 
 [keys.TODAY]
 rotate_every = "30d"
@@ -352,7 +352,7 @@ dev = "op://Private/forever/password"
         "  app LATE (dev): was due 2026-11-04 (rotated 2026-10-05, every 30d)",
         "    Put a new value in the 1Password item and set rotated to today.",
         "  app YESTERDAY (dev): was due 2026-11-08 (rotated 2026-10-09, every 30d)",
-        "    Put a new value in the 1Password item and set rotated to today.",
+        "    Run keypin rotate YESTERDAY --env dev in ~/code/app.",
         "  app UNDATED (dev): no rotated date",
         "    Add a rotated Date field to the 1Password item, with the day the value last changed.",
         "",

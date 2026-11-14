@@ -317,3 +317,76 @@ describe("keypin in a real terminal", () => {
     SLOW,
   );
 });
+
+describe("keypin rotate in a real terminal", () => {
+  test(
+    "creates at Resend, saves, publishes, then revokes the old key after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "resend",
+        args: ["rotate", "RESEND_API_KEY"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  - Resend                   revoke the old key re-old, after a second y",
+      );
+      expect(result.screen).toContain("Rotate RESEND_API_KEY? [y/N] y");
+      expect(result.screen).toContain("Revoke the old key at Resend? [y/N] y");
+      expect(result.screen).toMatch(/^✓ Resend {2}revoked re-old {2}\d+\.\ds$/m);
+      expect(result.effects).toEqual([
+        "resend create re-new-1",
+        "1password update my.1password.com/Private/mailer resend key",
+        "destination write github-actions:acme/mailer RESEND_API_KEY (20 chars)",
+        "destination write cloudflare-worker:mailer RESEND_API_KEY (20 chars)",
+        "resend revoke re-old",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "declining the revoke keeps the old key and prints the command for later",
+    async () => {
+      const result = await drive({
+        scenario: "resend",
+        args: ["rotate", "RESEND_API_KEY"],
+        answers: ["y", "n"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "To revoke it later, run this in a terminal:\n  cd <sandbox>/billing && keypin rotate RESEND_API_KEY",
+      );
+      expect(result.effects.some((e) => e.startsWith("resend revoke"))).toBe(false);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "a destination that fails stops before the revoke, with the new key saved",
+    async () => {
+      const result = await drive({
+        scenario: "resend-worker-down",
+        args: ["rotate", "RESEND_API_KEY"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toMatch(
+        /^✗ Cloudflare {2}mailer {7}writing RESEND_API_KEY {2}\d+\.\ds$/m,
+      );
+      expect(result.screen).toContain(
+        "Stopped. The new key is in 1Password, and the old key still works. To continue, run:",
+      );
+      expect(result.screen).not.toContain("Revoke the old key");
+      expect(result.effects).toEqual([
+        "resend create re-new-1",
+        "1password update my.1password.com/Private/mailer resend key",
+        "destination write github-actions:acme/mailer RESEND_API_KEY (20 chars)",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+});

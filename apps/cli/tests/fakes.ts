@@ -266,6 +266,9 @@ export function fakeDeps(setup: FakeSetup = {}) {
     destination: () => {
       throw new Error("this test publishes nothing");
     },
+    issuer: () => {
+      throw new Error("this test rotates nothing");
+    },
     wranglerLoginFile: async () => null,
     ghLogin: async () => "ok",
     lock: memoryLock(disk),

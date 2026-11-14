@@ -94,13 +94,21 @@ export async function status(args: string[], deps: Deps): Promise<number> {
   if (values.json) {
     deps.stdout.write(`${JSON.stringify({ today, ...result }, null, 2)}\n`);
   } else {
-    const publish = (row: StatusRow) => {
+    const command = (name: string) => (row: StatusRow) => {
       const map = maps.get(row.project);
       const fallback = map?.ok ? publishEnvironment(map.map) : row.environment;
-      return `keypin publish ${row.keyId}${envFlag(row.environment, fallback)}`;
+      return `keypin ${name} ${row.keyId}${envFlag(row.environment, fallback)}`;
     };
     const out = output(deps.stdout, deps.styled.stdout);
-    deps.stdout.write(render(result, registry.projects, { today, home: deps.home, out, publish }));
+    deps.stdout.write(
+      render(result, registry.projects, {
+        today,
+        home: deps.home,
+        out,
+        publish: command("publish"),
+        rotate: command("rotate"),
+      }),
+    );
   }
   return result.problems.some((p) => p.severity === "problem") ? 1 : 0;
 }
@@ -110,6 +118,7 @@ interface Context {
   home: string;
   out: Output;
   publish: (row: StatusRow) => string;
+  rotate: (row: StatusRow) => string;
 }
 
 function render(result: Status, projects: readonly string[], context: Context): string {
@@ -198,6 +207,8 @@ function nextStep(problem: Problem, rows: readonly StatusRow[], context: Context
   const row = rows.find((r) => sameRow(problem, r));
   if (!row) return null;
   const infisical = row.ref.kind === "infisical";
+  if ((problem.kind === "overdue" || problem.kind === "due-soon") && row.issuer !== null)
+    return `Run ${context.rotate(row)} in ${row.project}.`;
   if (problem.kind === "overdue" || problem.kind === "due-soon") {
     const rotate = infisical
       ? "Put a new value in the Infisical secret and set its rotated metadata to today"

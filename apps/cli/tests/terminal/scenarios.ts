@@ -16,6 +16,8 @@ export interface Place {
 export interface Scenario {
   about: string;
   files: Record<string, string>;
+  state?: object;
+  resend?: { keys: string[]; failCreate?: boolean };
   registered: boolean;
   git: { origin?: string; account?: string };
   onePassword: {
@@ -106,6 +108,97 @@ to = "github-actions"
 repo = "acme/billing"
 `;
 
+const RESEND_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.RESEND_API_KEY]
+rotate_every = "90d"
+
+[keys.RESEND_API_KEY.prod]
+from = "op://Private/mailer resend key/credential"
+
+[keys.RESEND_API_KEY.prod.issuer]
+kind = "resend"
+admin = "op://Private/resend admin key/credential"
+permission = "sending_access"
+
+[[keys.RESEND_API_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/mailer"
+
+[[keys.RESEND_API_KEY.prod.publish]]
+to = "cloudflare-worker"
+account = "11111111111111111111111111111111"
+worker = "mailer"
+`;
+
+const RESEND_OLD = "re_verify_old_key_3c7e";
+export const ISSUED_PREFIX = "re_verify_new_";
+
+const resendReceipt = (destinationId: string, pinned: string, generation: string) => ({
+  keyId: "RESEND_API_KEY",
+  environment: "prod",
+  mapFile: "<project>/keypin.toml",
+  source: {
+    kind: "1password",
+    account: "my.1password.com",
+    vault: "Private",
+    item: "mailer resend key",
+    section: null,
+    field: "credential",
+  },
+  sourceIds: { vault: "Private", item: "mailer resend key" },
+  destinationId,
+  generation,
+  account: { pinned, publisher: pinned, destinationAccount: pinned },
+  at: "2026-08-01T12:00:00.000Z",
+  evidence: { version: "verify" },
+});
+
+const RESEND_OLD_GENERATION = "5f85700cd2d85825";
+
+const resend: Scenario = {
+  ...ready,
+  about:
+    "RESEND_API_KEY has a Resend issuer and was published from this machine as key re-old; a fake Resend lists it",
+  files: { "keypin.toml": RESEND_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          { title: "mailer resend key", value: RESEND_OLD, rotated: day(-95) },
+          { title: "resend admin key", value: "re_verify_admin_key_51ad" },
+        ],
+      },
+    },
+  },
+  state: {
+    version: 5,
+    receipts: [
+      resendReceipt("github-actions:acme/mailer:RESEND_API_KEY", "acme", RESEND_OLD_GENERATION),
+      resendReceipt(
+        "cloudflare-worker:mailer:RESEND_API_KEY",
+        "11111111111111111111111111111111",
+        RESEND_OLD_GENERATION,
+      ),
+    ],
+    operations: [],
+    issued: [
+      {
+        keyId: "RESEND_API_KEY",
+        environment: "prod",
+        mapFile: "<project>/keypin.toml",
+        issuer: "resend",
+        id: "re-old",
+        generation: RESEND_OLD_GENERATION,
+        at: "2026-08-01T12:00:00.000Z",
+        old: { id: "re-older", generation: "0000000000000000", revoked: true },
+      },
+    ],
+  },
+  resend: { keys: ["re-old"] },
+};
+
 export const scenarios: Record<string, Scenario> = {
   ready,
   "env-file": {
@@ -188,6 +281,12 @@ export const scenarios: Record<string, Scenario> = {
       INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET: "verify-client-secret-3e7a",
     },
   },
+  resend,
+  "resend-worker-down": {
+    ...resend,
+    about: "resend, but the Cloudflare Worker rejects the write",
+    places: { "cloudflare-worker:mailer": { write: "Cloudflare PUT /secrets returned HTTP 500" } },
+  },
   fresh: {
     ...ready,
     about: "an empty git repository: no keypin.toml, not registered, nothing signed in",
@@ -235,10 +334,12 @@ export function valuesOf(scenario: Scenario): string[] {
     scenario.env?.OP_SERVICE_ACCOUNT_TOKEN,
     scenario.env?.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET,
   ].flatMap((token) => (token ? [token] : []));
+  const issued = scenario.resend ? [ISSUED_PREFIX] : [];
   return [
     ...items.map((item) => item.value),
     ...infisical.map((secret) => secret.value),
     ...env,
     ...tokens,
+    ...issued,
   ];
 }

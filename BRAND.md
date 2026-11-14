@@ -14,7 +14,7 @@ language: en
 
 keypin is a command-line tool that gets a team's keys out of `.env` files. Each project lists its keys in a
 `keypin.toml`: names, vault items and destinations, never values. Before: every laptop has a copy of every key in a
-`.env` file, more copies sit in chats, notes and commits, and nobody has the full list. After: each value lives
+`.env` file, more copies sit in chats, notes and commits, and nobody has the full list. After: each value is kept
 once, in the team's vault; one map says where every key comes from, where it goes and when it's due; and keypin
 reads a value only while a command runs.
 
@@ -47,7 +47,7 @@ The careful operator. Exact, plain, cautious, quiet. Not alarmist, not clever, n
 
 ### Promise
 
-Each key lives once, in your vault, and one map says where it goes. Nothing is published without a plan, and a
+Each key is kept once, in your vault, and goes only where the map says. Nothing is published without a plan, and a
 first write or a changed account waits for you to answer `y`.
 
 Base message: get your team's keys out of `.env` files.
@@ -65,7 +65,7 @@ promise that a key can't leak: a running command still holds it. Say what keypin
 We get your keys out of files and into one place, and we tell you exactly what we read, what we write, and what we
 never touch.
 
-Essence: one copy, one map.
+Essence: one source, one map.
 
 ### Tagline & Slogans
 

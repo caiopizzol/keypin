@@ -377,9 +377,15 @@ async function prerequisites(
       sentence(ACCOUNT_FIX),
     ]);
   else if ([...items.values()].some((item) => item.problem?.includes(DESKTOP_APP_MISSING)))
-    add({ name: "1Password", status: "sign-in failed", fix: INSTALL_FIX }, SIGN_IN, [
-      sentence(INSTALL_FIX),
-    ]);
+    add(
+      {
+        name: "1Password",
+        status: "sign-in failed",
+        fix: `${INSTALL_FIX}; ${SERVICE_ACCOUNT_FIX}`,
+      },
+      SIGN_IN,
+      [sentence(INSTALL_FIX), sentence(SERVICE_ACCOUNT_FIX)],
+    );
   else if ([...items.values()].some((item) => item.problem?.includes("sign-in failed")))
     add(
       {
@@ -435,6 +441,8 @@ const ID_PIN = "which a service account can't be checked against";
 const OTHER_PIN = "but keypin.toml pins";
 const NO_ACCOUNT = "has no account with this sign-in address or ID";
 const INSTALL_FIX = "install the 1Password desktop app";
+const SERVICE_ACCOUNT_FIX =
+  "on a server or in CI, use a 1Password service account instead (docs/service-account.md)";
 const ACCOUNT_FIX = `set account under [1password] in ${MAP_FILE} to a sign-in address or account ID the 1Password app lists, under Settings → Accounts`;
 
 function loginLine(result: DestinationResult): string {

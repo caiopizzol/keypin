@@ -310,7 +310,7 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
     expect(run.stdout.text).not.toContain("Integrate with other apps");
   });
 
-  test("without the 1Password desktop app, says to install it", async () => {
+  test("without the 1Password desktop app, says to install it, or use a service account on a server", async () => {
     let tries = 0;
     const vault = onePasswordBackend(
       requireDesktopApp(
@@ -328,6 +328,7 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
     expect(await cli(["check"], run.deps)).toBe(1);
     expect(run.stdout.text).toContain(`1 Sign in to 1Password
   Install the 1Password desktop app.
+  On a server or in CI, use a 1Password service account instead (docs/service-account.md).
   1Password account "my.1password.com": sign-in failed: the 1Password desktop app isn't installed.
 `);
     expect(run.stdout.text).not.toContain("Integrate with other apps");

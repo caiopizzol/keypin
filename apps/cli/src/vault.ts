@@ -30,7 +30,7 @@ export type Vaults = { [Kind in KeyRef["kind"]]: () => VaultBackend };
 export function routedVault(vaults: Vaults): VaultBackend {
   const of = (thing: { kind: KeyRef["kind"] }) => vaults[thing.kind]();
   return {
-    capabilities: { read: true, write: true, list: true, metadata: true },
+    capabilities: { read: true, write: false, list: true, metadata: true },
     read: (ref) => of(ref).read(ref),
     readItem: (ref) => of(ref).readItem(ref),
     itemIds: (ref) => of(ref).itemIds(ref),

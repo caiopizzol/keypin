@@ -203,6 +203,7 @@ const infisical = infisicalBackend(
           !(
             s.project === entry.project &&
             s.environment === entry.environment &&
+            (s.path ?? "/") === (entry.path ?? "/") &&
             s.name === entry.name
           ),
       );

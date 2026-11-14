@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { infisicalBackend } from "@keypin/vault-infisical";
+import { credentialsFrom, infisicalBackend } from "@keypin/vault-infisical";
 import { cli } from "../src/cli";
 import { onePasswordFrom } from "../src/sign-in";
 import { routedVault } from "../src/vault";
@@ -63,12 +63,7 @@ function project(
       },
     });
   const infisical = infisicalBackend(
-    env.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET
-      ? {
-          clientId: env.INFISICAL_UNIVERSAL_AUTH_CLIENT_ID ?? "",
-          clientSecret: env.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET,
-        }
-      : null,
+    credentialsFrom(env),
     infisicalFetch(options.infisical ?? INFISICAL, store),
   );
   const launcher = fakeLauncher();
@@ -102,6 +97,31 @@ describe("keypin with Infisical", () => {
     );
     expect(run.stderr.text).not.toContain("1Password may be asking");
     expect(run.onePassword.calls).toEqual([]);
+  });
+
+  test("run reads the secret in the folder the reference names, not one at the root", async () => {
+    const run = project({
+      map: `[infisical]\norganization = "acme"\n[keys.STRIPE_API_KEY]\ndev = "infisical://billing/dev/payments/STRIPE_API_KEY"\n`,
+      infisical: {
+        ...INFISICAL,
+        projects: {
+          billing: {
+            dev: {
+              STRIPE_API_KEY: { value: `${SENTINEL}-root` },
+              "/payments/STRIPE_API_KEY": { value: `${SENTINEL}-payments` },
+            },
+          },
+        },
+      },
+    });
+    expect(await cli(["run", "--", "env"], run.deps)).toBe(0);
+    expect(run.launcher.launches[0]?.env.STRIPE_API_KEY).toBe(`${SENTINEL}-payments`);
+  });
+
+  test("a client ID without its secret is no credentials", async () => {
+    const run = project({ env: { INFISICAL_UNIVERSAL_AUTH_CLIENT_ID: "" } });
+    expect(await cli(["run", "--", "env"], run.deps)).toBe(1);
+    expect(run.launcher.launches).toEqual([]);
   });
 
   test("run without credentials names the variables, and starts nothing", async () => {
@@ -173,7 +193,7 @@ describe("keypin with Infisical", () => {
     );
     const other = project({ infisical: { ...INFISICAL, organization: "other" } });
     expect(await cli(["check"], other.deps)).toBe(1);
-    expect(other.stdout.text).toContain("Sign in to Infisical");
+    expect(other.stdout.text.split("Sign in to Infisical")).toHaveLength(2);
     expect(other.stdout.text).toContain(
       "Use a machine identity from the organization keypin.toml pins under [infisical].",
     );

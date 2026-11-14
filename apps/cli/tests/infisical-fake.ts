@@ -16,9 +16,17 @@ export interface FakeInfisical {
 export interface Stored {
   project: string;
   environment: string;
+  path?: string;
   name: string;
   secret: FakeSecret;
 }
+
+const ROOT = "/";
+const pathOf = (key: string) => {
+  const slash = key.lastIndexOf("/");
+  return slash <= 0 ? ROOT : key.slice(0, slash);
+};
+const nameOf = (key: string) => key.slice(key.lastIndexOf("/") + 1);
 
 export function infisicalFetch(
   fake: FakeInfisical,
@@ -26,12 +34,19 @@ export function infisicalFetch(
 ): Fetch {
   const reply = (status: number, body: unknown) =>
     Promise.resolve(new Response(JSON.stringify(body), { status }));
-  const secretsOf = (project: string, environment: string) => {
-    const base = fake.projects[project]?.[environment] ?? {};
+  const secretsOf = (project: string, environment: string, path: string) => {
+    const base = Object.entries(fake.projects[project]?.[environment] ?? {})
+      .filter(([key]) => pathOf(key) === path)
+      .map(([key, secret]): [string, FakeSecret] => [nameOf(key), secret]);
     const added = store
       .load()
-      .filter((s) => s.project === project && s.environment === environment);
-    return { ...base, ...Object.fromEntries(added.map((s) => [s.name, s.secret])) };
+      .filter(
+        (s) => s.project === project && s.environment === environment && (s.path ?? ROOT) === path,
+      );
+    return {
+      ...Object.fromEntries(base),
+      ...Object.fromEntries(added.map((s) => [s.name, s.secret])),
+    };
   };
   return async (url, init) => {
     const parsed = new URL(url);
@@ -57,7 +72,8 @@ export function infisicalFetch(
     const name = decodeURIComponent(parsed.pathname.replace(/^\/api\/v4\/secrets\/?/, ""));
     const project = query.projectId ?? text(body.projectId);
     const environment = query.environment ?? text(body.environment);
-    const secrets = secretsOf(project, environment);
+    const path = query.secretPath ?? (text(body.secretPath) || ROOT);
+    const secrets = secretsOf(project, environment, path);
     const found = secrets[name];
     const shape = (key: string, secret: FakeSecret, value: boolean) => ({
       id: `${project}/${environment}/${key}`,
@@ -85,7 +101,7 @@ export function infisicalFetch(
           ? { rotated: found.rotated }
           : {}),
     };
-    store.save({ project, environment, name, secret });
+    store.save({ project, environment, path, name, secret });
     store.effect(
       `infisical ${init.method === "POST" ? "create" : "update"} ${project}/${environment}/${name}`,
     );
@@ -103,6 +119,7 @@ export function memoryStore() {
         (s) =>
           s.project === entry.project &&
           s.environment === entry.environment &&
+          (s.path ?? ROOT) === (entry.path ?? ROOT) &&
           s.name === entry.name,
       );
       if (at === -1) saved.push(entry);

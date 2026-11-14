@@ -30,11 +30,11 @@ bun run typecheck  # tsc in every package
 - In `apps/cli/src`, only `start.ts`, `sign-in.ts` and `commands/check.ts` import connectors. Elsewhere, take them
   from `deps`.
 - Core and `apps/cli/src/commands` don't import Node or Bun I/O modules (`fs`, `child_process`, `net`, `process`,
-  `os`, `crypto`, `bun`…), and don't use `process`, global `fetch`, `Bun` or `globalThis`. Take files, env, launch
-  and vault from `deps` so tests can fake them.
+  `os`, `crypto`, `bun`…), and don't use `process`, global `fetch`, `Bun` or the global object (`globalThis`,
+  `self`, `window`, `global`). Take files, env, launch and vault from `deps` so tests can fake them.
 - Core and commands don't read `new Date()`, `Date.now`, `Math.random`, `crypto.randomUUID`,
-  `crypto.getRandomValues` or `performance.now`. Use `deps.now()` or take the value as an argument. Only
-  `packages/core/src/files.ts` calls `crypto.randomUUID()`, to name a temporary file no result depends on.
+  `crypto.getRandomValues` or `performance.now`. Use `deps.now()` or take the value as an argument. There,
+  `crypto.randomUUID()` is allowed only in `packages/core/src/files.ts`, to name the temporary file of an atomic write.
 
 ## Binary and npm packages
 

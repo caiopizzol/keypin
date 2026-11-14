@@ -98,7 +98,23 @@ const cases: Record<string, { code: string; flags: string[] }> = {
   },
   "packages/core/src/global-this.ts": {
     code: 'export const key = globalThis.process.env.KEY;\nexport const page = globalThis.fetch("https://example.com");\nexport const file = globalThis.Bun.file("x");\nexport const at = globalThis.Date.now();\nexport const roll = globalThis.Math.random();\nexport const id = self.crypto.randomUUID();\nexport const late = new window.Date();',
-    flags: [AMBIENT, AMBIENT, AMBIENT, CLOCK, CLOCK, CLOCK, CLOCK],
+    flags: Array<string>(7).fill(AMBIENT),
+  },
+  "packages/core/src/global-destructure.ts": {
+    code: "const { Math } = globalThis;\nexport const roll = Math.random();\nconst { Date: Clock } = globalThis;\nexport const at = new Clock();",
+    flags: [AMBIENT, AMBIENT],
+  },
+  "apps/cli/src/commands/global-performance.ts": {
+    code: "const { performance: p } = globalThis;\nexport const tick = p.now();",
+    flags: [AMBIENT],
+  },
+  "packages/core/src/global-alias.ts": {
+    code: "const g = globalThis;\nexport const ms = g.Date.now();",
+    flags: [AMBIENT],
+  },
+  "apps/cli/src/commands/global-self.ts": {
+    code: "const { crypto } = self;\nexport const id = crypto.randomUUID();",
+    flags: [AMBIENT],
   },
   "apps/cli/src/commands/alias.ts": {
     code: "export const { env } = process;\nconst p = process;\nexport const key = p.env.KEY;\nconst f = fetch;\nexport const page = f('https://example.com');\nexport const { now } = Date;\nexport const r = Math.random;\nexport const g = globalThis;",

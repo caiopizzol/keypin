@@ -1,5 +1,5 @@
 import { definePlugin, defineRule } from "vite-plus/lint/plugins";
-import type { Definition, ESTree, SourceCode } from "vite-plus/lint/plugins";
+import type { Definition, ESTree, Reference, SourceCode } from "vite-plus/lint/plugins";
 
 const noComments = defineRule({
   meta: { messages: { comment: "Remove this comment; make the code say it." } },
@@ -144,22 +144,13 @@ function reads(value: ESTree.Node): Read[] | null {
   );
 }
 
-interface GlobalUse {
-  name: string;
-  node: ESTree.Node;
-}
-
-function globalUses(source: SourceCode): GlobalUse[] {
-  const uses: GlobalUse[] = [];
+function globalUses(source: SourceCode): Reference["identifier"][] {
+  const uses: Reference["identifier"][] = [];
   for (const scope of source.scopeManager.scopes) {
     for (const { identifier, resolved } of scope.references) {
       if (resolved?.defs.some(existsAtRuntime) || TYPE_POSITIONS.has(identifier.parent.type))
         continue;
-      const members = GLOBAL_OBJECTS.includes(identifier.name) ? reads(identifier) : null;
-      if (!members) uses.push({ name: identifier.name, node: identifier });
-      else
-        for (const member of members)
-          uses.push({ name: member.name ?? identifier.name, node: member.node });
+      uses.push(identifier);
     }
   }
   return uses;
@@ -171,7 +162,7 @@ const noAmbient = defineRule({
   meta: {
     messages: {
       ambient:
-        "Don't reach the outside world from core or a command: no process, fetch, Bun or globalThis. Take it from deps (deps.env, deps.files, deps.vault(), deps.launch…) so the command stays testable. See docs/development.md#guardrails.",
+        "Don't reach the outside world from core or a command: no process, fetch, Bun or the global object (globalThis, self, window, global). Take it from deps (deps.env, deps.files, deps.vault(), deps.launch…) so the command stays testable, and use Date or Math directly so no-hidden-clock sees them. See docs/development.md#guardrails.",
     },
   },
   create(context) {
@@ -179,7 +170,7 @@ const noAmbient = defineRule({
     return {
       Program() {
         for (const use of globalUses(context.sourceCode))
-          if (AMBIENT.includes(use.name)) context.report({ messageId: "ambient", node: use.node });
+          if (AMBIENT.includes(use.name)) context.report({ messageId: "ambient", node: use });
       },
     };
   },
@@ -209,11 +200,11 @@ const noHiddenClock = defineRule({
         for (const use of globalUses(context.sourceCode)) {
           const members = CLOCK.get(use.name);
           if (!members) continue;
-          const node = outer(use.node);
+          const node = outer(use);
           const parent = node.parent;
           if (parent?.type === "NewExpression" && parent.callee === node && use.name === "Date")
             if (parent.arguments.length === 0) context.report({ messageId: "clock", node: parent });
-          for (const read of reads(use.node) ?? []) {
+          for (const read of reads(use) ?? []) {
             if (read.name !== null && !members.includes(read.name)) continue;
             if (!allowed.includes(`${use.name}.${read.name}`))
               context.report({ messageId: "clock", node: read.node });

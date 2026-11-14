@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import { infisicalBackend } from "@keypin/vault-infisical";
 import { cli } from "../src/cli";
+import { onePasswordFrom } from "../src/sign-in";
 import { routedVault } from "../src/vault";
 import {
   fakeDeps,
@@ -52,6 +53,15 @@ function project(
   const store = memoryStore();
   const env = { PATH: "/usr/bin", ...CREDENTIALS, ...options.env };
   const onePassword = fakeVault();
+  const signIn = () =>
+    onePasswordFrom(env, {
+      desktop: async () => {
+        throw new Error("this test opens no 1Password desktop app");
+      },
+      token: async () => {
+        throw new Error("this test signs in with no service account");
+      },
+    });
   const infisical = infisicalBackend(
     env.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET
       ? {
@@ -65,9 +75,13 @@ function project(
   const destinations = fakeDestinations();
   const fake = fakeDeps({
     disk,
-    backend: routedVault({ "1password": () => onePassword.vault, infisical: () => infisical }),
+    backend: routedVault({
+      "1password": () => (signIn(), onePassword.vault),
+      infisical: () => infisical,
+    }),
     deps: {
       env,
+      signIn: () => signIn().signIn,
       launch: launcher.launch,
       onSignals: launcher.onSignals,
       destination: destinations.build,
@@ -164,6 +178,36 @@ describe("keypin with Infisical", () => {
       "Use a machine identity from the organization keypin.toml pins under [infisical].",
     );
     expect(other.stdout.text).not.toContain("1Password");
+  });
+
+  test.each([["run", "--", "env"], ["check"], ["status"], ["publish", "STRIPE_API_KEY"]])(
+    "%s never needs 1Password when every key is in Infisical",
+    async (...command) => {
+      const run = project({ env: { KEYPIN_1PASSWORD: "service-account" } });
+      const code = await cli(command, run.deps);
+      expect(run.stderr.text + run.stdout.text).not.toContain("OP_SERVICE_ACCOUNT_TOKEN");
+      expect(code).toBe(command[0] === "status" ? 1 : 0);
+      if (command[0] === "run") expect(run.launcher.launches[0]?.env.STRIPE_API_KEY).toBe(SENTINEL);
+      if (command[0] === "status") expect(run.stdout.text).toContain("STRIPE_API_KEY");
+      if (command[0] === "publish") expect(run.destinations.log).toHaveLength(2);
+    },
+  );
+
+  test("check --json reports no 1Password sign-in when every key is in Infisical", async () => {
+    const run = project({ env: { KEYPIN_1PASSWORD: "service-account" } });
+    expect(await cli(["check", "--json"], run.deps)).toBe(0);
+    expect(parseJson(run.stdout.text)).toMatchObject({ onePassword: null });
+  });
+
+  test("a 1Password key in the same map still needs the service account's token", async () => {
+    const map = `[1password]\naccount = "my.1password.com"\n${MAP}\n[keys.RESEND_KEY]\nrotate_every = "90d"\ndev = "op://Private/resend/password"\n`;
+    for (const command of [["run", "--", "env"], ["check"], ["status"]]) {
+      const run = project({ map, env: { KEYPIN_1PASSWORD: "service-account" } });
+      expect(await cli(command, run.deps)).toBe(1);
+      expect(run.stderr.text + run.stdout.text).toContain(
+        "KEYPIN_1PASSWORD=service-account needs the service account's token in OP_SERVICE_ACCOUNT_TOKEN",
+      );
+    }
   });
 
   test("import says it creates 1Password items when the map reads from Infisical", async () => {

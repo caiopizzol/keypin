@@ -261,6 +261,23 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
+    "with Infisical, check and run need no 1Password token, though KEYPIN_1PASSWORD=service-account",
+    async () => {
+      const env = { KEYPIN_1PASSWORD: "service-account" };
+      const check = await drive({ scenario: "infisical", args: ["check"], env });
+      expect(check.exit).toBe(0);
+      expect(check.screen).toContain("Everything checks out.");
+      const run = await drive({ scenario: "infisical", args: ["run", "--", "true"], env });
+      expect(run.exit).toBe(0);
+      for (const result of [check, run]) {
+        expect(result.screen).not.toContain("OP_SERVICE_ACCOUNT_TOKEN");
+        clean(result);
+      }
+    },
+    SLOW,
+  );
+
+  test(
     "init in an empty repository writes the template, registers it, and says what's next",
     async () => {
       const result = await drive({ scenario: "fresh", args: ["init"] });

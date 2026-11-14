@@ -22,7 +22,7 @@ import { registryPath } from "../paths";
 import { locateMap, MAP_FILE } from "../project";
 import { describeLogin, githubLogin, publisherFor } from "../publisher";
 import { type ScanResult, scanProject, type Unknown, usesSecrets } from "../scan";
-import { approval, type SignIn } from "../sign-in";
+import { approval, type SignIn, signInFor } from "../sign-in";
 import { isAccountId, isSharedAddress } from "@keypin/vault-1password";
 import { CLIENT_ID, CLIENT_SECRET } from "@keypin/vault-infisical";
 import { distinctRefs, refKey } from "../vault";
@@ -64,7 +64,7 @@ interface Report {
   registered: boolean;
   read: ScanResult["files"] & { notScanned: string[] };
   github: { repo: string | null; login: string | null };
-  onePassword: { signIn: SignIn["mode"]; address: string | null };
+  onePassword: { signIn: SignIn["mode"]; address: string | null } | null;
   keys: KeyResult[];
   production: Gaps["production"];
   local: Gaps["local"];
@@ -131,8 +131,15 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
   };
   let fixes: Fix[] = [];
   let empty: string | null = null;
-  const signIn = deps.signIn();
   const found = await locateMap(deps.files, folder);
+  const parsed = found ? parseMap(found.text, found.file) : null;
+  const mapped = parsed?.ok
+    ? parsed.map.keys.flatMap((key) =>
+        Object.values(key.environments).flatMap((e) => (e ? [e.ref] : [])),
+      )
+    : [];
+  const infisicalOnly = parsed?.ok && parsed.map.infisical && !parsed.map.account;
+  const signIn = mapped.length || infisicalOnly ? signInFor(deps, mapped) : deps.signIn();
   const root = found ? dirname(found.file) : folder;
   const scanned = await scanProject(deps, root);
   const report: Report = {
@@ -141,7 +148,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
     registered: false,
     read: { ...scanned.files, notScanned: scanned.nested },
     github: { repo: scanned.scan.github.repo, login: scanned.login },
-    onePassword: {
+    onePassword: signIn && {
       signIn: signIn.mode,
       address: signIn.mode === "service-account" ? signIn.address : null,
     },
@@ -160,7 +167,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
   const items = new Map<string, ItemResult>();
   const kinds = new Map<string, KeyRef["kind"]>();
   const done = async () => {
-    const setup = await prerequisites(root, scanned, targets, items, kinds, deps);
+    const setup = await prerequisites(root, scanned, targets, items, kinds, signIn, deps);
     report.prerequisites = setup.map(({ name, status, fix }) => ({ name, status, fix }));
     finish(report);
     return { report, steps: plan(report, [...setup.map((p) => p.step), ...steps], fixes, empty) };
@@ -174,7 +181,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
     report.notes.push(...result.notes);
     fixes = result.fixes;
   };
-  if (!found) {
+  if (!found || !parsed) {
     problem(
       ORDER.map,
       `Create ${MAP_FILE}`,
@@ -191,7 +198,6 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
       `${root} isn't registered, so keypin status doesn't list it; run keypin init there`,
     );
 
-  const parsed = parseMap(found.text, found.file);
   if (!parsed.ok) {
     report.problems.push(...parsed.errors);
     steps.push({
@@ -336,6 +342,7 @@ async function prerequisites(
   targets: Map<string, PublishTarget>,
   everyItem: Map<string, ItemResult>,
   kinds: Map<string, KeyRef["kind"]>,
+  signIn: SignIn | null,
   deps: Deps,
 ): Promise<(Prerequisite & { step: Step })[]> {
   const of = (kind: KeyRef["kind"]) =>
@@ -376,9 +383,9 @@ async function prerequisites(
     const fix = infisicalFix(infisical);
     add({ name: "Infisical", status: "sign-in failed", fix }, INFISICAL_SIGN_IN, [sentence(fix)]);
   }
-  if (everyItem.size && !items.size) return list;
-  if (deps.signIn().mode === "service-account") {
-    const fixes = tokenFixes(items, deps.signIn());
+  if (signIn === null || (everyItem.size && !items.size)) return list;
+  if (signIn.mode === "service-account") {
+    const fixes = tokenFixes(items, signIn);
     if (fixes.length)
       add(
         { name: "1Password", status: "sign-in failed", fix: fixes.join("; ") },
@@ -430,8 +437,8 @@ function infisicalFix(problems: readonly string[]): string {
 }
 const TOKEN_SIGN_IN = "Sign in to 1Password with the service account";
 
-function signInNotes(signIn: SignIn): string[] {
-  if (signIn.mode === "desktop")
+function signInNotes(signIn: SignIn | null): string[] {
+  if (signIn?.mode === "desktop")
     return signIn.tokenIgnored
       ? [
           "OP_SERVICE_ACCOUNT_TOKEN is set, but keypin signed in with the 1Password desktop app; set KEYPIN_1PASSWORD=service-account to use the service account",
@@ -440,8 +447,8 @@ function signInNotes(signIn: SignIn): string[] {
   return [];
 }
 
-function unprovenPins(signIn: SignIn, refs: readonly KeyRef[]): string[] {
-  if (signIn.mode !== "service-account") return [];
+function unprovenPins(signIn: SignIn | null, refs: readonly KeyRef[]): string[] {
+  if (signIn?.mode !== "service-account") return [];
   const limit = "the vaults granted to the service account are what limit it";
   const accounts = refs.flatMap((ref) => (ref.kind === "1password" ? [ref.account] : []));
   return [...new Set(accounts)].flatMap((account) => {

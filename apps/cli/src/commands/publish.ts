@@ -23,7 +23,7 @@ import {
 import { type Deps, UsageError } from "../deps";
 import { messageOf } from "../errors";
 import { findMap, pickEnvironment } from "../project";
-import { approval } from "../sign-in";
+import { approval, signInFor } from "../sign-in";
 import { columns, confirm, type Output, output } from "../output";
 import {
   type Checked,
@@ -140,6 +140,10 @@ async function publishLocked(
       return 1;
     }
   }
+  signInFor(
+    deps,
+    jobs.map((job) => job.entry.ref),
+  );
   const label = labels(jobs.flatMap((job) => job.entry.publish));
 
   let state = await loadState(deps.files, path);

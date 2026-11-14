@@ -169,20 +169,22 @@ function isStored(entry: unknown): entry is InfisicalStored {
 const slow = async () => {
   if (run.onePassword.slowMs) await Bun.sleep(run.onePassword.slowMs);
 };
-const onePassword = onePasswordFrom(process.env, {
-  desktop: requireDesktopApp(
-    async (account) => {
+let onePassword: ReturnType<typeof onePasswordFrom> | undefined;
+const signedIn = () =>
+  (onePassword ??= onePasswordFrom(process.env, {
+    desktop: requireDesktopApp(
+      async (account) => {
+        await slow();
+        if (!run.onePassword.accounts[account]) throw new Error(ACCOUNT_NOT_FOUND);
+        return client(account, run);
+      },
+      () => (run.onePassword.noDesktopApp ? null : "fake 1Password app"),
+    ),
+    token: async (token) => {
       await slow();
-      if (!run.onePassword.accounts[account]) throw new Error(ACCOUNT_NOT_FOUND);
-      return client(account, run);
+      return client(signInAddress(token), run);
     },
-    () => (run.onePassword.noDesktopApp ? null : "fake 1Password app"),
-  ),
-  token: async (token) => {
-    await slow();
-    return client(signInAddress(token), run);
-  },
-});
+  }));
 const INFISICAL = join(sandbox, "infisical.json");
 const infisical = infisicalBackend(
   credentialsFrom(process.env),
@@ -209,13 +211,13 @@ const infisical = infisicalBackend(
     effect,
   }),
 );
-const vault = routedVault({ "1password": () => onePassword.vault, infisical: () => infisical });
+const vault = routedVault({ "1password": () => signedIn().vault, infisical: () => infisical });
 const real = realDeps();
 
 process.exitCode = await cli(process.argv.slice(2), {
   ...real,
   self: { folder: real.cwd, command: ["keypin"] },
-  signIn: () => onePassword.signIn,
+  signIn: () => signedIn().signIn,
   vault: () => vault,
   ghLogin: async () => run.gh,
   wranglerLoginFile: async () =>

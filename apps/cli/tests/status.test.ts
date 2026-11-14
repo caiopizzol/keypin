@@ -402,6 +402,24 @@ dev = "op://Private/forever/password"
     );
   });
 
+  test("a notice names the whole repository and environment, even when they contain environments/", async () => {
+    const files = memoryFiles({
+      [REGISTRY]: registryWith("/work/billing"),
+      "/work/billing/keypin.toml": BILLING_MAP.replace(
+        '{ to = "github-actions", repo = "acme/billing" },',
+        '{ to = "github-actions", repo = "acme/environments", environment = "production" },\n  { to = "github-actions", repo = "acme/billing", environment = "preview/environments/feature" },',
+      ),
+    });
+    const { deps, stdout } = fakeDeps({
+      disk: files,
+      backend: fakeVault({ metadata: METADATA }).vault,
+    });
+    await cli(["status"], deps);
+    expect(stdout.text).toContain(
+      "not published yet to the Worker billing-worker, GitHub acme/environments environment production, GitHub acme/billing environment preview/environments/feature;",
+    );
+  });
+
   test("marks each destination that has a receipt, and names the place when one service has two", async () => {
     const files = memoryFiles({
       [REGISTRY]: registryWith("/work/billing"),

@@ -164,8 +164,10 @@ function placeName(id: string): string {
   const [kind = "", ...rest] = id.split(":");
   const place = rest.slice(0, -1).join(":");
   if (kind === "cloudflare-worker") return `the Worker ${place}`;
-  const [repo, environment] = place.split("/environments/");
-  return environment === undefined ? `GitHub ${repo}` : `GitHub ${repo} environment ${environment}`;
+  const [owner = "", name = "", ...more] = place.split("/");
+  const environment = more.length ? more.join("/").replace(/^environments\//, "") : null;
+  const repo = `${owner}/${name}`;
+  return environment === null ? `GitHub ${repo}` : `GitHub ${repo} environment ${environment}`;
 }
 
 function due(row: StatusRow, { out, today }: Context): string {

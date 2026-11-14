@@ -1,4 +1,4 @@
-import { appendFileSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { isRecord, type PublishTarget } from "@keypin/core";
@@ -9,12 +9,13 @@ import {
   type SdkClient,
   signInAddress,
 } from "@keypin/vault-1password";
+import { resendFetch } from "@keypin/issuer-resend/testing";
 import { credentialsFrom, infisicalBackend } from "@keypin/vault-infisical";
+import { fileStore, infisicalFetch } from "@keypin/vault-infisical/testing";
 import { cli } from "../../src/cli";
 import { onePasswordFrom } from "../../src/sign-in";
 import { issuer, realDeps } from "../../src/start";
 import { routedVault } from "../../src/vault";
-import { infisicalFetch, type Stored as InfisicalStored } from "../infisical-fake";
 import {
   type FakeItem,
   ISSUED_PREFIX,
@@ -165,16 +166,6 @@ function owner(target: PublishTarget): string {
 
 const run = scenario;
 
-function isStored(entry: unknown): entry is InfisicalStored {
-  return (
-    isRecord(entry) &&
-    typeof entry.project === "string" &&
-    typeof entry.environment === "string" &&
-    typeof entry.name === "string" &&
-    isRecord(entry.secret) &&
-    typeof entry.secret.value === "string"
-  );
-}
 const slow = async () => {
   if (run.onePassword.slowMs) await Bun.sleep(run.onePassword.slowMs);
 };
@@ -197,64 +188,33 @@ const signedIn = () =>
 const INFISICAL = join(sandbox, "infisical.json");
 const infisical = infisicalBackend(
   credentialsFrom(process.env),
-  infisicalFetch(run.infisical ?? { organization: "", projects: {} }, {
-    load: () => {
-      try {
-        const parsed: unknown = JSON.parse(readFileSync(INFISICAL, "utf8"));
-        return Array.isArray(parsed) ? parsed.filter(isStored) : [];
-      } catch {
-        return [];
-      }
-    },
-    save(entry) {
-      const others = this.load().filter(
-        (s) =>
-          !(
-            s.project === entry.project &&
-            s.environment === entry.environment &&
-            (s.path ?? "/") === (entry.path ?? "/") &&
-            s.name === entry.name
-          ),
-      );
-      writeFileSync(INFISICAL, JSON.stringify([...others, entry]));
-    },
-    effect,
-  }),
+  infisicalFetch(
+    run.infisical ?? { organization: "", projects: {} },
+    fileStore(
+      () => (existsSync(INFISICAL) ? readFileSync(INFISICAL, "utf8") : null),
+      (text) => writeFileSync(INFISICAL, text),
+      effect,
+    ),
+  ),
 );
 const vault = routedVault({ "1password": () => signedIn().vault, infisical: () => infisical });
 
-function resendKeys(): string[] {
-  try {
-    const parsed: unknown = JSON.parse(readFileSync(RESEND, "utf8"));
-    return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
-  } catch {
-    return run.resend?.keys ?? [];
-  }
-}
-
-const resendFetch = async (url: string, init: { method: string; body?: string }) => {
-  const keys = resendKeys();
-  const path = new URL(url).pathname;
-  const reply = (status: number, body: object) => new Response(JSON.stringify(body), { status });
-  if (init.method === "GET" && path === "/api-keys")
-    return reply(200, { object: "list", has_more: false, data: keys.map((id) => ({ id })) });
-  if (init.method === "POST" && path === "/api-keys") {
-    if (run.resend?.failCreate) return reply(500, { name: "internal_server_error" });
-    const id = `re-new-${keys.length}`;
-    const asked: unknown = JSON.parse(init.body ?? "{}");
-    const domain = isRecord(asked) && typeof asked.domain_id === "string" ? asked.domain_id : null;
-    writeFileSync(RESEND, JSON.stringify([...keys, id]));
-    effect(`resend create ${id}${domain === null ? "" : ` for domain ${domain}`}`);
-    return reply(201, { id, object: "api_key", token: `${ISSUED_PREFIX}${keys.length}_7d1b` });
-  }
-  const id = decodeURIComponent(path.replace(/^\/api-keys\//, ""));
-  if (init.method === "DELETE" && keys.includes(id)) {
-    writeFileSync(RESEND, JSON.stringify(keys.filter((k) => k !== id)));
-    effect(`resend revoke ${id}`);
-    return reply(200, { object: "api_key", id, deleted: true });
-  }
-  return reply(404, { name: "not_found" });
-};
+const resend = resendFetch({
+  tokenPrefix: ISSUED_PREFIX,
+  failCreate: run.resend?.failCreate ?? false,
+  keys: {
+    load() {
+      try {
+        const parsed: unknown = JSON.parse(readFileSync(RESEND, "utf8"));
+        return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
+      } catch {
+        return run.resend?.keys ?? [];
+      }
+    },
+    save: (ids) => writeFileSync(RESEND, JSON.stringify(ids)),
+  },
+  effect,
+});
 
 const real = realDeps();
 
@@ -274,7 +234,7 @@ process.exitCode = await cli(process.argv.slice(2), {
           reason: "gh has no token for an active login; run: gh auth login --hostname github.com",
         },
   workerSecrets: async () => ({ ok: false, reason: "this scenario has no Cloudflare account" }),
-  issuer: (spec, admin) => issuer(spec, admin, resendFetch),
+  issuer: (spec, admin) => issuer(spec, admin, resend),
   destination: (target) => {
     const place = placeOf(target);
     const scripted = run.places[place] ?? {};

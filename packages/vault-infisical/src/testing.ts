@@ -2,9 +2,18 @@ import { type Fetch, isRecord } from "@keypin/core";
 
 export const INFISICAL_TOKEN = "infisical-access-token-5d8e";
 
+export interface FakeMetadata {
+  key: string;
+  value: string;
+  isEncrypted?: boolean;
+}
+
 export interface FakeSecret {
   value: string;
   rotated?: string;
+  id?: string;
+  tags?: string[];
+  metadata?: FakeMetadata[];
 }
 
 type Projects = Record<string, Record<string, Record<string, FakeSecret>>>;
@@ -12,9 +21,13 @@ type Projects = Record<string, Record<string, Record<string, FakeSecret>>>;
 export interface FakeInfisical {
   organization: string;
   projects: Projects;
+  projectIds?: Record<string, string>;
   importedForReads?: Projects;
   heldByPolicy?: Stored[];
   failWrites?: boolean;
+  refuseLogin?: number;
+  hideValues?: boolean;
+  requireEncryptedMetadata?: boolean;
 }
 
 export interface Stored {
@@ -25,19 +38,31 @@ export interface Stored {
   secret: FakeSecret;
 }
 
+export interface Store {
+  load(): Stored[];
+  save(entry: Stored): void;
+  effect(line: string): void;
+}
+
 const ROOT = "/";
+const ROTATED = "rotated";
 const pathOf = (key: string) => {
   const slash = key.lastIndexOf("/");
   return slash <= 0 ? ROOT : key.slice(0, slash);
 };
 const nameOf = (key: string) => key.slice(key.lastIndexOf("/") + 1);
+const sameSecret = (a: Stored, b: Stored) =>
+  a.project === b.project &&
+  a.environment === b.environment &&
+  (a.path ?? ROOT) === (b.path ?? ROOT) &&
+  a.name === b.name;
 
-export function infisicalFetch(
-  fake: FakeInfisical,
-  store: { load(): Stored[]; save(entry: Stored): void; effect(line: string): void },
-): Fetch {
+export function infisicalFetch(fake: FakeInfisical, store: Store): Fetch {
   const reply = (status: number, body: unknown) =>
     Promise.resolve(new Response(JSON.stringify(body), { status }));
+  const idOf = (slug: string) => fake.projectIds?.[slug] ?? slug;
+  const slugOf = (id: string) =>
+    Object.entries(fake.projectIds ?? {}).find(([, known]) => known === id)?.[0] ?? id;
   const secretsOf = (
     project: string,
     environment: string,
@@ -62,7 +87,9 @@ export function infisicalFetch(
     const text = (value: unknown) => (typeof value === "string" ? value : "");
     const query = Object.fromEntries(parsed.searchParams);
     if (parsed.pathname === "/api/v1/auth/universal-auth/login")
-      return reply(200, { accessToken: INFISICAL_TOKEN, expiresIn: 7200, tokenType: "Bearer" });
+      return fake.refuseLogin
+        ? reply(fake.refuseLogin, { message: "Invalid credentials" })
+        : reply(200, { accessToken: INFISICAL_TOKEN, expiresIn: 7200, tokenType: "Bearer" });
     if (init.headers.Authorization !== `Bearer ${INFISICAL_TOKEN}`)
       return reply(401, { message: "Unauthorized" });
     if (parsed.pathname === "/api/v1/identities/details")
@@ -74,10 +101,10 @@ export function infisicalFetch(
     const slug = /^\/api\/v1\/projects\/slug\/(.+)$/.exec(parsed.pathname)?.[1];
     if (slug !== undefined)
       return fake.projects[slug]
-        ? reply(200, { id: slug, slug })
+        ? reply(200, { id: idOf(slug), slug })
         : reply(404, { message: "Project not found" });
     const name = decodeURIComponent(parsed.pathname.replace(/^\/api\/v4\/secrets\/?/, ""));
-    const project = query.projectId ?? text(body.projectId);
+    const project = slugOf(query.projectId ?? text(body.projectId));
     const environment = query.environment ?? text(body.environment);
     const path = query.secretPath ?? (text(body.secretPath) || ROOT);
     const secrets = secretsOf(project, environment, path);
@@ -86,17 +113,26 @@ export function infisicalFetch(
         ? secretsOf(project, environment, path, fake.importedForReads)[name]
         : undefined;
     const found = secrets[name];
-    const shape = (key: string, secret: FakeSecret, value: boolean, from = "") => ({
-      id: `${from}${project}/${environment}/${key}`,
-      secretKey: key,
-      secretValue: value ? secret.value : "",
-      secretValueHidden: !value,
-      secretMetadata: secret.rotated ? [{ key: "rotated", value: secret.rotated }] : [],
-      updatedAt: "2026-01-01T00:00:00.000Z",
-    });
+    const shape = (key: string, secret: FakeSecret, value: boolean, from = "") => {
+      const shown = value && !fake.hideValues;
+      return {
+        id: secret.id ?? `${from}${project}/${environment}/${key}`,
+        secretKey: key,
+        secretValue: shown ? secret.value : "",
+        secretValueHidden: !shown,
+        secretMetadata: [
+          ...(secret.metadata ?? []),
+          ...(secret.rotated ? [{ key: ROTATED, value: secret.rotated }] : []),
+        ],
+        tags: (secret.tags ?? []).map((tag) => ({ id: tag, slug: tag, name: tag })),
+        updatedAt: "2026-01-01T00:00:00.000Z",
+      };
+    };
     if (init.method === "GET" && name === "")
       return reply(200, {
-        secrets: Object.entries(secrets).map(([key, secret]) => shape(key, secret, false)),
+        secrets: Object.entries(secrets).map(([key, secret]) =>
+          shape(key, secret, query.viewSecretValue !== "false"),
+        ),
       });
     if (init.method === "GET") {
       const view = query.viewSecretValue === "true";
@@ -105,15 +141,27 @@ export function infisicalFetch(
       return reply(404, { message: `Secret with name '${name}' not found` });
     }
     if (fake.failWrites) return reply(500, { message: "internal error" });
-    const metadata = Array.isArray(body.secretMetadata) ? body.secretMetadata : null;
-    const rotated = metadata?.filter(isRecord).find((entry) => entry.key === "rotated")?.value;
+    const metadata = Array.isArray(body.secretMetadata)
+      ? body.secretMetadata.flatMap((entry: unknown): FakeMetadata[] =>
+          isRecord(entry) && typeof entry.key === "string" && typeof entry.value === "string"
+            ? [{ key: entry.key, value: entry.value, isEncrypted: entry.isEncrypted === true }]
+            : [],
+        )
+      : null;
+    if (fake.requireEncryptedMetadata && metadata?.some((entry) => !entry.isEncrypted))
+      return reply(400, { message: "Project requires all secret metadata to be encrypted" });
+    const rotated = metadata
+      ? metadata.find((entry) => entry.key === ROTATED)?.value
+      : found?.rotated;
+    const others = metadata
+      ? metadata.filter((entry) => entry.key !== ROTATED)
+      : (found?.metadata ?? []);
     const secret: FakeSecret = {
       value: text(body.secretValue),
-      ...(typeof rotated === "string"
-        ? { rotated }
-        : found?.rotated
-          ? { rotated: found.rotated }
-          : {}),
+      ...(rotated ? { rotated } : {}),
+      ...(found?.id ? { id: found.id } : {}),
+      ...(found?.tags ? { tags: found.tags } : {}),
+      ...(others.length ? { metadata: others } : {}),
     };
     const change = `${init.method === "POST" ? "create" : "update"} ${project}/${environment}/${name}`;
     if (fake.heldByPolicy) {
@@ -129,7 +177,7 @@ export function infisicalFetch(
   };
 }
 
-export function mergeHeld(fake: FakeInfisical, store: { save(entry: Stored): void }): void {
+export function mergeHeld(fake: FakeInfisical, store: Pick<Store, "save">): void {
   for (const entry of fake.heldByPolicy?.splice(0) ?? []) store.save(entry);
 }
 
@@ -139,17 +187,42 @@ export function memoryStore() {
   return {
     load: () => saved,
     save: (entry: Stored) => {
-      const at = saved.findIndex(
-        (s) =>
-          s.project === entry.project &&
-          s.environment === entry.environment &&
-          (s.path ?? ROOT) === (entry.path ?? ROOT) &&
-          s.name === entry.name,
-      );
+      const at = saved.findIndex((s) => sameSecret(s, entry));
       if (at === -1) saved.push(entry);
       else saved[at] = entry;
     },
     effect: (line: string) => void effects.push(line),
     effects,
   };
+}
+
+export function fileStore(
+  read: () => string | null,
+  write: (text: string) => void,
+  effect: (line: string) => void,
+): Store {
+  const load = (): Stored[] => {
+    try {
+      const parsed: unknown = JSON.parse(read() ?? "[]");
+      return Array.isArray(parsed) ? parsed.filter(isStored) : [];
+    } catch {
+      return [];
+    }
+  };
+  return {
+    load,
+    save: (entry) => write(JSON.stringify([...load().filter((s) => !sameSecret(s, entry)), entry])),
+    effect,
+  };
+}
+
+function isStored(entry: unknown): entry is Stored {
+  return (
+    isRecord(entry) &&
+    typeof entry.project === "string" &&
+    typeof entry.environment === "string" &&
+    typeof entry.name === "string" &&
+    isRecord(entry.secret) &&
+    typeof entry.secret.value === "string"
+  );
 }

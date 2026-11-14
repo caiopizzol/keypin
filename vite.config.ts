@@ -1,5 +1,12 @@
 import { defineConfig } from "vite-plus";
 
+const TESTING_ONLY = [
+  {
+    group: ["@keypin/*/testing", "./testing", "./testing/*", "../testing", "../testing/*"],
+    message: "testing modules hold fakes for tests; production code must not import them",
+  },
+];
+
 export default defineConfig({
   staged: {
     "*": "vp check --fix",
@@ -27,8 +34,17 @@ export default defineConfig({
     },
     overrides: [
       {
+        files: ["packages/*/src/**", "apps/*/src/**"],
+        rules: { "no-restricted-imports": ["error", { patterns: TESTING_ONLY }] },
+      },
+      {
         files: ["packages/core/src/**"],
-        rules: { "no-restricted-imports": ["error", { paths: ["bun"], patterns: ["bun:*"] }] },
+        rules: {
+          "no-restricted-imports": [
+            "error",
+            { paths: ["bun"], patterns: [{ group: ["bun:*"] }, ...TESTING_ONLY] },
+          ],
+        },
       },
     ],
     options: { typeAware: true, typeCheck: true, denyWarnings: true },

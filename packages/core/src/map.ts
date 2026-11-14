@@ -2,7 +2,7 @@ import { parse as parseToml, TomlError } from "smol-toml";
 import type { Environment, KeyId, KeyRef } from "./contracts";
 import { DEFAULT_ENVIRONMENTS } from "./contracts";
 import { isRecord } from "./record";
-import { parseReference } from "./reference";
+import { parseReference, sameItem } from "./reference";
 import { periodDays } from "./rotation";
 
 export type PublishTarget =
@@ -11,9 +11,20 @@ export type PublishTarget =
 
 const DESTINATION_KINDS = ["cloudflare-worker", "github-actions"] as const;
 
+export type IssuerSpec = {
+  kind: "resend";
+  admin: KeyRef;
+  permission: "full_access" | "sending_access";
+  domainId?: string;
+};
+
+const ISSUER_KINDS = ["resend"] as const;
+const RESEND_PERMISSIONS = ["full_access", "sending_access"] as const;
+
 export interface EnvEntry {
   ref: KeyRef;
   publish: PublishTarget[];
+  issuer?: IssuerSpec;
 }
 
 export interface KeyEntry {
@@ -361,12 +372,12 @@ function validateEnv(
     failed = true;
     fail(message);
   };
-  unknownFields(raw, ["from", "publish"], (field) =>
+  unknownFields(raw, ["from", "publish", "issuer"], (field) =>
     err(
       field === "vault" || field === "item"
         ? `"vault" and "item" are from keypin 0.4; use from = "op://<vault>/<item>/<field>" (${OLD_FORMAT})`
         : field === "rotate" || field === "issue"
-          ? `the "${field}" section is no longer supported, because keypin rotate is gone; delete it. To rotate the key by hand, replace the value in 1Password, set the item's rotated date to today, then run keypin publish`
+          ? `the "${field}" section is from an older keypin; delete it. To let keypin rotate the key, add an "issuer" table instead (${OLD_FORMAT})`
           : `unknown field "${field}"`,
     ),
   );
@@ -389,8 +400,54 @@ function validateEnv(
       });
     }
   }
+  const issuer =
+    raw.issuer === undefined || !ref
+      ? undefined
+      : validateIssuer(raw.issuer, ref, pins, (m) => err(`issuer: ${m}`));
   if (failed || !ref) return undefined;
-  return { ref, publish };
+  return issuer ? { ref, publish, issuer } : { ref, publish };
+}
+
+function validateIssuer(
+  raw: unknown,
+  own: KeyRef,
+  pins: VaultPins,
+  fail: (message: string) => void,
+): IssuerSpec | undefined {
+  if (!isRecord(raw)) {
+    fail("must be a table");
+    return undefined;
+  }
+  let failed = false;
+  const err = (message: string) => {
+    failed = true;
+    fail(message);
+  };
+  const kind = requiredString(raw, "kind", err);
+  if (kind === undefined) return undefined;
+  if (kind !== "resend") {
+    err(`field "kind" must be one of: ${ISSUER_KINDS.join(", ")}`);
+    return undefined;
+  }
+  unknownFields(raw, ["kind", "admin", "permission", "domain_id"], (field) =>
+    err(`unknown field "${field}" for ${kind}`),
+  );
+  const admin = reference(raw, "admin", pins, err);
+  if (admin && sameItem(admin, own))
+    err(`field "admin" names the key's own item; the admin key needs its own item`);
+  const given = requiredString(raw, "permission", err);
+  const permission = RESEND_PERMISSIONS.find((known) => known === given);
+  if (given !== undefined && !permission)
+    err(
+      `field "permission" must be one of: ${RESEND_PERMISSIONS.join(", ")}, as the key has at Resend`,
+    );
+  const domainId = optionalString(raw, "domain_id", err);
+  if (domainId !== undefined && permission === "full_access")
+    err(`field "domain_id" works only with permission = "sending_access"`);
+  if (failed || !admin || !permission) return undefined;
+  return domainId === undefined
+    ? { kind, admin, permission }
+    : { kind, admin, permission, domainId };
 }
 
 function reference(

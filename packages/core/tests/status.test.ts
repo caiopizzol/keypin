@@ -1,7 +1,8 @@
-import { describe, expect, test } from "vite-plus/test";
+import { assert, describe, expect, test } from "vite-plus/test";
 import {
   addDays,
   buildStatus,
+  type KeyRef,
   periodDays,
   type MapResult,
   type ProblemKind,
@@ -39,6 +40,12 @@ function status(rotation: Rotation | null, overrides: Partial<StatusInput> = {})
     ...overrides,
   });
 }
+
+const RESEND = (admin: KeyRef) => ({
+  kind: "resend" as const,
+  admin,
+  permission: "full_access" as const,
+});
 
 const kinds = (result: ReturnType<typeof buildStatus>) => result.problems.map((p) => p.kind);
 
@@ -117,6 +124,23 @@ describe("rotation periods and dates", () => {
 });
 
 describe("status", () => {
+  test("a row names the key's issuer", () => {
+    const prod = KEY.environments.prod;
+    assert(prod);
+    const admin = { ...prod.ref, item: "resend admin" };
+    const issued = { ...KEY, environments: { prod: { ...prod, issuer: RESEND(admin) } } };
+    const map: MapResult = {
+      ok: true,
+      map: {
+        file: `${PROJECT}/keypin.toml`,
+        account: null,
+        environments: ["prod"],
+        keys: [issued],
+      },
+    };
+    expect(status(null, { maps: new Map([[PROJECT, map]]) }).rows[0]?.issuer).toBe("resend");
+  });
+
   test("nothing due and every destination published: nothing to report", () => {
     const result = status({ rotated: "2026-11-09", rotateEvery: "365d" });
     expect(result.problems).toEqual([]);
@@ -127,6 +151,7 @@ describe("status", () => {
         environment: "prod",
         rotated: "2026-11-09",
         due: "2027-11-09",
+        issuer: null,
         destinations: [
           expect.objectContaining({ destinationId: WORKER, stale: null }),
           expect.objectContaining({ destinationId: GITHUB, stale: null }),

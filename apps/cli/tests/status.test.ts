@@ -520,6 +520,7 @@ dev = "op://Private/forever/password"
       rotated: "2026-11-09",
       rotateEvery: "180d",
       due: "2027-05-08",
+      issuer: null,
       destinations: [
         {
           destinationId: "cloudflare-worker:web:SESSION_SECRET",

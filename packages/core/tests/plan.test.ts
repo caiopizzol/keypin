@@ -1,5 +1,5 @@
 import { expect, test } from "vite-plus/test";
-import { approvalsFor, type ItemIds, type KeyRef, planPublish } from "../src/index";
+import { approvalsFor, type ItemIds, type KeyRef, planNewValue, planPublish } from "../src/index";
 import { GITHUB, KEY, KEY_MAP, receipt, WORKER } from "./fixtures";
 
 const anyText: unknown = expect.any(String);
@@ -464,4 +464,30 @@ test("an organization repo published by another login compares the pin, not the 
   expect(summary(plan).map((s) => [s.action, s.reason])).toEqual([
     ["skip", "receipt already has this generation"],
   ]);
+});
+
+test("a new value writes every destination, and first writes still need approval", () => {
+  const input = { key: KEY, environment: "prod", mapFile: KEY_MAP };
+  const published = [receipt(WORKER, OLD)];
+  expect(planNewValue({ ...input, receipts: published }, null)).toEqual([
+    expect.objectContaining({
+      action: "write",
+      destinationId: WORKER,
+      reason: "different generation",
+      approval: null,
+    }),
+    expect.objectContaining({
+      action: "write",
+      destinationId: GITHUB,
+      reason: "new destination",
+      approval: `first write to ${GITHUB} (account acme)`,
+    }),
+  ]);
+  const both = [receipt(WORKER, OLD), receipt(GITHUB, NEW)];
+  expect(planNewValue({ ...input, receipts: both }, null).map((s) => [s.action, s.reason])).toEqual(
+    [
+      ["write", "different generation"],
+      ["write", "different generation"],
+    ],
+  );
 });

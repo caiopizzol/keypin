@@ -98,6 +98,26 @@ export interface Destination {
   write(name: string, secret: Secret): Promise<Evidence>;
 }
 
+export interface IssuerCheck {
+  ok: boolean;
+  facts: string;
+  reason?: string;
+  fix?: string;
+}
+
+export interface IssuedKey {
+  id: string;
+  secret: Secret;
+}
+
+export interface Issuer {
+  describe(): string;
+  dashboard(): string;
+  checkAccount(currentId: string | null): Promise<IssuerCheck>;
+  create(name: string): Promise<IssuedKey>;
+  revoke(id: string): Promise<"revoked" | "already gone">;
+}
+
 export interface Receipt {
   keyId: KeyId;
   environment: Environment;

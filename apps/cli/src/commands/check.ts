@@ -378,8 +378,7 @@ async function prerequisites(
 
 const SIGN_IN = "Sign in to 1Password";
 const NO_ACCOUNT = "has no account with this sign-in address or ID";
-const INSTALL_FIX =
-  "install the 1Password desktop app, or on a server or CI use a 1Password service account (docs/service-account.md)";
+const INSTALL_FIX = "install the 1Password desktop app";
 const ACCOUNT_FIX = `set account under [1password] in ${MAP_FILE} to a sign-in address or account ID the 1Password app lists, under Settings → Accounts`;
 
 function loginLine(result: DestinationResult): string {

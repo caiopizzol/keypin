@@ -146,7 +146,7 @@ describe("keypin in a real terminal", () => {
       const result = await drive({ scenario: "no-1password-app", args: ["check"] });
       expect(result.exit).toBe(1);
       expect(result.screen).toContain(
-        "1 Sign in to 1Password\n  Install the 1Password desktop app, or on a server or CI use a 1Password service account (docs/service-account.md).\n",
+        "1 Sign in to 1Password\n  Install the 1Password desktop app.\n",
       );
       expect(result.screen.match(/sign-in failed/g)).toHaveLength(1);
       expect(result.screen).not.toContain("critical error");

@@ -6,6 +6,7 @@ import {
   isRecord,
   type KeyRef,
   Secret,
+  SignInFailed,
   type VaultBackend,
   type VaultItem,
   type VaultScope,
@@ -72,26 +73,29 @@ export function infisicalBackend(
   async function signIn(place: Place): Promise<Session> {
     const where = account(place);
     if (!credentials)
-      throw new Error(
+      throw new SignInFailed(
         `${where}: sign-in failed: set ${CLIENT_ID} and ${CLIENT_SECRET} to a machine identity's Universal Auth client ID and secret`,
+        { kind: "no-credentials" },
       );
     const login = await request(place, "POST", "/api/v1/auth/universal-auth/login", {
       body: { clientId: credentials.clientId, clientSecret: credentials.clientSecret },
     });
     const token = login.body.accessToken;
     if (login.status !== 200 || typeof token !== "string")
-      throw new Error(`${where}: sign-in failed: ${problem(login)}`);
+      throw new SignInFailed(`${where}: sign-in failed: ${problem(login)}`, { kind: "other" });
     const details = await request(place, "GET", "/api/v1/identities/details", { token });
     const identity = details.body.identityDetails;
     const organization =
       isRecord(identity) && isRecord(identity.organization) ? identity.organization.slug : null;
     if (details.status !== 200 || typeof organization !== "string")
-      throw new Error(
+      throw new SignInFailed(
         `${where}: sign-in failed: couldn't read the machine identity's organization: ${problem(details)}`,
+        { kind: "other" },
       );
     if (organization !== place.organization)
-      throw new Error(
+      throw new SignInFailed(
         `${where}: sign-in failed: the machine identity belongs to the organization ${organization}, but keypin.toml pins ${place.organization}`,
+        { kind: "wrong-account", pinned: place.organization, actual: organization },
       );
     return { token, projects: new Map() };
   }

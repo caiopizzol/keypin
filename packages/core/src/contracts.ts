@@ -62,6 +62,22 @@ export interface ItemIds {
 
 export class HeldForApproval extends Error {}
 
+export type SignInReason =
+  | { kind: "no-credentials" }
+  | { kind: "no-desktop-app" }
+  | { kind: "unknown-account" }
+  | { kind: "wrong-account"; pinned: string; actual: string }
+  | { kind: "other" };
+
+export class SignInFailed extends Error {
+  readonly reason: SignInReason;
+
+  constructor(message: string, reason: SignInReason) {
+    super(message);
+    this.reason = reason;
+  }
+}
+
 export interface VaultBackend {
   readonly capabilities: VaultCapabilities;
   read(ref: KeyRef): Promise<Secret>;

@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { SignInFailed } from "@keypin/core";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import { type Connect, desktopConnect as sdkConnect } from "./sdk";
@@ -36,7 +37,7 @@ export function requireDesktopApp(
   found: () => string | null = desktopLibrary,
 ): Connect {
   return async (account) => {
-    if (!found()) throw new Error(DESKTOP_APP_MISSING);
+    if (!found()) throw new SignInFailed(DESKTOP_APP_MISSING, { kind: "no-desktop-app" });
     return connect(account);
   };
 }

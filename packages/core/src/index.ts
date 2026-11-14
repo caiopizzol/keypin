@@ -14,6 +14,8 @@ export {
   type KeyRef,
   type OnePasswordRef,
   type Receipt,
+  SignInFailed,
+  type SignInReason,
   type VaultBackend,
   type VaultItem,
   type VaultMetadata,

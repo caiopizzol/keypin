@@ -1,4 +1,4 @@
-import { isRecord } from "@keypin/core";
+import { isRecord, SignInFailed } from "@keypin/core";
 import type { Connect, SdkClient } from "./sdk";
 
 const PREFIX = "ops_";
@@ -35,8 +35,9 @@ export function serviceAccountConnect(token: string, open: TokenClient): Connect
   let client: Promise<SdkClient> | undefined;
   return async (account) => {
     if (!isAccountId(account) && account.toLowerCase() !== address) {
-      throw new Error(
+      throw new SignInFailed(
         `the service account signs in to ${address}, but keypin.toml pins ${account}`,
+        { kind: "wrong-account", pinned: account, actual: address },
       );
     }
     client ??= open(token).catch((error: unknown) => {

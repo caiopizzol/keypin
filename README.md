@@ -123,6 +123,7 @@ npx skills add caiopizzol/keypin -g    # all your projects
 - [Configuration](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md): every field in
   `keypin.toml`, and how to rotate a key
 - [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md): moving an env file's values into 1Password
+- [Infisical](https://github.com/caiopizzol/keypin/blob/main/docs/infisical.md): reading keys from Infisical instead
 - [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md): destinations, approvals and
   `--plan`
 - [Notes](https://github.com/caiopizzol/keypin/blob/main/docs/notes.md): `wrangler dev`, the wrangler login, and the

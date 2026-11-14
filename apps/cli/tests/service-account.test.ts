@@ -318,7 +318,7 @@ describe("keypin run with a service account", () => {
     const run = running(SERVICE, map);
     expect(await cli(["run", "--", "env"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
-      "keypin.toml maps OP_SERVICE_ACCOUNT_TOKEN, which keypin uses to sign in to 1Password; keypin run doesn't pass it to a command",
+      "keypin.toml maps OP_SERVICE_ACCOUNT_TOKEN, which keypin uses to sign in to your vault; keypin run doesn't pass it to a command",
     );
     expect(run.launcher.launches).toEqual([]);
   });

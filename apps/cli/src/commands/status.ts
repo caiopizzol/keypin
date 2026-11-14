@@ -77,7 +77,7 @@ export async function status(args: string[], deps: Deps): Promise<number> {
           ? `Couldn't read ${errors.length} of ${dates} ${from}`
           : `Read ${dates} ${from}`,
       }),
-      approval(deps),
+      approval(deps, refs),
     );
     for (const error of new Set(errors)) deps.stderr.write(`keypin: ${error}\n`);
   }
@@ -197,14 +197,19 @@ function places(row: StatusRow, problems: readonly Problem[], out: Output): stri
 function nextStep(problem: Problem, rows: readonly StatusRow[], context: Context): string | null {
   const row = rows.find((r) => sameRow(problem, r));
   if (!row) return null;
+  const infisical = row.ref.kind === "infisical";
   if (problem.kind === "overdue" || problem.kind === "due-soon") {
-    const rotate = "Put a new value in the 1Password item and set rotated to today";
+    const rotate = infisical
+      ? "Put a new value in the Infisical secret and set its rotated metadata to today"
+      : "Put a new value in the 1Password item and set rotated to today";
     return row.destinations.length
       ? `${rotate}, then run ${context.publish(row)} in ${row.project}.`
       : `${rotate}.`;
   }
   if (problem.kind === "no-rotation-date" && row.rotated === null)
-    return "Add a rotated Date field to the 1Password item, with the day the value last changed.";
+    return infisical
+      ? "Add rotated to the Infisical secret's metadata, with the day the value last changed as YYYY-MM-DD."
+      : "Add a rotated Date field to the 1Password item, with the day the value last changed.";
   return null;
 }
 

@@ -35,7 +35,7 @@ export async function run(args: string[], deps: Deps): Promise<number> {
   const reserved = keys.filter((k) => SIGN_IN_VARIABLES.includes(k.key.name));
   if (reserved.length)
     throw new Error(
-      `keypin.toml maps ${reserved.map((k) => k.key.name).join(", ")}, which keypin uses to sign in to 1Password; keypin run doesn't pass it to a command`,
+      `keypin.toml maps ${reserved.map((k) => k.key.name).join(", ")}, which keypin uses to sign in to your vault; keypin run doesn't pass it to a command`,
     );
 
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);
@@ -136,7 +136,7 @@ async function readValues(
         ? `Couldn't read from ${accounts}`
         : `Read ${values} from ${accounts}  ${out.dim(references)}`,
     }),
-    approval(deps),
+    approval(deps, refs),
   );
 }
 

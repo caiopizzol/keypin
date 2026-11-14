@@ -1,5 +1,6 @@
 import { envValues } from "@keypin/core";
 import { localDay } from "../../src/deps";
+import type { FakeInfisical } from "../infisical-fake";
 
 export interface FakeItem {
   title: string;
@@ -28,6 +29,7 @@ export interface Scenario {
   githubSecrets: string[] | null;
   places: Record<string, Place>;
   env?: Record<string, string>;
+  infisical?: FakeInfisical;
 }
 
 export const FAKE_TOKEN = `ops_${Buffer.from(JSON.stringify({ signInAddress: "my.1password.com" })).toString("base64url")}`;
@@ -88,6 +90,21 @@ export const ready: Scenario = {
   githubSecrets: ["STRIPE_KEY"],
   places: {},
 };
+
+const INFISICAL_MAP = `[infisical]
+organization = "acme"
+
+[keys.STRIPE_KEY]
+rotate_every = "90d"
+dev = "infisical://billing/dev/STRIPE_KEY"
+
+[keys.STRIPE_KEY.prod]
+from = "infisical://billing/prod/STRIPE_KEY"
+
+[[keys.STRIPE_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`;
 
 export const scenarios: Record<string, Scenario> = {
   ready,
@@ -151,6 +168,26 @@ export const scenarios: Record<string, Scenario> = {
     },
     env: { KEYPIN_1PASSWORD: "service-account", OP_SERVICE_ACCOUNT_TOKEN: FAKE_TOKEN },
   },
+  infisical: {
+    ...ready,
+    about:
+      "ready, but keypin.toml reads from a fake Infisical organization acme, signed in as a machine identity",
+    files: { ...ready.files, "keypin.toml": INFISICAL_MAP },
+    onePassword: { accounts: {} },
+    infisical: {
+      organization: "acme",
+      projects: {
+        billing: {
+          dev: { STRIPE_KEY: { value: "verify-dev-stripe-6b1e", rotated: day(-30) } },
+          prod: { STRIPE_KEY: { value: "verify-prod-stripe-9d4a", rotated: day(-85) } },
+        },
+      },
+    },
+    env: {
+      INFISICAL_UNIVERSAL_AUTH_CLIENT_ID: "verify-client-id",
+      INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET: "verify-client-secret-3e7a",
+    },
+  },
   fresh: {
     ...ready,
     about: "an empty git repository: no keypin.toml, not registered, nothing signed in",
@@ -189,6 +226,19 @@ export function valuesOf(scenario: Scenario): string[] {
     .filter(([path]) => path.split("/").at(-1)?.startsWith(".env"))
     .flatMap(([, text]) => [...envValues(text).values()].map((secret) => secret.reveal()))
     .filter((value) => value.length >= SHORTEST_VALUE);
-  const token = scenario.env?.OP_SERVICE_ACCOUNT_TOKEN;
-  return [...items.map((item) => item.value), ...env, ...(token ? [token] : [])];
+  const infisical = Object.values(scenario.infisical?.projects ?? {})
+    .flatMap((environments) => Object.values(environments))
+    .flatMap((secrets) => Object.values(secrets));
+  if (infisical.some((secret) => secret.value.length < SHORTEST_VALUE))
+    throw new Error(`Infisical values need ${SHORTEST_VALUE} characters or more`);
+  const tokens = [
+    scenario.env?.OP_SERVICE_ACCOUNT_TOKEN,
+    scenario.env?.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET,
+  ].flatMap((token) => (token ? [token] : []));
+  return [
+    ...items.map((item) => item.value),
+    ...infisical.map((secret) => secret.value),
+    ...env,
+    ...tokens,
+  ];
 }

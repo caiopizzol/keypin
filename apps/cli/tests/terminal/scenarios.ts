@@ -1,3 +1,4 @@
+import { envValues } from "@keypin/core";
 import { localDay } from "../../src/deps";
 
 export interface FakeItem {
@@ -58,7 +59,7 @@ jobs:
           STRIPE_KEY: \${{ secrets.STRIPE_KEY }}
 `;
 
-const ready: Scenario = {
+export const ready: Scenario = {
   about:
     "a mapped project where every sign-in works and GitHub already has STRIPE_KEY; keypin has no receipt yet",
   files: { "keypin.toml": MAP, ".github/workflows/deploy.yml": WORKFLOW },
@@ -90,6 +91,14 @@ export const scenarios: Record<string, Scenario> = {
     ...ready,
     about: "ready, plus a .env with a key keypin.toml doesn't map, to import",
     files: { ...ready.files, ".env": "RESEND_API_KEY=verify-resend-2f7c\nPORT=3000\n" },
+  },
+  "quoted-env": {
+    ...ready,
+    about: "ready, plus a .env whose value is quoted and has an inline comment, for the leak check",
+    files: {
+      ...ready.files,
+      ".env": 'RESEND_API_KEY="review-secret-sentinel" # test fixture\n',
+    },
   },
   "slow-1password": {
     ...ready,
@@ -152,16 +161,7 @@ export function valuesOf(scenario: Scenario): string[] {
     );
   const env = Object.entries(scenario.files)
     .filter(([path]) => path.split("/").at(-1)?.startsWith(".env"))
-    .flatMap(([, text]) =>
-      text.split("\n").map((line) =>
-        line
-          .split("=")
-          .slice(1)
-          .join("=")
-          .trim()
-          .replace(/^(["'])(.*)\1$/, "$2"),
-      ),
-    )
+    .flatMap(([, text]) => [...envValues(text).values()].map((secret) => secret.reveal()))
     .filter((value) => value.length >= SHORTEST_VALUE);
   return [...items.map((item) => item.value), ...env];
 }

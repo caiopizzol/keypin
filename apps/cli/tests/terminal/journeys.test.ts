@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { type Drive, drive } from "./drive";
+import { ready, valuesOf } from "./scenarios";
 
 const SLOW = 30_000;
 const FINISHED = /^[✓✗] /;
@@ -8,6 +9,42 @@ function clean(result: Drive): void {
   expect(result.leaks).toEqual([]);
   expect(result.overlong).toEqual([]);
 }
+
+describe("the leak check", () => {
+  test("knows a .env value the way keypin parses it: quoted, commented or padded", () => {
+    const values = valuesOf({
+      ...ready,
+      files: {
+        ".env": [
+          'RESEND_API_KEY="review-secret-sentinel" # test fixture',
+          "  export SENTRY_DSN = 'single-quoted-sentinel'  ",
+          "TOKEN=bare-sentinel-value # note",
+          "PORT=3000",
+        ].join("\n"),
+      },
+    });
+    expect(values).toEqual(
+      expect.arrayContaining([
+        "review-secret-sentinel",
+        "single-quoted-sentinel",
+        "bare-sentinel-value",
+      ]),
+    );
+    expect(values).not.toContain("3000");
+  });
+
+  test(
+    "flags a run that prints a quoted .env value",
+    async () => {
+      const result = await drive({
+        scenario: "quoted-env",
+        args: ["run", "--", "cat", ".env"],
+      });
+      expect(result.leaks).toEqual(["review-secret-sentinel"]);
+    },
+    SLOW,
+  );
+});
 
 describe("keypin in a real terminal", () => {
   test(

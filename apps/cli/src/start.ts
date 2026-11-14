@@ -2,7 +2,7 @@ import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline/promises";
-import type { Destination, PublishTarget, VaultBackend } from "@keypin/core";
+import type { Destination, PublishTarget } from "@keypin/core";
 import {
   CloudflareReader,
   currentWranglerToken,
@@ -10,7 +10,12 @@ import {
   wranglerConfigFile,
 } from "@keypin/destination-cloudflare";
 import { ghToken, GitHubSecretDestination, listRepoSecrets } from "@keypin/destination-github";
-import { type Connect, desktopConnect, onePasswordBackend } from "@keypin/vault-1password";
+import {
+  type Connect,
+  desktopConnect,
+  type TokenClient,
+  tokenClient,
+} from "@keypin/vault-1password";
 import { cli } from "./cli";
 import type { Deps, Publisher } from "./deps";
 import {
@@ -29,8 +34,9 @@ import { hostTarget, launchedBinary } from "./layout";
 import { isStyled } from "./output";
 import { selfCommand } from "./runtime";
 import { selfFor } from "./self";
+import { onePasswordFrom } from "./sign-in";
 
-let vault: VaultBackend | undefined;
+let onePassword: ReturnType<typeof onePasswordFrom> | undefined;
 let cloudflare: CloudflareReader | undefined;
 
 export function destination(target: PublishTarget, publisher: Publisher): Destination {
@@ -55,11 +61,16 @@ export function destination(target: PublishTarget, publisher: Publisher): Destin
   }
 }
 
-const connect: Connect = (account) =>
-  desktopConnect(account).catch((error: unknown) => {
+function installed<T>(pending: Promise<T>): Promise<T> {
+  return pending.catch((error: unknown) => {
     const hint = installProblem(error);
     throw hint ? new Error(hint) : error;
   });
+}
+
+const connect: Connect = (account) => installed(desktopConnect(account));
+const token: TokenClient = (value) => installed(tokenClient(value));
+const signedIn = () => (onePassword ??= onePasswordFrom(process.env, { desktop: connect, token }));
 
 async function ask(question: string): Promise<string> {
   const prompt = createInterface({ input: process.stdin, output: process.stderr });
@@ -149,7 +160,8 @@ export function realDeps(): Deps {
     createFile,
     replaceFile,
     isLink,
-    vault: () => (vault ??= onePasswordBackend(connect)),
+    signIn: () => signedIn().signIn,
+    vault: () => signedIn().vault,
     now: () => new Date(),
     stdout: process.stdout,
     stderr: process.stderr,

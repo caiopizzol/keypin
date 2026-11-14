@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { withoutSignIn } from "@keypin/core";
 
 const NO_REFRESH = "--no-refresh";
 
@@ -33,7 +34,7 @@ function noToken(login: string | null): Error {
 }
 
 function runGh(args: string[]): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-  const env = { ...process.env };
+  const env = withoutSignIn(process.env);
   delete env.GH_TOKEN;
   delete env.GITHUB_TOKEN;
   return new Promise((resolve) => {

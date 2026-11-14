@@ -121,6 +121,44 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
+    "with a service account, check shows no approval hint, notes my.1password.com, and leaks no token",
+    async () => {
+      const result = await drive({
+        scenario: "service-account",
+        args: ["check"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toMatch(
+        /^✓ Looked up 2 items in 1Password account my\.1password\.com, not the values/m,
+      );
+      expect(result.frames.some((frame) => frame.includes("Looking up"))).toBe(true);
+      expect(result.raw).not.toContain("approve keypin");
+      expect(result.screen).toContain(
+        "Note: individual 1Password accounts share the sign-in address my.1password.com",
+      );
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "with a service account, import stops before reading anything",
+    async () => {
+      const result = await drive({
+        scenario: "service-account",
+        args: ["import", ".env", "--vault", "Deploy", "--yes"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        "import writes new items to 1Password, which needs the desktop app",
+      );
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "an account 1Password doesn't have: failed steps say so, and check says to fix the map",
     async () => {
       const result = await drive({ scenario: "unknown-account", args: ["check"] });

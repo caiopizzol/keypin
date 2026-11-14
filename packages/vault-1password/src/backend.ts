@@ -16,14 +16,23 @@ const ROTATED = "rotated";
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const UNIX_SECONDS = /^\d+$/;
 
-export function onePasswordBackend(connect: Connect = desktopConnect): VaultBackend {
+const BUILT_IN = ["private", "personal", "employee"];
+
+export type SignInMode = "desktop" | "service-account";
+
+export function onePasswordBackend(
+  connect: Connect = desktopConnect,
+  mode: SignInMode = "desktop",
+): VaultBackend {
   const clients = new Map<string, Promise<SdkClient>>();
 
   function client(account: string): Promise<SdkClient> {
     let pending = clients.get(account);
     if (!pending) {
       pending = connect(account).catch((error: unknown) => {
-        throw new Error(`1Password account "${account}": sign-in failed: ${signInMessage(error)}`);
+        throw new Error(
+          `1Password account "${account}": sign-in failed: ${signInMessage(error, mode)}`,
+        );
       });
       clients.set(account, pending);
     }
@@ -33,9 +42,7 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
   async function vaultId(sdk: SdkClient, scope: VaultScope): Promise<string> {
     const matches = named(await sdk.vaults.list(), scope.vault);
     const [match] = matches;
-    if (!match) {
-      throw new Error(`1Password account "${scope.account}" has no vault "${scope.vault}"`);
-    }
+    if (!match) throw new Error(noVault(scope, mode));
     if (matches.length > 1) {
       throw new Error(
         `1Password account "${scope.account}" has ${matches.length} vaults named "${scope.vault}"`,
@@ -65,7 +72,7 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
   }
 
   return {
-    capabilities: { read: true, write: true, list: true, metadata: true },
+    capabilities: { read: true, write: mode === "desktop", list: true, metadata: true },
 
     async read(ref) {
       const item = await get(ref);
@@ -91,6 +98,8 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
           `${where(ref)}: rotated must be a real day as YYYY-MM-DD, got "${rotated}"`,
         );
       }
+      if (mode === "service-account")
+        throw new Error(`${where(ref)}: writing to 1Password needs the desktop app`);
       const sdk = await client(ref.account);
       const id = await vaultId(sdk, ref);
       const found = await find(sdk, id, ref);
@@ -134,6 +143,14 @@ export function onePasswordBackend(connect: Connect = desktopConnect): VaultBack
       return { rotated: rotated === null ? null : toDay(rotated, ref) };
     },
   };
+}
+
+function noVault(scope: VaultScope, mode: SignInMode): string {
+  const account = `1Password account "${scope.account}"`;
+  if (mode === "desktop") return `${account} has no vault "${scope.vault}"`;
+  if (BUILT_IN.includes(scope.vault.toLowerCase()))
+    return `${account}: service accounts can't open the built-in vault "${scope.vault}"; move the item to a vault you create, update its reference in keypin.toml, and grant the service account read access to that vault`;
+  return `${account}: the vault "${scope.vault}" isn't visible to this service account (it may not exist, or wasn't granted)`;
 }
 
 function where(ref: KeyRef): string {
@@ -225,10 +242,10 @@ function toDay(value: string, ref: KeyRef): string {
 
 const SDK_ERROR = /Error \{ msg: (.+?), inner: .*\}\s*$/s;
 
-function signInMessage(error: unknown): string {
+function signInMessage(error: unknown, mode: SignInMode): string {
   const message = messageOf(error);
   const inner = SDK_ERROR.exec(message)?.[1] ?? message;
-  return inner === "Account not found"
+  return mode === "desktop" && inner === "Account not found"
     ? "the 1Password app has no account with this sign-in address or ID"
     : inner;
 }

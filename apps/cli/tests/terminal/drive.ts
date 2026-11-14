@@ -141,7 +141,11 @@ function snapshot(project: string, paths: string[]): Record<string, string> {
 export async function drive(options: DriveOptions): Promise<Drive> {
   const cols = options.cols ?? 100;
   const { scenario, sandbox, home, project, nonce } = setUp(options.scenario);
-  const env = { ...environment(sandbox, home, options.scenario, cols, nonce), ...options.env };
+  const env = {
+    ...environment(sandbox, home, options.scenario, cols, nonce),
+    ...scenario.env,
+    ...options.env,
+  };
   const command = ["bun", "--no-env-file", CHILD, ...options.args];
   const answers = [...(options.answers ?? [])];
   let raw = "";

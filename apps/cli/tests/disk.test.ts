@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, assert, beforeEach, describe, expect, test } from "vite-plus/test";
 import { emptyState, register, saveState } from "@keypin/core";
-import { createFile, diskFiles, diskLock, replaceFile, replaceFileWith } from "../src/disk";
+import { createFile, diskFiles, diskLock, git, replaceFile, replaceFileWith } from "../src/disk";
 
 const HOLDER = fileURLToPath(new URL("lock-holder.ts", import.meta.url));
 
@@ -95,6 +95,28 @@ describe("diskLock", () => {
     child.kill("SIGTERM");
     expect(await child.exited).toBe(143);
     expect(await readdir(join(folder, "state"))).toEqual([]);
+  });
+});
+
+describe("git", () => {
+  test("never sees OP_SERVICE_ACCOUNT_TOKEN or KEYPIN_1PASSWORD", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "keypin-git-"));
+    const saved = { ...process.env };
+    try {
+      await writeFile(
+        join(dir, "git"),
+        `#!/bin/sh\necho "token=$OP_SERVICE_ACCOUNT_TOKEN mode=$KEYPIN_1PASSWORD"\n`,
+      );
+      await chmod(join(dir, "git"), 0o755);
+      process.env.PATH = `${dir}:/usr/bin:/bin`;
+      process.env.OP_SERVICE_ACCOUNT_TOKEN = "ops_sentinel-sign-in";
+      process.env.KEYPIN_1PASSWORD = "service-account";
+      expect(await git(dir, ["remote"])).toBe("token= mode=\n");
+    } finally {
+      for (const name of Object.keys(process.env)) if (!(name in saved)) delete process.env[name];
+      Object.assign(process.env, saved);
+      await rm(dir, { recursive: true });
+    }
   });
 });
 

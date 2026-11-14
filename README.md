@@ -26,7 +26,8 @@ only while a command runs.
 ## Install
 
 keypin runs on macOS, and on Linux with glibc (not Alpine), on arm64 or x64. You need the
-[1Password](https://1password.com/downloads) desktop app.
+[1Password](https://1password.com/downloads) desktop app; on a server or in CI without it, use a
+[service account](https://github.com/caiopizzol/keypin/blob/main/docs/service-account.md).
 
 ```sh
 npm install -g keypin

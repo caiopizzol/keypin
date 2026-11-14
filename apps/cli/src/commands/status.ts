@@ -17,6 +17,7 @@ import { registryPath, statePath } from "../paths";
 import { MAP_FILE } from "../project";
 import { messageOf } from "../errors";
 import { columns, type Output, output, tilde } from "../output";
+import { approval } from "../sign-in";
 import { distinctRefs, refKey } from "../vault";
 
 type Problem = Status["problems"][number];
@@ -75,7 +76,7 @@ export async function status(args: string[], deps: Deps): Promise<number> {
           ? `Couldn't read ${errors.length} of ${dates} ${from}`
           : `Read ${dates} ${from}`,
       }),
-      "1Password may be asking you to approve keypin",
+      approval(deps),
     );
     for (const error of new Set(errors)) deps.stderr.write(`keypin: ${error}\n`);
   }

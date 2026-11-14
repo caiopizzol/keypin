@@ -13,7 +13,9 @@ values from 1Password only while a command runs.
 - Never put a value in chat, arguments, files or `keypin.toml`, and never read an env file's values yourself.
 - The user creates 1Password items and answers `y` to approve. You never approve a first write, or a changed
   account or item.
-- 1Password asks the user to approve each command. If a command waits, tell the user.
+- 1Password asks the user to approve each command, unless the machine uses a service account
+  (`KEYPIN_1PASSWORD=service-account`). If a command waits, tell the user. Never set `KEYPIN_1PASSWORD` or
+  `OP_SERVICE_ACCOUNT_TOKEN` yourself.
 - Run `keypin --help` first, and use only what it lists.
 
 ## Set up
@@ -27,7 +29,8 @@ values from 1Password only while a command runs.
    and the sign-in address if `keypin.toml` has no account; whether they use staging; and, for each prod or staging
    secret no env file sets, whether it's in 1Password. If it's only in GitHub or Cloudflare, they make a new key at
    the provider and put it in 1Password.
-4. Import first: keypin won't import into a map with a `<...>`. For each env file, run check's suggested
+4. Import first, unless the machine uses a service account: import needs the desktop app, so there the user
+   creates the items and you map them in step 5. keypin won't import into a map with a `<...>`. For each env file, run check's suggested
    `keypin import`, with `--env <name>` for another environment's file (`.env.staging` gets `--env staging`, once
    `environments` lists it; use the line check prints). Run each without `--yes`; it exits 3 with a command for the
    user. Give the user all of these commands together; each also asks for a 1Password approval. If import can't

@@ -12,6 +12,7 @@ const SAVED = { ...process.env };
 
 const FAKE_GH = `#!/bin/sh
 if [ -n "$FAKE_GH_LOG" ]; then echo "$*" >> "$FAKE_GH_LOG"; fi
+if [ -n "$FAKE_GH_LOG" ] && [ -n "$OP_SERVICE_ACCOUNT_TOKEN$KEYPIN_1PASSWORD" ]; then echo "saw the 1Password sign-in" >> "$FAKE_GH_LOG"; fi
 args="$*"
 case "$args" in
   *" --no-refresh")
@@ -64,6 +65,16 @@ describe("ghToken", () => {
     expect(await ghToken("someone")).toBe(USER_TOKEN);
     expect(process.env.GH_TOKEN).toBe(ENV_TOKEN);
     expect(process.env.GITHUB_TOKEN).toBe(ENV_TOKEN);
+  });
+
+  test("gh never sees OP_SERVICE_ACCOUNT_TOKEN or KEYPIN_1PASSWORD", async () => {
+    process.env.PATH = `${bin}:/usr/bin:/bin`;
+    process.env.OP_SERVICE_ACCOUNT_TOKEN = "ops_sentinel-sign-in";
+    process.env.KEYPIN_1PASSWORD = "service-account";
+    expect(await asked(() => ghToken("someone"))).toEqual([
+      "auth token --hostname github.com --user someone",
+    ]);
+    expect(process.env.OP_SERVICE_ACCOUNT_TOKEN).toBe("ops_sentinel-sign-in");
   });
 
   test("with no login chosen, asks gh for the active login's token", async () => {

@@ -7,11 +7,14 @@ import {
   type KeyRef,
   runEnvironment,
   type Secret,
+  SIGN_IN_VARIABLES,
+  withoutSignIn,
 } from "@keypin/core";
 import { type Child, type Deps, UsageError } from "../deps";
 import { errorCode, messageOf } from "../errors";
 import { findMap, pickEnvironment } from "../project";
 import { type Output, output } from "../output";
+import { approval } from "../sign-in";
 
 export async function run(args: string[], deps: Deps): Promise<number> {
   const { values, positionals } = parseArgs({
@@ -28,6 +31,11 @@ export async function run(args: string[], deps: Deps): Promise<number> {
     return entry ? [{ key, ref: entry.ref }] : [];
   });
   const keys = values.only ? pick(available, values.only, environment) : available;
+  const reserved = keys.filter((k) => SIGN_IN_VARIABLES.includes(k.key.name));
+  if (reserved.length)
+    throw new Error(
+      `keypin.toml maps ${reserved.map((k) => k.key.name).join(", ")}, which keypin uses to sign in to 1Password; keypin run doesn't pass it to a command`,
+    );
 
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);
   const found = new Map<string, Secret>();
@@ -40,8 +48,7 @@ export async function run(args: string[], deps: Deps): Promise<number> {
     }
   }
 
-  const env: Record<string, string> = {};
-  for (const [name, value] of Object.entries(deps.env)) if (value !== undefined) env[name] = value;
+  const env = withoutSignIn(deps.env);
   for (const [name, secret] of found) {
     if (env[name] !== undefined) {
       out.warn(`${name} was already set; using the vault's value`);
@@ -128,7 +135,7 @@ async function readValues(
         ? `Couldn't read from 1Password account ${accounts}`
         : `Read ${values} from 1Password account ${accounts}  ${out.dim(references)}`,
     }),
-    "1Password may be asking you to approve keypin",
+    approval(deps),
   );
 }
 

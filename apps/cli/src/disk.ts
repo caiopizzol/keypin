@@ -2,7 +2,7 @@ import { type BigIntStats, constants, rmSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { chmod, lstat, mkdir, open, readdir, rename, rm, stat } from "node:fs/promises";
 import { dirname } from "node:path";
-import type { Files } from "@keypin/core";
+import { type Files, withoutSignIn } from "@keypin/core";
 import type { CreateFile, FolderEntry, HeldLock, Lock, ReplaceFile } from "./deps";
 import { errorCode } from "./errors";
 import { onSignals } from "./launch";
@@ -162,9 +162,14 @@ export async function listFolder(path: string): Promise<FolderEntry[]> {
 
 export function git(folder: string, args: readonly string[]): Promise<string | null> {
   return new Promise((resolve) => {
-    execFile("git", ["-C", folder, ...args], { maxBuffer: 64 * 1024 * 1024 }, (error, stdout) => {
-      resolve(error ? null : String(stdout));
-    });
+    execFile(
+      "git",
+      ["-C", folder, ...args],
+      { maxBuffer: 64 * 1024 * 1024, env: withoutSignIn(process.env) },
+      (error, stdout) => {
+        resolve(error ? null : String(stdout));
+      },
+    );
   });
 }
 

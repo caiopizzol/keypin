@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assert, describe, expect, test } from "vite-plus/test";
@@ -245,6 +245,32 @@ describe("wranglerToken", () => {
       await expect(failure).rejects.toThrow(/no oauth_token/);
       expectNoSentinel(await failure.catch((e: unknown) => e));
     } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+});
+
+describe("wrangler whoami", () => {
+  test("never sees OP_SERVICE_ACCOUNT_TOKEN or KEYPIN_1PASSWORD", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "keypin-wrangler-"));
+    const saved = { ...process.env };
+    try {
+      const seen = join(dir, "seen.txt");
+      await writeFile(
+        join(dir, "wrangler"),
+        `#!/bin/sh\necho "token=$OP_SERVICE_ACCOUNT_TOKEN mode=$KEYPIN_1PASSWORD" > "${seen}"\nexit 1\n`,
+      );
+      await chmod(join(dir, "wrangler"), 0o755);
+      const path = join(dir, "default.toml");
+      await writeFile(path, `oauth_token = "${TOKEN}"\nexpiration_time = "2000-01-01T00:00:00Z"\n`);
+      process.env.PATH = `${dir}:/usr/bin:/bin`;
+      process.env.OP_SERVICE_ACCOUNT_TOKEN = "ops_sentinel-sign-in";
+      process.env.KEYPIN_1PASSWORD = "service-account";
+      await expect(wranglerToken(path)).rejects.toThrow("couldn't refresh it");
+      expect(await readFile(seen, "utf8")).toBe("token= mode=\n");
+    } finally {
+      for (const name of Object.keys(process.env)) if (!(name in saved)) delete process.env[name];
+      Object.assign(process.env, saved);
       await rm(dir, { recursive: true });
     }
   });

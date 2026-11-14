@@ -21,6 +21,8 @@ import { registryPath } from "../paths";
 import { locateMap, MAP_FILE } from "../project";
 import { describeLogin, githubLogin, publisherFor } from "../publisher";
 import { type ScanResult, scanProject, type Unknown, usesSecrets } from "../scan";
+import { approval, type SignIn } from "../sign-in";
+import { isAccountId, isSharedAddress } from "@keypin/vault-1password";
 import { distinctRefs, refKey } from "../vault";
 
 interface ItemResult {
@@ -60,6 +62,7 @@ interface Report {
   registered: boolean;
   read: ScanResult["files"] & { notScanned: string[] };
   github: { repo: string | null; login: string | null };
+  onePassword: { signIn: SignIn["mode"]; address: string | null };
   keys: KeyResult[];
   production: Gaps["production"];
   local: Gaps["local"];
@@ -126,6 +129,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
   };
   let fixes: Fix[] = [];
   let empty: string | null = null;
+  const signIn = deps.signIn();
   const found = await locateMap(deps.files, folder);
   const root = found ? dirname(found.file) : folder;
   const scanned = await scanProject(deps, root);
@@ -135,6 +139,10 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
     registered: false,
     read: { ...scanned.files, notScanned: scanned.nested },
     github: { repo: scanned.scan.github.repo, login: scanned.login },
+    onePassword: {
+      signIn: signIn.mode,
+      address: signIn.mode === "service-account" ? signIn.address : null,
+    },
     keys: [],
     production: [],
     local: [],
@@ -145,6 +153,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
     problems: [],
     ok: false,
   };
+  report.notes.push(...signInNotes(signIn));
   const targets = new Map<string, PublishTarget>();
   const items = new Map<string, ItemResult>();
   const done = async () => {
@@ -208,6 +217,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
   const use = (id: string, label: string) => users.set(id, [...(users.get(id) ?? []), label]);
 
   const refs = distinctRefs(entries.map(({ entry }) => entry.ref));
+  report.notes.push(...unprovenPins(signIn, refs));
   report.notes.push(ITEM_NOTE);
   const lookup = `${count(refs.length, "item")} in 1Password account ${[...new Set(refs.map((ref) => ref.account))].join(", ")}, not the values`;
   await out.step(
@@ -222,7 +232,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
         text: failed ? `Couldn't look up ${failed} of ${lookup}` : `Looked up ${lookup}`,
       };
     },
-    "1Password may be asking you to approve keypin",
+    approval(deps),
   );
 
   for (const { entry } of entries)
@@ -349,7 +359,15 @@ async function prerequisites(
       "Sign in to Cloudflare",
       ["  wrangler login"],
     );
-  if (!items.size)
+  if (deps.signIn().mode === "service-account") {
+    const fixes = tokenFixes(items, deps.signIn());
+    if (fixes.length)
+      add(
+        { name: "1Password", status: "sign-in failed", fix: fixes.join("; ") },
+        TOKEN_SIGN_IN,
+        fixes.map(sentence),
+      );
+  } else if (!items.size)
     add(
       { name: "1Password", status: "not checked", fix: `keypin needs ${INTEGRATION}` },
       "Set up 1Password",
@@ -360,9 +378,15 @@ async function prerequisites(
       sentence(ACCOUNT_FIX),
     ]);
   else if ([...items.values()].some((item) => item.problem?.includes(DESKTOP_APP_MISSING)))
-    add({ name: "1Password", status: "sign-in failed", fix: INSTALL_FIX }, SIGN_IN, [
-      sentence(INSTALL_FIX),
-    ]);
+    add(
+      {
+        name: "1Password",
+        status: "sign-in failed",
+        fix: `${INSTALL_FIX}; ${SERVICE_ACCOUNT_FIX}`,
+      },
+      SIGN_IN,
+      [sentence(INSTALL_FIX), sentence(SERVICE_ACCOUNT_FIX)],
+    );
   else if ([...items.values()].some((item) => item.problem?.includes("sign-in failed")))
     add(
       {
@@ -377,8 +401,56 @@ async function prerequisites(
 }
 
 const SIGN_IN = "Sign in to 1Password";
+const TOKEN_SIGN_IN = "Sign in to 1Password with the service account";
+
+function signInNotes(signIn: SignIn): string[] {
+  if (signIn.mode === "desktop")
+    return signIn.tokenIgnored
+      ? [
+          "OP_SERVICE_ACCOUNT_TOKEN is set, but keypin signed in with the 1Password desktop app; set KEYPIN_1PASSWORD=service-account to use the service account",
+        ]
+      : [];
+  return [];
+}
+
+function unprovenPins(signIn: SignIn, refs: readonly KeyRef[]): string[] {
+  if (signIn.mode !== "service-account") return [];
+  const limit = "the vaults granted to the service account are what limit it";
+  return [...new Set(refs.map((ref) => ref.account))].flatMap((account) => {
+    if (isAccountId(account))
+      return [
+        `${MAP_FILE} pins the account ID ${account}, which a service account token can't be checked against, so ${limit}`,
+      ];
+    if (isSharedAddress(account) && isSharedAddress(signIn.address))
+      return [
+        `individual 1Password accounts share the sign-in address ${signIn.address}, so keypin can't prove the service account belongs to the account ${MAP_FILE} pins; ${limit}`,
+      ];
+    return [];
+  });
+}
+
+function tokenFixes(items: Map<string, ItemResult>, signIn: SignIn): string[] {
+  const address = signIn.mode === "service-account" ? signIn.address : "";
+  const problems = [...items.values()].flatMap((item) =>
+    item.problem?.includes("sign-in failed") ? [item.problem] : [],
+  );
+  const fixes: string[] = [];
+  if (problems.some((p) => p.includes(OTHER_PIN)))
+    fixes.push(
+      `use a service account token for the account ${MAP_FILE} pins; OP_SERVICE_ACCOUNT_TOKEN signs in to ${address}`,
+    );
+  if (problems.some((p) => !p.includes(OTHER_PIN)))
+    fixes.push(
+      "check that OP_SERVICE_ACCOUNT_TOKEN holds a current service account token; a revoked or expired token can't sign in",
+    );
+  return fixes;
+}
+
+const OTHER_PIN = "but keypin.toml pins";
 const NO_ACCOUNT = "has no account with this sign-in address or ID";
 const INSTALL_FIX = "install the 1Password desktop app";
+const SERVICE_ACCOUNT_FIX =
+  "on a server or in CI, use a 1Password service account instead (docs/service-account.md)";
 const ACCOUNT_FIX = `set account under [1password] in ${MAP_FILE} to a sign-in address or account ID the 1Password app lists, under Settings → Accounts`;
 
 function loginLine(result: DestinationResult): string {
@@ -443,7 +515,7 @@ function placeOf(target: PublishTarget): string {
 
 function plan(report: Report, found: Step[], fixes: Fix[], empty: string | null): Step[] {
   const steps: Step[] = [];
-  const signIn = found.find((step) => step.title === SIGN_IN);
+  const signIn = found.find((step) => step.title === SIGN_IN || step.title === TOKEN_SIGN_IN);
   const github = found.find((step) => step.service === "GitHub");
   for (const step of found) {
     const signs =

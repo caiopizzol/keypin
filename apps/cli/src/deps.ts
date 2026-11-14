@@ -1,5 +1,6 @@
 import type { Destination, Files, PublishTarget, StoreRead, VaultBackend } from "@keypin/core";
 import type { Self } from "./self";
+import type { SignIn } from "./sign-in";
 
 export interface Child {
   exited: Promise<number>;
@@ -54,6 +55,7 @@ export interface Deps {
   createFile: CreateFile;
   replaceFile: ReplaceFile;
   isLink(path: string): Promise<boolean>;
+  signIn(): SignIn;
   vault(): VaultBackend;
   now(): Date;
   stdout: Writer;

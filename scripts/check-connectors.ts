@@ -28,30 +28,72 @@ function skips(callee: unknown): boolean {
   return SKIPPED.has(String(callee.property.name)) || skips(callee.object);
 }
 
-function runs(node: unknown, name: string): boolean {
-  if (Array.isArray(node)) return node.some((child) => runs(child, name));
+type Binding = { local: string; namespace: boolean };
+
+const calls = (callee: unknown, { local, namespace }: Binding, suite: string): boolean => {
+  if (!isRecord(callee)) return false;
+  if (!namespace) return callee.type === "Identifier" && callee.name === local;
+  return (
+    callee.type === "MemberExpression" &&
+    callee.computed === false &&
+    isRecord(callee.object) &&
+    callee.object.type === "Identifier" &&
+    callee.object.name === local &&
+    isRecord(callee.property) &&
+    callee.property.name === suite
+  );
+};
+
+function runs(node: unknown, binding: Binding, suite: string): boolean {
+  if (Array.isArray(node)) return node.some((child) => runs(child, binding, suite));
   if (!isRecord(node)) return false;
   if (node.type === "CallExpression") {
     if (skips(node.callee)) return false;
-    if (isRecord(node.callee) && node.callee.type === "Identifier" && node.callee.name === name)
-      return true;
+    if (calls(node.callee, binding, suite)) return true;
   }
-  return Object.values(node).some((child) => typeof child === "object" && runs(child, name));
+  return Object.values(node).some(
+    (child) => typeof child === "object" && runs(child, binding, suite),
+  );
 }
 
-function imported(body: unknown[], from: (source: string) => boolean, name?: string): string[] {
-  const locals: string[] = [];
+const TYPE_WRAPPERS = new Set(["TSAsExpression", "TSSatisfiesExpression", "TSNonNullExpression"]);
+
+function readsValue(node: unknown, name: string): boolean {
+  if (Array.isArray(node)) return node.some((child) => readsValue(child, name));
+  if (!isRecord(node) || node.type === "ImportDeclaration") return false;
+  if (node.type === "Identifier") return node.name === name;
+  const type = String(node.type);
+  if (TYPE_WRAPPERS.has(type)) return readsValue(node.expression, name);
+  if (type.startsWith("TS")) return false;
+  if (node.type === "MemberExpression" && node.computed === false)
+    return readsValue(node.object, name);
+  if (node.type === "Property" && node.computed === false && node.shorthand === false)
+    return readsValue(node.value, name);
+  return Object.entries(node).some(
+    ([key, child]) =>
+      !["typeAnnotation", "typeArguments", "typeParameters", "returnType"].includes(key) &&
+      typeof child === "object" &&
+      readsValue(child, name),
+  );
+}
+
+function imported(body: unknown[], from: (source: string) => boolean, name?: string): Binding[] {
+  const found: Binding[] = [];
   for (const statement of body) {
     if (!isRecord(statement) || statement.type !== "ImportDeclaration") continue;
+    if (statement.importKind === "type") continue;
     if (!isRecord(statement.source) || !from(String(statement.source.value))) continue;
     if (!Array.isArray(statement.specifiers)) continue;
     for (const specifier of statement.specifiers) {
       if (!isRecord(specifier) || !isRecord(specifier.local)) continue;
+      if (specifier.importKind === "type") continue;
+      const local = String(specifier.local.name);
+      const namespace = specifier.type === "ImportNamespaceSpecifier";
       const which = isRecord(specifier.imported) ? specifier.imported.name : undefined;
-      if (name === undefined || which === name) locals.push(String(specifier.local.name));
+      if (name === undefined || namespace || which === name) found.push({ local, namespace });
     }
   }
-  return locals;
+  return found;
 }
 
 export function connectors(root: string): { dir: string; role: Role }[] {
@@ -97,13 +139,13 @@ export function problems(root: string, dir: string, role: Role): string[] {
     return found;
   }
   const locals = imported(program.body, (source) => source === "@keypin/core/testing", suite);
-  if (!locals.some((local) => runs(program.body, local)))
+  if (!locals.some((binding) => runs(program.body, binding, suite)))
     found.push(`${dir}: tests/contract.test.ts doesn't run ${suite}. ${add}`);
   const name = isRecord(manifest) ? manifest.name : undefined;
   const fake = (source: string) =>
     source === `${String(name)}/testing` ||
     /^\.\.\/src\/testing(\.ts|\/index(\.ts)?)?$/.test(source);
-  if (imported(program.body, fake).length === 0)
+  if (!imported(program.body, fake).some(({ local }) => readsValue(program.body, local)))
     found.push(
       `${dir}: tests/contract.test.ts doesn't import its fake from ../src/testing. ${add}`,
     );

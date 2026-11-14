@@ -1,7 +1,8 @@
 export const FILES = ["README.md", "skills/keypin/SKILL.md"];
 export const LIMIT = 5;
 
-const lines = (text: string) => (text === "" ? 0 : text.split("\n").length);
+const lines = (text: string) =>
+  text === "" ? 0 : text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
 
 export function grown(before: string, after: string): number {
   return lines(after) - lines(before);

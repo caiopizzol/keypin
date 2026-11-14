@@ -8,7 +8,15 @@ describe("grown", () => {
   test("counts added lines, and removed lines as negative", () => {
     expect(grown("a\nb\n", "a\nb\nc\nd\n")).toBe(2);
     expect(grown("a\nb\nc\n", "a\n")).toBe(-2);
-    expect(grown("", "a\n")).toBe(2);
+    expect(grown("", "a\n")).toBe(1);
+    expect(grown("", "a\nb\nc")).toBe(3);
+    expect(grown("a\nb\nc\n", "")).toBe(-3);
+  });
+
+  test("a trailing newline ends the last line, it doesn't add one", () => {
+    expect(grown("a", "a\n")).toBe(0);
+    expect(grown("a\n", "a")).toBe(0);
+    expect(grown("a\nb", "a\nb\nc\n")).toBe(1);
   });
 });
 

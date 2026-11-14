@@ -127,14 +127,16 @@ describe("problems", () => {
     connector("packages/vault-acme", "vaultContract");
     put(
       "packages/vault-acme/tests/contract.test.ts",
-      `import { vaultContract } from "@keypin/core/testing";\n${FAKE}void vaultContract;\n`,
+      `import { vaultContract } from "@keypin/core/testing";\n${FAKE}void vaultContract;\nvoid fake;\n`,
     );
-    expect(problems(root, "packages/vault-acme", "vault")).toHaveLength(1);
+    expect(problems(root, "packages/vault-acme", "vault")).toEqual([
+      expect.stringContaining("doesn't run vaultContract"),
+    ]);
   });
 
   test.each([
-    ["commented out", "// vaultContract(() => fake());"],
-    ["block-commented", "/* vaultContract(() => fake()); */"],
+    ["commented out", "void fake; // vaultContract(() => fake());"],
+    ["block-commented", "void fake; /* vaultContract(() => fake()); */"],
     ["in describe.skip", 'describe.skip("s", () => { vaultContract(() => fake()); });'],
     ["in describe.todo", 'describe.todo("s", () => { vaultContract(() => fake()); });'],
     ["in it.skip", 'it.skip("s", () => { vaultContract(() => fake()); });'],
@@ -145,6 +147,71 @@ describe("problems", () => {
   ])("a contract %s doesn't count", (_how, body) => {
     connector("packages/vault-acme", "vaultContract");
     put("packages/vault-acme/tests/contract.test.ts", CONTRACT("vaultContract", body));
+    expect(problems(root, "packages/vault-acme", "vault")).toEqual([
+      expect.stringContaining("doesn't run vaultContract"),
+    ]);
+  });
+
+  test.each([
+    ["only as a type", 'import type { fake } from "../src/testing";\n'],
+    ["only through type specifiers", 'import { type fake } from "../src/testing";\n'],
+    ["but never used", 'import { other } from "../src/testing";\n'],
+  ])("a fake imported %s doesn't count", (_how, line) => {
+    connector("packages/vault-acme", "vaultContract");
+    put(
+      "packages/vault-acme/tests/contract.test.ts",
+      CONTRACT("vaultContract").replace(FAKE, line),
+    );
+    expect(problems(root, "packages/vault-acme", "vault")).toEqual([
+      expect.stringContaining("doesn't import its fake from ../src/testing"),
+    ]);
+  });
+
+  test("a fake used only in a type position doesn't count", () => {
+    connector("packages/vault-acme", "vaultContract");
+    put(
+      "packages/vault-acme/tests/contract.test.ts",
+      CONTRACT("vaultContract", "vaultContract(() => ({}) as fake);").replace(
+        FAKE,
+        'import { fake } from "../src/testing";\n',
+      ),
+    );
+    expect(problems(root, "packages/vault-acme", "vault")).toEqual([
+      expect.stringContaining("doesn't import its fake from ../src/testing"),
+    ]);
+  });
+
+  test("a fake used through a namespace import counts", () => {
+    connector("packages/vault-acme", "vaultContract");
+    put(
+      "packages/vault-acme/tests/contract.test.ts",
+      CONTRACT("vaultContract", "vaultContract(() => fakes.fake());").replace(
+        FAKE,
+        'import * as fakes from "../src/testing";\n',
+      ),
+    );
+    expect(problems(root, "packages/vault-acme", "vault")).toEqual([]);
+  });
+
+  const NAMESPACE = (body: string) =>
+    `import { describe } from "vite-plus/test";\nimport * as testing from "@keypin/core/testing";\n${FAKE}describe("c", () => {\n  ${body}\n});\n`;
+
+  test("a contract called through a namespace import counts", () => {
+    connector("packages/vault-acme", "vaultContract");
+    put(
+      "packages/vault-acme/tests/contract.test.ts",
+      NAMESPACE("testing.vaultContract(() => fake());"),
+    );
+    expect(problems(root, "packages/vault-acme", "vault")).toEqual([]);
+  });
+
+  test.each([
+    ["the wrong suite", "testing.issuerContract(() => fake());"],
+    ["in describe.skip", 'describe.skip("s", () => { testing.vaultContract(() => fake()); });'],
+    ["in xit", 'xit("s", () => { testing.vaultContract(() => fake()); });'],
+  ])("a namespace contract call to %s doesn't count", (_how, body) => {
+    connector("packages/vault-acme", "vaultContract");
+    put("packages/vault-acme/tests/contract.test.ts", NAMESPACE(body));
     expect(problems(root, "packages/vault-acme", "vault")).toEqual([
       expect.stringContaining("doesn't run vaultContract"),
     ]);

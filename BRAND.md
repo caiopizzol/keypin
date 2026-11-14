@@ -47,8 +47,8 @@ The careful operator. Exact, plain, cautious, quiet. Not alarmist, not clever, n
 
 ### Promise
 
-Each key is kept once, in your vault, and goes only where the map says. Nothing is published without a plan, and a
-first write or a changed account waits for you to answer `y`.
+Your vault is the source for each key, and publishing sends it only to the destinations in the map. Nothing is
+published without a plan, and a first write or a changed account waits for you to answer `y`.
 
 Base message: get your team's keys out of `.env` files.
 

@@ -796,6 +796,14 @@ describe("Infisical references", () => {
       `[infisical]\nurl = "http://x.dev"\norganization = "acme"\n`,
       `[infisical]: field "url" must be an https:// address such as https://eu.infisical.com, with no path`,
     ],
+    ...[
+      "https://vault.example:bad",
+      "https://vault.example\\\\api",
+      "https://user:pw@vault.example",
+    ].map((url): [string, string] => [
+      `[infisical]\nurl = "${url}"\norganization = "acme"\n`,
+      `[infisical]: field "url" must be an https:// address such as https://eu.infisical.com, with no path`,
+    ]),
     [`[infisical]\norganization = "acme"\ntoken = "x"\n`, `[infisical]: unknown field "token"`],
     [
       `${PIN}[keys.A]\ndev = "infisical://p/A"\n`,

@@ -224,12 +224,25 @@ function validateInfisical(
     "your Infisical organization's slug, from its settings page",
     fail,
   );
-  if (url !== undefined && !/^https:\/\/[^/?#]+\/?$/.test(url)) {
+  const origin = url === undefined ? INFISICAL_CLOUD : httpsOrigin(url);
+  if (origin === null) {
     fail(`field "url" must be an https:// address such as https://eu.infisical.com, with no path`);
     return undefined;
   }
   if (organization === undefined) return undefined;
-  return { url: (url ?? INFISICAL_CLOUD).replace(/\/$/, ""), organization };
+  return { url: origin, organization };
+}
+
+function httpsOrigin(text: string): string | null {
+  if (!/^https:\/\/[^/?#\\]+\/?$/.test(text)) return null;
+  try {
+    const url = new URL(text);
+    return url.protocol === "https:" && url.pathname === "/" && !url.username && !url.password
+      ? url.origin
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 function validateEnvironments(

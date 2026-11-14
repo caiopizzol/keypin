@@ -120,6 +120,8 @@ describe("keypin publish", () => {
     await cli(["publish", "STRIPE_API_KEY"], run.deps);
     const readAt = run.stderr.text.indexOf("Read 1 value");
     expect(readAt).toBeGreaterThan(0);
+    expect(run.stderr.text).toContain("Read 1 value from 1Password account my.1password.com");
+    expect(run.stderr.text).not.toContain("1Password account 1Password account");
     const beforeRead = run.stderr.text.slice(0, readAt);
     expect(beforeRead).toContain(
       "STRIPE_API_KEY prod  from op://Private/billing stripe api key/password in 1Password account my.1password.com",

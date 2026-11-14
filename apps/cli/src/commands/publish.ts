@@ -335,9 +335,7 @@ function readValues(checks: Checks[], deps: Deps, out: Output): Promise<Read> {
     },
     (read) => ({
       ok: read.ok,
-      text: read.ok
-        ? `Read ${values} from 1Password account ${accounts}`
-        : `Couldn't read from 1Password account ${accounts}`,
+      text: read.ok ? `Read ${values} from ${accounts}` : `Couldn't read from ${accounts}`,
     }),
     approval(deps),
   );

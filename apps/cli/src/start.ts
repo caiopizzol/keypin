@@ -12,7 +12,7 @@ import {
 import { ghToken, GitHubSecretDestination, listRepoSecrets } from "@keypin/destination-github";
 import { type Connect, desktopConnect, onePasswordBackend } from "@keypin/vault-1password";
 import { cli } from "./cli";
-import type { Publisher } from "./deps";
+import type { Deps, Publisher } from "./deps";
 import {
   createFile,
   diskFiles,
@@ -126,8 +126,12 @@ function self(cwd: string) {
 }
 
 export function main(): Promise<number> {
+  return cli(process.argv.slice(2), realDeps());
+}
+
+export function realDeps(): Deps {
   const cwd = process.cwd();
-  return cli(process.argv.slice(2), {
+  return {
     cwd,
     self: self(cwd),
     env: process.env,
@@ -176,5 +180,5 @@ export function main(): Promise<number> {
     },
     columns: () => process.stderr.columns || 80,
     ask,
-  });
+  };
 }

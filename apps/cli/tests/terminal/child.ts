@@ -204,14 +204,16 @@ const resend = resendFetch({
   failCreate: run.resend?.failCreate ?? false,
   keys: {
     load() {
-      try {
-        const parsed: unknown = JSON.parse(readFileSync(RESEND, "utf8"));
-        return Array.isArray(parsed) ? parsed.filter((id) => typeof id === "string") : [];
-      } catch {
-        return run.resend?.keys ?? [];
-      }
+      if (!existsSync(RESEND)) return { live: run.resend?.keys ?? [], created: 0 };
+      const parsed: unknown = JSON.parse(readFileSync(RESEND, "utf8"));
+      if (!isRecord(parsed) || !Array.isArray(parsed.live) || typeof parsed.created !== "number")
+        throw new Error(`${RESEND} isn't the fake Resend's keys`);
+      return {
+        live: parsed.live.filter((id): id is string => typeof id === "string"),
+        created: parsed.created,
+      };
     },
-    save: (ids) => writeFileSync(RESEND, JSON.stringify(ids)),
+    save: (keys) => writeFileSync(RESEND, JSON.stringify(keys)),
   },
   effect,
 });

@@ -5,8 +5,9 @@ description: Use the keypin CLI to map, check, run with, or publish a project's 
 
 # keypin
 
-keypin maps a project's keys in `keypin.toml` (variable names and 1Password references, never values) and reads
-values from 1Password only while a command runs.
+keypin maps a project's keys in `keypin.toml` (variable names and vault references, never values) and reads values
+from the vault only while a command runs. The steps below use 1Password; for `infisical://` references, follow
+[Infisical](https://github.com/caiopizzol/keypin/blob/main/docs/infisical.md) instead.
 
 ## Rules
 

@@ -1,6 +1,6 @@
 import { expect, test } from "vite-plus/test";
 import { approvalsFor, type ItemIds, type KeyRef, planNewValue, planPublish } from "../src/index";
-import { GITHUB, KEY, KEY_MAP, KINDS, receipt, WORKER } from "./fixtures";
+import { GITHUB, KEY, KEY_MAP, KINDS, receipt, VAULT_KINDS, WORKER } from "./fixtures";
 
 const anyText: unknown = expect.any(String);
 
@@ -18,6 +18,7 @@ const summary = (plan: ReturnType<typeof planPublish>) =>
 test("first publish writes every destination, and each needs approval", () => {
   const plan = planPublish({
     kinds: KINDS,
+    vaults: VAULT_KINDS,
     key: KEY,
     environment: "prod",
     mapFile: KEY_MAP,
@@ -46,6 +47,7 @@ test("first publish writes every destination, and each needs approval", () => {
 test("resuming after one destination skips it and writes the rest", () => {
   const plan = planPublish({
     kinds: KINDS,
+    vaults: VAULT_KINDS,
     key: KEY,
     environment: "prod",
     mapFile: KEY_MAP,
@@ -72,6 +74,7 @@ test("resuming after one destination skips it and writes the rest", () => {
 test("the same generation everywhere leaves nothing to do", () => {
   const plan = planPublish({
     kinds: KINDS,
+    vaults: VAULT_KINDS,
     key: KEY,
     environment: "prod",
     mapFile: KEY_MAP,
@@ -86,6 +89,7 @@ test("the same generation everywhere leaves nothing to do", () => {
 test("a new generation rewrites known destinations without approval", () => {
   const plan = planPublish({
     kinds: KINDS,
+    vaults: VAULT_KINDS,
     key: KEY,
     environment: "prod",
     mapFile: KEY_MAP,
@@ -110,6 +114,7 @@ test("a destination whose account changed needs approval, even with the same gen
   });
   const plan = planPublish({
     kinds: KINDS,
+    vaults: VAULT_KINDS,
     key: KEY,
     environment: "prod",
     mapFile: KEY_MAP,
@@ -134,6 +139,7 @@ test("a destination removed from the map is reported, not deleted", () => {
   const receipts = [receipt(WORKER, NEW), receipt(GITHUB, NEW), gone];
   const plan = planPublish({
     kinds: KINDS,
+    vaults: VAULT_KINDS,
     key: KEY,
     environment: "prod",
     mapFile: KEY_MAP,
@@ -161,6 +167,7 @@ test("another project's destinations for the same variable and environment aren'
   const receipts = [receipt(WORKER, NEW), receipt(GITHUB, NEW), web];
   const plan = planPublish({
     kinds: KINDS,
+    vaults: VAULT_KINDS,
     key: KEY,
     environment: "prod",
     mapFile: KEY_MAP,
@@ -176,6 +183,7 @@ test("a receipt with no project, from state version 2 or older, isn't this key's
   const gone = old("github-actions:acme/old-billing:STRIPE_API_KEY");
   const plan = planPublish({
     kinds: KINDS,
+    vaults: VAULT_KINDS,
     key: KEY,
     environment: "prod",
     mapFile: KEY_MAP,
@@ -199,6 +207,7 @@ test("the newest receipt per destination decides, whichever key wrote it", () =>
   ];
   const plan = planPublish({
     kinds: KINDS,
+    vaults: VAULT_KINDS,
     key: KEY,
     environment: "prod",
     mapFile: KEY_MAP,
@@ -234,6 +243,7 @@ const INFISICAL_ITEM = {
 test("a destination last published from Infisical, and now from 1Password, names both vaults", () => {
   const plan = planPublish({
     kinds: KINDS,
+    vaults: VAULT_KINDS,
     key: KEY,
     environment: "prod",
     mapFile: KEY_MAP,
@@ -250,6 +260,7 @@ test("a destination last published from another item needs approval, even with t
   for (const generation of [NEW, OLD]) {
     const plan = planPublish({
       kinds: KINDS,
+      vaults: VAULT_KINDS,
       key: KEY,
       environment: "prod",
       mapFile: KEY_MAP,
@@ -273,6 +284,7 @@ test("a receipt with item IDs compares the item read now by ID, and still compar
     summary(
       planPublish({
         kinds: KINDS,
+        vaults: VAULT_KINDS,
         key: KEY,
         environment: "prod",
         mapFile: KEY_MAP,
@@ -298,6 +310,7 @@ test("a receipt with item IDs compares the item read now by ID, and still compar
 test("a receipt that another project or key left, from another item, needs approval", () => {
   const plan = planPublish({
     kinds: KINDS,
+    vaults: VAULT_KINDS,
     key: KEY,
     environment: "prod",
     mapFile: KEY_MAP,
@@ -314,6 +327,7 @@ test("a receipt that another project or key left, from another item, needs appro
 test("a receipt that doesn't record its item, from state version 1, needs approval once", () => {
   const plan = planPublish({
     kinds: KINDS,
+    vaults: VAULT_KINDS,
     key: KEY,
     environment: "prod",
     mapFile: KEY_MAP,
@@ -334,6 +348,7 @@ test("a receipt for the same GitHub secret spelled in another case is the same d
   });
   const plan = planPublish({
     kinds: KINDS,
+    vaults: VAULT_KINDS,
     key: KEY,
     environment: "prod",
     mapFile: KEY_MAP,
@@ -368,6 +383,7 @@ test("a GitHub environment secret is another destination from the repo secret", 
   };
   const input = {
     kinds: KINDS,
+    vaults: VAULT_KINDS,
     key,
     environment: "prod",
     mapFile: KEY_MAP,
@@ -403,6 +419,7 @@ test("a Worker receipt from another Cloudflare account is another secret", () =>
   });
   const plan = planPublish({
     kinds: KINDS,
+    vaults: VAULT_KINDS,
     key: KEY,
     environment: "prod",
     mapFile: KEY_MAP,
@@ -415,14 +432,28 @@ test("a Worker receipt from another Cloudflare account is another secret", () =>
 
 test("approvals are known from the receipts alone, before any value is read", () => {
   expect(
-    approvalsFor({ kinds: KINDS, key: KEY, environment: "prod", mapFile: KEY_MAP, receipts: [] }),
+    approvalsFor({
+      kinds: KINDS,
+      vaults: VAULT_KINDS,
+      key: KEY,
+      environment: "prod",
+      mapFile: KEY_MAP,
+      receipts: [],
+    }),
   ).toEqual([
     { destinationId: WORKER, reason: "no receipt", approval: anyText },
     { destinationId: GITHUB, reason: "no receipt", approval: anyText },
   ]);
   const receipts = [receipt(WORKER, OLD), receipt(GITHUB, OLD, { source: OTHER_ITEM })];
   expect(
-    approvalsFor({ kinds: KINDS, key: KEY, environment: "prod", mapFile: KEY_MAP, receipts }),
+    approvalsFor({
+      kinds: KINDS,
+      vaults: VAULT_KINDS,
+      key: KEY,
+      environment: "prod",
+      mapFile: KEY_MAP,
+      receipts,
+    }),
   ).toEqual([{ destinationId: GITHUB, reason: "item changed", approval: anyText }]);
 });
 
@@ -430,6 +461,7 @@ test("an environment the key doesn't have is an error", () => {
   expect(() =>
     planPublish({
       kinds: KINDS,
+      vaults: VAULT_KINDS,
       key: KEY,
       environment: "dev",
       mapFile: KEY_MAP,
@@ -444,6 +476,7 @@ test("a renamed variable is a new key: every write needs approval, and nothing i
   const renamed = { ...KEY, name: "STRIPE_KEY" };
   const plan = planPublish({
     kinds: KINDS,
+    vaults: VAULT_KINDS,
     key: renamed,
     environment: "prod",
     mapFile: KEY_MAP,
@@ -478,6 +511,7 @@ test("an organization repo published by another login compares the pin, not the 
   };
   const plan = planPublish({
     kinds: KINDS,
+    vaults: VAULT_KINDS,
     key,
     environment: "prod",
     mapFile: KEY_MAP,
@@ -495,7 +529,13 @@ test("an organization repo published by another login compares the pin, not the 
 });
 
 test("a new value writes every destination, and first writes still need approval", () => {
-  const input = { kinds: KINDS, key: KEY, environment: "prod", mapFile: KEY_MAP };
+  const input = {
+    kinds: KINDS,
+    vaults: VAULT_KINDS,
+    key: KEY,
+    environment: "prod",
+    mapFile: KEY_MAP,
+  };
   const published = [receipt(WORKER, OLD)];
   expect(planNewValue({ ...input, receipts: published }, null)).toEqual([
     expect.objectContaining({

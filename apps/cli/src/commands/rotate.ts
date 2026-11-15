@@ -106,9 +106,10 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
 async function rotateLocked(job: Job): Promise<number> {
   const { key, entry, spec, owner, deps, out } = job;
   const say = (text: string) => out.line(text);
-  let state = await loadState(deps.files, job.path);
+  let state = await loadState(deps.files, job.path, deps.vaults);
   const input = {
     kinds: deps.destinations,
+    vaults: deps.vaults,
     key,
     environment: owner.environment,
     mapFile: owner.mapFile,
@@ -117,7 +118,7 @@ async function rotateLocked(job: Job): Promise<number> {
 
   const signIn = signInFor(deps, [entry.ref, spec.admin]);
   say(
-    `${out.bold(key.name)} ${owner.environment}  ${out.dim(`from ${formatReference(entry.ref)} in ${vaultAccount(entry.ref)}`)}`,
+    `${out.bold(key.name)} ${owner.environment}  ${out.dim(`from ${formatReference(entry.ref, deps.vaults)} in ${vaultAccount(entry.ref, deps.vaults)}`)}`,
   );
   let approvals = approvalsFor(input);
   if (!deps.isTerminal && !approvals.length) {
@@ -202,7 +203,11 @@ async function rotateLocked(job: Job): Promise<number> {
   say("\nPlan");
   showPlan(out, [
     row("+", issuer.describe(), "create a new key", check.notes?.create),
-    row("~", vaultName(entry.ref), `save it to ${formatReference(entry.ref)}, rotated today`),
+    row(
+      "~",
+      vaultName(entry.ref),
+      `save it to ${formatReference(entry.ref, deps.vaults)}, rotated today`,
+    ),
     ...publishRows(steps, job.label),
     current === null
       ? row("-", issuer.describe(), "the old key stays: keypin doesn't know its ID")
@@ -436,7 +441,7 @@ type Read =
 
 function readKeys({ entry, spec, deps, out }: Job): Promise<Read> {
   const refs = [entry.ref, spec.admin];
-  const account = vaultAccounts(refs);
+  const account = vaultAccounts(refs, deps.vaults);
   return out.step(
     `Reading the key and the admin key from ${account}`,
     async (): Promise<Read> => {
@@ -451,7 +456,7 @@ function readKeys({ entry, spec, deps, out }: Job): Promise<Read> {
     (read) => ({
       ok: read.ok,
       text: read.ok
-        ? `Read the key and the admin key ${formatReference(spec.admin)}`
+        ? `Read the key and the admin key ${formatReference(spec.admin, deps.vaults)}`
         : `Couldn't read from ${account}`,
     }),
     approval(deps, refs),
@@ -522,7 +527,7 @@ async function saveKey(
   { entry, deps, out }: Job,
   secret: Secret,
 ): Promise<"saved" | "held" | "failed"> {
-  const place = `${vaultName(entry.ref)}  ${formatReference(entry.ref)}`;
+  const place = `${vaultName(entry.ref)}  ${formatReference(entry.ref, deps.vaults)}`;
   const today = localDay(deps.now());
   try {
     await out.step(

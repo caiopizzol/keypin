@@ -11,11 +11,11 @@ import {
   isEnvironmentName,
   isVariableName,
   type KeyRef,
-  type OnePasswordRef,
   type KeysMap,
   parseMap,
   runEnvironment,
   type Secret,
+  type VaultKinds,
   vaultAccounts,
 } from "@keypin/core";
 import { type Deps, localDay, UsageError } from "../deps";
@@ -27,6 +27,15 @@ import { APPROVE } from "../sign-in";
 import { registerProject, TEMPLATE } from "./init";
 
 const ROTATE_EVERY = "90d";
+
+type OnePasswordRef = {
+  kind: "1password";
+  account: string;
+  vault: string;
+  item: string;
+  section: null;
+  field: string;
+};
 
 interface Request {
   envFile: string;
@@ -61,6 +70,7 @@ interface Target {
   found: string | null;
   map: KeysMap | null;
   account: string;
+  vaults: VaultKinds;
 }
 
 const DOLLAR = "the value has a $, which some loaders expand to another variable's value";
@@ -163,6 +173,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
       target.file,
       deps.destinations,
       deps.issuers,
+      deps.vaults,
     );
     if (!check.ok)
       throw new Error(
@@ -216,7 +227,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
 
   const today = localDay(deps.now());
   say(`\n${out.bold("Plan")}`);
-  for (const row of planRows(imports, stored, skips, today, out)) say(`  ${row}`);
+  for (const row of planRows(imports, stored, skips, today, out, deps.vaults)) say(`  ${row}`);
   const existed = skips.some((skip) => skip.exists);
   if (!imports.length && !stored.length) {
     say(`Nothing was imported, and ${target.file} wasn't changed.`);
@@ -326,12 +337,13 @@ function planRows(
   skips: readonly Skip[],
   today: string,
   out: Output,
+  vaults: VaultKinds,
 ): string[] {
   const width = Math.max(0, ...[...imports, ...stored, ...skips].map((row) => row.name.length));
-  const refs = [...imports, ...stored].map((entry) => formatReference(entry.ref));
+  const refs = [...imports, ...stored].map((entry) => formatReference(entry.ref, vaults));
   const refWidth = Math.max(0, ...refs.map((ref) => ref.length));
   const planned = (mark: string, entry: Import, why: string) =>
-    `${mark} ${entry.name.padEnd(width)}  ${formatReference(entry.ref).padEnd(refWidth)}  ${why}`;
+    `${mark} ${entry.name.padEnd(width)}  ${formatReference(entry.ref, vaults).padEnd(refWidth)}  ${why}`;
   return [
     ...imports.map((entry) => planned("+", entry, `create, rotated ${today}`)),
     ...(imports.length ? [] : [out.dim("nothing to create")]),
@@ -346,13 +358,13 @@ function planRows(
 async function compareMapped(deps: Deps, out: Output, skips: readonly Skip[]): Promise<Skip[]> {
   const refs = skips.flatMap((skip) => (skip.mapped ? [skip.mapped.ref] : []));
   if (!refs.length) return [...skips];
-  const values = `${count(refs.length, "mapped value")} from ${vaultAccounts(refs)}, to compare with the file`;
+  const values = `${count(refs.length, "mapped value")} from ${vaultAccounts(refs, deps.vaults)}, to compare with the file`;
   const { compared } = await out.step(
     `Reading ${count(refs.length, "mapped value")}`,
     () => compareEach(deps, skips),
     ({ unread }) => ({
       ok: !unread,
-      text: `Read ${values}  ${out.dim(refs.map(formatReference).join(", "))}`,
+      text: `Read ${values}  ${out.dim(refs.map((ref) => formatReference(ref, deps.vaults)).join(", "))}`,
     }),
     APPROVE,
   );
@@ -382,7 +394,7 @@ async function compareEach(
       unread++;
       compared.push({
         ...skip,
-        reason: `${skip.reason}, and ${formatReference(ref)} couldn't be read to compare: ${messageOf(error)}`,
+        reason: `${skip.reason}, and ${formatReference(ref, deps.vaults)} couldn't be read to compare: ${messageOf(error)}`,
         onlyInFile: true,
       });
     }
@@ -469,12 +481,13 @@ async function readTarget(deps: Deps, request: Request): Promise<Target> {
       throw new UsageError(
         `--account is required: ${file} doesn't name a 1Password account yet, so give its sign-in address, such as my.1password.com`,
       );
-    return { file, found, map: null, account: request.account };
+    return { file, found, map: null, account: request.account, vaults: deps.vaults };
   }
-  const parsed = parseMap(found, file, deps.destinations, deps.issuers);
+  const parsed = parseMap(found, file, deps.destinations, deps.issuers, deps.vaults);
   if (!parsed.ok) throw new Error(`fix ${file} first: ${parsed.errors.join("; ")}`);
-  const account = parsed.map.account ?? request.account;
-  if (!parsed.map.account && parsed.map.infisical)
+  const pinned = parsed.map.pins["1password"];
+  const account = typeof pinned === "string" ? pinned : request.account;
+  if (pinned === undefined && parsed.map.pins.infisical)
     throw new Error(
       `import creates 1Password items, and ${file} reads from Infisical; add the secrets in Infisical and map them with infisical:// references (docs/infisical.md)`,
     );
@@ -486,7 +499,7 @@ async function readTarget(deps: Deps, request: Request): Promise<Target> {
     throw new UsageError(
       `${file} uses 1Password account ${account}, not ${request.account}; drop --account`,
     );
-  return { file, found, map: parsed.map, account };
+  return { file, found, map: parsed.map, account, vaults: deps.vaults };
 }
 
 function extendsKey(
@@ -505,6 +518,7 @@ function extendsKey(
     target.file,
     deps.destinations,
     deps.issuers,
+    deps.vaults,
   ).ok;
 }
 
@@ -517,7 +531,7 @@ function keyTables(target: Target, imports: readonly Entry[], environment: strin
   return imports
     .map(({ name, ref, existing }) => {
       const key = `\n[keys.${name}]\nrotate_every = ${str(ROTATE_EVERY)}\n`;
-      const from = str(formatReference(ref));
+      const from = str(formatReference(ref, target.vaults));
       if (!existing && environment === runs) return `${key}${environment} = ${from}\n`;
       return `${existing ? "" : key}\n[keys.${name}.${environment}]\nfrom = ${from}\n`;
     })
@@ -534,7 +548,7 @@ function mapAddition(target: Target, imports: readonly Entry[], environment: str
   const tables = keyTables(target, imports, environment);
   if (!target.map)
     return `# Written by keypin import. The values are in 1Password; this file holds only references.\n\n${account}${tables}`;
-  return `${target.map.account ? "" : `\n${account}`}${tables}`;
+  return `${target.map.pins["1password"] ? "" : `\n${account}`}${tables}`;
 }
 
 function mapText(target: Target, imports: readonly Entry[], environment: string): string {
@@ -548,7 +562,7 @@ async function writeMap(
   environment: string,
 ): Promise<void> {
   const text = mapText(target, imports, environment);
-  const check = parseMap(text, target.file, deps.destinations, deps.issuers);
+  const check = parseMap(text, target.file, deps.destinations, deps.issuers, deps.vaults);
   if (!check.ok)
     throw new Error(`the new ${target.file} doesn't parse: ${check.errors.join("; ")}`);
   const result =

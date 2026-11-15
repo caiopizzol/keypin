@@ -7,13 +7,11 @@ export {
   type Destination,
   type Environment,
   type Evidence,
-  type InfisicalRef,
   type IssuedKey,
   type Issuer,
   type IssuerCheck,
   type ItemIds,
   type KeyRef,
-  type OnePasswordRef,
   type Receipt,
   SignInFailed,
   type SignInReason,
@@ -45,27 +43,20 @@ export {
 } from "./issuer";
 export {
   envFlag,
-  INFISICAL_CLOUD,
   isEnvironmentName,
   isVariableName,
   parseMap,
   publishEnvironment,
   runEnvironment,
   type EnvEntry,
-  type InfisicalPin,
+  type VaultPins,
   type KeyEntry,
   type KeysMap,
   type MapResult,
 } from "./map";
 export { addDays, isDay, periodDays } from "./rotation";
 export { nextRotation, type NextRotation } from "./rotations";
-export {
-  describeRef,
-  formatReference,
-  REFERENCE_SCHEMES,
-  vaultAccount,
-  vaultAccounts,
-} from "./reference";
+export { describeRef, formatReference, vaultAccount, vaultAccounts } from "./reference";
 export { type Files } from "./files";
 export { isRecord } from "./record";
 export { loadRegistry, register, unregister, type Registry } from "./registry";
@@ -120,6 +111,7 @@ export {
   type PublisherPart,
   sentence,
   type VaultKind,
+  type VaultKinds,
   type VaultUse,
 } from "./login";
 export { findGaps, type Fix, type Gaps, type LocalFile, type Need, type ProjectScan } from "./gaps";

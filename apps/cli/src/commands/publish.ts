@@ -153,7 +153,7 @@ async function publishLocked(
     deps.destinations,
   );
 
-  let state = await loadState(deps.files, path);
+  let state = await loadState(deps.files, path, deps.vaults);
   for (const { owner } of jobs) {
     for (const op of unfinishedOperations(state, owner)) {
       say(
@@ -166,7 +166,7 @@ async function publishLocked(
   for (const job of jobs) {
     const { key, entry } = job;
     say(
-      `\n${out.bold(key.name)} ${environment}  ${out.dim(`from ${formatReference(entry.ref)} in ${vaultAccount(entry.ref)}`)}`,
+      `\n${out.bold(key.name)} ${environment}  ${out.dim(`from ${formatReference(entry.ref, deps.vaults)} in ${vaultAccount(entry.ref, deps.vaults)}`)}`,
     );
     const checked = await checkAccounts(key, entry, deps, out, label);
     if (checked) checks.push({ ...job, checked });
@@ -181,6 +181,7 @@ async function publishLocked(
       approvalsFor(
         {
           kinds: deps.destinations,
+          vaults: deps.vaults,
           key,
           environment,
           mapFile: owner.mapFile,
@@ -229,6 +230,7 @@ async function publishLocked(
     const generation = await generationOf(secret);
     const plan = planPublish({
       kinds: deps.destinations,
+      vaults: deps.vaults,
       key,
       environment,
       mapFile: owner.mapFile,
@@ -306,7 +308,10 @@ type Read =
   | { ok: false; failed: string };
 
 function readValues(checks: Checks[], deps: Deps, out: Output): Promise<Read> {
-  const accounts = vaultAccounts(checks.map((job) => job.entry.ref));
+  const accounts = vaultAccounts(
+    checks.map((job) => job.entry.ref),
+    deps.vaults,
+  );
   const values = count(checks.length, "value");
   return out.step(
     `Reading ${values} from ${accounts}`,
@@ -318,7 +323,7 @@ function readValues(checks: Checks[], deps: Deps, out: Output): Promise<Read> {
         } catch (error) {
           return {
             ok: false,
-            failed: `${job.key.name} (${formatReference(job.entry.ref)}): ${messageOf(error)}`,
+            failed: `${job.key.name} (${formatReference(job.entry.ref, deps.vaults)}): ${messageOf(error)}`,
           };
         }
       }

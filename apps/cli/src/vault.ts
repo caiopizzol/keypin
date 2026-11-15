@@ -1,16 +1,4 @@
-import { formatReference, type KeyRef, type VaultBackend, vaultAccount } from "@keypin/core";
-import type { Writer } from "./deps";
-
-export function announce(stderr: Writer, what: string, refs: readonly KeyRef[]): void {
-  const groups = new Map<string, Set<string>>();
-  for (const ref of refs) {
-    const where = vaultAccount(ref);
-    groups.set(where, (groups.get(where) ?? new Set()).add(formatReference(ref)));
-  }
-  for (const [where, references] of groups) {
-    stderr.write(`keypin: reading ${what} from ${where}: ${[...references].join(", ")}\n`);
-  }
-}
+import type { KeyRef, VaultBackend } from "@keypin/core";
 
 export function distinctRefs(refs: readonly KeyRef[]): KeyRef[] {
   const seen = new Map<string, KeyRef>();
@@ -20,15 +8,19 @@ export function distinctRefs(refs: readonly KeyRef[]): KeyRef[] {
 
 export const refKey = (ref: KeyRef) =>
   JSON.stringify(
-    ref.kind === "1password"
-      ? [ref.kind, ref.account, ref.vault, ref.item, ref.section, ref.field]
-      : [ref.kind, ref.url, ref.organization, ref.project, ref.environment, ref.path, ref.name],
+    Object.keys(ref)
+      .toSorted()
+      .map((field) => [field, ref[field]]),
   );
 
-export type Vaults = { [Kind in KeyRef["kind"]]: () => VaultBackend };
+export type Vaults = Readonly<Record<string, () => VaultBackend>>;
 
 export function routedVault(vaults: Vaults): VaultBackend {
-  const of = (thing: { kind: KeyRef["kind"] }) => vaults[thing.kind]();
+  const of = (thing: { kind: string }) => {
+    const open = vaults[thing.kind];
+    if (!open) throw new Error(`keypin has no vault for ${thing.kind} references`);
+    return open();
+  };
   return {
     capabilities: { read: true, write: false, list: true, metadata: true },
     read: (ref) => of(ref).read(ref),

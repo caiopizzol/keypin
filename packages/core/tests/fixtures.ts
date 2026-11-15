@@ -1,6 +1,8 @@
 import { cloudflareWorker } from "@keypin/destination-cloudflare";
 import { githubActions } from "@keypin/destination-github";
 import { resendIssuer } from "@keypin/issuer-resend";
+import { onePasswordVault } from "@keypin/vault-1password";
+import { infisicalVault } from "@keypin/vault-infisical";
 import type { Files, KeyEntry, Receipt } from "../src/index";
 
 export const MAP_FILE = "/work/web/keypin.toml";
@@ -105,3 +107,4 @@ export function fakeFiles(initial: Record<string, string> = {}) {
 export const KINDS = [cloudflareWorker, githubActions];
 
 export const ISSUERS = [resendIssuer];
+export const VAULT_KINDS = [infisicalVault, onePasswordVault];

@@ -6,6 +6,7 @@ import {
   receiptSecretKey,
   secretKey,
 } from "./destination";
+import type { VaultKinds } from "./login";
 import type { KeyEntry } from "./map";
 import { describeRef, sameAccount, sameField, sameRef } from "./reference";
 import type { Generation } from "./secret";
@@ -52,6 +53,7 @@ export interface PublishPlan {
 
 export interface PlanInput {
   kinds: DestinationKinds;
+  vaults: VaultKinds;
   key: KeyEntry;
   environment: Environment;
   mapFile: string;
@@ -168,21 +170,27 @@ function judge(input: PlanInput, ids: ItemIds | null) {
         `${id} account changed from ${receipt.account.pinned} to ${target.account}`,
       );
     }
-    const changed = itemChange(receipt, entry.ref, ids);
+    const changed = itemChange(receipt, entry.ref, ids, input.vaults);
     if (changed) return needs("item changed", `${id} was last published from ${changed}`);
     return { id, target, receipt, approval: null };
   });
 }
 
-function itemChange(receipt: Receipt, ref: KeyRef, ids: ItemIds | null): string | null {
+function itemChange(
+  receipt: Receipt,
+  ref: KeyRef,
+  ids: ItemIds | null,
+  vaults: VaultKinds,
+): string | null {
   const { source, sourceIds } = receipt;
-  const now = `and now from ${describeRef(ref)}`;
+  const describe = (r: KeyRef) => describeRef(r, vaults);
+  const now = `and now from ${describe(ref)}`;
   if (!source) return `an item its receipt doesn't record, ${now}`;
-  const before = `${describeRef(source)}, ${now}`;
-  if (!sourceIds) return sameRef(source, ref) ? null : before;
-  if (!sameAccount(source, ref) || !sameField(source, ref)) return before;
+  const before = `${describe(source)}, ${now}`;
+  if (!sourceIds) return sameRef(source, ref, vaults) ? null : before;
+  if (!sameAccount(source, ref, vaults) || !sameField(source, ref, vaults)) return before;
   if (ids === null || (ids.vault === sourceIds.vault && ids.item === sourceIds.item)) return null;
-  return `${describeRef(source)} (item ${sourceIds.item} in vault ${sourceIds.vault}), and now from ${describeRef(ref)} (item ${ids.item} in vault ${ids.vault})`;
+  return `${describe(source)} (item ${sourceIds.item} in vault ${sourceIds.vault}), and now from ${describe(ref)} (item ${ids.item} in vault ${ids.vault})`;
 }
 
 export function latestPerSecret(receipts: readonly Receipt[], kinds: DestinationKinds): Receipt[] {

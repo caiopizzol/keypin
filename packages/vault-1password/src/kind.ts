@@ -1,4 +1,15 @@
 import { type Prerequisite, type SignInReason, sentence, type VaultKind } from "@keypin/core";
+import {
+  account,
+  decode,
+  format,
+  type OnePasswordRef,
+  type OnePasswordReference,
+  parse,
+  readPin,
+  SCHEME,
+  sameName,
+} from "./reference";
 import { isAccountId, isSharedAddress } from "./service-account";
 
 export type SignIn =
@@ -42,8 +53,28 @@ function tokenFixes(failures: readonly SignInReason[], address: string): string[
   return fixes;
 }
 
-export const onePasswordVault: VaultKind<OnePasswordHost> = {
+export const onePasswordVault: VaultKind<
+  OnePasswordHost,
+  OnePasswordRef,
+  OnePasswordReference,
+  string
+> = {
   kind: "1password",
+  scheme: SCHEME,
+  placeholder:
+    "the field's secret reference (in 1Password, open the field's menu and select Copy Secret Reference)",
+  needsPin: `needs your 1Password account: add [1password] with account = "..."`,
+  readPin,
+  parse,
+  pinned: (reference, pinned) => ({ ...reference, account: pinned }),
+  format,
+  account,
+  accounts: (refs) => [
+    `1Password account ${[...new Set(refs.map((ref) => ref.account))].join(", ")}`,
+  ],
+  sameItem: (a, b) => sameName(a.vault, b.vault) && sameName(a.item, b.item),
+  sameField: (a, b) => sameName(a.section, b.section) && sameName(a.field, b.field),
+  stored: decode,
   signInNotes: ({ signIn }) =>
     signIn?.mode === "desktop" && signIn.tokenIgnored
       ? [
@@ -53,7 +84,7 @@ export const onePasswordVault: VaultKind<OnePasswordHost> = {
   itemNotes(refs, { signIn }) {
     if (signIn?.mode !== "service-account") return [];
     const limit = "the vaults granted to the service account are what limit it";
-    const accounts = refs.flatMap((ref) => (ref.kind === "1password" ? [ref.account] : []));
+    const accounts = refs.flatMap((ref) => decode(ref)?.account ?? []);
     return [...new Set(accounts)].flatMap((account) => {
       if (isAccountId(account))
         return [

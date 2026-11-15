@@ -1,8 +1,6 @@
 import {
-  describeRef,
   type Fetch,
   HeldForApproval,
-  type InfisicalRef,
   isDay,
   isRecord,
   type KeyRef,
@@ -12,6 +10,15 @@ import {
   type VaultItem,
   type VaultScope,
 } from "@keypin/core";
+import {
+  account,
+  decode,
+  decodeScope,
+  describe as describeRef,
+  type InfisicalPin as Place,
+  type InfisicalRef,
+  type InfisicalScope as Scope,
+} from "./reference";
 
 export const CLIENT_ID = "INFISICAL_UNIVERSAL_AUTH_CLIENT_ID";
 export const CLIENT_SECRET = "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET";
@@ -22,8 +29,6 @@ export interface Credentials {
   clientSecret: string;
 }
 
-type Scope = Extract<VaultScope, { kind: "infisical" }>;
-type Place = Pick<InfisicalRef, "url" | "organization">;
 type Json = Record<string, unknown>;
 
 interface Session {
@@ -261,20 +266,17 @@ export function infisicalBackend(
   };
 }
 
-function account(place: Place): string {
-  return `Infisical organization ${place.organization} at ${place.url}`;
-}
-
 function own(ref: KeyRef): InfisicalRef {
-  if (ref.kind !== "infisical")
-    throw new Error(`${describeRef(ref)}: keypin's Infisical vault can't read this reference`);
-  return ref;
+  const mine = decode(ref);
+  if (!mine)
+    throw new Error(`keypin's Infisical vault can't read this reference, which is for ${ref.kind}`);
+  return mine;
 }
 
 function ownScope(scope: VaultScope): Scope {
-  if (scope.kind !== "infisical")
-    throw new Error(`keypin's Infisical vault can't list ${scope.kind} items`);
-  return scope;
+  const mine = decodeScope(scope);
+  if (!mine) throw new Error(`keypin's Infisical vault can't list ${scope.kind} items`);
+  return mine;
 }
 
 function idsOf(secret: Json, project: string) {

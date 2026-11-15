@@ -1,7 +1,7 @@
 import { assert, describe, expect, test } from "vite-plus/test";
 import { loadRegistry, parseMap } from "@keypin/core";
 import { cli } from "../src/cli";
-import { destinations, issuers } from "../src/start";
+import { destinations, issuers, vaults } from "../src/start";
 import { TEMPLATE } from "../src/commands/init";
 import { fakeDeps, REGISTRY, unstyled } from "./fakes";
 
@@ -67,14 +67,14 @@ describe("keypin init", () => {
 
   test("the template is comments only and parses as an empty map", () => {
     expect(TEMPLATE.split("\n").every((line) => line === "" || line.startsWith("#"))).toBe(true);
-    expect(parseMap(TEMPLATE, "keypin.toml", destinations, issuers)).toEqual({
+    expect(parseMap(TEMPLATE, "keypin.toml", destinations, issuers, vaults)).toEqual({
       ok: true,
-      map: { file: "keypin.toml", account: null, environments: ["dev", "prod"], keys: [] },
+      map: { file: "keypin.toml", pins: {}, environments: ["dev", "prod"], keys: [] },
     });
   });
 
   test("the uncommented example rejects its Cloudflare placeholder until it's filled in", () => {
-    expect(parseMap(uncomment(TEMPLATE), "keypin.toml", destinations, issuers)).toEqual({
+    expect(parseMap(uncomment(TEMPLATE), "keypin.toml", destinations, issuers, vaults)).toEqual({
       ok: false,
       errors: [
         `keypin.toml: key "EXAMPLE_API_KEY" prod: publish[0]: field "account" is a <...> placeholder: replace it with the Cloudflare account ID the Worker belongs to (32 hex characters; wrangler whoami lists it)`,
@@ -84,7 +84,7 @@ describe("keypin init", () => {
 
   test("the uncommented example parses, with dev, prod and both destinations", () => {
     const filled = uncomment(TEMPLATE).replace("<cloudflare account ID>", CLOUDFLARE_ACCOUNT);
-    const parsed = parseMap(filled, "keypin.toml", destinations, issuers);
+    const parsed = parseMap(filled, "keypin.toml", destinations, issuers, vaults);
     assert(parsed.ok, JSON.stringify(parsed));
     expect(parsed.map.keys).toEqual([
       {

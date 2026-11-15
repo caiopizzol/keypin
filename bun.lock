@@ -8,6 +8,8 @@
         "@keypin/destination-cloudflare": "workspace:*",
         "@keypin/destination-github": "workspace:*",
         "@keypin/issuer-resend": "workspace:*",
+        "@keypin/vault-1password": "workspace:*",
+        "@keypin/vault-infisical": "workspace:*",
         "@types/bun": "1.4.4",
         "typescript": "7.0.2",
         "vite": "catalog:",
@@ -68,6 +70,7 @@
         "@keypin/core": "workspace:*",
       },
       "devDependencies": {
+        "@keypin/vault-1password": "workspace:*",
         "@types/node": "26.6.6",
       },
     },

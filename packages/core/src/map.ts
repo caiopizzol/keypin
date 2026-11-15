@@ -9,8 +9,9 @@ import {
   type TableReader,
 } from "./destination";
 import type { IssuerKinds, IssuerReader, IssuerSpec } from "./issuer";
+import type { VaultKinds } from "./login";
 import { isRecord } from "./record";
-import { parseReference, sameItem } from "./reference";
+import { byKind, parseReference, referenceSchemes, sameItem } from "./reference";
 import { periodDays } from "./rotation";
 
 export interface EnvEntry {
@@ -25,22 +26,11 @@ export interface KeyEntry {
   environments: Partial<Record<Environment, EnvEntry>>;
 }
 
-export interface InfisicalPin {
-  url: string;
-  organization: string;
-}
-
-export interface VaultPins {
-  account?: string;
-  infisical?: InfisicalPin;
-}
-
-export const INFISICAL_CLOUD = "https://app.infisical.com";
+export type VaultPins = Readonly<Record<string, unknown>>;
 
 export interface KeysMap {
   file: string;
-  account: string | null;
-  infisical?: InfisicalPin;
+  pins: VaultPins;
   environments: readonly Environment[];
   keys: KeyEntry[];
 }
@@ -72,6 +62,7 @@ export function parseMap(
   file: string,
   kinds: DestinationKinds,
   issuers: IssuerKinds,
+  vaults: VaultKinds,
 ): MapResult {
   let data: unknown;
   try {
@@ -82,7 +73,7 @@ export function parseMap(
       errors: [`${file}: not valid TOML: ${tomlProblem(error)}`],
     };
   }
-  return validateMap(data, file, kinds, issuers);
+  return validateMap(data, file, { kinds, issuers, vaults });
 }
 
 type Table = Record<string, unknown>;
@@ -108,14 +99,13 @@ function filledIn(
 function validateMap(
   data: unknown,
   file: string,
-  kinds: DestinationKinds,
-  issuers: IssuerKinds,
+  { kinds, issuers, vaults }: Pick<MapContext, "kinds" | "issuers" | "vaults">,
 ): MapResult {
   const errors: string[] = [];
   const fail = (where: string, message: string) => errors.push(`${file}: ${where}${message}`);
 
   if (!isRecord(data)) return { ok: false, errors: [`${file}: expected a table at the top level`] };
-  unknownFields(data, ["environments", "1password", "infisical", "keys"], (field) =>
+  unknownFields(data, ["environments", ...vaults.map((v) => v.kind), "keys"], (field) =>
     fail(
       "",
       field === "vaults"
@@ -126,12 +116,7 @@ function validateMap(
     ),
   );
   const environments = validateEnvironments(data.environments, (message) => fail("", message));
-  const account = validateAccount(data["1password"], (message) => fail("[1password]: ", message));
-  const infisical = validateInfisical(data.infisical, (message) => fail("[infisical]: ", message));
-  const pins: VaultPins = {
-    ...(account === undefined ? {} : { account }),
-    ...(infisical === undefined ? {} : { infisical }),
-  };
+  const pins = validatePins(data, vaults, fail);
 
   const keys: KeyEntry[] = [];
   const rawKeys = data.keys ?? {};
@@ -139,7 +124,8 @@ function validateMap(
   else {
     Object.entries(rawKeys).forEach(([id, raw], index) => {
       const label = VARIABLE_NAME.test(id) ? `key "${id}"` : `keys[${index}]`;
-      const entry = validateKey(id, raw, { pins, environments, kinds, issuers }, (where, message) =>
+      const context = { pins, environments, kinds, issuers, vaults };
+      const entry = validateKey(id, raw, context, (where, message) =>
         fail(`${label}${where}: `, message),
       );
       if (entry) keys.push(entry);
@@ -149,72 +135,30 @@ function validateMap(
   sharedDestinations(keys, environments, kinds, (where, message) => fail(where, message));
   return errors.length
     ? { ok: false, errors }
-    : {
-        ok: true,
-        map: { file, account: account ?? null, ...pinsOnly(infisical), environments, keys },
-      };
+    : { ok: true, map: { file, pins, environments, keys } };
 }
 
-function validateAccount(raw: unknown, fail: (message: string) => void): string | undefined {
-  if (raw === undefined) return undefined;
-  if (!isRecord(raw)) {
-    fail("must be a table");
-    return undefined;
+function validatePins(
+  data: Table,
+  vaults: VaultKinds,
+  fail: (where: string, message: string) => void,
+): VaultPins {
+  const pins: Record<string, unknown> = {};
+  for (const vault of byKind(vaults)) {
+    const raw = data[vault.kind];
+    if (raw === undefined) continue;
+    const err = (message: string) => fail(`[${vault.kind}]: `, message);
+    if (!isRecord(raw)) {
+      err("must be a table");
+      continue;
+    }
+    const pin = vault.readPin({
+      ...tableReader(raw, [], vault.kind, err),
+      only: (fields) => unknownFields(raw, fields, (field) => err(`unknown field "${field}"`)),
+    });
+    if (pin !== undefined) pins[vault.kind] = pin;
   }
-  unknownFields(raw, ["account"], (field) => fail(`unknown field "${field}"`));
-  const account = requiredString(raw, "account", fail);
-  filledIn(
-    account,
-    "account",
-    "your 1Password account's sign-in address (such as my.1password.com, at the top left of the 1Password app) or its account ID",
-    fail,
-  );
-  return account;
-}
-
-const pinsOnly = (infisical: InfisicalPin | undefined) => (infisical ? { infisical } : {});
-
-function validateInfisical(
-  raw: unknown,
-  fail: (message: string) => void,
-): InfisicalPin | undefined {
-  if (raw === undefined) return undefined;
-  if (!isRecord(raw)) {
-    fail("must be a table");
-    return undefined;
-  }
-  unknownFields(raw, ["url", "organization"], (field) => fail(`unknown field "${field}"`));
-  const url = filledIn(
-    optionalString(raw, "url", fail),
-    "url",
-    "your Infisical address, such as https://eu.infisical.com",
-    fail,
-  );
-  const organization = filledIn(
-    requiredString(raw, "organization", fail),
-    "organization",
-    "your Infisical organization's slug, from its settings page",
-    fail,
-  );
-  const origin = url === undefined ? INFISICAL_CLOUD : httpsOrigin(url);
-  if (origin === null) {
-    fail(`field "url" must be an https:// address such as https://eu.infisical.com, with no path`);
-    return undefined;
-  }
-  if (organization === undefined) return undefined;
-  return { url: origin, organization };
-}
-
-function httpsOrigin(text: string): string | null {
-  if (!/^https:\/\/[^/?#\\]+\/?$/.test(text)) return null;
-  try {
-    const url = new URL(text);
-    return url.protocol === "https:" && url.pathname === "/" && !url.username && !url.password
-      ? url.origin
-      : null;
-  } catch {
-    return null;
-  }
+  return pins;
 }
 
 function validateEnvironments(
@@ -264,6 +208,7 @@ interface MapContext {
   environments: readonly Environment[];
   kinds: DestinationKinds;
   issuers: IssuerKinds;
+  vaults: VaultKinds;
 }
 
 function validateKey(
@@ -328,12 +273,13 @@ function validateKey(
 
 function validateEnv(
   given: unknown,
-  { pins, kinds, issuers }: MapContext,
+  context: MapContext,
   fail: (message: string) => void,
 ): EnvEntry | undefined {
+  const { kinds } = context;
   const raw = typeof given === "string" ? { from: given } : given;
   if (!isRecord(raw)) {
-    fail(`must be an op:// or infisical:// reference, or a table with "from"`);
+    fail(`must be an ${referenceSchemes(context.vaults)} reference, or a table with "from"`);
     return undefined;
   }
   let failed = false;
@@ -350,7 +296,7 @@ function validateEnv(
           : `unknown field "${field}"`,
     ),
   );
-  const ref = reference(raw, "from", pins, err);
+  const ref = reference(raw, "from", context, err);
 
   const publish: PublishTarget[] = [];
   const firstAt = new Map<string, number>();
@@ -373,7 +319,7 @@ function validateEnv(
   const issuer =
     raw.issuer === undefined || !ref
       ? undefined
-      : validateIssuer(raw.issuer, ref, pins, issuers, (m) => err(`issuer: ${m}`));
+      : validateIssuer(raw.issuer, ref, context, (m) => err(`issuer: ${m}`));
   if (failed || !ref) return undefined;
   return issuer ? { ref, publish, issuer } : { ref, publish };
 }
@@ -381,10 +327,10 @@ function validateEnv(
 function validateIssuer(
   raw: unknown,
   own: KeyRef,
-  pins: VaultPins,
-  issuers: IssuerKinds,
+  context: MapContext,
   fail: (message: string) => void,
 ): IssuerSpec | undefined {
+  const { issuers, vaults } = context;
   if (!isRecord(raw)) {
     fail("must be a table");
     return undefined;
@@ -404,8 +350,8 @@ function validateIssuer(
   const reader: IssuerReader = {
     ...tableReader(raw, ["kind", "admin"], kind, err),
     admin() {
-      const admin = reference(raw, "admin", pins, err);
-      if (!admin || !sameItem(admin, own)) return admin;
+      const admin = reference(raw, "admin", context, err);
+      if (!admin || !sameItem(admin, own, vaults)) return admin;
       err(`field "admin" names the key's own item; the admin key needs its own item`);
       return undefined;
     },
@@ -418,43 +364,34 @@ function validateIssuer(
 function reference(
   table: Table,
   field: string,
-  pins: VaultPins,
+  { pins, vaults }: MapContext,
   fail: (message: string) => void,
 ): KeyRef | undefined {
   const text = requiredString(table, field, fail);
   if (text === undefined) return undefined;
-  const parsed = parseReference(text);
+  const parsed = parseReference(text, vaults);
   if (typeof parsed === "string") {
     fail(`field "${field}" ${parsed}`);
     return undefined;
   }
-  const parts = Object.entries(parsed)
-    .filter(([part, value]) => part !== "kind" && PLACEHOLDER.test(value ?? ""))
+  const { vault, reference: found } = parsed;
+  const parts = Object.entries(found)
+    .filter(
+      ([part, value]) => part !== "kind" && typeof value === "string" && PLACEHOLDER.test(value),
+    )
     .map(([part]) => part);
   if (parts.length) {
-    const copy =
-      parsed.kind === "1password"
-        ? "the field's secret reference (in 1Password, open the field's menu and select Copy Secret Reference)"
-        : "the project's slug, the environment's slug, and the secret's name";
     fail(
-      `field "${field}" has a <...> placeholder for its ${parts.join(" and ")}: replace it with ${copy}`,
+      `field "${field}" has a <...> placeholder for its ${parts.join(" and ")}: replace it with ${vault.placeholder}`,
     );
     return undefined;
   }
-  if (parsed.kind === "infisical") {
-    if (pins.infisical === undefined) {
-      fail(
-        `field "${field}" needs your Infisical organization: add [infisical] with organization = "..."`,
-      );
-      return undefined;
-    }
-    return { ...parsed, ...pins.infisical };
-  }
-  if (pins.account === undefined) {
-    fail(`field "${field}" needs your 1Password account: add [1password] with account = "..."`);
+  const pin = pins[vault.kind];
+  if (pin === undefined) {
+    fail(`field "${field}" ${vault.needsPin}`);
     return undefined;
   }
-  return { ...parsed, account: pins.account };
+  return vault.pinned(found, pin);
 }
 
 function destination(

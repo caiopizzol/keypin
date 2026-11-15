@@ -9,7 +9,7 @@ import {
   type StatusInput,
   type VaultMetadata,
 } from "../src/index";
-import { GITHUB, KEY, KINDS, receipt, WORKER } from "./fixtures";
+import { GITHUB, KEY, KINDS, receipt, VAULT_KINDS, WORKER } from "./fixtures";
 
 const TODAY = "2026-11-09";
 const PROJECT = "/work/billing";
@@ -25,7 +25,7 @@ function status(rotation: Rotation | null, overrides: Partial<StatusInput> = {})
     ok: true,
     map: {
       file: `${PROJECT}/keypin.toml`,
-      account: "my.1password.com",
+      pins: { "1password": "my.1password.com" },
       environments: ["dev", "prod"],
       keys: [{ ...KEY, rotateEvery }],
     },
@@ -33,6 +33,7 @@ function status(rotation: Rotation | null, overrides: Partial<StatusInput> = {})
   const metadata: VaultMetadata | null = rotation && { rotated: rotation.rotated };
   return buildStatus({
     kinds: KINDS,
+    vaults: VAULT_KINDS,
     registry: { version: 1, projects: [PROJECT], shared: [] },
     maps: new Map([[PROJECT, map]]),
     receipts: [receipt(WORKER, "aaaaaaaaaaaaaaaa"), receipt(GITHUB, "aaaaaaaaaaaaaaaa")],
@@ -134,7 +135,7 @@ describe("status", () => {
       ok: true,
       map: {
         file: `${PROJECT}/keypin.toml`,
-        account: null,
+        pins: {},
         environments: ["prod"],
         keys: [issued],
       },
@@ -217,7 +218,7 @@ describe("status", () => {
       ok: true,
       map: {
         file: "keypin.toml",
-        account: "my.1password.com",
+        pins: { "1password": "my.1password.com" },
         environments: ["dev", "prod"],
         keys: [{ ...KEY, rotateEvery: null }],
       },
@@ -250,7 +251,7 @@ describe("status", () => {
       ok: true,
       map: {
         file: `${PROJECT}/keypin.toml`,
-        account: "my.1password.com",
+        pins: { "1password": "my.1password.com" },
         environments: ["dev", "prod", "staging"],
         keys: [KEY],
       },
@@ -325,6 +326,7 @@ describe("status", () => {
   test("a project with no map, a bad map, or no keys is a problem, not silence", () => {
     const result = buildStatus({
       kinds: KINDS,
+      vaults: VAULT_KINDS,
       registry: { version: 1, projects: ["/work/a", "/work/b", "/work/c"], shared: [] },
       maps: new Map<string, MapResult>([
         ["/work/b", { ok: false, errors: ["/work/b/keypin.toml: missing field"] }],
@@ -334,7 +336,7 @@ describe("status", () => {
             ok: true,
             map: {
               file: "/work/c/keypin.toml",
-              account: null,
+              pins: {},
               environments: ["dev", "prod"],
               keys: [],
             },

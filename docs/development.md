@@ -28,7 +28,8 @@ bun run typecheck  # tsc in every package
   contracts; register connectors in `apps/cli/src/start.ts`.
 - A connector imports only `@keypin/core` among keypin packages. Put shared code in core.
 - In `apps/cli/src`, only `start.ts` and `sign-in.ts` import connectors. Elsewhere, take them from `deps`. A
-  connector's sign-in checks for `keypin check` live in its kind (`prerequisites`), not in `check.ts`.
+  connector's sign-in checks for `keypin check` live in its kind (`prerequisites`), not in `check.ts`. A vault's
+  reference format (`op://`, its `[1password]` pin, how state.json stores it) lives in its `VaultKind`, not in core.
 - Core and `apps/cli/src/commands` don't import Node or Bun I/O modules (`fs`, `child_process`, `net`, `process`,
   `os`, `crypto`, `bun`…), and don't use `process`, global `fetch`, `Bun` or the global object (`globalThis`,
   `self`, `window`, `global`). Take files, env, launch and vault from `deps` so tests can fake them.

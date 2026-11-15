@@ -278,7 +278,7 @@ export function showRemoved(out: Output, removed: readonly RemovedDestination[])
 
 export async function lookUpIds(refs: readonly KeyRef[], deps: Deps, out: Output) {
   const items = `${refs.length} item ID${refs.length === 1 ? "" : "s"}`;
-  const where = vaultAccounts(refs);
+  const where = vaultAccounts(refs, deps.vaults);
   return out.step(
     `Looking up ${items} in ${where}, not the values`,
     async () => {

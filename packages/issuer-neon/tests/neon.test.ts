@@ -1,5 +1,6 @@
 import { assert, describe, expect, test } from "vite-plus/test";
 import { type Fetch, parseMap, Secret } from "@keypin/core";
+import { onePasswordVault } from "@keypin/vault-1password";
 import { NeonIssuer, neonIssuer } from "../src/index";
 import { type FakeNeon, memoryWorld, neonFetch } from "../src/testing";
 
@@ -365,7 +366,8 @@ account = "my.1password.com"
 from = "op://Private/app database/password"
 issuer = { kind = "neon", admin = "op://Private/neon api key/credential", project_id = "proj-1", branch_id = "br-main", database = "appdb", roles = ${roles} }
 `;
-  const parse = (roles: string) => parseMap(map(roles), "/w/keypin.toml", [], [neonIssuer]);
+  const parse = (roles: string) =>
+    parseMap(map(roles), "/w/keypin.toml", [], [neonIssuer], [onePasswordVault]);
 
   test("reads the issuer table", () => {
     const parsed = parse(`["app_a", "app_b"]`);

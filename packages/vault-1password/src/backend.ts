@@ -1,20 +1,20 @@
 import type {
   ItemIds,
   KeyRef,
-  OnePasswordRef,
   VaultBackend,
   VaultItem,
   VaultMetadata,
   VaultScope,
 } from "@keypin/core";
+import { isDay, Secret, SignInFailed, type SignInReason } from "@keypin/core";
 import {
-  describeRef,
-  formatReference,
-  isDay,
-  Secret,
-  SignInFailed,
-  type SignInReason,
-} from "@keypin/core";
+  account,
+  decode,
+  decodeScope,
+  format,
+  type OnePasswordRef,
+  type OnePasswordScope,
+} from "./reference";
 import type { Connect, Field, FullItem, SdkClient } from "./sdk";
 import { desktopConnect } from "./desktop";
 
@@ -169,22 +169,21 @@ function noVault(scope: OnePasswordScope, mode: SignInMode): string {
   return `${account}: the vault "${scope.vault}" isn't visible to this service account (it may not exist, or wasn't granted)`;
 }
 
-type OnePasswordScope = Extract<VaultScope, { kind: "1password" }>;
-
 function own(ref: KeyRef): OnePasswordRef {
-  if (ref.kind !== "1password")
-    throw new Error(`${describeRef(ref)}: keypin's 1Password vault can't read this reference`);
-  return ref;
+  const mine = decode(ref);
+  if (!mine)
+    throw new Error(`keypin's 1Password vault can't read this reference, which is for ${ref.kind}`);
+  return mine;
 }
 
 function ownScope(scope: VaultScope): OnePasswordScope {
-  if (scope.kind !== "1password")
-    throw new Error(`keypin's 1Password vault can't list ${scope.kind} secrets`);
-  return scope;
+  const mine = decodeScope(scope);
+  if (!mine) throw new Error(`keypin's 1Password vault can't list ${scope.kind} secrets`);
+  return mine;
 }
 
 function where(ref: OnePasswordRef): string {
-  return `${formatReference(ref)} (1Password account ${ref.account})`;
+  return `${format(ref)} (${account(ref)})`;
 }
 
 function named<T extends { id: string; title: string }>(candidates: T[], name: string): T[] {

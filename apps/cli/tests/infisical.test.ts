@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { generationOf, type Issuer, loadState, Secret } from "@keypin/core";
 import { credentialsFrom, infisicalBackend } from "@keypin/vault-infisical";
 import { cli } from "../src/cli";
+import { vaults } from "../src/start";
 import { onePasswordFrom } from "../src/sign-in";
 import { routedVault } from "../src/vault";
 import {
@@ -381,7 +382,7 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
     expect(run.stderr.text + run.stdout.text).not.toContain("OP_SERVICE_ACCOUNT_TOKEN");
     expect(run.stderr.text + run.stdout.text).not.toContain(ISSUED);
     expect(run.onePassword.calls).toEqual([]);
-    const state = await loadState(run.disk.files, STATE);
+    const state = await loadState(run.disk.files, STATE, vaults);
     expect(state.receipts.map((r) => r.generation)).toEqual([
       await generationOf(new Secret(ISSUED)),
     ]);
@@ -419,7 +420,7 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
       );
       expect(held.stderr.text).not.toContain("isn't in Infisical");
       expect(held.destinations.log).toEqual(["check github-actions:acme/billing"]);
-      const state = await loadState(held.disk.files, STATE);
+      const state = await loadState(held.disk.files, STATE, vaults);
       expect(state.issued).toMatchObject([
         { id: "key-2", generation: await generationOf(new Secret(SECOND)), held: true },
       ]);
@@ -455,7 +456,7 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
         "Stopped: Infisical still holds the change that saves key key-2 for approval. Nothing was created.",
       );
       expect(again.stderr.text).not.toContain("If nothing uses it, delete it");
-      expect((await loadState(again.disk.files, STATE)).issued).toMatchObject([
+      expect((await loadState(again.disk.files, STATE, vaults)).issued).toMatchObject([
         { id: "key-2", held: true },
       ]);
     });
@@ -487,7 +488,9 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
       const infisical = policy();
       const first = project({ map: ISSUER_MAP, infisical });
       expect(await cli(["rotate", "STRIPE_API_KEY"], first.deps)).toBe(0);
-      expect((await loadState(first.disk.files, STATE)).issued[0]).not.toHaveProperty("held");
+      expect((await loadState(first.disk.files, STATE, vaults)).issued[0]).not.toHaveProperty(
+        "held",
+      );
       const next = project({ map: ISSUER_MAP, infisical, after: first });
       expect(await cli(["rotate", "STRIPE_API_KEY"], next.deps)).toBe(0);
       expect(next.issued).toEqual(["create STRIPE_API_KEY prod 2026-11-09", "revoke key-1"]);
@@ -529,7 +532,7 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
         "check github-actions:acme/billing",
         `write github-actions:acme/billing STRIPE_API_KEY (${SECOND.length} chars)`,
       ]);
-      const state = await loadState(resumed.disk.files, STATE);
+      const state = await loadState(resumed.disk.files, STATE, vaults);
       expect(state.issued).toMatchObject([{ id: "key-2", held: false, old: { revoked: true } }]);
     });
   });
@@ -556,7 +559,7 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
       const run = project({ map: ISSUER_MAP, infisical });
       expect(await cli(["rotate", "STRIPE_API_KEY"], run.deps)).toBe(0);
       expect(run.store.effects).toEqual(["infisical create billing/prod/STRIPE_API_KEY"]);
-      const state = await loadState(run.disk.files, STATE);
+      const state = await loadState(run.disk.files, STATE, vaults);
       expect(state.receipts.map((r) => r.sourceIds)).toEqual([LOCAL]);
       const plan = project({ map: ISSUER_MAP, infisical, after: run, isTerminal: false });
       expect(await cli(["publish", "STRIPE_API_KEY", "--plan"], plan.deps)).toBe(0);
@@ -583,7 +586,7 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
         "check github-actions:acme/web",
         `write github-actions:acme/web STRIPE_API_KEY (${ISSUED.length} chars)`,
       ]);
-      const state = await loadState(resumed.disk.files, STATE);
+      const state = await loadState(resumed.disk.files, STATE, vaults);
       expect(state.receipts.map((r) => r.sourceIds)).toEqual([LOCAL, LOCAL]);
     });
   });

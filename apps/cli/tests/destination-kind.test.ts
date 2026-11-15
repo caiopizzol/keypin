@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import { connectTo, type DestinationKind, loadState } from "@keypin/core";
 import { cli } from "../src/cli";
-import { destinations } from "../src/start";
+import { destinations, vaults } from "../src/start";
 import { fakeDeps, fakeVault, memoryFiles, SENTINEL, STATE } from "./fakes";
 
 type ShelfTarget = { to: "shelf"; account: string; shelf: string };
@@ -81,7 +81,7 @@ function setup(answer: string) {
       ask: async () => answer,
     },
   });
-  return { ...fake, state: () => loadState(disk.files, STATE) };
+  return { ...fake, state: () => loadState(disk.files, STATE, vaults) };
 }
 
 describe("a destination kind defined outside keypin", () => {

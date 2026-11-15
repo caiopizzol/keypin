@@ -12,6 +12,7 @@ import {
   runEnvironment,
 } from "./map";
 import { isRecord } from "./record";
+import type { VaultKinds } from "./login";
 import { formatReference } from "./reference";
 import type { EnvFileKind, StoreRead, WorkerDeclaration, WorkflowRefs } from "./scan";
 
@@ -97,7 +98,11 @@ interface Found {
   key: KeyEntry | null;
 }
 
-export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } | null): Gaps {
+export function findGaps(
+  scan: ProjectScan,
+  map: { map: KeysMap; text: string } | null,
+  vaults: VaultKinds,
+): Gaps {
   const keys = map?.map ?? null;
   const listed = keys?.environments ?? DEFAULT_ENVIRONMENTS;
   const environment = publishEnvironment({ environments: listed });
@@ -200,7 +205,7 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
       ? mappedIn(keys, found.key, { ...found.place, onlyFrom: [] })
       : null;
   const missing = needs.filter((n) => n.need.mapped === null && elsewhere(n) === null);
-  const add = tomlToAdd(missing, keys, environment, map?.text ?? "");
+  const add = tomlToAdd(missing, keys, environment, map?.text ?? "", vaults);
 
   const problems: string[] = [];
   const fixes: Fix[] = [];
@@ -288,7 +293,7 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
     Object.values(key.environments).flatMap((entry) => (entry ? [entry.ref] : [])),
   );
   const infisicalOnly =
-    keys?.infisical !== undefined && !refs.some((ref) => ref.kind === "1password");
+    keys?.pins.infisical !== undefined && !refs.some((ref) => ref.kind === "1password");
   const local: LocalFile[] = [];
   for (const file of scan.envFiles) {
     if (file.kind !== "set") continue;
@@ -329,7 +334,7 @@ export function findGaps(scan: ProjectScan, map: { map: KeysMap; text: string } 
       const sets = `${file.path} sets ${unmapped.join(", ")}, which keypin.toml doesn't map`;
       notes.push(`${sets}; a plain setting can stay, and for a key ${IN_INFISICAL}`);
     } else if (unmapped.length) {
-      const account = keys?.account ? "" : ` --account ${PLACEHOLDER.account}`;
+      const account = keys?.pins["1password"] ? "" : ` --account ${PLACEHOLDER.account}`;
       const sets = `${file.path} sets ${unmapped.join(", ")}, which keypin.toml doesn't map`;
       const found = importing(sets, unmapped, account);
       const text = `${sets}; a plain setting can stay, and for a key run keypin import ${file.path} NAME...${found.options}${other}`;
@@ -455,6 +460,7 @@ function tomlToAdd(
   map: KeysMap | null,
   publish: Environment,
   text: string,
+  vaults: VaultKinds,
 ): { text: string | null; edits: Map<string, string> } {
   const blocks: string[][] = [];
   const edits = new Map<string, string>();
@@ -506,6 +512,7 @@ function tomlToAdd(
         key,
         environment,
         found.map((f) => f.place),
+        vaults,
       );
       for (const { place } of found) edits.set(`${name} ${place.id}`, edit);
       continue;
@@ -514,7 +521,7 @@ function tomlToAdd(
   }
   if (!blocks.length) return { text: null, edits };
   const onePassword = blocks.some((block) => block.includes(`from = ${str(PLACEHOLDER.from)}`));
-  if (onePassword && !map?.account)
+  if (onePassword && !map?.pins["1password"])
     blocks.unshift(["[1password]", `account = ${str(PLACEHOLDER.account)}`]);
   return { text: `${blocks.map((block) => block.join("\n")).join("\n\n")}\n`, edits };
 }
@@ -524,6 +531,7 @@ function inlineEdit(
   key: KeyEntry,
   environment: Environment,
   places: readonly Place[],
+  vaults: VaultKinds,
 ): string {
   const entries = places.map(
     (place) => `{ ${place.fields.map(([field, value]) => `${field} = ${str(value)}`).join(", ")} }`,
@@ -533,7 +541,7 @@ function inlineEdit(
   const at = `[keys.${key.name}]`;
   if (!entry)
     return `Add ${environment} = { from = ${str(PLACEHOLDER.from)}, ${list} } to ${at} in keypin.toml`;
-  const from = `from = ${str(formatReference(entry.ref))}`;
+  const from = `from = ${str(formatReference(entry.ref, vaults))}`;
   const raw = rawEntry(text, key.name, environment);
   if (typeof raw === "string")
     return `In ${at} in keypin.toml, replace ${environment} = ${str(raw)} with ${environment} = { ${from}, ${list} }`;

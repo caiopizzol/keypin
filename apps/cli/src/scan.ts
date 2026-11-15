@@ -80,11 +80,24 @@ export async function scanProject(deps: Deps, root: string): Promise<ScanResult>
     files,
     read,
     about: discovered.flatMap((d) => (d.about === null ? [] : [d.about])),
-    report: Object.fromEntries(discovered.flatMap((d) => Object.entries(d.report))),
+    report: merged(byKind.map(({ kind, found }) => ({ kind, report: found?.report ?? {} }))),
     used: new Map(byKind.map(({ kind, found }) => [kind, found?.used ?? false])),
     nested: found.nested,
     unknowns,
   };
+}
+
+function merged(reports: { kind: string; report: Readonly<Record<string, unknown>> }[]) {
+  const all: Record<string, unknown> = {};
+  const owner = new Map<string, string>();
+  for (const { kind, report } of reports)
+    for (const [key, value] of Object.entries(report)) {
+      const first = owner.get(key);
+      if (first) throw new Error(`the ${first} and ${kind} destinations both report ${key}`);
+      owner.set(key, kind);
+      all[key] = value;
+    }
+  return all;
 }
 
 async function listing(deps: Deps, folder: string): Promise<FolderListing> {

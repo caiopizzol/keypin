@@ -9,6 +9,8 @@ type ShelfTarget = { to: "shelf"; account: string; shelf: string };
 const written: string[] = [];
 let shelfCli: "ok" | "not installed" = "ok";
 
+let shelfReport: Record<string, unknown> = {};
+
 const shelfFiles: Discovery = {
   files: { key: "shelves", noun: "shelf file", names: ["shelf.json"] },
   async scan(project) {
@@ -23,7 +25,7 @@ const shelfFiles: Discovery = {
       files: project.found,
       used: shelves.length > 0,
       about: null,
-      report: {},
+      report: shelfReport,
       needs: () => ({
         notes: [],
         needs: shelves.flatMap(({ path, account, shelf: name, needs }) =>
@@ -202,5 +204,37 @@ shelf = "bottom"
       read: { shelves: ["shelf.json"] },
       production: [{ name: "NEW_KEY", to: "shelf", place: "the bottom shelf", mapped: null }],
     });
+  });
+});
+
+describe("a destination kind's report fields", () => {
+  test("reach check --json under the kind's own key", async () => {
+    shelfReport = { shelves: { count: 1 } };
+    const run = setup("", { "/work/billing/shelf.json": "{}" });
+    await cli(["check", "--json"], run.deps);
+    shelfReport = {};
+    expect(JSON.parse(run.stdout.text)).toMatchObject({ shelves: { count: 1 } });
+  });
+
+  test("can't replace a field keypin check owns", async () => {
+    shelfReport = { read: "mine" };
+    const run = setup("", { "/work/billing/shelf.json": "{}" });
+    const code = await cli(["check", "--json"], run.deps);
+    shelfReport = {};
+    expect(code).toBe(1);
+    expect(run.stderr.text).toContain(
+      "a destination's discovery reports read, which keypin check owns",
+    );
+  });
+
+  test("can't report the same field as another kind", async () => {
+    shelfReport = { github: "mine" };
+    const run = setup("", { "/work/billing/shelf.json": "{}" });
+    const code = await cli(["check", "--json"], run.deps);
+    shelfReport = {};
+    expect(code).toBe(1);
+    expect(run.stderr.text).toContain(
+      "the github-actions and shelf destinations both report github",
+    );
   });
 });

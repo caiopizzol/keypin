@@ -158,12 +158,13 @@ async function build(
   const signIn = mapSignIn(deps, parsed?.ok ? parsed.map : null, mapped);
   const root = found ? dirname(found.file) : folder;
   const scanned = await scanProject(deps, root);
-  const report: Report = {
+  const head = {
     folder: root,
     map: found?.file ?? null,
     registered: false,
     read: { ...scanned.files, notScanned: scanned.nested },
-    ...scanned.report,
+  };
+  const tail = {
     onePassword: signIn && {
       signIn: signIn.mode,
       address: signIn.mode === "service-account" ? signIn.address : null,
@@ -178,6 +179,12 @@ async function build(
     problems: [],
     ok: false,
   };
+  const taken = Object.keys(scanned.report).filter((key) => key in head || key in tail);
+  if (taken.length)
+    throw new Error(
+      `a destination's discovery reports ${taken.join(", ")}, which keypin check owns`,
+    );
+  const report: Report = { ...head, ...scanned.report, ...tail };
   for (const vault of deps.vaults) report.notes.push(...(vault.signInNotes?.({ signIn }) ?? []));
   const targets = new Map<string, PublishTarget>();
   const items = new Map<string, CheckedItem>();

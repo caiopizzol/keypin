@@ -82,6 +82,18 @@ jobs:
     ).toBe(true);
   });
 
+  test("matches toJSON(secrets) and context names in any case, as GitHub does", () => {
+    for (const call of ["tojson(secrets)", "TOJSON( secrets )", "toJSON(Secrets)"]) {
+      expect(
+        workflowRefs(`jobs:\n  a:\n    steps:\n      - run: echo '\${{ ${call} }}'\n`)?.hidesUses,
+      ).toBe(true);
+    }
+    const refs = workflowRefs(
+      "jobs:\n  a:\n    steps:\n      - run: echo ${{ Secrets.API_TOKEN }} ${{ SECRETS['KEY'] }} ${{ VARS.REGION }}\n",
+    );
+    expect(refs).toMatchObject({ secrets: ["API_TOKEN", "KEY"], vars: ["REGION"] });
+  });
+
   test("an alias that refers to itself is read once instead of recursing forever", () => {
     const refs = workflowRefs(
       "loop: &x\n  again: *x\njobs:\n  a:\n    steps:\n      - run: echo ${{ secrets.TOKEN }}\n",

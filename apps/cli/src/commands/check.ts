@@ -143,13 +143,15 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
   let fixes: Fix[] = [];
   let empty: string | null = null;
   const found = await locateMap(deps.files, folder);
-  const parsed = found ? parseMap(found.text, found.file, deps.destinations, deps.issuers) : null;
+  const parsed = found
+    ? parseMap(found.text, found.file, deps.destinations, deps.issuers, deps.vaults)
+    : null;
   const mapped = parsed?.ok
     ? parsed.map.keys.flatMap((key) =>
         Object.values(key.environments).flatMap((e) => (e ? [e.ref] : [])),
       )
     : [];
-  const infisicalOnly = parsed?.ok && parsed.map.infisical && !parsed.map.account;
+  const infisicalOnly = parsed?.ok && parsed.map.pins.infisical && !parsed.map.pins["1password"];
   const signIn = mapped.length || infisicalOnly ? signInFor(deps, mapped) : deps.signIn();
   const root = found ? dirname(found.file) : folder;
   const scanned = await scanProject(deps, root);
@@ -192,7 +194,11 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
     return { report, steps: plan(report, [...setup.map((p) => p.step), ...steps], fixes, empty) };
   };
   const gaps = (map: KeysMap | null) => {
-    const result = findGaps(scanned.scan, map && found ? { map, text: found.text } : null);
+    const result = findGaps(
+      scanned.scan,
+      map && found ? { map, text: found.text } : null,
+      deps.vaults,
+    );
     report.production = result.production;
     report.local = result.local;
     report.add = result.add;
@@ -248,7 +254,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
   for (const vault of deps.vaults)
     report.notes.push(...(vault.itemNotes?.(refs, { signIn }) ?? []));
   report.notes.push(ITEM_NOTE);
-  const lookup = `${count(refs.length, "item")} in ${vaultAccounts(refs)}, not the values`;
+  const lookup = `${count(refs.length, "item")} in ${vaultAccounts(refs, deps.vaults)}, not the values`;
   await out.step(
     `Looking up ${lookup}`,
     async () => {
@@ -295,7 +301,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
   for (const { key, environment, entry } of entries) {
     const name = `${key} (${environment})`;
     const from = items.get(refKey(entry.ref));
-    if (!from) throw new Error(`no item check for ${formatReference(entry.ref)}`);
+    if (!from) throw new Error(`no item check for ${formatReference(entry.ref, deps.vaults)}`);
     use(`item ${refKey(entry.ref)}`, name);
     const reached = entry.publish.map((target) => {
       use(`place ${placeOf(target)}`, name);
@@ -408,7 +414,7 @@ function finish(report: Report): Report {
 }
 
 async function checkItem(ref: KeyRef, deps: Deps): Promise<CheckedItem> {
-  const reference = formatReference(ref);
+  const reference = formatReference(ref, deps.vaults);
   try {
     await deps.vault().itemIds(ref);
     return { reference, ok: true, problem: null, signIn: null };

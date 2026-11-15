@@ -13,6 +13,7 @@
     "@keypin/core": "workspace:*"
   },
   "devDependencies": {
+    "@keypin/vault-1password": "workspace:*",
     "@types/node": "26.6.6"
   }
 }

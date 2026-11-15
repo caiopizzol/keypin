@@ -1,6 +1,7 @@
 import { assert, describe, expect, test } from "vite-plus/test";
 import { generationOf, isRecord, loadState, type Receipt, Secret } from "@keypin/core";
 import { cli } from "../src/cli";
+import { vaults } from "../src/start";
 import {
   fakeDeps,
   type FakeDestinationOptions,
@@ -67,7 +68,7 @@ function setup(options: FakeDestinationOptions & { state?: string } = {}) {
       ask: async () => "yes",
     },
   });
-  return { ...fake, log: destinations.log, state: () => loadState(disk.files, STATE) };
+  return { ...fake, log: destinations.log, state: () => loadState(disk.files, STATE, vaults) };
 }
 
 function checked(text: string) {

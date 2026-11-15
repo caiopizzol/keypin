@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import { generationOf, type Issuer, loadState, Secret } from "@keypin/core";
 import { cli } from "../src/cli";
+import { vaults } from "../src/start";
 import { NEEDS_APPROVAL } from "../src/publishing";
 import {
   fakeDeps,
@@ -136,7 +137,7 @@ function setup(options: Setup = {}) {
   const everything = () =>
     [fake.stdout.text, fake.stderr.text, ...disk.contents.values()].join("\n");
   const leaked = () => [OLD, ADMIN, NEW(1), NEW(2)].some((v) => everything().includes(v));
-  const state = () => loadState(disk.files, STATE);
+  const state = () => loadState(disk.files, STATE, vaults);
   return { ...fake, disk, vault, issuer, destinations, asked, run, writes, leaked, state };
 }
 

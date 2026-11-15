@@ -2,7 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { connectIssuer, type IssuerKind, type IssuerSpec, loadState, Secret } from "@keypin/core";
 import { memoryKeys, resendFetch } from "@keypin/issuer-resend/testing";
 import { cli } from "../src/cli";
-import { issuer, issuers } from "../src/start";
+import { issuer, issuers, vaults } from "../src/start";
 import { fakeDeps, fakeDestinations, memoryFiles, STATE, writableVault } from "./fakes";
 
 type ForgeSpec = IssuerSpec & { kind: "forge"; scope: string };
@@ -78,7 +78,7 @@ describe("an issuer kind defined outside keypin", () => {
       "create FORGE_TOKEN prod 2026-11-09 in deploy",
     ]);
     expect(vault.values.get("forge token")).toBe("forge-new-value");
-    const { issued } = await loadState(disk.files, STATE);
+    const { issued } = await loadState(disk.files, STATE, vaults);
     expect(issued.map((i) => [i.issuer, i.id])).toEqual([["forge", "forge-1"]]);
   });
 
@@ -123,7 +123,7 @@ describe("the issuer keypin connects", () => {
       },
     });
     expect(await cli(["rotate", "MAILER_KEY"], fake.deps)).toBe(0);
-    const { issued } = await loadState(disk.files, STATE);
+    const { issued } = await loadState(disk.files, STATE, vaults);
     expect(issued.map((i) => [i.issuer, i.id])).toEqual([["resend", "re-new-1"]]);
   });
 });

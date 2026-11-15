@@ -2,6 +2,7 @@ import type { Environment, KeyId, KeyRef, Receipt, VaultMetadata } from "./contr
 import { destinationId, type DestinationKinds, receiptSecretKey, secretKey } from "./destination";
 import { envFlag, type MapResult, publishEnvironment } from "./map";
 import { latestPerSecret } from "./plan";
+import type { VaultKinds } from "./login";
 import { sameRef } from "./reference";
 import type { Registry } from "./registry";
 import { ownedBy } from "./state";
@@ -52,6 +53,7 @@ export interface StatusRow {
 
 export interface StatusInput {
   kinds: DestinationKinds;
+  vaults: VaultKinds;
   registry: Registry;
   maps: ReadonlyMap<string, MapResult>;
   receipts: readonly Receipt[];
@@ -135,7 +137,8 @@ export function buildStatus(input: StatusInput): Status {
           const last = latest.get(secretKey(target, key.name, kinds));
           const ours =
             last &&
-            (ownedBy(last, owner) || (last.source !== null && sameRef(last.source, entry.ref)));
+            (ownedBy(last, owner) ||
+              (last.source !== null && sameRef(last.source, entry.ref, input.vaults)));
           const receipt = ours ? last : undefined;
           if (!receipt) {
             if (last) {

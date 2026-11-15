@@ -17,7 +17,7 @@ import {
   unregister,
   type Receipt,
 } from "../src/index";
-import { fakeFiles, GITHUB, KEY, KEY_MAP, KINDS, receipt, WORKER } from "./fixtures";
+import { fakeFiles, GITHUB, KEY, KEY_MAP, KINDS, receipt, VAULT_KINDS, WORKER } from "./fixtures";
 
 const STATE = "/state/keypin/state.json";
 const REGISTRY = "/config/keypin/registry.json";
@@ -26,7 +26,7 @@ const WEB_MAP = "/work/web/keypin.toml";
 
 describe("state", () => {
   test("a missing file is an empty state", async () => {
-    expect(await loadState(fakeFiles().files, STATE)).toEqual(emptyState());
+    expect(await loadState(fakeFiles().files, STATE, VAULT_KINDS)).toEqual(emptyState());
   });
 
   test("saving writes a temporary file, then renames it over the state file", async () => {
@@ -40,7 +40,7 @@ describe("state", () => {
     expect(temporary).toMatch(/^\/state\/keypin\/state\.json\..+\.tmp$/);
     expect(rename).toBe(`rename ${temporary} -> ${STATE}`);
     expect([...fake.contents.keys()]).toEqual([STATE]);
-    expect(await loadState(fake.files, STATE)).toEqual(state);
+    expect(await loadState(fake.files, STATE, VAULT_KINDS)).toEqual(state);
   });
 
   test("a crash before the rename leaves the old state whole", async () => {
@@ -49,7 +49,7 @@ describe("state", () => {
     fake.fail("rename");
     const after = recordReceipt(before, receipt(GITHUB, "aaaaaaaaaaaaaaaa"), KINDS);
     await expect(saveState(fake.files, STATE, after)).rejects.toThrow("crashed before rename");
-    expect(await loadState(fake.files, STATE)).toEqual(before);
+    expect(await loadState(fake.files, STATE, VAULT_KINDS)).toEqual(before);
   });
 
   test("a source saved before references named a field reads as the password field", async () => {
@@ -63,7 +63,9 @@ describe("state", () => {
         operations: [],
       }),
     });
-    expect((await loadState(fake.files, STATE)).receipts[0]?.source).toEqual(saved.source);
+    expect((await loadState(fake.files, STATE, VAULT_KINDS)).receipts[0]?.source).toEqual(
+      saved.source,
+    );
   });
 
   test("a receipt with an Infisical source saves and loads whole", async () => {
@@ -83,14 +85,14 @@ describe("state", () => {
       KINDS,
     );
     await saveState(fake.files, STATE, state);
-    expect((await loadState(fake.files, STATE)).receipts[0]?.source).toEqual(source);
+    expect((await loadState(fake.files, STATE, VAULT_KINDS)).receipts[0]?.source).toEqual(source);
   });
 
   test("another schema version gives a clear error", async () => {
     const fake = fakeFiles({
       [STATE]: JSON.stringify({ version: 6, receipts: [], operations: [] }),
     });
-    await expect(loadState(fake.files, STATE)).rejects.toThrow(
+    await expect(loadState(fake.files, STATE, VAULT_KINDS)).rejects.toThrow(
       `${STATE}: the state file has schema version 6, and this keypin reads version 1 or 2 or 3 or 4 or 5`,
     );
   });
@@ -100,7 +102,7 @@ describe("state", () => {
     const fake = fakeFiles({
       [STATE]: JSON.stringify({ version: 1, receipts: [old], operations: [] }),
     });
-    const state = await loadState(fake.files, STATE);
+    const state = await loadState(fake.files, STATE, VAULT_KINDS);
     expect(state).toEqual({
       version: 5,
       receipts: [{ ...old, mapFile: null, source: null, sourceIds: null }],
@@ -108,7 +110,7 @@ describe("state", () => {
       issued: [],
     });
     await saveState(fake.files, STATE, state);
-    expect(await loadState(fake.files, STATE)).toEqual(state);
+    expect(await loadState(fake.files, STATE, VAULT_KINDS)).toEqual(state);
     expect(fake.contents.get(STATE)).toContain('"version": 5');
   });
 
@@ -126,7 +128,7 @@ describe("state", () => {
     const fake = fakeFiles({
       [STATE]: JSON.stringify({ version: 2, receipts: [old], operations: [operation] }),
     });
-    const state = await loadState(fake.files, STATE);
+    const state = await loadState(fake.files, STATE, VAULT_KINDS);
     expect(state).toEqual({
       version: 5,
       receipts: [{ ...old, mapFile: null }],
@@ -143,17 +145,17 @@ describe("state", () => {
     const v3 = fakeFiles({
       [STATE]: JSON.stringify({ version: 3, receipts: [saved], operations: [] }),
     });
-    expect((await loadState(v3.files, STATE)).receipts[0]?.sourceIds).toBeNull();
+    expect((await loadState(v3.files, STATE, VAULT_KINDS)).receipts[0]?.sourceIds).toBeNull();
     const v4 = fakeFiles({
       [STATE]: JSON.stringify({ version: 4, receipts: [saved], operations: [] }),
     });
-    expect((await loadState(v4.files, STATE)).receipts[0]?.sourceIds).toEqual(ids);
+    expect((await loadState(v4.files, STATE, VAULT_KINDS)).receipts[0]?.sourceIds).toEqual(ids);
     const bad = JSON.stringify({
       version: 4,
       receipts: [{ ...saved, sourceIds: { vault: "vault-1" } }],
       operations: [],
     });
-    await expect(loadState(fakeFiles({ [STATE]: bad }).files, STATE)).rejects.toThrow(
+    await expect(loadState(fakeFiles({ [STATE]: bad }).files, STATE, VAULT_KINDS)).rejects.toThrow(
       '"receipts" must be a list',
     );
   });
@@ -182,14 +184,14 @@ describe("state", () => {
   });
 
   test("no schema version, bad JSON and bad receipts are clear errors", async () => {
-    await expect(loadState(fakeFiles({ [STATE]: "{}" }).files, STATE)).rejects.toThrow(
+    await expect(loadState(fakeFiles({ [STATE]: "{}" }).files, STATE, VAULT_KINDS)).rejects.toThrow(
       "schema version null",
     );
-    await expect(loadState(fakeFiles({ [STATE]: "{" }).files, STATE)).rejects.toThrow(
+    await expect(loadState(fakeFiles({ [STATE]: "{" }).files, STATE, VAULT_KINDS)).rejects.toThrow(
       `${STATE}: the state file isn't valid JSON`,
     );
     const bad = JSON.stringify({ version: 1, receipts: [{ keyId: "k" }], operations: [] });
-    await expect(loadState(fakeFiles({ [STATE]: bad }).files, STATE)).rejects.toThrow(
+    await expect(loadState(fakeFiles({ [STATE]: bad }).files, STATE, VAULT_KINDS)).rejects.toThrow(
       '"receipts" must be a list',
     );
     const unnamed = JSON.stringify({
@@ -197,9 +199,9 @@ describe("state", () => {
       receipts: [{ ...receipt(WORKER, "aaaaaaaaaaaaaaaa"), mapFile: 7 }],
       operations: [],
     });
-    await expect(loadState(fakeFiles({ [STATE]: unnamed }).files, STATE)).rejects.toThrow(
-      '"receipts" must be a list',
-    );
+    await expect(
+      loadState(fakeFiles({ [STATE]: unnamed }).files, STATE, VAULT_KINDS),
+    ).rejects.toThrow('"receipts" must be a list');
   });
 
   test("an operation tracks done destinations, and a newer receipt replaces the older one", () => {
@@ -297,13 +299,13 @@ describe("issued keys", () => {
     const v4 = fakeFiles({
       [STATE]: JSON.stringify({ version: 4, receipts: [], operations: [] }),
     });
-    expect((await loadState(v4.files, STATE)).issued).toEqual([]);
+    expect((await loadState(v4.files, STATE, VAULT_KINDS)).issued).toEqual([]);
     const state = recordIssued(emptyState(), issued());
     const fake = fakeFiles();
     await saveState(fake.files, STATE, state);
-    expect(await loadState(fake.files, STATE)).toEqual(state);
+    expect(await loadState(fake.files, STATE, VAULT_KINDS)).toEqual(state);
     const bad = JSON.stringify({ ...state, issued: [{ ...issued(), old: { id: 7 } }] });
-    await expect(loadState(fakeFiles({ [STATE]: bad }).files, STATE)).rejects.toThrow(
+    await expect(loadState(fakeFiles({ [STATE]: bad }).files, STATE, VAULT_KINDS)).rejects.toThrow(
       `"issued" must be a list of issued keys`,
     );
   });

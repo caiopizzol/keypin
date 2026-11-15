@@ -113,9 +113,9 @@ async function readValues(
   out: Output,
 ): Promise<string[]> {
   const refs = keys.map((k) => k.ref);
-  const accounts = vaultAccounts(refs);
+  const accounts = vaultAccounts(refs, deps.vaults);
   const values = `${keys.length} ${environment} ${keys.length === 1 ? "value" : "values"}`;
-  const references = [...new Set(refs.map(formatReference))].join(", ");
+  const references = [...new Set(refs.map((ref) => formatReference(ref, deps.vaults)))].join(", ");
   return out.step(
     `Reading ${values}`,
     async () => {
@@ -125,7 +125,7 @@ async function readValues(
         try {
           found.set(key.name, await vault.read(ref));
         } catch (error) {
-          failures.push(`${key.name} (${formatReference(ref)}): ${messageOf(error)}`);
+          failures.push(`${key.name} (${formatReference(ref, deps.vaults)}): ${messageOf(error)}`);
         }
       }
       return failures;

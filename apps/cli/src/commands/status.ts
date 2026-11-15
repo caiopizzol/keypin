@@ -35,13 +35,14 @@ export async function status(args: string[], deps: Deps): Promise<number> {
   if (positionals.length) throw new UsageError("keypin status takes no arguments");
 
   const registry = await loadRegistry(deps.files, registryPath(deps));
-  const state = await loadState(deps.files, statePath(deps));
+  const state = await loadState(deps.files, statePath(deps), deps.vaults);
   const maps = new Map<string, MapResult>();
   for (const project of registry.projects) {
     const file = join(project, MAP_FILE);
     try {
       const text = await deps.files.read(file);
-      if (text !== null) maps.set(project, parseMap(text, file, deps.destinations, deps.issuers));
+      if (text !== null)
+        maps.set(project, parseMap(text, file, deps.destinations, deps.issuers, deps.vaults));
     } catch (error) {
       deps.stderr.write(`keypin: couldn't read ${file}: ${messageOf(error)}\n`);
     }
@@ -60,7 +61,7 @@ export async function status(args: string[], deps: Deps): Promise<number> {
   if (refs.length) {
     const errors: string[] = [];
     const dates = count(refs.length, "rotated date");
-    const from = `from ${vaultAccounts(refs)}, not the values`;
+    const from = `from ${vaultAccounts(refs, deps.vaults)}, not the values`;
     await output(deps.stderr, deps.styled.stderr, deps.columns).step(
       `Reading ${dates}`,
       async () => {
@@ -88,6 +89,7 @@ export async function status(args: string[], deps: Deps): Promise<number> {
   const today = localDay(deps.now());
   const result = buildStatus({
     kinds: deps.destinations,
+    vaults: deps.vaults,
     registry,
     maps,
     receipts: state.receipts,

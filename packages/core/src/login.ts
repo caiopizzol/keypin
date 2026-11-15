@@ -1,4 +1,5 @@
 import type { KeyRef, SignInReason } from "./contracts";
+import type { TableReader } from "./destination";
 import type { ProjectScan } from "./gaps";
 
 export type PrerequisiteStatus =
@@ -38,12 +39,32 @@ export interface VaultUse {
   readonly failures: readonly SignInReason[];
 }
 
-export interface VaultKind<H = unknown> {
-  readonly kind: KeyRef["kind"];
+export interface VaultKind<
+  H = unknown,
+  R extends KeyRef = KeyRef,
+  U extends KeyRef = KeyRef,
+  P = unknown,
+> {
+  readonly kind: R["kind"];
+  readonly name: string;
+  readonly scheme: string;
+  readonly placeholder: string;
+  readonly needsPin: string;
+  readPin(read: TableReader): P | undefined;
+  parse(rest: string): U | string;
+  pinned(reference: U, pin: P): R;
+  format(ref: R): string;
+  account(ref: R): string;
+  accounts?(refs: readonly R[]): readonly string[];
+  sameItem(a: R, b: R): boolean;
+  sameField?(a: R, b: R): boolean;
+  stored(value: Readonly<Record<string, unknown>>): R | null;
   signInNotes?(host: H): readonly string[];
   itemNotes?(refs: readonly KeyRef[], host: H): readonly string[];
   prerequisites?(use: VaultUse, host: H): readonly Prerequisite[];
 }
+
+export type VaultKinds = readonly VaultKind[];
 
 export function sentence(text: string): string {
   const first = /^(?!keypin\b|gh\b|wrangler\b)[a-z]+\b(?![./:])/.test(text)

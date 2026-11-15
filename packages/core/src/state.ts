@@ -2,7 +2,8 @@ import type { Environment, KeyId, Receipt } from "./contracts";
 import { type Files, readVersionedJson, writeJsonAtomic } from "./files";
 import { type DestinationKinds, receiptSecretKey } from "./destination";
 import { isRecord } from "./record";
-import { storedRefWithPasswordDefault } from "./reference";
+import type { VaultKinds } from "./login";
+import { storedRef } from "./reference";
 import type { Generation } from "./secret";
 
 const STATE_VERSION = 5;
@@ -44,7 +45,7 @@ export const emptyState = (): State => ({
   issued: [],
 });
 
-export async function loadState(files: Files, path: string): Promise<State> {
+export async function loadState(files: Files, path: string, vaults: VaultKinds): Promise<State> {
   const data = await readVersionedJson(files, path, [1, 2, 3, 4, STATE_VERSION], "state file");
   if (!data) return emptyState();
   const version = Number(data.version);
@@ -55,7 +56,7 @@ export async function loadState(files: Files, path: string): Promise<State> {
           ? {
               ...r,
               mapFile: mapFile(r),
-              source: version === 1 ? null : storedSource(r.source),
+              source: version === 1 ? null : storedSource(r.source, vaults),
               sourceIds: version >= 4 ? r.sourceIds : null,
             }
           : r,
@@ -64,7 +65,7 @@ export async function loadState(files: Files, path: string): Promise<State> {
   const operations = Array.isArray(data.operations)
     ? data.operations.map((o: unknown) => (isRecord(o) ? { ...o, mapFile: mapFile(o) } : o))
     : data.operations;
-  if (!Array.isArray(receipts) || !receipts.every(isReceipt)) {
+  if (!Array.isArray(receipts) || !receipts.every((r) => isReceipt(r, vaults))) {
     throw new Error(`${path}: the state file's "receipts" must be a list of receipts`);
   }
   if (!Array.isArray(operations) || !operations.every(isOperation)) {
@@ -143,7 +144,7 @@ export function recordIssued(state: State, issued: Issued): State {
 const isText = (value: unknown) => typeof value === "string";
 const isTextOrNull = (value: unknown) => value === null || typeof value === "string";
 
-function isReceipt(r: unknown): r is Receipt {
+function isReceipt(r: unknown, vaults: VaultKinds): r is Receipt {
   return (
     isRecord(r) &&
     [r.keyId, r.environment, r.destinationId, r.generation, r.at].every(isText) &&
@@ -152,7 +153,7 @@ function isReceipt(r: unknown): r is Receipt {
     isText(r.account.pinned) &&
     isText(r.account.publisher) &&
     isText(r.account.destinationAccount) &&
-    (r.source === null || storedRefWithPasswordDefault(r.source) !== null) &&
+    (r.source === null || storedRef(r.source, vaults) !== null) &&
     (r.sourceIds === null ||
       (isRecord(r.sourceIds) && isText(r.sourceIds.vault) && isText(r.sourceIds.item))) &&
     typeof r.evidence === "object" &&
@@ -160,8 +161,8 @@ function isReceipt(r: unknown): r is Receipt {
   );
 }
 
-function storedSource(source: unknown): unknown {
-  return source === null ? null : (storedRefWithPasswordDefault(source) ?? source);
+function storedSource(source: unknown, vaults: VaultKinds): unknown {
+  return source === null ? null : (storedRef(source, vaults) ?? source);
 }
 
 function isIssued(i: unknown): i is Issued {

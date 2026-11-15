@@ -11,7 +11,7 @@ export async function findMap(deps: Deps): Promise<KeysMap> {
       `no ${MAP_FILE} in ${deps.cwd} or any folder above it; run "keypin init" first`,
     );
   }
-  const result = parseMap(found.text, found.file, deps.destinations, deps.issuers);
+  const result = parseMap(found.text, found.file, deps.destinations, deps.issuers, deps.vaults);
   if (!result.ok) throw new Error(result.errors.join("\n"));
   return result.map;
 }

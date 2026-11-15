@@ -4,13 +4,14 @@ import {
   type DestinationKinds,
   type Files,
   type KeyRef,
-  type OnePasswordRef,
   placeId,
   type PublishTarget,
   Secret,
   type VaultBackend,
   type VaultMetadata,
 } from "@keypin/core";
+import { type OnePasswordRef, onePasswordRef, onePasswordScope } from "@keypin/vault-1password";
+import { infisicalRef } from "@keypin/vault-infisical";
 import type { Deps, FolderEntry, Launch, Lock } from "../src/deps";
 import { destinations, issuers, vaults } from "../src/start";
 
@@ -65,8 +66,9 @@ export function fakeVault(options: FakeVaultOptions = {}) {
   const calls: string[] = [];
   const created: CreatedItem[] = [];
   const own = (ref: KeyRef) => {
-    if (ref.kind !== "1password") throw new Error("the fake vault holds only 1Password items");
-    return ref;
+    const mine = onePasswordRef(ref);
+    if (!mine) throw new Error("the fake vault holds only 1Password items");
+    return mine;
   };
   const titles = () => [...(options.items ?? []), ...created.map((c) => c.ref.item)];
   const fail = (given: KeyRef) => {
@@ -120,8 +122,9 @@ export function fakeVault(options: FakeVaultOptions = {}) {
     },
     async list(scope) {
       if (!options.items) throw new Error("the fake vault doesn't list");
-      if (scope.kind !== "1password") throw new Error("the fake vault lists only 1Password");
-      calls.push(`list ${scope.account} ${scope.vault}`);
+      const mine = onePasswordScope(scope);
+      if (!mine) throw new Error("the fake vault lists only 1Password");
+      calls.push(`list ${mine.account} ${mine.vault}`);
       return titles().map((title) => ({ id: title, title, tags: [], updatedAt: "" }));
     },
     async metadata(given) {
@@ -134,7 +137,7 @@ export function fakeVault(options: FakeVaultOptions = {}) {
   return { vault, calls, created };
 }
 
-const itemOf = (ref: KeyRef) => (ref.kind === "1password" ? ref.item : ref.name);
+const itemOf = (ref: KeyRef) => onePasswordRef(ref)?.item ?? infisicalRef(ref)?.name ?? ref.kind;
 
 export function writableVault(initial: Record<string, string>, failSave = false) {
   const values = new Map(Object.entries(initial));

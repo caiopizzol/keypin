@@ -1,127 +1,79 @@
-import type { InfisicalRef, KeyRef, OnePasswordRef } from "./contracts";
+import type { KeyRef } from "./contracts";
+import type { VaultKind, VaultKinds } from "./login";
 import { isRecord } from "./record";
 
-const OP = "op://";
-const INFISICAL = "infisical://";
+export function vaultKindOf<V extends VaultKind>(vaults: readonly V[], kind: string): V {
+  const found = vaults.find((vault) => vault.kind === kind);
+  if (!found) throw new Error(`keypin has no vault kind "${kind}"`);
+  return found;
+}
 
-export type Reference =
-  | Omit<OnePasswordRef, "account">
-  | Omit<InfisicalRef, "url" | "organization">;
+export function byKind<V extends VaultKind>(vaults: readonly V[]): V[] {
+  return vaults.toSorted((a, b) => (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0));
+}
 
-export const REFERENCE_SCHEMES = [OP, INFISICAL] as const;
+export function referenceSchemes(vaults: VaultKinds): string {
+  return byKind(vaults)
+    .map((vault) => vault.scheme)
+    .join(" or ");
+}
 
-export function parseReference(text: string): Reference | string {
+export function parseReference(
+  text: string,
+  vaults: VaultKinds,
+): { vault: VaultKind; reference: KeyRef } | string {
   if (/[?#]/.test(text)) return "can't have a query such as ?attribute=";
-  if (text.startsWith(OP)) return parseOnePassword(text.slice(OP.length));
-  if (text.startsWith(INFISICAL)) return parseInfisical(text.slice(INFISICAL.length));
-  return `must start with ${OP} or ${INFISICAL}`;
+  const vault = vaults.find((v) => text.startsWith(v.scheme));
+  if (!vault) return `must start with ${referenceSchemes(vaults)}`;
+  const reference = vault.parse(text.slice(vault.scheme.length));
+  return typeof reference === "string" ? reference : { vault, reference };
 }
 
-function parseOnePassword(rest: string): Reference | string {
-  const parts = rest.split("/");
-  if (parts.length < 3 || parts.length > 4 || parts.some((part) => !part.trim())) {
-    return `must be ${OP}<vault>/<item>/<field> or ${OP}<vault>/<item>/<section>/<field>`;
-  }
-  const [vault = "", item = "", ...fields] = parts;
-  return {
-    kind: "1password",
-    vault,
-    item,
-    section: fields.length === 2 ? (fields[0] ?? null) : null,
-    field: fields.at(-1) ?? "",
-  };
+export function formatReference(ref: KeyRef, vaults: VaultKinds): string {
+  return vaultKindOf(vaults, ref.kind).format(ref);
 }
 
-function parseInfisical(rest: string): Reference | string {
-  const parts = rest.split("/");
-  if (parts.length < 3 || parts.some((part) => !part.trim())) {
-    return `must be ${INFISICAL}<project>/<environment>/<SECRET_NAME>, with any folders before the name`;
-  }
-  const [project = "", environment = "", ...folders] = parts;
-  const name = folders.pop() ?? "";
-  return { kind: "infisical", project, environment, path: `/${folders.join("/")}`, name };
+export function vaultName(ref: KeyRef, vaults: VaultKinds): string {
+  return vaultKindOf(vaults, ref.kind).name;
 }
 
-export function formatReference(ref: Reference): string {
-  if (ref.kind === "infisical") {
-    const folders = ref.path.split("/").filter(Boolean);
-    return `${INFISICAL}${[ref.project, ref.environment, ...folders, ref.name].join("/")}`;
-  }
-  const parts = [ref.vault, ref.item, ...(ref.section === null ? [] : [ref.section]), ref.field];
-  return `${OP}${parts.join("/")}`;
+export function vaultAccount(ref: KeyRef, vaults: VaultKinds): string {
+  return vaultKindOf(vaults, ref.kind).account(ref);
 }
 
-export function vaultAccount(ref: KeyRef): string {
-  return ref.kind === "1password"
-    ? `1Password account ${ref.account}`
-    : `Infisical organization ${ref.organization} at ${ref.url}`;
+export function vaultAccounts(refs: readonly KeyRef[], vaults: VaultKinds): string {
+  return byKind(vaults)
+    .flatMap((vault) => {
+      const own = refs.filter((ref) => ref.kind === vault.kind);
+      if (!own.length) return [];
+      return vault.accounts?.(own) ?? [...new Set(own.map((ref) => vault.account(ref)))];
+    })
+    .join(" and ");
 }
 
-export function vaultAccounts(refs: readonly KeyRef[]): string {
-  const onePassword = [
-    ...new Set(refs.flatMap((ref) => (ref.kind === "1password" ? [ref.account] : []))),
-  ];
-  const others = refs.filter((ref) => ref.kind !== "1password").map(vaultAccount);
-  return [
-    ...(onePassword.length ? [`1Password account ${onePassword.join(", ")}`] : []),
-    ...new Set(others),
-  ].join(" and ");
+export function describeRef(ref: KeyRef, vaults: VaultKinds): string {
+  return `${formatReference(ref, vaults)} (${vaultAccount(ref, vaults)})`;
 }
 
-export function describeRef(ref: KeyRef): string {
-  return `${formatReference(ref)} (${vaultAccount(ref)})`;
+export function sameAccount(a: KeyRef, b: KeyRef, vaults: VaultKinds): boolean {
+  return vaultAccount(a, vaults) === vaultAccount(b, vaults);
 }
 
-const sameName = (a: string | null, b: string | null) =>
-  a === b || (a !== null && b !== null && a.toLowerCase() === b.toLowerCase());
-
-export function sameAccount(a: KeyRef, b: KeyRef): boolean {
-  return vaultAccount(a) === vaultAccount(b);
+export function sameItem(a: KeyRef, b: KeyRef, vaults: VaultKinds): boolean {
+  return (
+    a.kind === b.kind && sameAccount(a, b, vaults) && vaultKindOf(vaults, a.kind).sameItem(a, b)
+  );
 }
 
-export function sameItem(a: KeyRef, b: KeyRef): boolean {
-  if (!sameAccount(a, b)) return false;
-  if (a.kind === "1password" && b.kind === "1password")
-    return sameName(a.vault, b.vault) && sameName(a.item, b.item);
-  if (a.kind === "infisical" && b.kind === "infisical")
-    return (
-      a.project === b.project &&
-      a.environment === b.environment &&
-      a.path === b.path &&
-      a.name === b.name
-    );
-  return false;
+export function sameField(a: KeyRef, b: KeyRef, vaults: VaultKinds): boolean {
+  return a.kind === b.kind && (vaultKindOf(vaults, a.kind).sameField?.(a, b) ?? true);
 }
 
-export function sameField(a: KeyRef, b: KeyRef): boolean {
-  if (a.kind === "1password" && b.kind === "1password")
-    return sameName(a.section, b.section) && sameName(a.field, b.field);
-  return a.kind === b.kind;
+export function sameRef(a: KeyRef, b: KeyRef, vaults: VaultKinds): boolean {
+  return sameItem(a, b, vaults) && sameField(a, b, vaults);
 }
 
-export function sameRef(a: KeyRef, b: KeyRef): boolean {
-  return sameItem(a, b) && sameField(a, b);
-}
-
-export function storedRefWithPasswordDefault(value: unknown): KeyRef | null {
+export function storedRef(value: unknown, vaults: VaultKinds): KeyRef | null {
   if (!isRecord(value)) return null;
-  if (value.kind === "infisical") {
-    const { url, organization, project, environment, path, name } = value;
-    if (
-      typeof url !== "string" ||
-      typeof organization !== "string" ||
-      typeof project !== "string" ||
-      typeof environment !== "string" ||
-      typeof path !== "string" ||
-      typeof name !== "string"
-    )
-      return null;
-    return { kind: "infisical", url, organization, project, environment, path, name };
-  }
-  if (value.kind !== "1password") return null;
-  const { account, vault, item, section = null, field = "password" } = value;
-  if (typeof account !== "string" || typeof vault !== "string" || typeof item !== "string")
-    return null;
-  if (typeof field !== "string" || (section !== null && typeof section !== "string")) return null;
-  return { kind: "1password", account, vault, item, section, field };
+  return vaults.find((vault) => vault.kind === value.kind)?.stored(value) ?? null;
 }

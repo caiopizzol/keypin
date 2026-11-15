@@ -13,7 +13,7 @@ import { type FullItem, onePasswordBackend } from "@keypin/vault-1password";
 import { cli } from "../src/cli";
 import type { Publisher } from "../src/deps";
 import { NEEDS_APPROVAL, rerun } from "../src/publishing";
-import { destinations } from "../src/start";
+import { destinations, vaults } from "../src/start";
 import {
   fakeDeps,
   type FakeDestinationOptions,
@@ -58,7 +58,7 @@ function setup(
       },
     },
   });
-  const state = () => loadState(disk.files, STATE);
+  const state = () => loadState(disk.files, STATE, vaults);
   const everything = () => [fake.stdout.text, fake.stderr.text, ...disk.contents.values()];
   return { ...fake, disk, calls: vault.calls, log: destinations.log, asked, state, everything };
 }
@@ -416,7 +416,7 @@ describe("keypin publish", () => {
     expect(await running).toBe(0);
     expect(disk.contents.has(`${STATE}.lock`)).toBe(false);
     expect(await cli(["publish", "OTHER_KEY"], second.deps)).toBe(0);
-    const state = await loadState(disk.files, STATE);
+    const state = await loadState(disk.files, STATE, vaults);
     expect(state.receipts.map((r) => r.keyId).toSorted()).toEqual([
       "OTHER_KEY",
       "STRIPE_API_KEY",
@@ -519,7 +519,7 @@ describe("keypin publish", () => {
     const first = deps(true, "alice");
     expect(await cli(["publish", "STRIPE_API_KEY"], first.deps)).toBe(0);
     expect(first.stderr.text).toContain("ok     GitHub  acme/billing  as alice, account acme");
-    const saved = await loadState(disk.files, STATE);
+    const saved = await loadState(disk.files, STATE, vaults);
     expect(saved.receipts).toMatchObject([
       { account: { pinned: "acme", publisher: "alice", destinationAccount: "acme" } },
     ]);
@@ -560,7 +560,7 @@ describe("keypin publish", () => {
     await saveState(
       disk.files,
       STATE,
-      recordReceipt(await loadState(disk.files, STATE), old, destinations),
+      recordReceipt(await loadState(disk.files, STATE, vaults), old, destinations),
     );
     const run = setup({ disk });
     expect(await cli(["publish", "STRIPE_API_KEY"], run.deps)).toBe(NEEDS_APPROVAL);
@@ -655,7 +655,7 @@ describe("a destination only takes a value without approval when it came from th
     const approved = publisher(disk, "/work/billing", true);
     expect(await cli(["publish", "DEPLOY_TOKEN"], approved.deps)).toBe(0);
     expect(approved.writes()).toHaveLength(1);
-    const [saved] = (await loadState(disk.files, STATE)).receipts;
+    const [saved] = (await loadState(disk.files, STATE, vaults)).receipts;
     expect(saved?.source).toEqual({
       kind: "1password",
       account: "my.1password.com",
@@ -673,7 +673,7 @@ describe("a destination only takes a value without approval when it came from th
     expect(
       await cli(["publish", "DEPLOY_TOKEN"], publisher(disk, "/work/billing", true, first).deps),
     ).toBe(0);
-    const [saved] = (await loadState(disk.files, STATE)).receipts;
+    const [saved] = (await loadState(disk.files, STATE, vaults)).receipts;
     expect(saved?.sourceIds).toEqual({ vault: "id-private", item: "item-1" });
 
     const same = publisher(disk, "/work/billing", false, first);
@@ -696,7 +696,7 @@ describe("a destination only takes a value without approval when it came from th
     const approved = publisher(disk, "/work/billing", true, replaced);
     expect(await cli(["publish", "DEPLOY_TOKEN"], approved.deps)).toBe(0);
     expect(approved.writes()).toHaveLength(1);
-    const [now] = (await loadState(disk.files, STATE)).receipts;
+    const [now] = (await loadState(disk.files, STATE, vaults)).receipts;
     expect(now?.sourceIds).toEqual({ vault: "id-private", item: "item-2" });
     expect(leaks(...disk.contents.values(), unattended.stderr.text)).toBe(false);
   });
@@ -734,7 +734,7 @@ describe("a destination only takes a value without approval when it came from th
     expect(
       await cli(["publish", "DEPLOY_TOKEN"], publisher(disk, "/work/billing", true).deps),
     ).toBe(0);
-    const current = await loadState(disk.files, STATE);
+    const current = await loadState(disk.files, STATE, vaults);
     const v3 = JSON.stringify({
       version: 3,
       operations: [],
@@ -780,7 +780,7 @@ describe("a destination only takes a value without approval when it came from th
 
     const approved = publisher(disk, "/work/billing", true);
     expect(await cli(["publish", "DEPLOY_TOKEN"], approved.deps)).toBe(0);
-    const [saved] = (await loadState(disk.files, STATE)).receipts;
+    const [saved] = (await loadState(disk.files, STATE, vaults)).receipts;
     expect(saved?.source).toMatchObject({ section: "live", field: "credential" });
   });
 
@@ -879,7 +879,7 @@ describe("a destination only takes a value without approval when it came from th
     });
     expect(await cli(["publish", "TOKEN"], publisher(disk, "/work/billing", true).deps)).toBe(0);
     expect(await cli(["publish", "token"], publisher(disk, "/work/web", true).deps)).toBe(0);
-    expect((await loadState(disk.files, STATE)).receipts).toHaveLength(1);
+    expect((await loadState(disk.files, STATE, vaults)).receipts).toHaveLength(1);
 
     const again = publisher(disk, "/work/billing", false);
     expect(await cli(["publish", "TOKEN", "--yes"], again.deps)).toBe(NEEDS_APPROVAL);
@@ -894,7 +894,7 @@ describe("a destination only takes a value without approval when it came from th
     expect(
       await cli(["publish", "DEPLOY_TOKEN"], publisher(disk, "/work/billing", true).deps),
     ).toBe(0);
-    const current = await loadState(disk.files, STATE);
+    const current = await loadState(disk.files, STATE, vaults);
     disk.contents.set(
       STATE,
       JSON.stringify({
@@ -957,7 +957,7 @@ describe("two projects that map the same variable and environment", () => {
     });
     const billing = publisher(disk, "billing", { failWrite: ["github-actions:acme/billing-ops"] });
     expect(await cli(["publish", "API_TOKEN"], billing.deps)).toBe(1);
-    const [left] = (await loadState(disk.files, STATE)).operations;
+    const [left] = (await loadState(disk.files, STATE, vaults)).operations;
     expect(left).toMatchObject({
       mapFile: "/work/billing/keypin.toml",
       done: ["github-actions:acme/billing:API_TOKEN"],
@@ -967,7 +967,7 @@ describe("two projects that map the same variable and environment", () => {
     expect(await cli(["publish", "API_TOKEN"], web.deps)).toBe(0);
     expect(web.stderr.text).not.toContain("didn't finish");
     expect(web.stderr.text).not.toContain("not in the map any more");
-    const state = await loadState(disk.files, STATE);
+    const state = await loadState(disk.files, STATE, vaults);
     expect(state.operations.map((o) => o.id)).toEqual([left?.id]);
     expect(state.receipts.map((r) => [r.destinationId, r.mapFile])).toEqual([
       ["github-actions:acme/billing:API_TOKEN", "/work/billing/keypin.toml"],
@@ -980,7 +980,7 @@ describe("two projects that map the same variable and environment", () => {
     expect(again.stderr.text).toContain("An earlier publish");
     expect(again.stderr.text).toContain("wrote 1 of 2 (github-actions:acme/billing:API_TOKEN)");
     expect(again.stderr.text).not.toContain("not in the map any more");
-    expect((await loadState(disk.files, STATE)).operations).toEqual([]);
+    expect((await loadState(disk.files, STATE, vaults)).operations).toEqual([]);
   });
 });
 
@@ -1026,7 +1026,7 @@ function setupAll(
       },
     },
   });
-  const state = () => loadState(disk.files, STATE);
+  const state = () => loadState(disk.files, STATE, vaults);
   const everything = () => [fake.stdout.text, fake.stderr.text, ...disk.contents.values()];
   const writes = () => destinations.log.filter((l) => l.startsWith("write"));
   return {

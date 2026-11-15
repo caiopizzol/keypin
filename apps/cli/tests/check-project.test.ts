@@ -2,7 +2,7 @@ import { assert, describe, expect, test } from "vite-plus/test";
 import { isRecord, parseMap, SignInFailed, type StoreRead } from "@keypin/core";
 import { CloudflareReader } from "@keypin/destination-cloudflare";
 import { cli } from "../src/cli";
-import { destinations, issuers } from "../src/start";
+import { destinations, issuers, vaults } from "../src/start";
 import { AFTER_IMPORT, PASTE, THEN } from "../src/commands/check";
 import { TEMPLATE } from "../src/commands/init";
 import type { Deps } from "../src/deps";
@@ -238,7 +238,7 @@ worker = "billing-worker"
     const first = setup({ files: { [MAP]: TEMPLATE, [`${ROOT}/.env`]: null } });
     await cli(["check"], first.deps);
     const pasted = `${TEMPLATE}\n${fill(added(first.stdout.text))}`;
-    assert(parseMap(pasted, MAP, destinations, issuers).ok, pasted);
+    assert(parseMap(pasted, MAP, destinations, issuers, vaults).ok, pasted);
 
     const run = setup({
       files: { [MAP]: pasted },
@@ -294,7 +294,7 @@ worker = "billing-worker"
     };
     const paste = (text: string) => {
       const pasted = `${run.disk.contents.get(MAP) ?? ""}\n${fill(added(text))}`;
-      const parsed = parseMap(pasted, MAP, destinations, issuers);
+      const parsed = parseMap(pasted, MAP, destinations, issuers, vaults);
       assert(parsed.ok, parsed.ok ? "" : parsed.errors.join("\n"));
       return parsed.map;
     };
@@ -334,7 +334,7 @@ worker = "billing-worker"
       const text = run.stdout.text;
       expect(text).toContain("    keypin import .env PORT --vault <vault>");
       expect(text.includes(AFTER_IMPORT)).toBe(warns);
-      const parsed = parseMap(`${map}\n${fill(added(text))}`, MAP, destinations, issuers);
+      const parsed = parseMap(`${map}\n${fill(added(text))}`, MAP, destinations, issuers, vaults);
       assert(parsed.ok, parsed.ok ? "" : parsed.errors.join("\n"));
       expect(parsed.map.keys.map((k) => k.name)).toContain("STRIPE_API_KEY");
     },
@@ -560,7 +560,7 @@ from = "op://<vault>/<item>/<field>"
 
 [[keys.RESEND_API_KEY.prod.publish]]
 to = "cloudflare-worker"`);
-    assert(parseMap(`${MAPPED}\n${fill(toml)}`, MAP, destinations, issuers).ok);
+    assert(parseMap(`${MAPPED}\n${fill(toml)}`, MAP, destinations, issuers, vaults).ok);
   });
 
   test("a key whose prod table is inline gets an entry for its publish list instead", async () => {
@@ -604,7 +604,7 @@ prod = "${ref}"
     ]);
     expect(data.add).toBeNull();
     const edited = map.replace(`prod = "${ref}"`, replaced);
-    const parsed = parseMap(edited, MAP, destinations, issuers);
+    const parsed = parseMap(edited, MAP, destinations, issuers, vaults);
     assert(parsed.ok);
     expect(parsed.map.keys[0]?.environments.prod?.publish).toEqual([
       { to: "github-actions", repo: "acme/billing", account: "acme" },
@@ -630,7 +630,7 @@ ${entry}
     expect(data.problems).toEqual([
       `STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and keypin.toml doesn't publish it there. In [keys.STRIPE_API_KEY] in keypin.toml, replace the prod entry with ${replaced}`,
     ]);
-    const parsed = parseMap(map.replace(entry, replaced), MAP, destinations, issuers);
+    const parsed = parseMap(map.replace(entry, replaced), MAP, destinations, issuers, vaults);
     assert(parsed.ok);
     expect(parsed.map.keys[0]?.environments.prod?.publish).toEqual([
       { to: "github-actions", repo: "acme/billing", account: "acme" },
@@ -709,7 +709,7 @@ worker = "billing-worker"
         `keypin.toml can't publish RESEND_API_KEY to two Workers named billing-worker from one environment (accounts ${ACCOUNT} and ${other}); publish one of them from another environment, listed in environments`,
       ),
     ]);
-    expect(parseMap(map, MAP, destinations, issuers).ok).toBe(true);
+    expect(parseMap(map, MAP, destinations, issuers, vaults).ok).toBe(true);
   });
 
   test("two unnamed Workers that need one secret each get their own TOML", async () => {
@@ -751,7 +751,7 @@ worker = "billing-worker"
       ]),
     );
     const filled = `${MAPPED}\n${data.add.replaceAll("<vault>/<item>/<field>", "Private/billing prod resend api key/password")}`;
-    const parsed = parseMap(filled, MAP, destinations, issuers);
+    const parsed = parseMap(filled, MAP, destinations, issuers, vaults);
     assert(parsed.ok, parsed.ok ? "" : parsed.errors.join("\n"));
   });
 
@@ -816,7 +816,13 @@ worker = "billing-worker-staging"`);
       expect(data.problems).toContain(
         `keypin.toml has no environment for the wrangler env staging; add at the top of keypin.toml: ${line} (keypin run uses the first, keypin publish the last)`,
       );
-      const parsed = parseMap(`${line}\n${MAPPED}\n${fill(data.add)}`, MAP, destinations, issuers);
+      const parsed = parseMap(
+        `${line}\n${MAPPED}\n${fill(data.add)}`,
+        MAP,
+        destinations,
+        issuers,
+        vaults,
+      );
       assert(parsed.ok, parsed.ok ? "" : parsed.errors.join("\n"));
       const staging = parsed.map.keys.find((k) => k.name === "RESEND_API_KEY")?.environments;
       expect(staging?.prod?.publish).toEqual([

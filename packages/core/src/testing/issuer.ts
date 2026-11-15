@@ -42,12 +42,12 @@ export function issuerContract(make: Make): void {
     expect(first.ok).toBe(true);
     const created = await issuer.create("API_KEY");
     expect(created.secret.includes(SENTINEL)).toBe(true);
-    const listed = await issuer.checkAccount(created.id, created.secret);
+    const listed = await issuer.checkAccount(created.id, current);
     expect(listed.ok).toBe(true);
     expect(await issuer.revoke(created.id)).toBe("revoked");
     expect(await issuer.revoke(created.id)).toBe("already gone");
     expect(await issuer.revoke(UNKNOWN)).toBe("already gone");
-    expect((await issuer.checkAccount(created.id, created.secret)).ok).toBe(false);
+    expect((await issuer.checkAccount(created.id, current)).ok).toBe(false);
     expect(effects).toHaveLength(2);
     expectNoSentinel(
       first,

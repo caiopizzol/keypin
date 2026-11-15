@@ -123,6 +123,9 @@ CREATE ROLE app_b WITH LOGIN IN ROLE app PASSWORD '<password>';
 ```
 
 ```toml
+[keys.DATABASE_URL.prod]
+from = "op://Private/app database url/password"
+
 [keys.DATABASE_URL.prod.issuer]
 kind = "neon"
 admin = "op://Private/neon api key/credential"
@@ -133,6 +136,6 @@ roles = ["app_a", "app_b"]
 ```
 
 `admin` is a [Neon API key](https://neon.com/docs/manage/api-keys) that reaches the project. `rotate` resets the
-password of the role the vault's URL doesn't use and saves that role's URL, pooled if yours was. Revoking resets the
-old role's password, which drops its open connections. A table belongs to the role that creates it, so run
-migrations after `SET ROLE app`.
+password of the role the vault's URL doesn't use and saves your URL with that role. Revoking resets the old role's
+password. Each reset drops every open connection to the compute, whatever its role, so apps must reconnect. A table
+belongs to the role that creates it, so run migrations after `SET ROLE app`.

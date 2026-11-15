@@ -1,4 +1,5 @@
 import type { Destination } from "./contracts";
+import type { Discovery } from "./discovery";
 import type { LoginProject, Prerequisite, PublisherPart } from "./login";
 
 export interface PublishTarget {
@@ -35,6 +36,7 @@ export interface DestinationKind<
   publisher?(host: H, folder: string): Promise<PublisherPart<P>>;
   prerequisites?(project: LoginProject<T>, host: H): Promise<readonly Prerequisite[]>;
   refuses?(secretName: string): string | undefined;
+  discovery?: Discovery<H>;
   connect(target: T, publisher: P): Destination;
 }
 

@@ -1,13 +1,13 @@
 import { basename, join, relative } from "node:path";
 import {
+  type Discovered,
   envFileKind,
   envNames,
+  type FolderListing,
+  type ProjectFiles,
+  type ProjectReader,
   type ProjectScan,
   SKIPPED_FOLDERS,
-  usesSecrets,
-  WRANGLER_FILES,
-  workflowRefs,
-  wranglerWorkers,
 } from "@keypin/core";
 import type { Deps } from "./deps";
 import { errorCode, messageOf } from "./errors";
@@ -19,15 +19,22 @@ export interface Unknown {
 
 export interface ScanResult {
   scan: ProjectScan;
-  files: { env: string[]; wrangler: string[]; workflows: string[] };
+  files: Record<string, string[]>;
+  read: { noun: string; count: number }[];
+  about: string[];
+  report: Record<string, unknown>;
+  used: Map<string, boolean>;
   nested: string[];
-  login: string | null;
   unknowns: Unknown[];
 }
 
 export async function scanProject(deps: Deps, root: string): Promise<ScanResult> {
   const unknowns: Unknown[] = [];
-  const found = await walk(deps, root, unknowns);
+  const kinds = deps.destinations.flatMap((kind) =>
+    kind.discovery ? [{ kind: kind.kind, discovery: kind.discovery }] : [],
+  );
+  const walked = kinds.filter(({ discovery }) => discovery.files.names);
+  const found = await walk(deps, root, unknowns, walked);
 
   const tracked = await trackedFiles(deps, root, found.envFiles);
   const envFiles: ProjectScan["envFiles"] = [];
@@ -44,132 +51,76 @@ export async function scanProject(deps: Deps, root: string): Promise<ScanResult>
       reason: "the folder isn't in a git repository",
     });
 
-  const top = (await deps.git(root, ["rev-parse", "--show-toplevel"]))?.trim() || null;
-  const workflows = await readWorkflows(deps, root, top, unknowns);
+  const reader = (found: readonly string[]): ProjectReader => ({
+    root,
+    found,
+    read: (path) => readSource(deps, root, path, unknowns),
+    list: (folder) => listing(deps, folder),
+    unknown: (what, reason) => unknowns.push({ what, reason }),
+  });
+  const scanned = [];
+  for (const { kind, discovery } of kinds)
+    scanned.push(await discovery.scan(reader(found.byKind.get(kind) ?? []), deps));
+  const discovered: Discovered[] = [];
+  for (const scan of scanned) discovered.push(await scan.finish());
 
-  const workers: ProjectScan["workers"] = [];
-  for (const config of found.wrangler) {
-    const text = await readSource(deps, root, config, unknowns);
-    if (text === null) continue;
-    const parsed = wranglerWorkers(text, config);
-    if (!parsed.ok) {
-      unknowns.push({ what: `the Workers in ${config}`, reason: "it couldn't be parsed" });
-      continue;
-    }
-    for (const worker of parsed.workers) {
-      const label = `the secrets of the Worker ${worker.worker ?? `in ${config}`}`;
-      let read: ProjectScan["workers"][number]["read"] = null;
-      if (worker.required?.length) {
-        if (!worker.worker) unknowns.push({ what: label, reason: `${config} names no Worker` });
-        else if (!worker.account)
-          unknowns.push({
-            what: label,
-            reason: `${config} has no account_id, and check doesn't guess an account`,
-          });
-        else {
-          read = await deps
-            .workerSecrets(worker.account, worker.worker)
-            .catch((error: unknown) => ({ ok: false as const, reason: messageOf(error) }));
-          if (!read.ok) unknowns.push({ what: label, reason: read.reason });
-        }
-      }
-      workers.push({ ...worker, read });
-    }
+  const byKind = kinds.map(({ kind, discovery }, i) => ({ kind, discovery, found: discovered[i] }));
+  const listed = [
+    ...byKind.filter(({ discovery }) => discovery.files.names),
+    ...byKind.filter(({ discovery }) => !discovery.files.names),
+  ];
+  const files: Record<string, string[]> = { env: envFiles.map((f) => f.path) };
+  const read = [{ noun: "env file", count: envFiles.length }];
+  for (const { discovery, found } of listed) {
+    files[discovery.files.key] = [...(found?.files ?? [])];
+    read.push({ noun: discovery.files.noun, count: found?.files.length ?? 0 });
   }
-
-  for (const workflow of workflows)
-    if (workflow.refs.hidesUses)
-      unknowns.push({
-        what: `every secret ${workflow.path} uses`,
-        reason:
-          "it passes secrets on (secrets: inherit or toJSON(secrets)), so check can't tell which",
-      });
-  const uses = usesSecrets(workflows);
-  const origin = top ? await githubOrigin(deps, root) : null;
-  const github: ProjectScan["github"] = { repo: null, read: null, environments: [] };
-  let login: string | null = null;
-  if (origin && "repo" in origin) {
-    github.repo = origin.repo;
-    if (uses) {
-      login = await githubLogin(deps, root);
-      const read = await deps
-        .githubSecrets(origin.repo, login)
-        .catch((error: unknown) => ({ ok: false as const, reason: messageOf(error) }));
-      github.read = read;
-      if (!read.ok)
-        unknowns.push({
-          what: `the Actions secrets of ${origin.repo}`,
-          reason: `as ${describeLogin(login)}: ${read.reason}`,
-        });
-      for (const name of jobEnvironments(workflows)) {
-        const read = await deps
-          .githubSecrets(origin.repo, login, name)
-          .catch((error: unknown) => ({ ok: false as const, reason: messageOf(error) }));
-        github.environments.push({ name, read });
-        if (!read.ok)
-          unknowns.push({
-            what: `the secrets of the environment ${name} in ${origin.repo}`,
-            reason: `as ${describeLogin(login)}: ${read.reason}`,
-          });
-      }
-    }
-  } else if (uses) {
-    unknowns.push({
-      what: "the GitHub repository's Actions secrets",
-      reason: !top
-        ? "the folder isn't in a git repository"
-        : (origin?.reason ?? "the repository has no origin remote"),
-    });
-  }
-
   return {
-    scan: { envFiles, workflows, workers, github },
-    files: {
-      env: envFiles.map((f) => f.path),
-      wrangler: found.wrangler,
-      workflows: workflows.map((w) => w.path),
-    },
+    scan: { envFiles, discovered },
+    files,
+    read,
+    about: discovered.flatMap((d) => (d.about === null ? [] : [d.about])),
+    report: Object.fromEntries(discovered.flatMap((d) => Object.entries(d.report))),
+    used: new Map(byKind.map(({ kind, found }) => [kind, found?.used ?? false])),
     nested: found.nested,
-    login,
     unknowns,
   };
 }
 
-async function githubLogin(deps: Deps, folder: string): Promise<string | null> {
-  return (await deps.git(folder, ["config", "--get", "github.account"]))?.trim() || null;
+async function listing(deps: Deps, folder: string): Promise<FolderListing> {
+  try {
+    return { ok: true, entries: await deps.listFolder(folder) };
+  } catch (error) {
+    return { ok: false, missing: errorCode(error) === "ENOENT", reason: messageOf(error) };
+  }
 }
 
-function describeLogin(login: string | null): string {
-  return login === null ? "the active gh login" : `${login} (git config github.account)`;
-}
-
-function jobEnvironments(workflows: ProjectScan["workflows"]): string[] {
-  const names = new Map<string, string>();
-  for (const workflow of workflows)
-    for (const use of workflow.refs.uses)
-      if (
-        use.environment !== null &&
-        !use.environment.includes("${{") &&
-        use.secrets.some((name) => !name.startsWith("GITHUB_"))
-      )
-        if (!names.has(use.environment.toLowerCase()))
-          names.set(use.environment.toLowerCase(), use.environment);
-  return [...names.values()];
-}
-
-async function walk(deps: Deps, root: string, unknowns: Unknown[]) {
-  const found: { envFiles: string[]; wrangler: string[]; nested: string[] } = {
+async function walk(
+  deps: Deps,
+  root: string,
+  unknowns: Unknown[],
+  kinds: readonly {
+    kind: string;
+    discovery: { files: ProjectFiles };
+  }[],
+) {
+  const found: { envFiles: string[]; byKind: Map<string, string[]>; nested: string[] } = {
     envFiles: [],
-    wrangler: [],
+    byKind: new Map(),
     nested: [],
   };
+  const nouns = ["env file", ...kinds.map(({ discovery }) => discovery.files.noun)];
+  const skipped = new Set([
+    ...SKIPPED_FOLDERS,
+    ...kinds.flatMap(({ discovery }) => discovery.files.skip ?? []),
+  ]);
   const visit = async (folder: string) => {
     let listed: Awaited<ReturnType<Deps["listFolder"]>>;
     try {
       listed = await deps.listFolder(folder);
     } catch (error) {
       unknowns.push({
-        what: `the env files and wrangler configs in ${relative(root, folder) || "."}`,
+        what: `the ${list(nouns.map((noun) => `${noun}s`))} in ${relative(root, folder) || "."}`,
         reason: `it couldn't be read: ${messageOf(error)}`,
       });
       return;
@@ -182,15 +133,28 @@ async function walk(deps: Deps, root: string, unknowns: Unknown[]) {
     for (const entry of entries) {
       const path = join(folder, entry.name);
       if (entry.kind === "folder") {
-        if (!SKIPPED_FOLDERS.has(entry.name)) await visit(path);
+        if (!skipped.has(entry.name)) await visit(path);
       } else if (entry.kind === "file") {
         if (envFileKind(entry.name)) found.envFiles.push(relative(root, path));
-        else if (WRANGLER_FILES.includes(entry.name)) found.wrangler.push(relative(root, path));
+        else {
+          const owner = kinds.find(({ discovery }) => discovery.files.names?.includes(entry.name));
+          if (owner)
+            found.byKind.set(owner.kind, [
+              ...(found.byKind.get(owner.kind) ?? []),
+              relative(root, path),
+            ]);
+        }
       }
     }
   };
   await visit(root);
   return found;
+}
+
+function list(items: readonly string[]): string {
+  return items.length > 1
+    ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`
+    : (items[0] ?? "");
 }
 
 async function readSource(
@@ -219,44 +183,4 @@ async function trackedFiles(
   const out = await deps.git(folder, ["ls-files", "-z", "--", ...paths]);
   if (out === null) return null;
   return new Set(out.split("\0").filter(Boolean));
-}
-
-async function readWorkflows(deps: Deps, root: string, top: string | null, unknowns: Unknown[]) {
-  const dir = join(top ?? root, ".github", "workflows");
-  let entries: Awaited<ReturnType<Deps["listFolder"]>>;
-  try {
-    entries = await deps.listFolder(dir);
-  } catch (error) {
-    if (errorCode(error) !== "ENOENT")
-      unknowns.push({
-        what: "the secrets the workflows use",
-        reason: `${relative(root, dir)} couldn't be read: ${messageOf(error)}`,
-      });
-    return [];
-  }
-  const workflows: ProjectScan["workflows"] = [];
-  for (const entry of entries.toSorted((a, b) => a.name.localeCompare(b.name))) {
-    if (entry.kind !== "file" || !/\.ya?ml$/.test(entry.name)) continue;
-    const path = relative(root, join(dir, entry.name));
-    const text = await readSource(deps, root, path, unknowns);
-    if (text === null) continue;
-    const refs = workflowRefs(text);
-    if (refs) workflows.push({ path, refs });
-    else unknowns.push({ what: `the secrets ${path} uses`, reason: "it isn't valid YAML" });
-  }
-  return workflows;
-}
-
-const GITHUB_REMOTE =
-  /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|ssh:\/\/(?:[^@/:]+@)?[^/:]+(?::\d+)?\/|(?:[^@/:]+@)?[^/:]+:)([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/;
-
-async function githubOrigin(
-  deps: Deps,
-  folder: string,
-): Promise<{ repo: string } | { reason: string } | null> {
-  const url = (await deps.git(folder, ["remote", "get-url", "origin"]))?.trim();
-  if (!url) return null;
-  const match = GITHUB_REMOTE.exec(url);
-  if (!match?.[1] || !match[2]) return { reason: "the origin remote isn't on github.com" };
-  return { repo: `${match[1]}/${match[2]}` };
 }

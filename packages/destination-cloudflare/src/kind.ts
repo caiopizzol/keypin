@@ -1,5 +1,6 @@
 import type { DestinationKind } from "@keypin/core";
 import { WorkerSecretDestination } from "./cloudflare";
+import { wranglerDiscovery, type WranglerHost } from "./discovery";
 import { currentWranglerToken } from "./token";
 
 export type WorkerTarget = { to: "cloudflare-worker"; account: string; worker: string };
@@ -9,7 +10,7 @@ export interface WorkerPublisher {
   wranglerFile?: string | null;
 }
 
-export interface WorkerHost {
+export interface WorkerHost extends WranglerHost {
   wranglerLoginFile(): Promise<string | null>;
 }
 
@@ -58,8 +59,9 @@ export const cloudflareWorker: DestinationKind<WorkerTarget, WorkerPublisher, Wo
             ],
     };
   },
-  prerequisites: async ({ targets, files }, host) =>
-    (files.wrangler.length || targets.length) && !(await host.wranglerLoginFile())
+  discovery: wranglerDiscovery,
+  prerequisites: async ({ targets, used }, host) =>
+    (used || targets.length) && !(await host.wranglerLoginFile())
       ? [
           {
             name: "Cloudflare",

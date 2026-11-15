@@ -1,4 +1,5 @@
-import { type DestinationKind, type Prerequisite, usesSecrets } from "@keypin/core";
+import type { DestinationKind, Prerequisite } from "@keypin/core";
+import { workflowDiscovery, type WorkflowHost } from "./discovery";
 import { GitHubSecretDestination } from "./github";
 
 export type GitHubTarget = {
@@ -13,8 +14,7 @@ export interface GitHubPublisher {
   refreshLogins: boolean;
 }
 
-export interface GitHubHost {
-  git(folder: string, args: readonly string[]): Promise<string | null>;
+export interface GitHubHost extends WorkflowHost {
   ghLogin(login: string | null): Promise<"ok" | "not installed" | "not logged in">;
 }
 
@@ -105,8 +105,9 @@ export const githubActions: DestinationKind<GitHubTarget, GitHubPublisher, GitHu
   publisher: async (host, folder) => ({
     fields: { githubLogin: await configuredLogin(host, folder) },
   }),
-  prerequisites: async ({ folder, targets, scan }, host) =>
-    usesSecrets(scan.workflows) || targets.length ? ghPrerequisites(host, folder) : [],
+  discovery: workflowDiscovery,
+  prerequisites: async ({ folder, targets, used }, host) =>
+    used || targets.length ? ghPrerequisites(host, folder) : [],
   refuses: (secretName) =>
     /^GITHUB_/i.test(secretName)
       ? "GitHub reserves secret names that start with GITHUB_"

@@ -1,6 +1,6 @@
 import type { KeyRef, SignInReason } from "./contracts";
 import type { TableReader } from "./destination";
-import type { ProjectScan } from "./gaps";
+import type { KeysMap } from "./map";
 
 export type PrerequisiteStatus =
   | "not installed"
@@ -20,12 +20,7 @@ export interface Prerequisite {
 export interface LoginProject<T> {
   readonly folder: string;
   readonly targets: readonly T[];
-  readonly scan: ProjectScan;
-  readonly files: {
-    readonly env: readonly string[];
-    readonly wrangler: readonly string[];
-    readonly workflows: readonly string[];
-  };
+  readonly used: boolean;
 }
 
 export interface PublisherPart<P> {
@@ -37,6 +32,12 @@ export interface VaultUse {
   readonly items: number;
   readonly allItems: number;
   readonly failures: readonly SignInReason[];
+}
+
+export interface NewKeys {
+  readonly reference: string;
+  readonly pin: Readonly<Record<string, string>>;
+  readonly options: string;
 }
 
 export interface VaultKind<
@@ -59,6 +60,8 @@ export interface VaultKind<
   sameItem(a: R, b: R): boolean;
   sameField?(a: R, b: R): boolean;
   stored(value: Readonly<Record<string, unknown>>): R | null;
+  readonly newKeys?: NewKeys;
+  addByHand?(map: KeysMap): string | undefined;
   signInNotes?(host: H): readonly string[];
   itemNotes?(refs: readonly KeyRef[], host: H): readonly string[];
   prerequisites?(use: VaultUse, host: H): readonly Prerequisite[];

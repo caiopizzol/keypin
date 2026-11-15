@@ -64,15 +64,58 @@ export function problems(root: string, baseline: Record<string, number>): string
   return found;
 }
 
-export function baselineAt(root: string): Record<string, number> {
-  const parsed: unknown = JSON.parse(readFileSync(join(root, BASELINE), "utf8"));
+function parse(text: string): Record<string, number> {
+  const parsed: unknown = JSON.parse(text);
   const baseline: Record<string, number> = {};
   if (typeof parsed === "object" && parsed !== null)
     for (const [path, n] of Object.entries(parsed)) if (typeof n === "number") baseline[path] = n;
   return baseline;
 }
 
+export function baselineAt(root: string): Record<string, number> {
+  return parse(readFileSync(join(root, BASELINE), "utf8"));
+}
+
+export function raised(
+  before: Record<string, number> | null,
+  after: Record<string, number>,
+): string[] {
+  if (before === null) return [];
+  return Object.entries(after)
+    .filter(([path, n]) => n > (before[path] ?? 0))
+    .map(([path, n]) => `${path}: ${BASELINE} raises it to ${n}, from ${before[path] ?? 0}.`);
+}
+
+function git(...args: string[]): string | null {
+  const result = Bun.spawnSync(["git", ...args], { stderr: "ignore" });
+  return result.exitCode === 0 ? result.stdout.toString() : null;
+}
+
+function baselineAtBase(root: string): {
+  base: string | null;
+  before: Record<string, number> | null;
+} {
+  const target = `origin/${process.env.GITHUB_BASE_REF || "main"}`;
+  const base = git("-C", root, "merge-base", "HEAD", target)?.trim() || null;
+  const text = base === null ? null : git("-C", root, "show", `${base}:${BASELINE}`);
+  return { base, before: text === null ? null : parse(text) };
+}
+
 if (import.meta.main) {
+  const { base, before } = baselineAtBase(".");
+  if (base === null && process.env.GITHUB_BASE_REF) {
+    process.stderr.write(
+      `Can't find origin/${process.env.GITHUB_BASE_REF}; check out with fetch-depth: 0.\n`,
+    );
+    process.exitCode = 1;
+  }
+  const up = raised(before, baselineAt("."));
+  if (up.length > 0) {
+    process.stderr.write(
+      `The counts in ${BASELINE} only go down, so a change can't raise them.\n${up.join("\n")}\n${HOW}\n`,
+    );
+    process.exitCode = 1;
+  }
   const found = problems(".", baselineAt("."));
   if (found.length > 0) {
     process.stderr.write(

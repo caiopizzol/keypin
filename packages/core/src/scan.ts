@@ -82,6 +82,12 @@ export interface WorkflowRefs {
   hidesUses: boolean;
 }
 
+export function usesSecrets(workflows: readonly { refs: WorkflowRefs }[]): boolean {
+  return workflows.some(
+    (w) => w.refs.hidesUses || w.refs.secrets.some((name) => !name.startsWith("GITHUB_")),
+  );
+}
+
 const CONTEXT_REF =
   /(?<![\w.])(secrets|vars)\s*(?:\.\s*([A-Za-z_][A-Za-z0-9_]*)|\[\s*'([A-Za-z_][A-Za-z0-9_]*)'\s*\])/g;
 

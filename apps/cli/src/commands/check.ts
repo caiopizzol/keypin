@@ -12,8 +12,10 @@ import {
   type KeysMap,
   loadRegistry,
   parseMap,
+  type Prerequisite,
   type PublishTarget,
   secretKey,
+  sentence,
   SignInFailed,
   type SignInReason,
   vaultAccounts,
@@ -23,11 +25,9 @@ import { messageOf } from "../errors";
 import { type Output, output, tilde } from "../output";
 import { registryPath } from "../paths";
 import { locateMap, MAP_FILE } from "../project";
-import { githubLogin, publisherFor } from "../publisher";
-import { type ScanResult, scanProject, type Unknown, usesSecrets } from "../scan";
+import { publisherFor } from "../publisher";
+import { type ScanResult, scanProject, type Unknown } from "../scan";
 import { approval, type SignIn, signInFor } from "../sign-in";
-import { isAccountId, isSharedAddress } from "@keypin/vault-1password";
-import { CLIENT_ID, CLIENT_SECRET } from "@keypin/vault-infisical";
 import { distinctRefs, refKey } from "../vault";
 
 interface ItemResult {
@@ -59,11 +59,7 @@ interface KeyResult {
   destinations: DestinationResult[];
 }
 
-interface Prerequisite {
-  name: "GitHub" | "Cloudflare" | "1Password" | "Infisical";
-  status: "not installed" | "not logged in" | "not checked" | "sign-in failed";
-  fix: string;
-}
+type Login = Pick<Prerequisite, "name" | "status" | "fix">;
 
 interface Report {
   folder: string;
@@ -77,7 +73,7 @@ interface Report {
   local: Gaps["local"];
   add: string | null;
   unknown: Unknown[];
-  prerequisites: Prerequisite[];
+  prerequisites: Login[];
   notes: string[];
   problems: string[];
   ok: boolean;
@@ -109,8 +105,9 @@ interface Step {
   toml?: string;
   covers: string[];
   to?: string;
-  service?: Prerequisite["name"];
   signIn?: KeyRef["kind"];
+  provider?: string;
+  coversFailures?: boolean;
 }
 
 const ORDER = {
@@ -176,12 +173,20 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
     problems: [],
     ok: false,
   };
-  report.notes.push(...signInNotes(signIn));
+  for (const vault of deps.vaults) report.notes.push(...(vault.signInNotes?.({ signIn }) ?? []));
   const targets = new Map<string, PublishTarget>();
   const items = new Map<string, CheckedItem>();
   const kinds = new Map<string, KeyRef["kind"]>();
   const done = async () => {
-    const setup = await prerequisites(root, scanned, targets, items, kinds, signIn, deps);
+    const setup = await prerequisites(
+      root,
+      scanned,
+      [...targets.values()],
+      items,
+      kinds,
+      signIn,
+      deps,
+    );
     report.prerequisites = setup.map(({ name, status, fix }) => ({ name, status, fix }));
     finish(report);
     return { report, steps: plan(report, [...setup.map((p) => p.step), ...steps], fixes, empty) };
@@ -240,7 +245,8 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
   const use = (id: string, label: string) => users.set(id, [...(users.get(id) ?? []), label]);
 
   const refs = distinctRefs(entries.map(({ entry }) => entry.ref));
-  report.notes.push(...unprovenPins(signIn, refs));
+  for (const vault of deps.vaults)
+    report.notes.push(...(vault.itemNotes?.(refs, { signIn }) ?? []));
   report.notes.push(ITEM_NOTE);
   const lookup = `${count(refs.length, "item")} in ${vaultAccounts(refs)}, not the values`;
   await out.step(
@@ -264,18 +270,8 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
   const placeOf = (target: PublishTarget) => checkId(target, deps.destinations);
   for (const { entry } of entries)
     for (const target of entry.publish) targets.set(placeOf(target), target);
-  const wrangler = [...targets.values()].some((t) => t.to === "cloudflare-worker")
-    ? await deps.wranglerLoginFile()
-    : null;
-  const publisher = {
-    ...(await publisherFor([...targets.values()], deps, folder)),
-    refreshLogins: false,
-    wranglerFile: wrangler,
-  };
-  if (wrangler !== null)
-    report.notes.push(
-      `the wrangler login is an OAuth token stored in plain text in ${wrangler}; wrangler logout removes it`,
-    );
+  const { publisher, notes } = await publisherFor([...targets.values()], deps, folder, false);
+  report.notes.push(...notes);
   const destinations = new Map<string, DestinationResult>();
   const accounts = count(targets.size, "account");
   if (targets.size)
@@ -352,158 +348,50 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
   return done();
 }
 
-const INTEGRATION =
-  "the 1Password desktop app, with Settings → Developer → Integrate with other apps selected";
-
 async function prerequisites(
   root: string,
   scanned: ScanResult,
-  targets: Map<string, PublishTarget>,
-  everyItem: Map<string, CheckedItem>,
+  targets: readonly PublishTarget[],
+  items: Map<string, CheckedItem>,
   kinds: Map<string, KeyRef["kind"]>,
   signIn: SignIn | null,
   deps: Deps,
-): Promise<(Prerequisite & { step: Step })[]> {
-  const of = (kind: KeyRef["kind"]) =>
-    new Map([...everyItem].filter(([key]) => kinds.get(key) === kind));
-  const items = of("1password");
-  const infisical = signInFailures(of("infisical"));
-  const list: (Prerequisite & { step: Step })[] = [];
-  const add = (p: Prerequisite, title: string, body: string[]) =>
-    list.push({ ...p, step: { order: ORDER.setup, title, body, covers: [], service: p.name } });
-  const to = (kind: PublishTarget["to"]) => [...targets.values()].some((t) => t.to === kind);
-  if (usesSecrets(scanned.scan.workflows) || to("github-actions")) {
-    const login = await githubLogin(deps, root);
-    const status = await deps.ghLogin(login);
-    const command = "gh auth login --hostname github.com";
-    const signIn = `${command}${login ? `, signing in as ${login}` : ""}`;
-    const body = [`  ${command}`, ...(login ? [`Sign in as ${login}.`] : [])];
-    if (status === "not installed")
+): Promise<(Login & { step: Step })[]> {
+  const list: (Login & { step: Step })[] = [];
+  const add = (provider: string, found: readonly Prerequisite[]) => {
+    for (const { name, status, fix, title, body, coversFailures } of found)
+      list.push({
+        name,
+        status,
+        fix,
+        step: {
+          order: ORDER.setup,
+          title,
+          body: [...body],
+          covers: [],
+          provider,
+          coversFailures,
+        },
+      });
+  };
+  const project = { folder: root, scan: scanned.scan, files: scanned.files };
+  for (const kind of deps.destinations)
+    if (kind.prerequisites)
       add(
-        { name: "GitHub", status, fix: `install gh (https://cli.github.com), then run ${signIn}` },
-        "Install gh and sign in to GitHub",
-        ["Install gh from https://cli.github.com, then run:", ...body],
+        kind.kind,
+        await kind.prerequisites(
+          { ...project, targets: targets.filter((t) => t.to === kind.kind) },
+          deps,
+        ),
       );
-    else if (status === "not logged in")
-      add({ name: "GitHub", status, fix: `run ${signIn}` }, "Sign in to GitHub", body);
+  for (const vault of deps.vaults) {
+    const own = [...items].filter(([key]) => kinds.get(key) === vault.kind);
+    const failures = own.flatMap(([, item]) => (item.signIn ? [item.signIn] : []));
+    const use = { items: own.length, allItems: items.size, failures };
+    if (vault.prerequisites) add(vault.kind, vault.prerequisites(use, { signIn }));
   }
-  if (
-    (scanned.files.wrangler.length || to("cloudflare-worker")) &&
-    !(await deps.wranglerLoginFile())
-  )
-    add(
-      { name: "Cloudflare", status: "not logged in", fix: "run wrangler login" },
-      "Sign in to Cloudflare",
-      ["  wrangler login"],
-    );
-  if (infisical.length) {
-    const fix = infisicalFix(infisical);
-    add({ name: "Infisical", status: "sign-in failed", fix }, INFISICAL_SIGN_IN, [sentence(fix)]);
-  }
-  if (signIn === null || (everyItem.size && !items.size)) return list;
-  const failed = signInFailures(items);
-  if (signIn.mode === "service-account") {
-    const fixes = tokenFixes(failed, signIn);
-    if (fixes.length)
-      add(
-        { name: "1Password", status: "sign-in failed", fix: fixes.join("; ") },
-        TOKEN_SIGN_IN,
-        fixes.map(sentence),
-      );
-  } else if (!items.size)
-    add(
-      { name: "1Password", status: "not checked", fix: `keypin needs ${INTEGRATION}` },
-      "Set up 1Password",
-      [`keypin needs ${INTEGRATION}.`],
-    );
-  else if (failed.some((reason) => reason.kind === "unknown-account"))
-    add({ name: "1Password", status: "sign-in failed", fix: ACCOUNT_FIX }, SIGN_IN, [
-      sentence(ACCOUNT_FIX),
-    ]);
-  else if (failed.some((reason) => reason.kind === "no-desktop-app"))
-    add(
-      {
-        name: "1Password",
-        status: "sign-in failed",
-        fix: `${INSTALL_FIX}; ${SERVICE_ACCOUNT_FIX}`,
-      },
-      SIGN_IN,
-      [sentence(INSTALL_FIX), sentence(SERVICE_ACCOUNT_FIX)],
-    );
-  else if (failed.length)
-    add(
-      {
-        name: "1Password",
-        status: "sign-in failed",
-        fix: `check ${INTEGRATION}, and that it's unlocked`,
-      },
-      SIGN_IN,
-      [`Check ${INTEGRATION}, and that it's unlocked.`],
-    );
   return list;
 }
-
-const SIGN_IN = "Sign in to 1Password";
-const INFISICAL_SIGN_IN = "Sign in to Infisical";
-
-function signInFailures(items: Map<string, CheckedItem>): SignInReason[] {
-  return [...items.values()].flatMap((item) => (item.signIn ? [item.signIn] : []));
-}
-
-function infisicalFix(failed: readonly SignInReason[]): string {
-  if (failed.some((reason) => reason.kind === "no-credentials"))
-    return `set ${CLIENT_ID} and ${CLIENT_SECRET} to a machine identity's Universal Auth client ID and secret (docs/infisical.md)`;
-  if (failed.some((reason) => reason.kind === "wrong-account"))
-    return `use a machine identity from the organization ${MAP_FILE} pins under [infisical]`;
-  return `check ${CLIENT_ID}, ${CLIENT_SECRET} and the url under [infisical] in ${MAP_FILE}`;
-}
-const TOKEN_SIGN_IN = "Sign in to 1Password with the service account";
-
-function signInNotes(signIn: SignIn | null): string[] {
-  if (signIn?.mode === "desktop")
-    return signIn.tokenIgnored
-      ? [
-          "OP_SERVICE_ACCOUNT_TOKEN is set, but keypin signed in with the 1Password desktop app; set KEYPIN_1PASSWORD=service-account to use the service account",
-        ]
-      : [];
-  return [];
-}
-
-function unprovenPins(signIn: SignIn | null, refs: readonly KeyRef[]): string[] {
-  if (signIn?.mode !== "service-account") return [];
-  const limit = "the vaults granted to the service account are what limit it";
-  const accounts = refs.flatMap((ref) => (ref.kind === "1password" ? [ref.account] : []));
-  return [...new Set(accounts)].flatMap((account) => {
-    if (isAccountId(account))
-      return [
-        `${MAP_FILE} pins the account ID ${account}, which a service account token can't be checked against, so ${limit}`,
-      ];
-    if (isSharedAddress(account) && isSharedAddress(signIn.address))
-      return [
-        `individual 1Password accounts share the sign-in address ${signIn.address}, so keypin can't prove the service account belongs to the account ${MAP_FILE} pins; ${limit}`,
-      ];
-    return [];
-  });
-}
-
-function tokenFixes(failed: readonly SignInReason[], signIn: SignIn): string[] {
-  const address = signIn.mode === "service-account" ? signIn.address : "";
-  const fixes: string[] = [];
-  if (failed.some((reason) => reason.kind === "wrong-account"))
-    fixes.push(
-      `use a service account token for the account ${MAP_FILE} pins; OP_SERVICE_ACCOUNT_TOKEN signs in to ${address}`,
-    );
-  if (failed.some((reason) => reason.kind !== "wrong-account"))
-    fixes.push(
-      "check that OP_SERVICE_ACCOUNT_TOKEN holds a current service account token; a revoked or expired token can't sign in",
-    );
-  return fixes;
-}
-
-const INSTALL_FIX = "install the 1Password desktop app";
-const SERVICE_ACCOUNT_FIX =
-  "on a server or in CI, use a 1Password service account instead (docs/service-account.md)";
-const ACCOUNT_FIX = `set account under [1password] in ${MAP_FILE} to a sign-in address or account ID the 1Password app lists, under Settings → Accounts`;
 
 function loginLine(result: DestinationResult): string {
   const signedIn = result.publisher === null ? "" : `, signed in as ${result.publisher}`;
@@ -562,18 +450,19 @@ async function checkDestination(
 
 function plan(report: Report, found: Step[], fixes: Fix[], empty: string | null): Step[] {
   const steps: Step[] = [];
-  const onePassword = found.find((s) => s.title === SIGN_IN || s.title === TOKEN_SIGN_IN);
-  const infisical = found.find((s) => s.title === INFISICAL_SIGN_IN);
-  const github = found.find((step) => step.service === "GitHub");
+  const login = (provider: string | undefined) =>
+    provider === undefined
+      ? undefined
+      : found.find((s) => s.provider === provider && s.coversFailures);
   for (const step of found) {
-    const signIn = step.signIn === "infisical" ? infisical : onePassword;
-    if (github && step.order === ORDER.account && step.to === "github-actions")
-      github.covers.push(...step.covers);
-    else if (!signIn || !step.signIn) steps.push(step);
+    const account = step.order === ORDER.account ? login(step.to) : undefined;
+    const vault = login(step.signIn);
+    if (account) account.covers.push(...step.covers);
+    else if (!vault) steps.push(step);
     else {
-      signIn.covers.push(...step.covers);
+      vault.covers.push(...step.covers);
       for (const line of step.body.slice(0, 1))
-        if (!signIn.body.includes(line)) signIn.body.push(line);
+        if (!vault.body.includes(line)) vault.body.push(line);
     }
   }
   const of = <K extends Fix["kind"]>(kind: K) =>
@@ -701,13 +590,6 @@ function render(report: Report, steps: Step[], out: Output, home: string): strin
   for (const note of report.notes)
     if (note !== ITEM_NOTE && !shown.has(note)) lines.push(dim(`Note: ${note}`));
   return tilde(`${lines.join("\n")}\n`, home);
-}
-
-function sentence(text: string): string {
-  const first = /^(?!keypin\b|gh\b|wrangler\b)[a-z]+\b(?![./:])/.test(text)
-    ? `${text[0]?.toUpperCase()}${text.slice(1)}`
-    : text;
-  return /[.:]$/.test(first) ? first : `${first}.`;
 }
 
 function count(n: number, noun: string): string {

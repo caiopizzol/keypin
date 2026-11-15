@@ -481,7 +481,12 @@ function destination(
   };
   const kind = kinds.find((k) => k.kind === to);
   if (!kind) {
-    err(`field "to" must be one of: ${kinds.map((k) => k.kind).join(", ")}`);
+    err(
+      `field "to" must be one of: ${kinds
+        .map((k) => k.kind)
+        .toSorted()
+        .join(", ")}`,
+    );
     return undefined;
   }
   const target = kind.parse(tableReader(raw, ["to"], kind.kind, err));

@@ -9,9 +9,13 @@ export interface WorkerPublisher {
   wranglerFile?: string | null;
 }
 
+export interface WorkerHost {
+  wranglerLoginFile(): Promise<string | null>;
+}
+
 const ACCOUNT_ID = /^[0-9a-f]{32}$/;
 
-export const cloudflareWorker: DestinationKind<WorkerTarget, WorkerPublisher> = {
+export const cloudflareWorker: DestinationKind<WorkerTarget, WorkerPublisher, WorkerHost> = {
   kind: "cloudflare-worker",
   label: "Cloudflare",
   parse(read) {
@@ -42,6 +46,31 @@ export const cloudflareWorker: DestinationKind<WorkerTarget, WorkerPublisher> = 
   where: ({ worker }) => `the Worker ${worker}`,
   login: (_target, { wranglerFile }) =>
     `the wrangler login${wranglerFile ? ` in ${wranglerFile}` : ""}`,
+  async publisher(host) {
+    const file = await host.wranglerLoginFile();
+    return {
+      fields: { wranglerFile: file },
+      notes:
+        file === null
+          ? []
+          : [
+              `the wrangler login is an OAuth token stored in plain text in ${file}; wrangler logout removes it`,
+            ],
+    };
+  },
+  prerequisites: async ({ targets, files }, host) =>
+    (files.wrangler.length || targets.length) && !(await host.wranglerLoginFile())
+      ? [
+          {
+            name: "Cloudflare",
+            status: "not logged in",
+            fix: "run wrangler login",
+            title: "Sign in to Cloudflare",
+            body: ["  wrangler login"],
+            coversFailures: false,
+          },
+        ]
+      : [],
   connect: ({ account, worker }, publisher) =>
     new WorkerSecretDestination({
       account,

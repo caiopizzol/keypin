@@ -6,3 +6,4 @@ export {
   infisicalBackend,
   ROTATED,
 } from "./backend";
+export { infisicalVault } from "./kind";

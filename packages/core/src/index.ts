@@ -104,6 +104,7 @@ export {
   envNames,
   envValues,
   SKIPPED_FOLDERS,
+  usesSecrets,
   WRANGLER_FILES,
   workflowRefs,
   wranglerWorkers,
@@ -112,5 +113,14 @@ export {
   type WorkerDeclaration,
   type WorkflowRefs,
 } from "./scan";
+export {
+  type LoginProject,
+  type Prerequisite,
+  type PrerequisiteStatus,
+  type PublisherPart,
+  sentence,
+  type VaultKind,
+  type VaultUse,
+} from "./login";
 export { findGaps, type Fix, type Gaps, type LocalFile, type Need, type ProjectScan } from "./gaps";
 export { SIGN_IN_VARIABLES, withoutSignIn } from "./env";

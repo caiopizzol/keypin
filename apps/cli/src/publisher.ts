@@ -5,18 +5,15 @@ export async function publisherFor(
   targets: readonly PublishTarget[],
   deps: Deps,
   folder = deps.cwd,
-): Promise<Publisher> {
-  const github = targets.some((target) => target.to === "github-actions");
-  return {
-    githubLogin: github ? await githubLogin(deps, folder) : null,
-    refreshLogins: true,
-  };
-}
-
-export async function githubLogin(deps: Deps, folder: string): Promise<string | null> {
-  return (await deps.git(folder, ["config", "--get", "github.account"]))?.trim() || null;
-}
-
-export function describeLogin(login: string | null): string {
-  return login === null ? "the active gh login" : `${login} (git config github.account)`;
+  refreshLogins = true,
+): Promise<{ publisher: Publisher; notes: string[] }> {
+  let publisher: Publisher = { githubLogin: null, refreshLogins };
+  const notes: string[] = [];
+  for (const kind of deps.destinations) {
+    if (!kind.publisher || !targets.some((target) => target.to === kind.kind)) continue;
+    const part = await kind.publisher(deps, folder);
+    publisher = { ...publisher, ...part.fields, refreshLogins };
+    notes.push(...(part.notes ?? []));
+  }
+  return { publisher, notes };
 }

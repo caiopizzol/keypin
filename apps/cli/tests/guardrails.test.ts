@@ -50,7 +50,7 @@ const cases: Record<string, { code: string; flags: string[] }> = {
   },
   "apps/cli/src/commands/check.ts": {
     code: 'export { CLIENT_ID } from "@keypin/vault-infisical";',
-    flags: [],
+    flags: [IMPORTS],
   },
   "packages/core/src/io.ts": {
     code: 'export { readFile } from "node:fs/promises";\nexport { spawn } from "child_process";\nexport { request } from "node:https";',

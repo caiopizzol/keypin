@@ -9,3 +9,4 @@ export {
   type TokenClient,
 } from "./service-account";
 export type { Connect, CreateParams, Field, FullItem, SdkClient } from "./sdk";
+export { type OnePasswordHost, onePasswordVault, type SignIn } from "./kind";

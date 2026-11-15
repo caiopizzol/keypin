@@ -1,4 +1,4 @@
-import type { DestinationKind } from "@keypin/core";
+import { type DestinationKind, type Prerequisite, usesSecrets } from "@keypin/core";
 import { GitHubSecretDestination } from "./github";
 
 export type GitHubTarget = {
@@ -11,6 +11,38 @@ export type GitHubTarget = {
 export interface GitHubPublisher {
   githubLogin: string | null;
   refreshLogins: boolean;
+}
+
+export interface GitHubHost {
+  git(folder: string, args: readonly string[]): Promise<string | null>;
+  ghLogin(login: string | null): Promise<"ok" | "not installed" | "not logged in">;
+}
+
+async function configuredLogin(host: GitHubHost, folder: string): Promise<string | null> {
+  return (await host.git(folder, ["config", "--get", "github.account"]))?.trim() || null;
+}
+
+const SIGN_IN = "gh auth login --hostname github.com";
+
+async function ghPrerequisites(host: GitHubHost, folder: string): Promise<Prerequisite[]> {
+  const login = await configuredLogin(host, folder);
+  const status = await host.ghLogin(login);
+  const signIn = `${SIGN_IN}${login ? `, signing in as ${login}` : ""}`;
+  const body = [`  ${SIGN_IN}`, ...(login ? [`Sign in as ${login}.`] : [])];
+  const step = { name: "GitHub", coversFailures: true };
+  if (status === "not installed")
+    return [
+      {
+        ...step,
+        status,
+        fix: `install gh (https://cli.github.com), then run ${signIn}`,
+        title: "Install gh and sign in to GitHub",
+        body: ["Install gh from https://cli.github.com, then run:", ...body],
+      },
+    ];
+  if (status === "not logged in")
+    return [{ ...step, status, fix: `run ${signIn}`, title: "Sign in to GitHub", body }];
+  return [];
 }
 
 const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
@@ -28,7 +60,7 @@ function describe({ repo, environment }: GitHubTarget): string {
   return environment === undefined ? repo : `${repo} environment ${environment}`;
 }
 
-export const githubActions: DestinationKind<GitHubTarget, GitHubPublisher> = {
+export const githubActions: DestinationKind<GitHubTarget, GitHubPublisher, GitHubHost> = {
   kind: "github-actions",
   label: "GitHub",
   parse(read) {
@@ -70,6 +102,11 @@ export const githubActions: DestinationKind<GitHubTarget, GitHubPublisher> = {
     `${repo}${environment === undefined ? "" : ` (environment ${environment})`}`,
   login: (_target, { githubLogin }) =>
     githubLogin === null ? "the active gh login" : `${githubLogin} (git config github.account)`,
+  publisher: async (host, folder) => ({
+    fields: { githubLogin: await configuredLogin(host, folder) },
+  }),
+  prerequisites: async ({ folder, targets, scan }, host) =>
+    usesSecrets(scan.workflows) || targets.length ? ghPrerequisites(host, folder) : [],
   refuses: (secretName) =>
     /^GITHUB_/i.test(secretName)
       ? "GitHub reserves secret names that start with GITHUB_"

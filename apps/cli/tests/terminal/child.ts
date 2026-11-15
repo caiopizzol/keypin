@@ -9,6 +9,7 @@ import {
   type SdkClient,
   signInAddress,
 } from "@keypin/vault-1password";
+import { neonFetch, type NeonWorld } from "@keypin/issuer-neon/testing";
 import { resendFetch } from "@keypin/issuer-resend/testing";
 import { credentialsFrom, infisicalBackend } from "@keypin/vault-infisical";
 import { fileStore, infisicalFetch } from "@keypin/vault-infisical/testing";
@@ -19,6 +20,8 @@ import { routedVault } from "../../src/vault";
 import {
   type FakeItem,
   ISSUED_PREFIX,
+  NEON_HOST,
+  NEON_PREFIX,
   SANDBOX_MARKER,
   type Scenario,
   scenarios,
@@ -52,6 +55,7 @@ if (
 const EFFECTS = join(sandbox, "effects.txt");
 const VAULT = join(sandbox, "onepassword.json");
 const RESEND = join(sandbox, "resend.json");
+const NEON = join(sandbox, "neon.json");
 
 function effect(line: string): void {
   appendFileSync(EFFECTS, `${line}\n`);
@@ -217,6 +221,40 @@ const resend = resendFetch({
   effect,
 });
 
+const neon = neonFetch({
+  projectId: "quiet-lake-12345678",
+  branchId: "br-main-a1b2c3d4",
+  database: "appdb",
+  host: NEON_HOST.replace("-pooler", ""),
+  passwordPrefix: NEON_PREFIX,
+  world: {
+    load() {
+      if (existsSync(NEON)) {
+        const parsed: unknown = JSON.parse(readFileSync(NEON, "utf8"));
+        if (!isNeonWorld(parsed)) throw new Error(`${NEON} isn't the fake Neon's roles`);
+        return parsed;
+      }
+      const roles = Object.entries(run.neon?.roles ?? {});
+      return {
+        roles: Object.fromEntries(roles.map(([name, password]) => [name, { password, resets: 0 }])),
+        operations: {},
+        made: 0,
+      };
+    },
+    save: (world) => writeFileSync(NEON, JSON.stringify(world)),
+  },
+  effect,
+});
+
+function isNeonWorld(value: unknown): value is NeonWorld {
+  return (
+    isRecord(value) &&
+    isRecord(value.roles) &&
+    isRecord(value.operations) &&
+    typeof value.made === "number"
+  );
+}
+
 const real = realDeps();
 
 process.exitCode = await cli(process.argv.slice(2), {
@@ -235,7 +273,7 @@ process.exitCode = await cli(process.argv.slice(2), {
           reason: "gh has no token for an active login; run: gh auth login --hostname github.com",
         },
   workerSecrets: async () => ({ ok: false, reason: "this scenario has no Cloudflare account" }),
-  issuer: (spec, admin) => issuer(spec, admin, resend),
+  issuer: (spec, admin) => issuer(spec, admin, spec.kind === "neon" ? neon : resend),
   destination: (target) => {
     const place = placeId(target, destinations);
     const scripted = run.places[place] ?? {};

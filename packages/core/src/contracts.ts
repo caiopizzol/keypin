@@ -121,6 +121,8 @@ export interface IssuerCheck {
   facts: string;
   reason?: string;
   fix?: string;
+  currentId?: string;
+  notes?: { create?: string; revoke?: string };
 }
 
 export interface IssuedKey {
@@ -131,7 +133,7 @@ export interface IssuedKey {
 export interface Issuer {
   describe(): string;
   dashboard(): string;
-  checkAccount(currentId: string | null): Promise<IssuerCheck>;
+  checkAccount(currentId: string | null, current: Secret): Promise<IssuerCheck>;
   create(name: string): Promise<IssuedKey>;
   revoke(id: string): Promise<"revoked" | "already gone">;
 }

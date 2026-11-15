@@ -1,0 +1,18 @@
+{
+  "name": "@keypin/issuer-neon",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@keypin/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6"
+  }
+}

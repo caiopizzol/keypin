@@ -347,6 +347,34 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "Neon: resets the idle role, publishes its URL, then resets the old role after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "neon",
+        args: ["rotate", "DATABASE_URL"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "    resets the password of role app_b, which the vault's URL doesn't use",
+      );
+      expect(result.screen).toContain(
+        "  - Neon                      revoke the old key app_a@2026-11-15T12:00:00Z, after a second y\n    resets the password of role app_a, which drops its open connections",
+      );
+      expect(result.screen).toMatch(/^✓ Neon {2}revoked app_a@2026-11-15T12:00:00Z {2}\d+\.\ds$/m);
+      expect(result.effects).toEqual([
+        "neon reset app_b",
+        "1password update my.1password.com/Private/app database url (135 chars)",
+        "destination write github-actions:acme/billing DATABASE_URL (135 chars)",
+        "destination write cloudflare-worker:billing DATABASE_URL (135 chars)",
+        "neon reset app_a",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "a key read from the password field saves the new key to that field",
     async () => {
       const result = await drive({

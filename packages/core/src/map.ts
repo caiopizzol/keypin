@@ -504,6 +504,7 @@ function tableReader(
   return {
     required: (field) => requiredString(table, field, fail),
     optional: (field) => optionalString(table, field, fail),
+    list: (field) => stringList(table, field, fail),
     filledIn: (value, field, what) => filledIn(value, field, what, fail),
     only: (fields, outdated = {}) =>
       unknownFields(table, [...fixed, ...fields], (field) =>
@@ -540,6 +541,22 @@ function requiredString(
   else if (typeof value !== "string" || !value.trim())
     fail(`field "${field}" must be a non-empty string`);
   else return value;
+  return undefined;
+}
+
+function stringList(
+  table: Table,
+  field: string,
+  fail: (message: string) => void,
+): string[] | undefined {
+  const value: unknown = table[field];
+  if (value === undefined) fail(`missing field "${field}"`);
+  else if (!Array.isArray(value)) fail(`field "${field}" must be a list`);
+  else {
+    const names = value.filter((each): each is string => typeof each === "string" && !!each.trim());
+    if (names.length === value.length) return names;
+    fail(`field "${field}" must list non-empty strings`);
+  }
   return undefined;
 }
 

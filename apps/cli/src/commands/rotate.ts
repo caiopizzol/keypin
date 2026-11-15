@@ -8,6 +8,7 @@ import {
   type Issued,
   issuedFor,
   type Issuer,
+  type IssuerCheck,
   type IssuerSpec,
   type ItemIds,
   type KeyEntry,
@@ -154,7 +155,7 @@ async function rotateLocked(job: Job): Promise<number> {
   const issuer = deps.issuer(spec, read.admin);
   if (next.action === "wait") {
     const held = next.issued;
-    const listed = await issuerLists(issuer, held.id, out);
+    const listed = await issuerLists(issuer, held.id, read.secret, out);
     if (listed === null) return 1;
     if (listed) {
       say(
@@ -185,9 +186,9 @@ async function rotateLocked(job: Job): Promise<number> {
   }
 
   const inVault = next.action === "resume" ? next.issued.id : next.current;
-  const issuerOk = await checkIssuer(issuer, inVault, out);
+  const check = await checkIssuer(issuer, inVault, read.secret, out);
   const checked = await checkAccounts(key, entry, deps, out, job.label);
-  if (!issuerOk || !checked) {
+  if (!check || !checked) {
     say("\nStopped: an account check failed. Nothing was created and nothing was written.");
     return 1;
   }
@@ -196,19 +197,21 @@ async function rotateLocked(job: Job): Promise<number> {
     return resume(job, ready, next.issued, read.secret, unpublished, state);
 
   if (next.abandoned) say(`\n${out.dim(abandonedNote(next.abandoned, issuer, spec, entry.ref))}`);
+  const current = next.current ?? check.currentId ?? null;
   const steps = planNewValue(input, read.ids);
   say("\nPlan");
   showPlan(out, [
-    row("+", issuer.describe(), "create a new key"),
+    row("+", issuer.describe(), "create a new key", check.notes?.create),
     row("~", vaultName(entry.ref), `save it to ${formatReference(entry.ref)}, rotated today`),
     ...publishRows(steps, job.label),
-    row(
-      "-",
-      issuer.describe(),
-      next.current === null
-        ? "the old key stays: keypin doesn't know its ID"
-        : `revoke the old key ${next.current}, after a second y`,
-    ),
+    current === null
+      ? row("-", issuer.describe(), "the old key stays: keypin doesn't know its ID")
+      : row(
+          "-",
+          issuer.describe(),
+          `revoke the old key ${current}, after a second y`,
+          check.notes?.revoke,
+        ),
   ]);
   showRemoved(out, removed);
   say("");
@@ -236,7 +239,7 @@ async function rotateLocked(job: Job): Promise<number> {
     id: created.id,
     generation: await generationOf(created.secret),
     at: deps.now().toISOString(),
-    old: { id: next.current, generation, revoked: false },
+    old: { id: current, generation, revoked: false },
   };
   const mayHold = entry.ref.kind === "infisical";
   try {
@@ -279,9 +282,14 @@ function heldSteps(job: Job, issuer: Issuer, id: string): string {
   return `Once someone approves it, run this again to publish the new key and revoke the old one:\n  ${again}\nIf the change is rejected or cancelled, delete key ${id} at ${issuer.dashboard()}, then run this again.`;
 }
 
-async function issuerLists(issuer: Issuer, id: string, out: Output): Promise<boolean | null> {
+async function issuerLists(
+  issuer: Issuer,
+  id: string,
+  current: Secret,
+  out: Output,
+): Promise<boolean | null> {
   try {
-    return (await issuer.checkAccount(id)).ok;
+    return (await issuer.checkAccount(id, current)).ok;
   } catch (error) {
     out.line(
       `Stopped: couldn't check key ${id} at ${issuer.describe()}: ${messageOf(error)}. Nothing was created.`,
@@ -418,8 +426,8 @@ function abandonedNote(old: Issued, issuer: Issuer, spec: IssuerSpec, ref: KeyRe
 
 const vaultName = (ref: KeyRef) => (ref.kind === "1password" ? "1Password" : "Infisical");
 
-function row(sign: PlanRow["sign"], place: string, why: string): PlanRow {
-  return { sign, place, why, approval: false, detail: null };
+function row(sign: PlanRow["sign"], place: string, why: string, detail?: string): PlanRow {
+  return { sign, place, why, approval: false, detail: detail ?? null };
 }
 
 type Read =
@@ -450,22 +458,27 @@ function readKeys({ entry, spec, deps, out }: Job): Promise<Read> {
   );
 }
 
-async function checkIssuer(issuer: Issuer, inVault: string | null, out: Output): Promise<boolean> {
+async function checkIssuer(
+  issuer: Issuer,
+  inVault: string | null,
+  current: Secret,
+  out: Output,
+): Promise<IssuerCheck | null> {
   const where = issuer.describe();
   try {
     const check = await out.step(
       `${where}  checking the admin key`,
-      () => issuer.checkAccount(inVault),
+      () => issuer.checkAccount(inVault, current),
       (result) => ({ ok: result.ok, text: `${where}  ${out.dim(result.facts)}` }),
     );
     if (!check.ok) {
       out.line(`    ${check.reason ?? "the check failed"}`);
       if (check.fix) out.line(`    fix: ${check.fix}`);
     }
-    return check.ok;
+    return check.ok ? check : null;
   } catch (error) {
     out.line(`    ${messageOf(error)}`);
-    return false;
+    return null;
   }
 }
 

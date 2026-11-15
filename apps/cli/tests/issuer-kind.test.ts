@@ -85,7 +85,7 @@ describe("an issuer kind defined outside keypin", () => {
   test("an unknown kind lists the kinds keypin has", async () => {
     const fake = fakeDeps({ disk: memoryFiles({ "/work/billing/keypin.toml": MAP }) });
     await cli(["rotate", "FORGE_TOKEN"], fake.deps);
-    expect(fake.stderr.text).toContain(`issuer: field "kind" must be one of: resend`);
+    expect(fake.stderr.text).toContain(`issuer: field "kind" must be one of: resend, neon`);
   });
 });
 

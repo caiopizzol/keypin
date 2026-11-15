@@ -112,15 +112,66 @@ describe("which role keypin resets", () => {
     expect(created.id.startsWith("app_b@")).toBe(true);
   });
 
-  test("never resets the role the vault's URL uses, even when keypin's state names the other", async () => {
-    const { issuer, effects } = neon();
+  test("keypin's key stays listed while the vault holds the other role's URL, but neither role is reset", async () => {
+    const { issuer, effects, requests } = neon();
     const each = issuer();
     const check = await each.checkAccount("app_b@2026-11-15T12:00:00Z", urlFor("app_a", LIVE_A));
-    expect(check.ok).toBe(true);
+    expect(check).toMatchObject({ ok: true });
+    expect(check.notes).toBeUndefined();
     const error: unknown = await each.create().catch((e: unknown) => e);
     assert(error instanceof Error);
     expect(error.message).toContain("won't reset Neon role app_a: the URL in the vault uses it");
     expect(effects).toEqual([]);
+    expect(requests.filter((r) => r.startsWith("POST"))).toEqual([]);
+    expectNoSecret(error);
+  });
+
+  test("a role another rotation reset after checkAccount stops create before its reset", async () => {
+    const { issuer, effects, world } = neon();
+    const each = issuer();
+    expect((await each.checkAccount(null, urlFor("app_a", LIVE_A))).ok).toBe(true);
+    const other = issuer();
+    await other.checkAccount(null, urlFor("app_a", LIVE_A));
+    const theirs = await other.create();
+    const error: unknown = await each.create().catch((e: unknown) => e);
+    assert(error instanceof Error);
+    expect(error.message).toBe(
+      "Neon role app_b's password changed at 2026-11-15T12:00:01Z, after keypin checked it, so another rotation may be running. Run rotate again",
+    );
+    expect(effects).toEqual(["neon reset app_b"]);
+    expect(world.load().roles.app_b?.password).toBe(theirs.secret.reveal().split(/[:@]/)[2]);
+    expectNoSecret(error);
+  });
+
+  test("a reset that another rotation overtakes during create returns no password", async () => {
+    const { fake, world } = neon();
+    const served = neonFetch(fake);
+    const fetch: Fetch = async (url, init) => {
+      const response = await served(url, init);
+      if (init.method === "POST") {
+        const changed = world.load();
+        const roleB = changed.roles.app_b;
+        assert(roleB);
+        roleB.resets++;
+        world.save(changed);
+      }
+      return response;
+    };
+    const each = new NeonIssuer({
+      admin: async () => new Secret(ADMIN),
+      projectId: "proj-1",
+      branchId: "br-main",
+      database: "appdb",
+      roles: ["app_a", "app_b"],
+      fetch,
+      sleep: async () => undefined,
+    });
+    await each.checkAccount(null, urlFor("app_a", LIVE_A));
+    const error: unknown = await each.create().catch((e: unknown) => e);
+    assert(error instanceof Error);
+    expect(error.message).toBe(
+      "Neon role app_b's password changed again at 2026-11-15T12:00:02Z, during keypin's reset, so another rotation may be running. Run rotate again",
+    );
     expectNoSecret(error);
   });
 
@@ -141,7 +192,7 @@ describe("which role keypin resets", () => {
   });
 
   test("a pooled URL stays pooled, and keeps the vault's query", async () => {
-    const { issuer, requests } = neon();
+    const { issuer } = neon();
     const each = issuer();
     const pooled = new Secret(
       `postgresql://app_a:${LIVE_A}@ep-quiet-1-pooler.us-east-2.aws.neon.tech/appdb?sslmode=verify-full`,
@@ -151,9 +202,19 @@ describe("which role keypin resets", () => {
     expect(created.secret.reveal()).toBe(
       `postgresql://app_b:${PREFIX}1@ep-quiet-1-pooler.us-east-2.aws.neon.tech/appdb?sslmode=verify-full`,
     );
-    expect(requests).toContain(
-      "GET /projects/proj-1/connection_uri?branch_id=br-main&database_name=appdb&role_name=app_b&pooled=true",
-    );
+  });
+
+  test("a URL for a read replica keeps that replica's host, pooled or not", async () => {
+    const replica = "ep-replica-2.us-east-2.aws.neon.tech";
+    for (const host of [replica, replica.replace(".", "-pooler.")]) {
+      const { issuer } = neon({ endpoints: ["ep-quiet-1", "ep-replica-2"] });
+      const each = issuer();
+      expect((await each.checkAccount(null, urlFor("app_a", LIVE_A, host))).ok).toBe(true);
+      const created = await each.create();
+      expect(created.secret.reveal()).toBe(
+        `postgresql://app_b:${PREFIX}1@${host}/appdb?sslmode=require`,
+      );
+    }
   });
 });
 
@@ -244,15 +305,55 @@ describe("checkAccount", () => {
     expectNoSecret(wrongKey, wrongProject);
   });
 
-  test("a vault value that isn't a URL of either role still rotates, but offers no revoke", async () => {
-    const { issuer, effects } = neon();
-    const each = issuer();
-    const check = await each.checkAccount(null, new Secret("not-a-url-sentinel"));
-    expect(check).toMatchObject({ ok: true, facts: "roles app_a and app_b, database appdb" });
-    expect(check.currentId).toBeUndefined();
-    await each.create();
-    expect(effects).toEqual(["neon reset app_a"]);
-  });
+  const refusals: [string, string | null, Secret, string][] = [
+    [
+      "a vault value that isn't a URL",
+      null,
+      new Secret("not-a-url-sentinel"),
+      "the vault's value isn't a postgresql:// URL",
+    ],
+    [
+      "a vault URL for a role keypin doesn't manage",
+      null,
+      urlFor("app_owner", LIVE_A),
+      "the vault's URL uses role app_owner, not app_a or app_b",
+    ],
+    [
+      "a vault URL for an unmanaged role, with an ID from last time",
+      "app_a@2026-11-15T12:00:00Z",
+      urlFor("app_owner", LIVE_A),
+      "the vault's URL uses role app_owner, not app_a or app_b",
+    ],
+    [
+      "a malformed vault URL, with an ID from last time",
+      "app_b@2026-11-15T12:00:00Z",
+      new Secret("postgresql://%zz@"),
+      "the vault's value isn't a postgresql:// URL",
+    ],
+    [
+      "a vault URL for another database",
+      null,
+      new Secret(`postgresql://app_a:${LIVE_A}@${HOST}/otherdb`),
+      "the vault's URL connects to database otherdb, not appdb",
+    ],
+    [
+      "a vault URL for a compute of another branch",
+      null,
+      urlFor("app_a", LIVE_A, "ep-elsewhere-9.us-east-2.aws.neon.tech"),
+      "the vault's URL connects to ep-elsewhere-9, which isn't a compute of Neon branch br-main",
+    ],
+  ];
+  for (const [what, currentId, vault, reason] of refusals)
+    test(`${what} fails the check, and nothing is reset`, async () => {
+      const { issuer, effects, requests } = neon();
+      const each = issuer();
+      const check = await each.checkAccount(currentId, vault);
+      expect(check).toMatchObject({ ok: false, reason });
+      await expect(each.create()).rejects.toThrow("checkAccount hasn't passed");
+      expect(effects).toEqual([]);
+      expect(requests.filter((r) => r.startsWith("POST"))).toEqual([]);
+      expectNoSecret(check);
+    });
 });
 
 describe("keypin.toml", () => {

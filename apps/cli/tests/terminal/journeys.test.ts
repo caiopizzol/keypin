@@ -356,10 +356,10 @@ describe("keypin rotate in a real terminal", () => {
       });
       expect(result.exit).toBe(0);
       expect(result.screen).toContain(
-        "    resets the password of role app_b, which the vault's URL doesn't use",
+        "    resets the password of role app_b, which the vault's URL doesn't use; every open connection drops",
       );
       expect(result.screen).toContain(
-        "  - Neon                      revoke the old key app_a@2026-11-15T12:00:00Z, after a second y\n    resets the password of role app_a, which drops its open connections",
+        "  - Neon                      revoke the old key app_a@2026-11-15T12:00:00Z, after a second y\n    resets the password of role app_a; every open connection drops",
       );
       expect(result.screen).toMatch(/^✓ Neon {2}revoked app_a@2026-11-15T12:00:00Z {2}\d+\.\ds$/m);
       expect(result.effects).toEqual([

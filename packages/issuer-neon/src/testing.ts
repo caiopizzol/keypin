@@ -17,6 +17,7 @@ export interface FakeNeon {
   branchId: string;
   database: string;
   host: string;
+  endpoints?: string[];
   passwordPrefix: string;
   pollsToFinish?: number;
   failReset?: "refuse" | "operation";
@@ -32,7 +33,7 @@ export function neonFetch(fake: FakeNeon): Fetch {
   let locked = fake.locked ?? 0;
   return async (url, init) => {
     const world = fake.world.load();
-    const { pathname, searchParams } = new URL(url);
+    const { pathname } = new URL(url);
     const reply = (status: number, body: object) => new Response(JSON.stringify(body), { status });
     const missing = () => reply(404, { code: "NOT_FOUND", message: "not found" });
     if (fake.admin !== undefined && init.headers.Authorization !== `Bearer ${fake.admin}`)
@@ -65,16 +66,6 @@ export function neonFetch(fake: FakeNeon): Fetch {
             : "running";
       return reply(200, { operation: { id, action: "apply_config", status } });
     }
-    if (init.method === "GET" && rest === "/connection_uri") {
-      const role = searchParams.get("role_name") ?? "";
-      if (searchParams.get("branch_id") !== fake.branchId || !world.roles[role]) return missing();
-      if (searchParams.get("database_name") !== fake.database) return missing();
-      const host =
-        searchParams.get("pooled") === "true" ? fake.host.replace(".", "-pooler.") : fake.host;
-      return reply(200, {
-        uri: `postgresql://${role}:${world.roles[role].password}@${host}/${fake.database}?sslmode=require&channel_binding=require`,
-      });
-    }
 
     const branch = `/branches/${fake.branchId}`;
     if (!rest.startsWith(branch)) return missing();
@@ -83,6 +74,10 @@ export function neonFetch(fake: FakeNeon): Fetch {
       return reply(200, {
         roles: Object.entries(world.roles).map(([name, role]) => described(name, role)),
       });
+    if (init.method === "GET" && inBranch === "/endpoints") {
+      const ids = fake.endpoints ?? [fake.host.split(".")[0] ?? ""];
+      return reply(200, { endpoints: ids.map((id) => ({ id, branch_id: fake.branchId })) });
+    }
     if (init.method === "GET" && inBranch === `/databases/${fake.database}`)
       return reply(200, { database: { name: fake.database } });
     const match = /^\/roles\/([^/]+)(\/reset_password)?$/.exec(inBranch);

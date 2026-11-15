@@ -47,10 +47,9 @@ export class NeonIssuer implements Issuer {
   readonly #sleep: (ms: number) => Promise<void>;
   #key: Promise<Secret> | undefined;
   #passed = false;
-  #idle = "";
-  #vaultUser: string | null = null;
-  #pooled = false;
-  #query = "";
+  #idle: { role: string; at: string } | null = null;
+  #vault: URL | null = null;
+  #vaultUser = "";
 
   constructor(options: NeonIssuerOptions) {
     this.#admin = options.admin;
@@ -72,6 +71,8 @@ export class NeonIssuer implements Issuer {
 
   async checkAccount(currentId: string | null, current: Secret): Promise<IssuerCheck> {
     this.#passed = false;
+    this.#idle = null;
+    this.#vault = null;
     const project = await this.#request("GET", this.#inProject(""));
     if (project.status !== 200) return this.#refused(project);
     const listed = await this.#request("GET", this.#onBranch("/roles"));
@@ -114,16 +115,44 @@ export class NeonIssuer implements Issuer {
       };
     }
     const facts = `roles ${a} and ${b}, database ${this.#database}`;
-    const user = userOf(current);
+    const vault = parseUrl(current.reveal());
+    const user = userOf(vault);
+    const fix = `put the URL your apps use, for role ${a} or ${b}, in the vault, then run this again`;
+    if (!vault || user === null || !this.#roles.includes(user))
+      return {
+        ok: false,
+        facts,
+        reason: vault
+          ? `the vault's URL uses ${user === null ? "no role" : `role ${user}`}, not ${a} or ${b}`
+          : "the vault's value isn't a postgresql:// URL",
+        fix,
+      };
+    if (databaseOf(vault) !== this.#database)
+      return {
+        ok: false,
+        facts,
+        reason: `the vault's URL connects to database ${databaseOf(vault) || "(none)"}, not ${this.#database}`,
+        fix,
+      };
+    const endpoint = endpointOf(vault);
+    const endpoints = await this.#request("GET", this.#onBranch("/endpoints"));
+    if (endpoints.status !== 200) throw failure("GET", "/endpoints", endpoints);
+    if (!endpointIds(endpoints.body).has(endpoint))
+      return {
+        ok: false,
+        facts,
+        reason: `the vault's URL connects to ${endpoint}, which isn't a compute of Neon branch ${this.#branchId}`,
+        fix: "check branch_id in keypin.toml, or put the branch's URL in the vault",
+      };
     const known = currentId === null ? null : parseId(currentId);
-    const live = currentId === null ? user : (known?.role ?? null);
-    const at = live !== null && this.#roles.includes(live) ? passwords.get(live) : undefined;
-    if (currentId !== null && (!known || at === undefined))
+    if (currentId !== null && (!known || !this.#roles.includes(known.role)))
       return {
         ok: false,
         facts,
         reason: `key ${currentId}, the one keypin issued last time, isn't a password of role ${a} or ${b}`,
       };
+    const role = known?.role ?? user;
+    const at = passwords.get(role);
     if (known && at !== known.at)
       return {
         ok: false,
@@ -131,40 +160,50 @@ export class NeonIssuer implements Issuer {
         reason: `role ${known.role}'s password changed at ${at}, after keypin set it, so the vault's URL may not work`,
         fix: `if someone reset it, put ${known.role}'s new connection string in the vault, then run this again`,
       };
-    const idle = live === a ? b : a;
-    this.#idle = idle;
+    this.#vault = vault;
     this.#vaultUser = user;
-    const vaultUrl = parseUrl(current.reveal());
-    this.#pooled = vaultUrl?.hostname.split(".")[0]?.endsWith("-pooler") ?? false;
-    this.#query = vaultUrl?.search ?? "";
     this.#passed = true;
-    if (live === null || at === undefined)
-      return { ok: true, facts, notes: { create: `resets the password of role ${idle}` } };
+    const heldInVault = role !== user;
+    if (heldInVault)
+      return { ok: true, facts: `${facts}; the vault uses ${user}, keypin set ${role} last` };
+    const idle = user === a ? b : a;
+    this.#idle = { role: idle, at: passwords.get(idle) ?? "" };
     return {
       ok: true,
-      facts: `${facts}; the vault uses ${live}`,
-      ...(currentId === null ? { currentId: `${live}@${at}` } : {}),
+      facts: `${facts}; the vault uses ${user}`,
+      ...(currentId === null ? { currentId: `${user}@${at}` } : {}),
       notes: {
-        create: `resets the password of role ${idle}, which the vault's URL doesn't use`,
-        revoke: `resets the password of role ${live}, which drops its open connections`,
+        create: `resets the password of role ${idle}, which the vault's URL doesn't use; every open connection drops`,
+        revoke: `resets the password of role ${user}; every open connection drops`,
       },
     };
   }
 
   async create(): Promise<IssuedKey> {
-    if (!this.#passed)
+    if (!this.#passed || !this.#vault)
       throw new Error("refusing to reset a Neon password: checkAccount hasn't passed");
-    const role = this.#idle;
-    if (role === this.#vaultUser)
+    if (!this.#idle)
       throw new Error(
-        `keypin won't reset Neon role ${role}: the URL in the vault uses it, and keypin set the other role's password last. Put the URL your apps use in the vault, then run this again`,
+        `keypin won't reset Neon role ${this.#vaultUser}: the URL in the vault uses it, and keypin set the other role's password last. Put the URL your apps use in the vault, then run this again`,
       );
-    const url = await this.#connectionUri(role);
-    url.username = role;
-    if (this.#query) url.search = this.#query;
-    url.password = await this.#reset(role);
+    const { role, at: checked } = this.#idle;
+    const again = "so another rotation may be running. Run rotate again";
+    const before = await this.#passwordTime(role);
+    if (before === null) throw new Error(`Neon role ${role} is gone`);
+    if (before !== checked)
+      throw new Error(
+        `Neon role ${role}'s password changed at ${before}, after keypin checked it, ${again}`,
+      );
+    const reset = await this.#reset(role);
     const at = await this.#passwordTime(role);
     if (at === null) throw new Error(`Neon role ${role} is gone after its password reset`);
+    if (at !== reset.at)
+      throw new Error(
+        `Neon role ${role}'s password changed again at ${at}, during keypin's reset, ${again}`,
+      );
+    const url = new URL(this.#vault.href);
+    url.username = role;
+    url.password = reset.password;
     return { id: `${role}@${at}`, secret: new Secret(url.toString()) };
   }
 
@@ -184,7 +223,7 @@ export class NeonIssuer implements Issuer {
     return "revoked";
   }
 
-  async #reset(role: string): Promise<string> {
+  async #reset(role: string): Promise<{ password: string; at: string }> {
     const path = this.#onBranch(`/roles/${encodeURIComponent(role)}/reset_password`);
     let reply = await this.#request("POST", path);
     for (let tries = 1; reply.status === 423 && tries < LOCKED_TRIES; tries++) {
@@ -192,11 +231,14 @@ export class NeonIssuer implements Issuer {
       reply = await this.#request("POST", path);
     }
     if (reply.status !== 200) throw failure("POST", `/roles/${role}/reset_password`, reply);
-    const password = isRecord(reply.body.role) ? reply.body.role.password : undefined;
+    const reset = isRecord(reply.body.role) ? reply.body.role : {};
+    const { password, updated_at: at } = reset;
     if (typeof password !== "string" || !password)
       throw new Error(`Neon's reset_password response for role ${role} has no password`);
+    if (typeof at !== "string" || !at)
+      throw new Error(`Neon's reset_password response for role ${role} has no updated_at`);
     for (const operation of operationsOf(reply.body)) await this.#finish(role, operation);
-    return password;
+    return { password, at };
   }
 
   async #finish(role: string, operation: Operation): Promise<void> {
@@ -219,20 +261,6 @@ export class NeonIssuer implements Issuer {
       const polled = isRecord(reply.body.operation) ? reply.body.operation.status : undefined;
       status = typeof polled === "string" ? polled : "unknown";
     }
-  }
-
-  async #connectionUri(role: string): Promise<URL> {
-    const query = new URLSearchParams({
-      branch_id: this.#branchId,
-      database_name: this.#database,
-      role_name: role,
-      ...(this.#pooled ? { pooled: "true" } : {}),
-    });
-    const reply = await this.#request("GET", this.#inProject(`/connection_uri?${query}`));
-    if (reply.status !== 200) throw failure("GET", "/connection_uri", reply);
-    const url = parseUrl(reply.body.uri);
-    if (!url) throw new Error("Neon's connection_uri response has no postgresql:// URI");
-    return url;
   }
 
   async #passwordTime(role: string): Promise<string | null> {
@@ -333,8 +361,28 @@ function parseUrl(text: unknown): URL | null {
   }
 }
 
-function userOf(current: Secret): string | null {
-  const url = parseUrl(current.reveal());
+function databaseOf(url: URL): string {
+  try {
+    return decodeURIComponent(url.pathname.slice(1));
+  } catch {
+    return "";
+  }
+}
+
+function endpointOf(url: URL): string {
+  return (url.hostname.split(".")[0] ?? "").replace(/-pooler$/, "");
+}
+
+function endpointIds(body: Record<string, unknown>): Set<string> {
+  const endpoints = Array.isArray(body.endpoints) ? body.endpoints : [];
+  return new Set(
+    endpoints.flatMap((endpoint: unknown) =>
+      isRecord(endpoint) && typeof endpoint.id === "string" ? [endpoint.id] : [],
+    ),
+  );
+}
+
+function userOf(url: URL | null): string | null {
   if (!url?.username) return null;
   try {
     return decodeURIComponent(url.username);

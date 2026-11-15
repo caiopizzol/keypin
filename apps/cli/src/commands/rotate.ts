@@ -13,7 +13,6 @@ import {
   type ItemIds,
   type KeyEntry,
   type KeyOwner,
-  type KeyRef,
   loadState,
   nextRotation,
   planNewValue,
@@ -27,6 +26,7 @@ import {
   type State,
   vaultAccount,
   vaultAccounts,
+  vaultName,
 } from "@keypin/core";
 import { type Deps, localDay, UsageError } from "../deps";
 import { messageOf } from "../errors";
@@ -197,7 +197,10 @@ async function rotateLocked(job: Job): Promise<number> {
   if (next.action === "resume")
     return resume(job, ready, next.issued, read.secret, unpublished, state);
 
-  if (next.abandoned) say(`\n${out.dim(abandonedNote(next.abandoned, issuer, spec, entry.ref))}`);
+  if (next.abandoned)
+    say(
+      `\n${out.dim(abandonedNote(next.abandoned, issuer, spec, vaultName(entry.ref, deps.vaults)))}`,
+    );
   const current = next.current ?? check.currentId ?? null;
   const steps = planNewValue(input, read.ids);
   say("\nPlan");
@@ -205,7 +208,7 @@ async function rotateLocked(job: Job): Promise<number> {
     row("+", issuer.describe(), "create a new key", check.notes?.create),
     row(
       "~",
-      vaultName(entry.ref),
+      vaultName(entry.ref, deps.vaults),
       `save it to ${formatReference(entry.ref, deps.vaults)}, rotated today`,
     ),
     ...publishRows(steps, job.label),
@@ -266,7 +269,7 @@ async function rotateLocked(job: Job): Promise<number> {
   if (saved === "failed") {
     if (mayHold) await saveState(deps.files, job.path, state).catch(() => {});
     say(
-      `Stopped: the new key ${created.id} exists at ${issuer.describe()} but isn't in ${vaultName(entry.ref)}, and keypin can't show it again. Delete it at ${issuer.dashboard()}, then run this again:\n  ${commandLine(deps, "rotate", job.args)}`,
+      `Stopped: the new key ${created.id} exists at ${issuer.describe()} but isn't in ${vaultName(entry.ref, deps.vaults)}, and keypin can't show it again. Delete it at ${issuer.dashboard()}, then run this again:\n  ${commandLine(deps, "rotate", job.args)}`,
     );
     return 1;
   }
@@ -275,7 +278,7 @@ async function rotateLocked(job: Job): Promise<number> {
     ids = await deps.vault().itemIds(entry.ref);
   } catch (error) {
     say(
-      `    ${messageOf(error)}\nStopped. The new key is in ${vaultName(entry.ref)}, and the old key still works. To continue, run:\n  ${commandLine(deps, "rotate", job.args)}`,
+      `    ${messageOf(error)}\nStopped. The new key is in ${vaultName(entry.ref, deps.vaults)}, and the old key still works. To continue, run:\n  ${commandLine(deps, "rotate", job.args)}`,
     );
     return 1;
   }
@@ -313,7 +316,7 @@ async function resume(
 ): Promise<number> {
   const { out, deps } = job;
   out.line(
-    `\nResuming: keypin created key ${issued.id} at ${ready.issuer.describe()} on ${issued.at}, and ${vaultName(job.entry.ref)} holds it.`,
+    `\nResuming: keypin created key ${issued.id} at ${ready.issuer.describe()} on ${issued.at}, and ${vaultName(job.entry.ref, job.deps.vaults)} holds it.`,
   );
   if (steps.every((step) => step.action === "skip")) return revokeOld(job, ready, issued, state);
   out.line("\nPlan");
@@ -358,7 +361,7 @@ async function publishThenRevoke(
   });
   if (!written.ok) {
     out.line(
-      `Stopped. The new key is in ${vaultName(entry.ref)}, and the old key still works. To continue, run:\n  ${commandLine(deps, "rotate", job.args)}`,
+      `Stopped. The new key is in ${vaultName(entry.ref, deps.vaults)}, and the old key still works. To continue, run:\n  ${commandLine(deps, "rotate", job.args)}`,
     );
     return 1;
   }
@@ -371,7 +374,7 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
   const where = issuer.describe();
   const listed = job.entry.publish.length;
   out.line(
-    `\nRotated ${out.bold(key.name)} (${owner.environment}): the new key is in ${vaultName(job.entry.ref)} and the ${listed === 1 ? "destination" : `${listed} destinations`} in the map.`,
+    `\nRotated ${out.bold(key.name)} (${owner.environment}): the new key is in ${vaultName(job.entry.ref, job.deps.vaults)} and the ${listed === 1 ? "destination" : `${listed} destinations`} in the map.`,
   );
   const behind = ready.removed.filter((r) => r.lastReceipt.generation !== issued.generation);
   if (behind.length) {
@@ -423,13 +426,11 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
   return 0;
 }
 
-function abandonedNote(old: Issued, issuer: Issuer, spec: IssuerSpec, ref: KeyRef): string {
+function abandonedNote(old: Issued, issuer: Issuer, spec: IssuerSpec, vault: string): string {
   if (old.issuer !== spec.kind)
     return `keypin created key ${old.id} at ${old.issuer} on ${old.at}, before this key's issuer became ${issuer.describe()}. If nothing uses it, delete it at ${old.issuer}, not ${issuer.describe()}.`;
-  return `keypin created key ${old.id} at ${issuer.describe()} on ${old.at}, but ${vaultName(ref)} doesn't hold it. If nothing uses it, delete it at ${issuer.dashboard()}.`;
+  return `keypin created key ${old.id} at ${issuer.describe()} on ${old.at}, but ${vault} doesn't hold it. If nothing uses it, delete it at ${issuer.dashboard()}.`;
 }
-
-const vaultName = (ref: KeyRef) => (ref.kind === "1password" ? "1Password" : "Infisical");
 
 function row(sign: PlanRow["sign"], place: string, why: string, detail?: string): PlanRow {
   return { sign, place, why, approval: false, detail: detail ?? null };
@@ -527,7 +528,7 @@ async function saveKey(
   { entry, deps, out }: Job,
   secret: Secret,
 ): Promise<"saved" | "held" | "failed"> {
-  const place = `${vaultName(entry.ref)}  ${formatReference(entry.ref, deps.vaults)}`;
+  const place = `${vaultName(entry.ref, deps.vaults)}  ${formatReference(entry.ref, deps.vaults)}`;
   const today = localDay(deps.now());
   try {
     await out.step(

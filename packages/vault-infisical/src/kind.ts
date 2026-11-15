@@ -22,6 +22,7 @@ function fixFor(failures: readonly SignInReason[]): string {
 
 export const infisicalVault: VaultKind<unknown, InfisicalRef, InfisicalReference, InfisicalPin> = {
   kind: "infisical",
+  name: "Infisical",
   scheme: SCHEME,
   placeholder: "the project's slug, the environment's slug, and the secret's name",
   needsPin: `needs your Infisical organization: add [infisical] with organization = "..."`,

@@ -60,6 +60,7 @@ export const onePasswordVault: VaultKind<
   string
 > = {
   kind: "1password",
+  name: "1Password",
   scheme: SCHEME,
   placeholder:
     "the field's secret reference (in 1Password, open the field's menu and select Copy Secret Reference)",

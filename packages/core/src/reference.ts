@@ -33,6 +33,10 @@ export function formatReference(ref: KeyRef, vaults: VaultKinds): string {
   return vaultKindOf(vaults, ref.kind).format(ref);
 }
 
+export function vaultName(ref: KeyRef, vaults: VaultKinds): string {
+  return vaultKindOf(vaults, ref.kind).name;
+}
+
 export function vaultAccount(ref: KeyRef, vaults: VaultKinds): string {
   return vaultKindOf(vaults, ref.kind).account(ref);
 }

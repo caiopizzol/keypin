@@ -46,6 +46,7 @@ export interface VaultKind<
   P = unknown,
 > {
   readonly kind: R["kind"];
+  readonly name: string;
   readonly scheme: string;
   readonly placeholder: string;
   readonly needsPin: string;

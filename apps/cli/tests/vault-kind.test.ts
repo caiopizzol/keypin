@@ -1,6 +1,7 @@
 import { assert, describe, expect, test } from "vite-plus/test";
 import {
   isRecord,
+  type Issuer,
   type KeyRef,
   loadState,
   Secret,
@@ -35,6 +36,7 @@ function toyRef(value: unknown): ToyRef | null {
 
 const toy: VaultKind<unknown, ToyRef, ToyReference, string> = {
   kind: "toy",
+  name: "Toy",
   scheme: "toy://",
   placeholder: "the shelf and slot",
   needsPin: `needs your toy box: add [toy] with box = "..."`,
@@ -55,19 +57,23 @@ const toy: VaultKind<unknown, ToyRef, ToyReference, string> = {
   stored: toyRef,
 };
 
-const toyBackend = (values: Record<string, string>): VaultBackend => {
-  const value = (ref: KeyRef) => {
+const toyBackend = (values: Record<string, string>, reads: KeyRef[]): VaultBackend => {
+  const stored = (ref: KeyRef) => {
     const mine = toyRef(ref);
     const found = mine && values[`${mine.shelf}/${mine.slot}`];
     if (!found) throw new Error(`no toy at ${String(mine?.slot)}`);
-    return new Secret(found);
+    return found;
+  };
+  const value = (ref: KeyRef) => {
+    reads.push(ref);
+    return new Secret(stored(ref));
   };
   const ids = (ref: KeyRef) => ({ vault: "toy", item: toyRef(ref)?.slot ?? "" });
   return {
     capabilities: { read: true, write: false, list: false, metadata: true },
     read: async (ref) => value(ref),
     readItem: async (ref) => ({ secret: value(ref), ids: ids(ref) }),
-    itemIds: async (ref) => (value(ref), ids(ref)),
+    itemIds: async (ref) => (stored(ref), ids(ref)),
     write: async () => {
       throw new Error("the toy vault doesn't write");
     },
@@ -91,20 +97,30 @@ prod = { from = "toy://top/right", publish = [{ to = "github-actions", repo = "a
 dev = "op://Private/other key/password"
 `;
 
+const issuer = (): Issuer => ({
+  describe: () => "Resend",
+  dashboard: () => "https://resend.com/api-keys",
+  checkAccount: async () => ({ ok: true, facts: "the admin key lists 1 API key" }),
+  create: async () => ({ id: "key-1", secret: new Secret(`${SENTINEL}-new`) }),
+  revoke: async () => "revoked",
+});
+
 function setup(map = MAP) {
   const disk = memoryFiles({
     "/work/billing/keypin.toml": map,
     [REGISTRY]: registryWith("/work/billing"),
   });
   const launcher = fakeLauncher();
+  const reads: KeyRef[] = [];
   const fake = fakeDeps({
     disk,
     backend: routedVault({
-      toy: () => toyBackend({ "top/left": SENTINEL, "top/right": `${SENTINEL}-prod` }),
+      toy: () => toyBackend({ "top/left": SENTINEL, "top/right": `${SENTINEL}-prod` }, reads),
       "1password": () => fakeVault({ values: { "other key": `${SENTINEL}-other` } }).vault,
     }),
     deps: {
       vaults: [...vaults, toy],
+      issuer,
       launch: launcher.launch,
       onSignals: launcher.onSignals,
       destination: fakeDestinations().build,
@@ -112,7 +128,7 @@ function setup(map = MAP) {
       ask: async () => "y",
     },
   });
-  return { ...fake, disk, launcher };
+  return { ...fake, disk, launcher, reads };
 }
 
 describe("a vault kind defined outside keypin", () => {
@@ -136,6 +152,7 @@ describe("a vault kind defined outside keypin", () => {
     expect(run.stderr.text).toContain(
       "Looked up 3 items in 1Password account my.1password.com and toy box attic, not the values",
     );
+    expect(run.reads).toEqual([]);
   });
 
   test("run reads the dev value through it and names its account", async () => {
@@ -145,6 +162,18 @@ describe("a vault kind defined outside keypin", () => {
     expect(run.stderr.text).toContain(
       "Read 2 dev values from 1Password account my.1password.com and toy box attic  toy://top/left, op://Private/other key/password",
     );
+  });
+
+  test("rotate names the vault by its kind's name", async () => {
+    const run = setup(
+      MAP.replace(
+        "publish = [",
+        'issuer = { kind = "resend", admin = "toy://top/left", permission = "sending_access" }, publish = [',
+      ),
+    );
+    expect(await cli(["rotate", "TOY_KEY"], run.deps)).toBe(1);
+    expect(run.stderr.text).toMatch(/~ Toy +save it to toy:\/\/top\/right, rotated today/);
+    expect(run.stderr.text).toContain("exists at Resend but isn't in Toy");
   });
 
   test("its reference round-trips through state.json and still matches the map", async () => {

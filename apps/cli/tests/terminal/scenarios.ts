@@ -342,6 +342,11 @@ export const scenarios: Record<string, Scenario> = {
   },
   resend,
   neon,
+  "neon-one-role": {
+    ...neon,
+    about: "neon, but the branch has only app_a: nobody created app_b",
+    neon: { roles: { app_a: NEON_LIVE } },
+  },
   "resend-password": {
     ...resend,
     about: "resend, but keypin.toml reads the key from the item's password field",

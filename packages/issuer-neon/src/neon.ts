@@ -100,7 +100,9 @@ export class NeonIssuer implements Issuer {
       ];
       const fixes = [
         ...(missing.length
-          ? [`create ${missing.join(" and ")} with SQL, with the same grants as the other role`]
+          ? [
+              `create ${missing.join(" and ")} with SQL, in the same group role as the other (see docs/configuration.md#neon)`,
+            ]
           : []),
         ...(database.status === 404 ? ["check database in keypin.toml"] : []),
       ];

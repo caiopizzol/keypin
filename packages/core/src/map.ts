@@ -2,26 +2,16 @@ import { parse as parseToml, TomlError } from "smol-toml";
 import type { Environment, KeyId, KeyRef } from "./contracts";
 import { DEFAULT_ENVIRONMENTS } from "./contracts";
 import {
-  type DestinationKind,
   type DestinationKinds,
   placeId,
   type PublishTarget,
   secretKey,
   type TableReader,
 } from "./destination";
+import type { IssuerKinds, IssuerReader, IssuerSpec } from "./issuer";
 import { isRecord } from "./record";
 import { parseReference, sameItem } from "./reference";
 import { periodDays } from "./rotation";
-
-export type IssuerSpec = {
-  kind: "resend";
-  admin: KeyRef;
-  permission: "full_access" | "sending_access";
-  domainId?: string;
-};
-
-const ISSUER_KINDS = ["resend"] as const;
-const RESEND_PERMISSIONS = ["full_access", "sending_access"] as const;
 
 export interface EnvEntry {
   ref: KeyRef;
@@ -77,7 +67,12 @@ export function isVariableName(name: string): boolean {
   return VARIABLE_NAME.test(name);
 }
 
-export function parseMap(text: string, file: string, kinds: DestinationKinds): MapResult {
+export function parseMap(
+  text: string,
+  file: string,
+  kinds: DestinationKinds,
+  issuers: IssuerKinds,
+): MapResult {
   let data: unknown;
   try {
     data = parseToml(text);
@@ -87,7 +82,7 @@ export function parseMap(text: string, file: string, kinds: DestinationKinds): M
       errors: [`${file}: not valid TOML: ${tomlProblem(error)}`],
     };
   }
-  return validateMap(data, file, kinds);
+  return validateMap(data, file, kinds, issuers);
 }
 
 type Table = Record<string, unknown>;
@@ -110,7 +105,12 @@ function filledIn(
   return undefined;
 }
 
-function validateMap(data: unknown, file: string, kinds: DestinationKinds): MapResult {
+function validateMap(
+  data: unknown,
+  file: string,
+  kinds: DestinationKinds,
+  issuers: IssuerKinds,
+): MapResult {
   const errors: string[] = [];
   const fail = (where: string, message: string) => errors.push(`${file}: ${where}${message}`);
 
@@ -139,7 +139,7 @@ function validateMap(data: unknown, file: string, kinds: DestinationKinds): MapR
   else {
     Object.entries(rawKeys).forEach(([id, raw], index) => {
       const label = VARIABLE_NAME.test(id) ? `key "${id}"` : `keys[${index}]`;
-      const entry = validateKey(id, raw, { pins, environments, kinds }, (where, message) =>
+      const entry = validateKey(id, raw, { pins, environments, kinds, issuers }, (where, message) =>
         fail(`${label}${where}: `, message),
       );
       if (entry) keys.push(entry);
@@ -263,6 +263,7 @@ interface MapContext {
   pins: VaultPins;
   environments: readonly Environment[];
   kinds: DestinationKinds;
+  issuers: IssuerKinds;
 }
 
 function validateKey(
@@ -327,7 +328,7 @@ function validateKey(
 
 function validateEnv(
   given: unknown,
-  { pins, kinds }: MapContext,
+  { pins, kinds, issuers }: MapContext,
   fail: (message: string) => void,
 ): EnvEntry | undefined {
   const raw = typeof given === "string" ? { from: given } : given;
@@ -372,7 +373,7 @@ function validateEnv(
   const issuer =
     raw.issuer === undefined || !ref
       ? undefined
-      : validateIssuer(raw.issuer, ref, pins, (m) => err(`issuer: ${m}`));
+      : validateIssuer(raw.issuer, ref, pins, issuers, (m) => err(`issuer: ${m}`));
   if (failed || !ref) return undefined;
   return issuer ? { ref, publish, issuer } : { ref, publish };
 }
@@ -381,6 +382,7 @@ function validateIssuer(
   raw: unknown,
   own: KeyRef,
   pins: VaultPins,
+  issuers: IssuerKinds,
   fail: (message: string) => void,
 ): IssuerSpec | undefined {
   if (!isRecord(raw)) {
@@ -394,34 +396,22 @@ function validateIssuer(
   };
   const kind = requiredString(raw, "kind", err);
   if (kind === undefined) return undefined;
-  if (kind !== "resend") {
-    err(`field "kind" must be one of: ${ISSUER_KINDS.join(", ")}`);
+  const found = issuers.find((k) => k.kind === kind);
+  if (!found) {
+    err(`field "kind" must be one of: ${issuers.map((k) => k.kind).join(", ")}`);
     return undefined;
   }
-  unknownFields(raw, ["kind", "admin", "permission", "domain_id"], (field) =>
-    err(`unknown field "${field}" for ${kind}`),
-  );
-  const admin = reference(raw, "admin", pins, err);
-  if (admin && sameItem(admin, own))
-    err(`field "admin" names the key's own item; the admin key needs its own item`);
-  const given = requiredString(raw, "permission", err);
-  const permission = RESEND_PERMISSIONS.find((known) => known === given);
-  if (given !== undefined && !permission)
-    err(
-      `field "permission" must be one of: ${RESEND_PERMISSIONS.join(", ")}, as the key has at Resend`,
-    );
-  const domainId = filledIn(
-    optionalString(raw, "domain_id", err),
-    "domain_id",
-    "the Resend domain ID",
-    err,
-  );
-  if (domainId !== undefined && permission === "full_access")
-    err(`field "domain_id" works only with permission = "sending_access"`);
-  if (failed || !admin || !permission) return undefined;
-  return domainId === undefined
-    ? { kind, admin, permission }
-    : { kind, admin, permission, domainId };
+  const reader: IssuerReader = {
+    ...tableReader(raw, ["kind", "admin"], kind, err),
+    admin() {
+      const admin = reference(raw, "admin", pins, err);
+      if (!admin || !sameItem(admin, own)) return admin;
+      err(`field "admin" names the key's own item; the admin key needs its own item`);
+      return undefined;
+    },
+  };
+  const spec = found.parse(reader);
+  return failed ? undefined : spec;
 }
 
 function reference(
@@ -493,21 +483,26 @@ function destination(
     err(`field "to" must be one of: ${kinds.map((k) => k.kind).join(", ")}`);
     return undefined;
   }
-  const target = kind.parse(tableReader(raw, kind, err));
+  const target = kind.parse(tableReader(raw, ["to"], kind.kind, err));
   return failed ? undefined : target;
 }
 
-function tableReader(table: Table, kind: DestinationKind, fail: (m: string) => void): TableReader {
+function tableReader(
+  table: Table,
+  fixed: readonly string[],
+  kind: string,
+  fail: (m: string) => void,
+): TableReader {
   return {
     required: (field) => requiredString(table, field, fail),
     optional: (field) => optionalString(table, field, fail),
     filledIn: (value, field, what) => filledIn(value, field, what, fail),
     only: (fields, outdated = {}) =>
-      unknownFields(table, ["to", ...fields], (field) =>
+      unknownFields(table, [...fixed, ...fields], (field) =>
         fail(
           Object.hasOwn(outdated, field)
             ? (outdated[field] ?? "")
-            : `unknown field "${field}" for ${kind.kind}`,
+            : `unknown field "${field}" for ${kind}`,
         ),
       ),
     fail,

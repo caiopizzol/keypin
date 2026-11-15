@@ -41,7 +41,7 @@ export async function status(args: string[], deps: Deps): Promise<number> {
     const file = join(project, MAP_FILE);
     try {
       const text = await deps.files.read(file);
-      if (text !== null) maps.set(project, parseMap(text, file, deps.destinations));
+      if (text !== null) maps.set(project, parseMap(text, file, deps.destinations, deps.issuers));
     } catch (error) {
       deps.stderr.write(`keypin: couldn't read ${file}: ${messageOf(error)}\n`);
     }

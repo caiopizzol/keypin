@@ -36,6 +36,14 @@ export {
   targetOf,
 } from "./destination";
 export {
+  connectIssuer,
+  issuerKindOf,
+  type IssuerKind,
+  type IssuerKinds,
+  type IssuerReader,
+  type IssuerSpec,
+} from "./issuer";
+export {
   envFlag,
   INFISICAL_CLOUD,
   isEnvironmentName,
@@ -45,7 +53,6 @@ export {
   runEnvironment,
   type EnvEntry,
   type InfisicalPin,
-  type IssuerSpec,
   type KeyEntry,
   type KeysMap,
   type MapResult,

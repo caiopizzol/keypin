@@ -1,6 +1,6 @@
 import { assert, describe, expect, test } from "vite-plus/test";
 import { parseMap } from "../src/index";
-import { KINDS, MAP_FILE, VALID_MAP } from "./fixtures";
+import { ISSUERS, KINDS, MAP_FILE, VALID_MAP } from "./fixtures";
 
 const VAULTS = `
 [1password]
@@ -8,20 +8,20 @@ account = "my.1password.com"
 `;
 
 function errorsOf(text: string): string[] {
-  const result = parseMap(text, MAP_FILE, KINDS);
+  const result = parseMap(text, MAP_FILE, KINDS, ISSUERS);
   if (result.ok) throw new Error("expected the map to be rejected");
   return result.errors;
 }
 
 describe("a valid map", () => {
   test("a map saved with a byte order mark parses the same", () => {
-    expect(parseMap(`\uFEFF${VALID_MAP}`, MAP_FILE, KINDS)).toEqual(
-      parseMap(VALID_MAP, MAP_FILE, KINDS),
+    expect(parseMap(`\uFEFF${VALID_MAP}`, MAP_FILE, KINDS, ISSUERS)).toEqual(
+      parseMap(VALID_MAP, MAP_FILE, KINDS, ISSUERS),
     );
   });
 
   test("the design's example parses into typed entries", () => {
-    const result = parseMap(VALID_MAP, MAP_FILE, KINDS);
+    const result = parseMap(VALID_MAP, MAP_FILE, KINDS, ISSUERS);
     expect(result).toEqual({
       ok: true,
       map: {
@@ -83,6 +83,7 @@ repo = "acme/billing"
 `,
       MAP_FILE,
       KINDS,
+      ISSUERS,
     );
     if (!result.ok) throw new Error(result.errors.join("\n"));
     const [key] = result.map.keys;
@@ -94,7 +95,7 @@ repo = "acme/billing"
   });
 
   test("an empty map has no keys", () => {
-    expect(parseMap("", MAP_FILE, KINDS)).toEqual({
+    expect(parseMap("", MAP_FILE, KINDS, ISSUERS)).toEqual({
       ok: true,
       map: { file: MAP_FILE, account: null, environments: ["dev", "prod"], keys: [] },
     });
@@ -105,6 +106,7 @@ repo = "acme/billing"
       `environments = ["local", "staging", "production"]\n${VAULTS}[keys.A]\nlocal = "op://Private/l/password"\nstaging = "op://Private/s/password"\n`,
       MAP_FILE,
       KINDS,
+      ISSUERS,
     );
     assert(result.ok, JSON.stringify(result));
     expect(result.map.environments).toEqual(["local", "staging", "production"]);
@@ -124,6 +126,7 @@ repo = "acme/billing"
       `environments = ["constructor", "prod"]\n${VAULTS}[keys.A]\nprod = "op://Private/p/password"\n`,
       MAP_FILE,
       KINDS,
+      ISSUERS,
     );
     assert(result.ok, JSON.stringify(result));
     expect(Object.keys(result.map.keys[0]?.environments ?? {})).toEqual(["prod"]);
@@ -264,6 +267,7 @@ describe("unknown fields are errors that name the file, the key and the field", 
       `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [{ to = "github-actions", repo = "Acme/billing" }] }\n`,
       MAP_FILE,
       KINDS,
+      ISSUERS,
     );
     if (!result.ok) throw new Error(result.errors.join("\n"));
     expect(result.map.keys[0]?.environments.prod?.publish).toEqual([
@@ -278,6 +282,7 @@ describe("unknown fields are errors that name the file, the key and the field", 
       `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [${repo}, ${env}] }\n`,
       MAP_FILE,
       KINDS,
+      ISSUERS,
     );
     if (!result.ok) throw new Error(result.errors.join("\n"));
     expect(result.map.keys[0]?.environments.prod?.publish).toEqual([
@@ -356,6 +361,7 @@ describe("wrong kinds and values", () => {
       `${VAULTS}[keys.A]\ndev = "op://App Secrets/stripe/credential"\nprod = { from = "op://Shared/stripe live/api/secret key" }\n`,
       MAP_FILE,
       KINDS,
+      ISSUERS,
     );
     assert(result.ok, JSON.stringify(result));
     const { dev, prod } = result.map.keys[0]?.environments ?? {};
@@ -420,6 +426,7 @@ describe("wrong kinds and values", () => {
       `${VAULTS}[keys.GITHUB_TOKEN]\ndev = "op://Private/i/password"\nprod = { from = "op://Private/i/password", publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "w" }] }\n`,
       MAP_FILE,
       KINDS,
+      ISSUERS,
     );
     expect(result.ok).toBe(true);
   });
@@ -479,6 +486,7 @@ describe("wrong kinds and values", () => {
       `${VAULTS}[keys.TOKEN]\ndev = { from = "op://Private/d/password", publish = [${worker("aaaa")}] }\nprod = { from = "op://Private/p/password", publish = [${worker("bbbb")}] }\n`,
       MAP_FILE,
       KINDS,
+      ISSUERS,
     );
     expect(result.ok).toBe(true);
   });
@@ -490,6 +498,7 @@ describe("wrong kinds and values", () => {
       `${VAULTS}[keys.TOKEN]\ndev = { from = "op://Private/a/password", publish = [${worker("one")}] }\nprod = { from = "op://Private/b/password", publish = [${worker("two")}] }\n[keys.token]\nprod = { from = "op://Private/c/password", publish = [${worker("one")}] }\n`,
       MAP_FILE,
       KINDS,
+      ISSUERS,
     );
     expect(result.ok).toBe(true);
   });
@@ -594,6 +603,7 @@ admin = "op://Private/shared cloudflare token admin/password"
       mapWith("rotate").replace(/\n\[keys\.CLOUDFLARE_API_TOKEN\.prod\.rotate\][^]*$/, "\n"),
       MAP_FILE,
       KINDS,
+      ISSUERS,
     );
     assert(result.ok, JSON.stringify(result));
     expect(result.map.keys[0]).toMatchObject({ name: "CLOUDFLARE_API_TOKEN", rotateEvery: "90d" });
@@ -614,7 +624,12 @@ ${issuer}
   const where = `${MAP_FILE}: key "RESEND_API_KEY" prod: issuer: `;
 
   test("a resend issuer names its admin key's reference and the new key's permission", () => {
-    const result = parseMap(mapWith(`${KIND}\npermission = "sending_access"`), MAP_FILE, KINDS);
+    const result = parseMap(
+      mapWith(`${KIND}\npermission = "sending_access"`),
+      MAP_FILE,
+      KINDS,
+      ISSUERS,
+    );
     assert(result.ok, JSON.stringify(result));
     expect(result.map.keys[0]?.environments.prod?.issuer).toEqual({
       kind: "resend",
@@ -635,7 +650,7 @@ ${issuer}
 [keys.RESEND_API_KEY]
 prod = { from = "op://Private/billing resend key/credential", issuer = { kind = "resend", admin = "op://Private/resend admin key/credential", permission = "sending_access", domain_id = "d-1" } }
 `;
-    const result = parseMap(text, MAP_FILE, KINDS);
+    const result = parseMap(text, MAP_FILE, KINDS, ISSUERS);
     assert(result.ok, JSON.stringify(result));
     expect(result.map.keys[0]?.environments.prod?.issuer).toMatchObject({
       permission: "sending_access",
@@ -644,7 +659,7 @@ prod = { from = "op://Private/billing resend key/credential", issuer = { kind = 
   });
 
   test("an environment without an issuer has none", () => {
-    const result = parseMap(VALID_MAP, MAP_FILE, KINDS);
+    const result = parseMap(VALID_MAP, MAP_FILE, KINDS, ISSUERS);
     assert(result.ok);
     expect(result.map.keys[0]?.environments.prod).not.toHaveProperty("issuer");
   });
@@ -836,6 +851,7 @@ worker = "<worker>"
       `${VAULTS}[keys.A]\ndev = "op://Private/a > b/password"\nprod = { from = "op://Private/c/password", publish = [{ to = "cloudflare-worker", account = "${CF}", worker = "w<1" }] }\n`,
       MAP_FILE,
       KINDS,
+      ISSUERS,
     );
     assert(result.ok, JSON.stringify(result));
   });
@@ -849,6 +865,7 @@ describe("Infisical references", () => {
       `${PIN}[keys.STRIPE_KEY]\ndev = "infisical://billing/dev/STRIPE_KEY"\nprod = "infisical://billing/prod/payments/stripe/STRIPE_KEY"\n`,
       MAP_FILE,
       KINDS,
+      ISSUERS,
     );
     assert(result.ok);
     const [key] = result.map.keys;
@@ -877,6 +894,7 @@ describe("Infisical references", () => {
       `[infisical]\nurl = "https://vault.acme.dev/"\norganization = "acme"\n[keys.A]\ndev = "infisical://p/dev/A"\n`,
       MAP_FILE,
       KINDS,
+      ISSUERS,
     );
     assert(result.ok);
     expect(result.map.keys[0]?.environments.dev?.ref).toMatchObject({
@@ -889,6 +907,7 @@ describe("Infisical references", () => {
       `${VAULTS}${PIN}[keys.A]\ndev = "op://Private/a/password"\nprod = "infisical://p/prod/A"\n`,
       MAP_FILE,
       KINDS,
+      ISSUERS,
     );
     assert(result.ok);
     expect(result.map.keys[0]?.environments.dev?.ref.kind).toBe("1password");

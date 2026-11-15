@@ -1,5 +1,5 @@
 import { assert, describe, expect, test, vi } from "vite-plus/test";
-import { isRecord, type KeyRef } from "@keypin/core";
+import { isRecord, type KeyRef, type VaultBackend, type VaultScope } from "@keypin/core";
 import { requireDesktopApp, type SdkClient } from "@keypin/connectors/onepassword";
 import { fakeOnePassword } from "@keypin/connectors/onepassword/testing";
 import { cli } from "../src/cli";
@@ -340,6 +340,9 @@ describe("keypin import with a service account", () => {
     const run = importing();
     expect(await cli(run.args, run.deps)).toBe(0);
     expect(run.fake.effects).toEqual(["1password create vault-1/billing dev stripe key"]);
+    expect(run.fake.calls.create[0]?.fields).toContainEqual(
+      expect.objectContaining({ id: "password", value: SENTINEL }),
+    );
     expect(run.disk.contents.get("/work/billing/keypin.toml")).toContain(
       'dev = "op://Deploy/billing dev stripe key/password"',
     );
@@ -411,6 +414,9 @@ describe("the approval hint", () => {
         read: async (ref: KeyRef) => later().then(() => fast.read(ref)),
         itemIds: async (ref: KeyRef) => later().then(() => fast.itemIds(ref)),
         metadata: async (ref: KeyRef) => later().then(() => fast.metadata(ref)),
+        list: async (scope: VaultScope) => later().then(() => fast.list(scope)),
+        write: async (...given: Parameters<VaultBackend["write"]>) =>
+          later().then(() => fast.write(...given)),
       });
       const launcher = fakeLauncher();
       const run = fakeDeps({
@@ -444,6 +450,18 @@ describe("the approval hint", () => {
   };
   const service = { mode: "service-account", address: "my.1password.com" } as const;
   const desktop = { mode: "desktop", tokenIgnored: false } as const;
+
+  test("keypin import shows it only with the desktop app", async () => {
+    const env = { ...files, "/work/web/.env": `STRIPE_KEY=${SENTINEL}\n` };
+    const args = ["import", ".env", "--vault", "Deploy", "--account", "my.1password.com", "--yes"];
+    const withApp = await slowFrames(args, desktop, env);
+    expect(withApp.some((f) => f.includes("1Password may be asking you to approve keypin"))).toBe(
+      true,
+    );
+    const withToken = await slowFrames(args, service, env);
+    expect(withToken.some((f) => f.includes("Creating") || f.includes("Listing"))).toBe(true);
+    expect(withToken.some((f) => f.includes("approve keypin"))).toBe(false);
+  });
 
   for (const args of [["run", "--", "true"], ["check"], ["status"]])
     test(`keypin ${args[0]} shows it only with the desktop app`, async () => {

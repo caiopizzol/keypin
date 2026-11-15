@@ -104,7 +104,7 @@ interface Setup extends FakeDestinationOptions, IssuerOptions {
   terminal?: boolean;
   disk?: ReturnType<typeof memoryFiles>;
   vault?: ReturnType<typeof writableVault>;
-  failSave?: boolean;
+  failSave?: boolean | "refused";
   made?: { count: number };
   serviceAccount?: boolean;
 }
@@ -459,6 +459,22 @@ describe("keypin rotate", () => {
     expect(run.vault.values.get("mailer resend key")).toBe(NEW(1));
     expect(run.vault.rotated).toEqual(["2026-11-09"]);
     expect(run.stderr.text).not.toContain("desktop app");
+  });
+
+  test("a service account without write access revokes the key it just created", async () => {
+    const run = setup({ serviceAccount: true, failSave: "refused", answers: ["y"] });
+    expect(await run.run()).toBe(1);
+    expect(run.issuer.log).toEqual([
+      "check none",
+      "create RESEND_API_KEY prod 2026-11-09 -> key-1",
+      "revoke key-1",
+    ]);
+    expect(run.writes()).toEqual([]);
+    expect(run.stderr.text).toContain(
+      "Stopped: 1Password refused to save the new key. Revoked it at Resend. Nothing changed.",
+    );
+    expect((await run.state()).issued).toEqual([]);
+    expect(run.leaked()).toBe(false);
   });
 
   test("a service account's plan says nothing about another machine", async () => {

@@ -40,6 +40,8 @@ export interface ItemIds {
 
 export class HeldForApproval extends Error {}
 
+export class WriteRefused extends Error {}
+
 export type SignInReason =
   | { kind: "no-credentials" }
   | { kind: "no-desktop-app" }

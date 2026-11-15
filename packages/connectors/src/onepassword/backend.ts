@@ -6,7 +6,7 @@ import type {
   VaultMetadata,
   VaultScope,
 } from "@keypin/core";
-import { isDay, Secret, SignInFailed, type SignInReason } from "@keypin/core";
+import { isDay, Secret, SignInFailed, type SignInReason, WriteRefused } from "@keypin/core";
 import {
   account,
   decode,
@@ -82,7 +82,7 @@ export function onePasswordBackend(
       await save();
     } catch (error) {
       if (mode === "service-account" && NO_PERMISSION.test(messageOf(error)))
-        throw new Error(
+        throw new WriteRefused(
           `${where(ref)}: the service account can't write to the vault "${ref.vault}". Grant write access to it: 1Password can't change a service account's access, so create a new service account with read and write access to that vault, and use its token`,
         );
       throw error;

@@ -4,6 +4,7 @@ export {
   DEFAULT_ENVIRONMENTS,
   type AccountCheck,
   HeldForApproval,
+  WriteRefused,
   type Destination,
   type Environment,
   type Evidence,

@@ -9,6 +9,7 @@ import {
   Secret,
   type VaultBackend,
   type VaultMetadata,
+  WriteRefused,
 } from "@keypin/core";
 import {
   type OnePasswordRef,
@@ -143,7 +144,10 @@ export function fakeVault(options: FakeVaultOptions = {}) {
 
 const itemOf = (ref: KeyRef) => onePasswordRef(ref)?.item ?? infisicalRef(ref)?.name ?? ref.kind;
 
-export function writableVault(initial: Record<string, string>, failSave = false) {
+export function writableVault(
+  initial: Record<string, string>,
+  failSave: boolean | "refused" = false,
+) {
   const values = new Map(Object.entries(initial));
   const rotated: string[] = [];
   const log: string[] = [];
@@ -168,6 +172,8 @@ export function writableVault(initial: Record<string, string>, failSave = false)
     async write(ref, secret, options = {}) {
       if (failSave) {
         log.push(`save ${itemOf(ref)} failed`);
+        if (failSave === "refused")
+          throw new WriteRefused("the service account can't write to this vault");
         throw new Error("1Password: the item is locked");
       }
       log.push(`save ${itemOf(ref)}`);

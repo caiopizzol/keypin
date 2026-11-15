@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { type Drive, drive } from "./drive";
-import { ready, valuesOf } from "./scenarios";
+import { FAKE_TOKEN, ready, valuesOf } from "./scenarios";
 
 const SLOW = 30_000;
 const FINISHED = /^[✓✗] /;
@@ -189,6 +189,24 @@ describe("keypin in a real terminal", () => {
       expect(result.screen.match(/sign-in failed/g)).toHaveLength(1);
       expect(result.screen).not.toContain("critical error");
       expect(result.screen).not.toContain("find1PasswordLibPath");
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "on CI with only OP_SERVICE_ACCOUNT_TOKEN set, run says to set KEYPIN_1PASSWORD",
+    async () => {
+      const result = await drive({
+        scenario: "no-1password-app",
+        args: ["run", "--", "true"],
+        env: { OP_SERVICE_ACCOUNT_TOKEN: FAKE_TOKEN },
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        "the 1Password desktop app isn't installed; OP_SERVICE_ACCOUNT_TOKEN is set, so set KEYPIN_1PASSWORD=service-account to use the service account",
+      );
+      expect(result.screen).not.toContain(FAKE_TOKEN);
       clean(result);
     },
     SLOW,

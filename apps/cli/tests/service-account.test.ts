@@ -1,6 +1,6 @@
 import { assert, describe, expect, test, vi } from "vite-plus/test";
 import { isRecord, type KeyRef } from "@keypin/core";
-import type { SdkClient } from "@keypin/connectors/onepassword";
+import { requireDesktopApp, type SdkClient } from "@keypin/connectors/onepassword";
 import { cli } from "../src/cli";
 import type { Deps } from "../src/deps";
 import { onePasswordFrom } from "../src/sign-in";
@@ -171,6 +171,54 @@ describe("choosing how keypin signs in to 1Password", () => {
       "Check that OP_SERVICE_ACCOUNT_TOKEN holds a current service account token",
     );
     expect(run.stdout.text).not.toContain("desktop app");
+  });
+});
+
+describe("a token without KEYPIN_1PASSWORD, on a machine without the desktop app", () => {
+  const HINT =
+    "OP_SERVICE_ACCOUNT_TOKEN is set, so set KEYPIN_1PASSWORD=service-account to use the service account";
+  const env = { OP_SERVICE_ACCOUNT_TOKEN: TOKEN };
+
+  function noApp(map = DEPLOY_MAP) {
+    const launcher = fakeLauncher();
+    const onePassword = onePasswordFrom(env, {
+      desktop: requireDesktopApp(
+        async () => sdk().client,
+        () => null,
+      ),
+      token: async () => sdk().client,
+    });
+    const run = fakeDeps({
+      disk: memoryFiles({
+        "/work/billing/keypin.toml": map,
+        [REGISTRY]: registryWith("/work/billing"),
+      }),
+      deps: {
+        env,
+        signIn: () => onePassword.signIn,
+        vault: () => onePassword.vault,
+        destination: fakeDestinations().build,
+        launch: launcher.launch,
+        onSignals: launcher.onSignals,
+        isTerminal: true,
+        ask: async () => "yes",
+      },
+    });
+    return { ...run, launcher };
+  }
+
+  test("keypin run names KEYPIN_1PASSWORD=service-account, and nothing starts", async () => {
+    const run = noApp();
+    expect(await cli(["run", "--", "env"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain("the 1Password desktop app isn't installed");
+    expect(run.stderr.text).toContain(HINT);
+    expect(run.launcher.launches).toEqual([]);
+  });
+
+  test("keypin publish names KEYPIN_1PASSWORD=service-account", async () => {
+    const run = noApp();
+    expect(await cli(["publish", "STRIPE_API_KEY", "--yes"], run.deps)).toBe(1);
+    expect(run.stderr.text + run.stdout.text).toContain(HINT);
   });
 });
 

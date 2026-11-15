@@ -19,11 +19,13 @@ export function onePasswordFrom(
 ): { signIn: SignIn; vault: VaultBackend } {
   const mode = env.KEYPIN_1PASSWORD ?? "";
   const token = env.OP_SERVICE_ACCOUNT_TOKEN ?? "";
-  if (mode === "" || mode === "desktop")
+  if (mode === "" || mode === "desktop") {
+    const tokenIgnored = mode === "" && token !== "";
     return {
-      signIn: { mode: "desktop", tokenIgnored: mode === "" && token !== "" },
-      vault: onePasswordBackend(open.desktop),
+      signIn: { mode: "desktop", tokenIgnored },
+      vault: onePasswordBackend(open.desktop, "desktop", { tokenIgnored }),
     };
+  }
   if (mode !== "service-account")
     throw new UsageError("KEYPIN_1PASSWORD must be desktop or service-account");
   if (token === "")

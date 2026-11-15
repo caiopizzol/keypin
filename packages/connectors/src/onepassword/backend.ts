@@ -25,12 +25,14 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const UNIX_SECONDS = /^\d+$/;
 
 const BUILT_IN = ["private", "personal", "employee"];
+const DEFAULT_SHARED = "shared";
 
 export type SignInMode = "desktop" | "service-account";
 
 export function onePasswordBackend(
   connect: Connect = desktopConnect,
   mode: SignInMode = "desktop",
+  { tokenIgnored = false } = {},
 ): VaultBackend {
   const clients = new Map<string, Promise<SdkClient>>();
 
@@ -38,7 +40,7 @@ export function onePasswordBackend(
     let pending = clients.get(account);
     if (!pending) {
       pending = connect(account).catch((error: unknown) => {
-        throw signInFailed(account, error, mode);
+        throw signInFailed(account, error, mode, tokenIgnored);
       });
       clients.set(account, pending);
     }
@@ -164,8 +166,12 @@ export function onePasswordBackend(
 function noVault(scope: OnePasswordScope, mode: SignInMode): string {
   const account = `1Password account "${scope.account}"`;
   if (mode === "desktop") return `${account} has no vault "${scope.vault}"`;
+  const move =
+    "move the item to a vault you create, update its reference in keypin.toml, and grant the service account read access to that vault";
   if (BUILT_IN.includes(scope.vault.toLowerCase()))
-    return `${account}: service accounts can't open the built-in vault "${scope.vault}"; move the item to a vault you create, update its reference in keypin.toml, and grant the service account read access to that vault`;
+    return `${account}: service accounts can't open the built-in vault "${scope.vault}"; ${move}`;
+  if (scope.vault.toLowerCase() === DEFAULT_SHARED)
+    return `${account}: the vault "${scope.vault}" isn't visible to this service account. If it's the default Shared vault, service accounts can't open it; ${move}. If you created it, the service account wasn't granted it`;
   return `${account}: the vault "${scope.vault}" isn't visible to this service account (it may not exist, or wasn't granted)`;
 }
 
@@ -271,14 +277,22 @@ function toDay(value: string, ref: OnePasswordRef): string {
 
 const SDK_ERROR = /Error \{ msg: (.+?), inner: .*\}\s*$/s;
 
-function signInFailed(account: string, error: unknown, mode: SignInMode): SignInFailed {
+function signInFailed(
+  account: string,
+  error: unknown,
+  mode: SignInMode,
+  tokenIgnored: boolean,
+): SignInFailed {
   const message = messageOf(error);
   const inner = SDK_ERROR.exec(message)?.[1] ?? message;
   const unknown = mode === "desktop" && inner === "Account not found";
   const why = unknown ? "the 1Password app has no account with this sign-in address or ID" : inner;
   const reason: SignInReason =
     error instanceof SignInFailed ? error.reason : { kind: unknown ? "unknown-account" : "other" };
-  return new SignInFailed(`1Password account "${account}": sign-in failed: ${why}`, reason);
+  const hint = tokenIgnored
+    ? "; OP_SERVICE_ACCOUNT_TOKEN is set, so set KEYPIN_1PASSWORD=service-account to use the service account"
+    : "";
+  return new SignInFailed(`1Password account "${account}": sign-in failed: ${why}${hint}`, reason);
 }
 
 function messageOf(error: unknown): string {

@@ -18,7 +18,7 @@ import {
   currentWranglerToken,
   wranglerConfigFile,
 } from "@keypin/connectors/cloudflare";
-import { ghToken, githubActions, listRepoSecrets } from "@keypin/connectors/github";
+import { ghToken, githubActions, listRepoSecrets, sshHostname } from "@keypin/connectors/github";
 import { neonIssuer } from "@keypin/connectors/neon";
 import { resendIssuer } from "@keypin/connectors/resend";
 import {
@@ -163,6 +163,9 @@ export function realDeps(): Deps {
     git,
     githubSecrets: (repo, login, environment) =>
       listRepoSecrets({ repo, environment, token: () => ghToken(login) }),
+    organizationSecrets: (repo, login) =>
+      listRepoSecrets({ repo, organization: true, token: () => ghToken(login) }),
+    sshHostname,
     workerSecrets: (account, worker) =>
       (cloudflare ??= new CloudflareReader({
         token: () => currentWranglerToken(),

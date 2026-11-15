@@ -7,6 +7,7 @@ const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 export async function listRepoSecrets(options: {
   repo: string;
   environment?: string;
+  organization?: boolean;
   token: () => Promise<string>;
   fetch?: Fetch;
 }): Promise<StoreRead> {
@@ -24,7 +25,10 @@ export async function listRepoSecrets(options: {
   }
   const secrets: { name: string; updatedAt: string | null }[] = [];
   for (let page = 1; ; page++) {
-    const path = `${secretsPath(options.repo, options.environment)}?per_page=100&page=${page}`;
+    const scope = options.organization
+      ? `/repos/${options.repo}/actions/organization-secrets`
+      : secretsPath(options.repo, options.environment);
+    const path = `${scope}?per_page=100&page=${page}`;
     const response = await fetch(`${API}${path}`, {
       method: "GET",
       headers: {
@@ -33,9 +37,18 @@ export async function listRepoSecrets(options: {
         "X-GitHub-Api-Version": "2022-11-28",
       },
     });
+    if (options.organization && response.status === 422) {
+      await response.body?.cancel();
+      return { ok: true, secrets: [] };
+    }
     if (response.status !== 200) {
       await response.body?.cancel();
-      return { ok: false, reason: refusal(response.status, options.repo, options.environment) };
+      return {
+        ok: false,
+        reason: options.organization
+          ? orgRefusal(response.status, options.repo)
+          : refusal(response.status, options.repo, options.environment),
+      };
     }
     const body: unknown = await response.json().catch(() => null);
     const list = isRecord(body) && Array.isArray(body.secrets) ? body.secrets : null;
@@ -58,6 +71,13 @@ function refusal(status: number, repo: string, environment: string | undefined):
       ? `HTTP 404: the login can't see ${repo}, or isn't a collaborator on it`
       : `HTTP 404: ${repo} has no environment named ${environment}, or the login can't see it`;
   if (status === 403) return `HTTP 403: the login isn't allowed to list ${repo}'s secrets`;
+  if (status === 401) return "HTTP 401: the gh login's token was refused";
+  return `GitHub returned HTTP ${status}`;
+}
+
+function orgRefusal(status: number, repo: string): string {
+  if (status === 403 || status === 404)
+    return `HTTP ${status}: the login isn't allowed to list the organization secrets shared with ${repo}`;
   if (status === 401) return "HTTP 401: the gh login's token was refused";
   return `GitHub returned HTTP ${status}`;
 }

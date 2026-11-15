@@ -82,6 +82,48 @@ jobs:
     ).toBe(true);
   });
 
+  test("a reusable workflow's declared secrets come from its caller, not the repo", () => {
+    const refs = workflowRefs(`
+on:
+  workflow_call:
+    secrets:
+      deploy_key:
+        required: true
+jobs:
+  deploy:
+    steps:
+      - run: echo \${{ secrets.DEPLOY_KEY }} \${{ secrets.SENTRY_TOKEN }}
+`);
+    expect(refs).toMatchObject({ secrets: ["SENTRY_TOKEN"], hidesUses: false });
+    expect(refs?.uses).toEqual([{ environment: null, secrets: ["SENTRY_TOKEN"] }]);
+  });
+
+  test("a workflow also run by other events still needs its declared secrets from the repo", () => {
+    const refs = workflowRefs(`
+on:
+  workflow_dispatch:
+  workflow_call:
+    secrets:
+      DEPLOY_KEY:
+jobs:
+  deploy:
+    steps:
+      - run: echo \${{ secrets.DEPLOY_KEY }}
+`);
+    expect(refs).toMatchObject({ secrets: ["DEPLOY_KEY"] });
+  });
+
+  test("a secret picked by an expression hides which one is used", () => {
+    for (const index of ["matrix.name", "format('{0}_KEY', matrix.env)", "'A' && 'B'", "env.NAME"])
+      expect(
+        workflowRefs(`jobs:\n  a:\n    steps:\n      - run: echo '\${{ secrets[${index}] }}'\n`)
+          ?.hidesUses,
+      ).toBe(true);
+    expect(
+      workflowRefs("jobs:\n  a:\n    steps:\n      - run: echo ${{ secrets[ 'KEY' ] }}\n"),
+    ).toMatchObject({ secrets: ["KEY"], hidesUses: false });
+  });
+
   test("matches toJSON(secrets) and context names in any case, as GitHub does", () => {
     for (const call of ["tojson(secrets)", "TOJSON( secrets )", "toJSON(Secrets)"]) {
       expect(

@@ -13,6 +13,8 @@ import { usesSecrets, type WorkflowRefs, workflowRefs } from "./workflows";
 export interface WorkflowHost {
   git(folder: string, args: readonly string[]): Promise<string | null>;
   githubSecrets(repo: string, login: string | null, environment?: string): Promise<StoreRead>;
+  organizationSecrets(repo: string, login: string | null): Promise<StoreRead>;
+  sshHostname(host: string): Promise<string | null>;
 }
 
 interface Workflow {
@@ -23,6 +25,7 @@ interface Workflow {
 interface Repo {
   repo: string | null;
   read: StoreRead | null;
+  organization: StoreRead | null;
   environments: { name: string; read: StoreRead }[];
 }
 
@@ -71,11 +74,11 @@ async function lookUp(
     if (workflow.refs.hidesUses)
       project.unknown(
         `every secret ${workflow.path} uses`,
-        "it passes secrets on (secrets: inherit or toJSON(secrets)), so check can't tell which",
+        "it passes secrets on (secrets: inherit or toJSON(secrets)) or names one by an expression (secrets[...]), so check can't tell which",
       );
   const uses = usesSecrets(workflows);
   const origin = top ? await githubOrigin(host, project.root) : null;
-  const github: Repo = { repo: null, read: null, environments: [] };
+  const github: Repo = { repo: null, read: null, organization: null, environments: [] };
   let login: string | null = null;
   const reading = (repo: string, environment?: string) =>
     host
@@ -92,6 +95,17 @@ async function lookUp(
           `the Actions secrets of ${origin.repo}`,
           `as ${describeLogin(login)}: ${read.reason}`,
         );
+      else {
+        const shared = await host
+          .organizationSecrets(origin.repo, login)
+          .catch((error: unknown) => ({ ok: false as const, reason: messageOf(error) }));
+        github.organization = shared;
+        if (!shared.ok)
+          project.unknown(
+            `the organization secrets shared with ${origin.repo}`,
+            `as ${describeLogin(login)}: ${shared.reason}`,
+          );
+      }
       for (const name of jobEnvironments(workflows)) {
         const read = await reading(origin.repo, name);
         github.environments.push({ name, read });
@@ -130,9 +144,21 @@ function needsOf(github: Repo, workflows: Workflow[], view: MapView) {
     ),
   );
   const needs: FoundNeed[] = [];
+  const shared = namesOf(github.organization);
+  const fromOrganization = new Map<string, string[]>();
   for (const use of uses) {
     const literal = literalEnvironment(use.environment);
     const environment = literal === null ? null : githubPlace(github, literal, declared);
+    if (
+      shared?.has(use.name) &&
+      repo.holds(use.name) === false &&
+      !view.publishes(use.name, repo) &&
+      !(environment !== null && view.publishes(use.name, environment))
+    ) {
+      const paths = fromOrganization.get(use.name) ?? [];
+      if (!paths.includes(use.path)) fromOrganization.set(use.name, [...paths, use.path]);
+      continue;
+    }
     const alone = uses
       .filter((u) => u.name === use.name)
       .every((u) => literalEnvironment(u.environment)?.toLowerCase() === literal?.toLowerCase());
@@ -149,7 +175,10 @@ function needsOf(github: Repo, workflows: Workflow[], view: MapView) {
   const hidden = workflows.some((w) => w.refs.hidesUses);
   return {
     needs,
-    notes: [],
+    notes: [...fromOrganization].map(
+      ([name, paths]) =>
+        `${name}: ${paths.join(", ")} uses it; ${repo.label} has it (org secret), which keypin.toml doesn't publish`,
+    ),
     notesAfter(found: readonly { name: string; place: string }[]) {
       if (!hidden || !github.read?.ok) return [];
       const unmapped = github.read.secrets
@@ -180,6 +209,9 @@ function githubPlace(
       ? github.read
       : github.environments.find((e) => e.name.toLowerCase() === env)?.read;
   const held = read?.ok ? new Set(read.secrets.map((s) => s.name.toUpperCase())) : null;
+  const shared = env === undefined ? namesOf(github.organization) : new Set<string>();
+  const holds = (name: string) =>
+    held === null ? null : held.has(name.toUpperCase()) ? true : shared === null ? null : false;
   const fields: [string, string][] = [
     ["to", "github-actions"],
     ["repo", repo ?? REPO_PLACEHOLDER],
@@ -199,8 +231,12 @@ function githubPlace(
       target.to === "github-actions" &&
       (repo === null || target.repo?.toLowerCase() === repo.toLowerCase()) &&
       target.environment?.toLowerCase() === env,
-    holds: (name) => (held ? held.has(name.toUpperCase()) : null),
+    holds,
   };
+}
+
+function namesOf(read: StoreRead | null): Set<string> | null {
+  return read?.ok ? new Set(read.secrets.map((s) => s.name.toUpperCase())) : null;
 }
 
 function maybeEnvironment(environments: readonly string[]): string {
@@ -236,7 +272,9 @@ function jobEnvironments(workflows: readonly Workflow[]): string[] {
 }
 
 const GITHUB_REMOTE =
-  /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|ssh:\/\/(?:[^@/:]+@)?[^/:]+(?::\d+)?\/|(?:[^@/:]+@)?[^/:]+:)([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/;
+  /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|ssh:\/\/(?:[^@/:]+@)?([^/:]+)(?::\d+)?\/|(?:[^@/:]+@)?([^/:]+):)([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/;
+const GITHUB_SSH_HOST = /^(?:ssh\.)?github\.com$/i;
+const NOT_GITHUB = "the origin remote isn't on github.com";
 
 async function githubOrigin(
   host: WorkflowHost,
@@ -244,7 +282,17 @@ async function githubOrigin(
 ): Promise<{ repo: string } | { reason: string } | null> {
   const url = (await host.git(folder, ["remote", "get-url", "origin"]))?.trim();
   if (!url) return null;
-  const match = GITHUB_REMOTE.exec(url);
-  if (!match?.[1] || !match[2]) return { reason: "the origin remote isn't on github.com" };
-  return { repo: `${match[1]}/${match[2]}` };
+  const [, sshHost, scpHost, owner, name] = GITHUB_REMOTE.exec(url) ?? [];
+  if (!owner || !name) return { reason: NOT_GITHUB };
+  const alias = sshHost ?? scpHost;
+  if (alias !== undefined && !GITHUB_SSH_HOST.test(alias)) {
+    if (alias.startsWith("-")) return { reason: NOT_GITHUB };
+    const real = await host.sshHostname(alias).catch(() => null);
+    if (real === null)
+      return {
+        reason: `ssh -G couldn't tell which server the origin remote's host ${alias} is, so check can't tell whether it's on github.com`,
+      };
+    if (!GITHUB_SSH_HOST.test(real)) return { reason: NOT_GITHUB };
+  }
+  return { repo: `${owner}/${name}` };
 }

@@ -85,6 +85,42 @@ describe("listRepoSecrets", () => {
     }
   });
 
+  test("reads the organization secrets shared with a repo, and none for a personal repo", async () => {
+    const fake = fakeFetch([
+      { status: 200, body: { total_count: 1, secrets: [secret(1)] } },
+      { status: 422, body: { message: "Validation Failed" } },
+    ]);
+    const read = () =>
+      listRepoSecrets({
+        repo: "acme/billing",
+        organization: true,
+        token: async () => TOKEN,
+        fetch: fake.fetch,
+      });
+    expect(await read()).toEqual({
+      ok: true,
+      secrets: [{ name: "KEY_1", updatedAt: "2026-11-01T00:00:00Z" }],
+    });
+    expect(fake.requests[0]?.url).toBe(
+      "https://api.github.com/repos/acme/billing/actions/organization-secrets?per_page=100&page=1",
+    );
+    expect(await read()).toEqual({ ok: true, secrets: [] });
+  });
+
+  test("a token that can't list organization secrets is a reason, not an empty list", async () => {
+    const read = await listRepoSecrets({
+      repo: "acme/billing",
+      organization: true,
+      token: async () => TOKEN,
+      fetch: fakeFetch([{ status: 403, body: { message: TOKEN } }]).fetch,
+    });
+    expect(read).toEqual({
+      ok: false,
+      reason:
+        "HTTP 403: the login isn't allowed to list the organization secrets shared with acme/billing",
+    });
+  });
+
   test("no login and a bad repo name are reasons too", async () => {
     const noLogin = await listRepoSecrets({
       repo: "acme/billing",

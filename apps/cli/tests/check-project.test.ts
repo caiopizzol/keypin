@@ -1145,18 +1145,112 @@ required = ["RESEND_API_KEY"]
     expect(run.calls.some((c) => c.startsWith("github") || c.startsWith("worker"))).toBe(false);
   });
 
-  test.each(["git@github-work:acme/billing.git", "github-work:acme/billing"])(
+  const sshConfig = (hosts: Record<string, string>) => ({
+    sshHostname: async (host: string) => hosts[host] ?? host,
+  });
+
+  test.each([
+    "git@github-work:acme/billing.git",
+    "github-work:acme/billing",
+    "ssh://git@github-work/acme/billing.git",
+  ])(
     "an origin behind an SSH host alias (%s) is read as that GitHub repository",
     async (remote) => {
       const run = setup({
         files: { [MAP]: MAPPED },
         git: { "remote get-url origin": `${remote}\n` },
+        deps: sshConfig({ "github-work": "github.com" }),
       });
       await cli(["check", "--json"], run.deps);
       expect(json(run.stdout.text).github).toMatchObject({ repo: "acme/billing" });
       expect(run.calls).toContainEqual(expect.stringMatching(/^github acme\/billing/));
     },
   );
+
+  test.each([
+    "git@gitlab.com:acme/billing.git",
+    "git@bitbucket.org:acme/billing.git",
+    "git@github.acme.corp:acme/billing.git",
+    "ssh://git@gitlab.com/acme/billing.git",
+    "git@work-gitlab:acme/billing.git",
+  ])("an SSH origin on another server (%s) isn't read as github.com", async (remote) => {
+    const run = setup({
+      files: { [MAP]: MAPPED },
+      git: { "remote get-url origin": `${remote}\n` },
+      deps: sshConfig({ "work-gitlab": "gitlab.com" }),
+    });
+    await cli(["check", "--json"], run.deps);
+    const data = json(run.stdout.text);
+    expect(data.github).toMatchObject({ repo: null });
+    expect(data.unknown).toContainEqual({
+      what: "the GitHub repository's Actions secrets",
+      reason: "the origin remote isn't on github.com",
+    });
+    expect(run.calls.some((c) => c.startsWith("github"))).toBe(false);
+  });
+
+  test("an SSH origin whose host ssh -G can't resolve is unknown, not guessed", async () => {
+    const run = setup({
+      files: { [MAP]: MAPPED },
+      git: { "remote get-url origin": "git@github-work:acme/billing.git\n" },
+      deps: { sshHostname: async () => null },
+    });
+    await cli(["check", "--json"], run.deps);
+    const data = json(run.stdout.text);
+    expect(data.github).toMatchObject({ repo: null });
+    expect(data.unknown).toContainEqual({
+      what: "the GitHub repository's Actions secrets",
+      reason:
+        "ssh -G couldn't tell which server the origin remote's host github-work is, so check can't tell whether it's on github.com",
+    });
+    expect(run.calls.some((c) => c.startsWith("github"))).toBe(false);
+  });
+
+  test("an organization secret shared with the repo counts as held, labelled as such", async () => {
+    const run = setup({
+      files: { [MAP]: PUBLISHED.replace(/\[keys\.STRIPE_API_KEY\][\s\S]*$/, "") },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+      deps: {
+        organizationSecrets: async (repo, login) => {
+          run.calls.push(`organization ${repo} as ${login}`);
+          return { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] };
+        },
+      },
+    });
+    expect(await cli(["check"], run.deps)).toBe(0);
+    expect(run.calls).toContain("organization acme/billing as null");
+    expect(run.stdout.text).not.toContain("doesn't have it");
+    expect(run.stdout.text).toContain(
+      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing has it (org secret), which keypin.toml doesn't publish",
+    );
+    expect(run.stdout.text).not.toContain("[keys.STRIPE_API_KEY");
+  });
+
+  test("organization secrets the login can't list are not checked, and check still runs", async () => {
+    const run = setup({
+      files: { [MAP]: MAPPED },
+      deps: {
+        organizationSecrets: async () => ({
+          ok: false,
+          reason:
+            "HTTP 403: the login isn't allowed to list the organization secrets shared with acme/billing",
+        }),
+      },
+    });
+    expect(await cli(["check", "--json"], run.deps)).toBe(1);
+    const data = json(run.stdout.text);
+    expect(data.unknown).toContainEqual({
+      what: "the organization secrets shared with acme/billing",
+      reason:
+        "as the active gh login: HTTP 403: the login isn't allowed to list the organization secrets shared with acme/billing",
+    });
+    expect(data.production).toContainEqual(
+      expect.objectContaining({ name: "STRIPE_API_KEY", holds: null }),
+    );
+    expect(data.problems).toContain(
+      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; keypin.toml doesn't publish it to acme/billing. Add the TOML below",
+    );
+  });
 
   test.each(["../acme/billing", "/srv/git/acme/billing.git"])(
     "a local path origin (%s) is not a GitHub repository",
@@ -1480,7 +1574,7 @@ jobs:
       {
         what: "every secret .github/workflows/deploy.yml uses",
         reason:
-          "it passes secrets on (secrets: inherit or toJSON(secrets)), so check can't tell which",
+          "it passes secrets on (secrets: inherit or toJSON(secrets)) or names one by an expression (secrets[...]), so check can't tell which",
       },
     ]);
     expect(data.notes).toContain(

@@ -15,6 +15,8 @@ export function usesSecrets(workflows: readonly { refs: WorkflowRefs }[]): boole
   );
 }
 
+const COMPUTED_SECRET = /(?<![\w.])secrets\s*\[(?!\s*'[A-Za-z_][A-Za-z0-9_]*'\s*\])/i;
+
 const CONTEXT_REF =
   /(?<![\w.])(secrets|vars)\s*(?:\.\s*([A-Za-z_][A-Za-z0-9_]*)|\[\s*'([A-Za-z_][A-Za-z0-9_]*)'\s*\])/gi;
 
@@ -34,7 +36,8 @@ export function workflowRefs(text: string): WorkflowRefs | null {
   const secretsIn = (root: unknown, skip: unknown): Set<string> => {
     const secrets = new Set<string>();
     const scan = (expression: string) => {
-      if (/toJSON\(\s*secrets\s*\)/i.test(expression)) refs.hidesUses = true;
+      if (/toJSON\(\s*secrets\s*\)/i.test(expression) || COMPUTED_SECRET.test(expression))
+        refs.hidesUses = true;
       for (const match of expression.matchAll(CONTEXT_REF)) {
         const name = (match[2] ?? match[3])?.toUpperCase();
         if (!name) continue;
@@ -58,9 +61,15 @@ export function workflowRefs(text: string): WorkflowRefs | null {
       }
     };
     visit(root, null);
+    for (const name of passedIn) secrets.delete(name);
     for (const name of secrets) refs.secrets.add(name);
     return secrets;
   };
+  const triggers = isRecord(data) ? data.on : undefined;
+  const call = isRecord(triggers) ? triggers.workflow_call : undefined;
+  const inputs = isRecord(call) && isRecord(call.secrets) ? call.secrets : null;
+  const onlyCalled = isRecord(triggers) && Object.keys(triggers).length === 1 && inputs !== null;
+  const passedIn = new Set(onlyCalled ? Object.keys(inputs).map((name) => name.toUpperCase()) : []);
   const jobs = isRecord(data) && isRecord(data.jobs) ? data.jobs : null;
   const uses: WorkflowRefs["uses"] = [{ environment: null, secrets: [...secretsIn(data, jobs)] }];
   for (const job of Object.values(jobs ?? {})) {

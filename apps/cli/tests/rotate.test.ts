@@ -449,21 +449,22 @@ describe("keypin rotate", () => {
     );
   });
 
-  test("a service account can't save a new key, so nothing is created", async () => {
-    const run = setup({ serviceAccount: true, answers: ["y"] });
-    expect(await run.run()).toBe(1);
-    expect(run.issuer.log).toEqual([]);
-    expect(run.stderr.text).toContain("needs the desktop app");
+  test("a service account creates the new key and saves it to 1Password", async () => {
+    const run = setup({ serviceAccount: true, answers: ["y", "y"] });
+    expect(await run.run()).toBe(0);
+    expect(run.issuer.log).toEqual([
+      "check none",
+      "create RESEND_API_KEY prod 2026-11-09 -> key-1",
+    ]);
+    expect(run.vault.values.get("mailer resend key")).toBe(NEW(1));
+    expect(run.vault.rotated).toEqual(["2026-11-09"]);
+    expect(run.stderr.text).not.toContain("desktop app");
   });
 
-  test("a service account can still show the plan, and says rotating needs the desktop app", async () => {
+  test("a service account's plan says nothing about another machine", async () => {
     const run = setup({ serviceAccount: true });
     expect(await run.run("--plan")).toBe(NEEDS_APPROVAL);
-    expect(run.issuer.log).toEqual(["check none"]);
-    expect(run.writes()).toEqual([]);
-    expect(run.stderr.text).toContain(
-      "Rotating needs another machine: saving a new key to 1Password needs the desktop app, and this machine signs in with a service account.",
-    );
+    expect(run.stderr.text).not.toContain("Rotating needs another machine");
     expect(run.stderr.text).toContain("  + Resend                   create a new key");
   });
 

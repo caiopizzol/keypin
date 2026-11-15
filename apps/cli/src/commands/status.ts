@@ -21,7 +21,7 @@ import { registryPath, statePath } from "../paths";
 import { MAP_FILE } from "../project";
 import { messageOf } from "../errors";
 import { columns, type Output, output, tilde } from "../output";
-import { approval, signInFor } from "../sign-in";
+import { approval } from "../sign-in";
 import { distinctRefs, refKey } from "../vault";
 
 type Problem = Status["problems"][number];
@@ -114,7 +114,7 @@ export async function status(args: string[], deps: Deps): Promise<number> {
         out,
         publish: command("publish"),
         rotate: command("rotate"),
-        rotates: rotatesHere(deps),
+        rotates: (row) => row.issuer !== null && row.destinations.length > 0,
       }),
     );
   }
@@ -129,17 +129,6 @@ interface Context {
   publish: (row: StatusRow) => string;
   rotate: (row: StatusRow) => string;
   rotates: (row: StatusRow) => boolean;
-}
-
-function rotatesHere(deps: Deps): (row: StatusRow) => boolean {
-  const savesNewKey = (row: StatusRow) => {
-    try {
-      return signInFor(deps, [row.ref])?.mode !== "service-account";
-    } catch {
-      return false;
-    }
-  };
-  return (row) => row.issuer !== null && row.destinations.length > 0 && savesNewKey(row);
 }
 
 function render(result: Status, projects: readonly string[], context: Context): string {

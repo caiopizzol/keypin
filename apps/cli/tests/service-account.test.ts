@@ -1,6 +1,7 @@
 import { assert, describe, expect, test, vi } from "vite-plus/test";
 import { isRecord, type KeyRef } from "@keypin/core";
 import { requireDesktopApp, type SdkClient } from "@keypin/connectors/onepassword";
+import { fakeOnePassword } from "@keypin/connectors/onepassword/testing";
 import { cli } from "../src/cli";
 import type { Deps } from "../src/deps";
 import { onePasswordFrom } from "../src/sign-in";
@@ -317,19 +318,40 @@ async function jsonRun(map: string, env: Record<string, string>) {
 }
 
 describe("keypin import with a service account", () => {
-  test("is refused before reading the env file, listing or planning", async () => {
-    const vault = fakeVault({ items: [] });
+  const DENIED =
+    "An error occurred when processing SDK request: Error { msg: you do not have the right permissions to perform this action: , inner: None }";
+
+  function importing(deny = false) {
+    const fake = fakeOnePassword([], ["Deploy"]);
+    if (deny)
+      fake.client.items.create = async () => {
+        throw new Error(DENIED);
+      };
+    const onePassword = opened(SERVICE, fake.client);
     const run = fakeDeps({
       disk: memoryFiles({ "/work/billing/.env": `STRIPE_KEY=${SENTINEL}\n` }),
-      backend: vault.vault,
-      deps: { signIn: () => ({ mode: "service-account", address: "my.1password.com" }) },
+      deps: { env: SERVICE, signIn: () => onePassword.signIn, vault: () => onePassword.vault },
     });
-    expect(await cli(["import", ".env", "--vault", "Deploy", "--yes"], run.deps)).toBe(1);
-    expect(run.stderr.text).toBe(
-      "keypin import: import writes new items to 1Password, which needs the desktop app; KEYPIN_1PASSWORD=service-account only reads\n",
+    const args = ["import", ".env", "--vault", "Deploy", "--account", "my.1password.com", "--yes"];
+    return { ...run, fake, args };
+  }
+
+  test("saves the new item to a vault the service account can write to", async () => {
+    const run = importing();
+    expect(await cli(run.args, run.deps)).toBe(0);
+    expect(run.fake.effects).toEqual(["1password create vault-1/billing dev stripe key"]);
+    expect(run.disk.contents.get("/work/billing/keypin.toml")).toContain(
+      'dev = "op://Deploy/billing dev stripe key/password"',
     );
-    expect(vault.calls).toEqual([]);
-    expect(vault.created).toEqual([]);
+  });
+
+  test("without write access, says to create a service account that can write to the vault", async () => {
+    const run = importing(true);
+    expect(await cli(run.args, run.deps)).toBe(1);
+    expect(run.stderr.text + run.stdout.text).toContain(
+      `the service account can't write to the vault "Deploy". Grant write access to it: 1Password can't change a service account's access, so create a new service account with read and write access to that vault, and use its token`,
+    );
+    expect(run.stderr.text + run.stdout.text).not.toContain("Error {");
   });
 });
 

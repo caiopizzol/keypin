@@ -408,15 +408,12 @@ dev = "op://Private/forever/password"
     );
   });
 
-  test("a 1Password service account gets the manual rotation, since rotate can't save the new key", async () => {
+  test("a 1Password service account is told to run keypin rotate too", async () => {
     const { deps, stdout } = dueWithIssuer({
       signIn: () => ({ mode: "service-account", address: "my.1password.com" }),
     });
     expect(await cli(["status"], deps)).toBe(0);
-    expect(stdout.text).toContain(
-      "  web SESSION_SECRET (prod): is due 2026-11-15 (rotated 2026-05-19, every 180d)\n    Put a new value in the 1Password item and set rotated to today, then run keypin publish SESSION_SECRET in /work/web.\n",
-    );
-    expect(stdout.text).not.toContain("keypin rotate");
+    expect(stdout.text).toContain("    Run keypin rotate SESSION_SECRET in /work/web.\n");
   });
 
   test("groups keys under each project, in the registry's order", async () => {

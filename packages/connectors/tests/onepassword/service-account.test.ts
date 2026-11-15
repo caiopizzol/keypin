@@ -20,7 +20,7 @@ const ref = (account: string, vault = "Deploy"): KeyRef => ({
   field: "password",
 });
 
-function fakeSdk(vaults = ["Deploy"]) {
+function fakeSdk(vaults = ["Deploy"], create = () => {}) {
   const calls: string[] = [];
   const client: SdkClient = {
     vaults: {
@@ -39,6 +39,7 @@ function fakeSdk(vaults = ["Deploy"]) {
       },
       create: async () => {
         calls.push("items.create");
+        create();
         return {};
       },
       put: async () => {
@@ -148,13 +149,24 @@ describe("a service account sign-in", () => {
     );
   });
 
-  test("only reads: it says it can't write, and a write never reaches 1Password", async () => {
+  test("writes when the service account may: it says it can write, and creates the item", async () => {
     const { backend, calls } = fakeSdk();
-    expect(backend.capabilities.write).toBe(false);
+    expect(backend.capabilities.write).toBe(true);
+    await backend.write(ref("acme.1password.com"), new Secret("value-1234"), { newItem: true });
+    expect(calls).toEqual(["vaults.list", "items.list", "items.create"]);
+  });
+
+  test("a write the service account isn't allowed says to create one with write access", async () => {
+    const { backend } = fakeSdk(["Deploy"], () => {
+      throw new Error(
+        "An error occurred when processing SDK request: Error { msg: you do not have the right permissions to perform this action: , inner: None }",
+      );
+    });
     await expect(
       backend.write(ref("acme.1password.com"), new Secret("value-1234"), { newItem: true }),
-    ).rejects.toThrow("writing to 1Password needs the desktop app");
-    expect(calls).toEqual([]);
+    ).rejects.toThrow(
+      `the service account can't write to the vault "Deploy". Grant write access to it: 1Password can't change a service account's access, so create a new service account with read and write access to that vault, and use its token`,
+    );
   });
 
   test("a built-in vault says service accounts can't open it, and how to move the item", async () => {

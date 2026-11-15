@@ -32,7 +32,7 @@ import { type Deps, localDay, UsageError } from "../deps";
 import { messageOf } from "../errors";
 import { confirm, type Output, output } from "../output";
 import { findMap, pickEnvironment } from "../project";
-import { approval, signInFor } from "../sign-in";
+import { approval } from "../sign-in";
 import {
   type Checked,
   checkAccounts,
@@ -134,7 +134,6 @@ async function rotateLocked(job: Job): Promise<number> {
     receipts: state.receipts,
   };
 
-  const signIn = signInFor(deps, [entry.ref, spec.admin]);
   say(
     `${out.bold(key.name)} ${owner.environment}  ${out.dim(`from ${formatReference(entry.ref, deps.vaults)} in ${vaultAccount(entry.ref, deps.vaults)}`)}`,
   );
@@ -193,19 +192,6 @@ async function rotateLocked(job: Job): Promise<number> {
     next = { action: "resume", issued: { ...next.issued, held: false } };
     state = recordIssued(state, next.issued);
     if (!job.plan) await saveState(deps.files, job.path, state);
-  }
-  if (
-    next.action === "create" &&
-    entry.ref.kind === "1password" &&
-    signIn?.mode === "service-account"
-  ) {
-    const why =
-      "saving a new key to 1Password needs the desktop app, and this machine signs in with a service account";
-    if (!job.plan) {
-      say(`Stopped: ${why}. Nothing was created.`);
-      return 1;
-    }
-    say(out.dim(`Rotating needs another machine: ${why}.`));
   }
 
   const inVault = next.action === "resume" ? next.issued.id : next.current;

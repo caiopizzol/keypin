@@ -77,10 +77,6 @@ const DOLLAR = "the value has a $, which some loaders expand to another variable
 
 export async function importEnv(args: string[], deps: Deps): Promise<number> {
   const request = parseRequest(args);
-  if (deps.signIn().mode === "service-account")
-    throw new Error(
-      "import writes new items to 1Password, which needs the desktop app; KEYPIN_1PASSWORD=service-account only reads",
-    );
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);
   const say = (text: string) => out.line(text);
   const envPath = resolve(deps.cwd, request.envFile);

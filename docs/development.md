@@ -44,6 +44,8 @@ bun run typecheck  # tsc in every package
 - Every provider folder ships its fake as `testing.ts`, exported as `@keypin/connectors/<provider>/testing`, and runs
   the shared contract in `tests/<provider>/contract.test.ts` (`scripts/check-connectors.ts`), so each connector
   behaves the same way.
+- Core and `apps/cli/src` outside `start.ts` and `sign-in.ts` name no provider, such as `1Password` or `op://`. Put
+  that text in the provider's kind. `scripts/provider-literals.json` lists today's counts, which may only go down.
 - README.md and skills/keypin/SKILL.md grow by at most 5 lines per PR (`scripts/check-docs-growth.ts`), per
   [AGENTS.md](../AGENTS.md). Remove a line for each one you add, or add a `Docs-Growth: <reason>` trailer to a commit.
 

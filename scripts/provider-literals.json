@@ -1,0 +1,14 @@
+{
+  "apps/cli/src/cli.ts": 2,
+  "apps/cli/src/commands/check.ts": 2,
+  "apps/cli/src/commands/import.ts": 36,
+  "apps/cli/src/commands/init.ts": 8,
+  "apps/cli/src/commands/rotate.ts": 4,
+  "apps/cli/src/commands/run.ts": 1,
+  "apps/cli/src/commands/status.ts": 8,
+  "apps/cli/src/deps.ts": 4,
+  "apps/cli/src/publisher.ts": 1,
+  "packages/core/src/env.ts": 3,
+  "packages/core/src/login.ts": 2,
+  "packages/core/src/map.ts": 4
+}

@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, Secret } from "@keypin/core";
 import { ResendIssuer, type ResendIssuerOptions } from "../../src/resend/index";
 
 const ADMIN = "re_admin_sentinel_5c1f";
@@ -160,12 +160,54 @@ describe("create", () => {
     const error: unknown = await refused.create("K").catch((e: unknown) => e);
     assert(error instanceof Error);
     expect(error.message).toBe("Resend POST /api-keys returned HTTP 422 invalid_parameter");
+    expect(error).toBeInstanceOf(NothingChanged);
     expectNoSecret(error);
 
     routes["POST /api-keys"] = { status: 201, body: { id: "key-new" } };
     const empty = issuer(routes).resend;
     await empty.checkAccount(null);
     await expect(empty.create("K")).rejects.toThrow("has no id and token");
+  });
+});
+
+describe("after a failed create", () => {
+  test("a server error may have made the key, so it isn't NothingChanged", async () => {
+    const routes = happyRoutes();
+    routes["POST /api-keys"] = { status: 502, body: { name: "internal_server_error" } };
+    const { resend } = issuer(routes);
+    await resend.checkAccount(null);
+    const error: unknown = await resend.create("K").catch((e: unknown) => e);
+    assert(error instanceof Error);
+    expect(error).not.toBeInstanceOf(NothingChanged);
+  });
+
+  test("find lists keys with the name create sent, cut to 50 characters, that checkAccount didn't see", async () => {
+    const name = `${"K".repeat(60)} prod 2026-11-09`;
+    const sent = name.slice(0, 50);
+    const routes = happyRoutes();
+    routes["GET /api-keys"] = {
+      status: 200,
+      body: {
+        object: "list",
+        has_more: false,
+        data: [{ id: "key-before", name: sent }],
+      },
+    };
+    const { resend } = issuer(routes);
+    await resend.checkAccount(null);
+    routes["GET /api-keys"] = {
+      status: 200,
+      body: {
+        object: "list",
+        has_more: false,
+        data: [
+          { id: "key-before", name: sent },
+          { id: "key-made", name: sent },
+          { id: "key-other", name: "Production" },
+        ],
+      },
+    };
+    expect(await resend.find(name)).toEqual(["key-made"]);
   });
 });
 

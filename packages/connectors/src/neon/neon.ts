@@ -4,6 +4,7 @@ import {
   type Issuer,
   type IssuerCheck,
   isRecord,
+  NothingChanged,
   parseObject,
   Secret,
 } from "@keypin/core";
@@ -175,24 +176,24 @@ export class NeonIssuer implements Issuer {
       ...(currentId === null ? { currentId: `${user}@${at}` } : {}),
       notes: {
         create: `resets the password of role ${idle}, which the vault's URL doesn't use; every open connection drops`,
-        revoke: `resets the password of role ${user}; every open connection drops`,
+        revoke: `resets the password of role ${user}: every connection string that uses ${user} stops working, and every open connection drops`,
       },
     };
   }
 
   async create(): Promise<IssuedKey> {
     if (!this.#passed || !this.#vault)
-      throw new Error("refusing to reset a Neon password: checkAccount hasn't passed");
+      throw new NothingChanged("refusing to reset a Neon password: checkAccount hasn't passed");
     if (!this.#idle)
-      throw new Error(
+      throw new NothingChanged(
         `keypin won't reset Neon role ${this.#vaultUser}: the URL in the vault uses it, and keypin set the other role's password last. Put the URL your apps use in the vault, then run this again`,
       );
     const { role, at: checked } = this.#idle;
     const again = "so another rotation may be running. Run rotate again";
     const before = await this.#passwordTime(role);
-    if (before === null) throw new Error(`Neon role ${role} is gone`);
+    if (before === null) throw new NothingChanged(`Neon role ${role} is gone`);
     if (before !== checked)
-      throw new Error(
+      throw new NothingChanged(
         `Neon role ${role}'s password changed at ${before}, after keypin checked it, ${again}`,
       );
     const reset = await this.#reset(role);
@@ -206,6 +207,10 @@ export class NeonIssuer implements Issuer {
     url.username = role;
     url.password = reset.password;
     return { id: `${role}@${at}`, secret: new Secret(url.toString()) };
+  }
+
+  async find(): Promise<string[]> {
+    return [];
   }
 
   async revoke(id: string): Promise<"revoked" | "already gone"> {
@@ -231,7 +236,13 @@ export class NeonIssuer implements Issuer {
       await this.#sleep(wait(tries));
       reply = await this.#request("POST", path);
     }
-    if (reply.status !== 200) throw failure("POST", `/roles/${role}/reset_password`, reply);
+    if (reply.status !== 200)
+      throw failure(
+        "POST",
+        `/roles/${role}/reset_password`,
+        reply,
+        reply.status < 500 ? NothingChanged : Error,
+      );
     const reset = isRecord(reply.body.role) ? reply.body.role : {};
     const { password, updated_at: at } = reset;
     if (typeof password !== "string" || !password)
@@ -392,8 +403,13 @@ function userOf(url: URL | null): string | null {
   }
 }
 
-function failure(method: string, path: string, reply: Reply): Error {
-  return new Error(`Neon ${method} ${path} returned HTTP ${reply.status}${codeOf(reply)}`);
+function failure(
+  method: string,
+  path: string,
+  reply: Reply,
+  type: new (message: string) => Error = Error,
+): Error {
+  return new type(`Neon ${method} ${path} returned HTTP ${reply.status}${codeOf(reply)}`);
 }
 
 function codeOf(reply: Reply): string {

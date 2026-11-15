@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type DestinationKind, type IssuerKind, parseMap } from "../src/index";
+import { type DestinationKind, type IssuerKind, type IssuerSpec, parseMap } from "../src/index";
 import { ISSUERS, KINDS, MAP_FILE, VALID_MAP, VAULT_KINDS } from "./fixtures";
 
 const VAULTS = `
@@ -1016,5 +1016,46 @@ prod = { from = "op://Private/api key/credential", publish = [{ to = "silent" }]
     expect(result.errors).toEqual([
       `${MAP_FILE}: key "API_KEY" prod: publish[0]: the "silent" destination couldn't read this table`,
     ]);
+  });
+});
+
+describe("issuers that claim the same thing", () => {
+  const pool: IssuerKind<IssuerSpec & { kind: "pool"; slot: string }> = {
+    kind: "pool",
+    parse: (read) => {
+      const admin = read.admin();
+      const slot = read.required("slot");
+      return admin && slot ? { kind: "pool", admin, slot } : undefined;
+    },
+    connect: () => {
+      throw new Error("never connected");
+    },
+    claims: (spec) => [`slot ${spec.slot}`],
+  };
+  const parse = (dev: string, prod: string) =>
+    parseMap(
+      `${VAULTS}
+[keys.A]
+dev = { from = "op://Private/a dev/password", issuer = { kind = "pool", admin = "op://Private/admin/password", slot = "${dev}" } }
+
+[keys.B]
+prod = { from = "op://Private/b prod/password", issuer = { kind = "pool", admin = "op://Private/admin/password", slot = "${prod}" } }
+`,
+      MAP_FILE,
+      KINDS,
+      [pool],
+      VAULT_KINDS,
+    );
+
+  test("are refused across keys and environments, naming both", () => {
+    const result = parse("1", "1");
+    assert(!result.ok);
+    expect(result.errors).toEqual([
+      `${MAP_FILE}: key "B" prod issuer: key "A" dev also rotates slot 1, so rotating either key breaks the other. Change one issuer so they share nothing, or remove one`,
+    ]);
+  });
+
+  test("pass when their claims differ", () => {
+    expect(parse("1", "2").ok).toBe(true);
   });
 });

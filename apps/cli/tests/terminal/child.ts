@@ -204,16 +204,23 @@ const vault = routedVault({ "1password": () => signedIn().vault, infisical: () =
 
 const resend = resendFetch({
   tokenPrefix: ISSUED_PREFIX,
-  failCreate: run.resend?.failCreate ?? false,
+  ...(run.resend?.failCreate === undefined ? {} : { failCreate: run.resend.failCreate }),
+  loseCreated: run.resend?.loseCreated ?? false,
   keys: {
     load() {
       if (!existsSync(RESEND)) return { live: run.resend?.keys ?? [], created: 0 };
       const parsed: unknown = JSON.parse(readFileSync(RESEND, "utf8"));
       if (!isRecord(parsed) || !Array.isArray(parsed.live) || typeof parsed.created !== "number")
         throw new Error(`${RESEND} isn't the fake Resend's keys`);
+      const names = isRecord(parsed.names) ? parsed.names : {};
       return {
         live: parsed.live.filter((id): id is string => typeof id === "string"),
         created: parsed.created,
+        names: Object.fromEntries(
+          Object.entries(names).flatMap(([id, name]) =>
+            typeof name === "string" ? [[id, name]] : [],
+          ),
+        ),
       };
     },
     save: (keys) => writeFileSync(RESEND, JSON.stringify(keys)),

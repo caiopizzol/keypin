@@ -7,6 +7,7 @@ import {
   HeldForApproval,
   WriteRefused,
   type Issued,
+  type IssuedKey,
   issuedFor,
   type Issuer,
   type IssuerCheck,
@@ -16,6 +17,7 @@ import {
   type KeyOwner,
   loadState,
   messageOf,
+  NothingChanged,
   nextRotation,
   planNewValue,
   planPublish,
@@ -241,8 +243,9 @@ async function rotateLocked(job: Job): Promise<number> {
   if (!ok) return NEEDS_APPROVAL;
 
   const created = await createKey(job, issuer);
-  if (!created) {
-    say("Stopped. Nothing was created.");
+  if ("unchanged" in created) {
+    if (created.unchanged) say("Stopped. Nothing was created.");
+    else await mayHaveCreated(job, issuer, created.name);
     return 1;
   }
   const issued: Issued = {
@@ -520,7 +523,10 @@ async function checkIssuer(
   }
 }
 
-async function createKey({ key, owner, deps, out }: Job, issuer: Issuer) {
+async function createKey(
+  { key, owner, deps, out }: Job,
+  issuer: Issuer,
+): Promise<IssuedKey | { unchanged: boolean; name: string }> {
   const where = issuer.describe();
   const name = `${key.name} ${owner.environment} ${localDay(deps.now())}`;
   try {
@@ -531,7 +537,25 @@ async function createKey({ key, owner, deps, out }: Job, issuer: Issuer) {
     );
   } catch (error) {
     out.line(`    ${messageOf(error)}`);
-    return null;
+    return { unchanged: error instanceof NothingChanged, name };
+  }
+}
+
+async function mayHaveCreated({ deps, out, args }: Job, issuer: Issuer, name: string) {
+  const where = issuer.describe();
+  const again = `then run this again:\n  ${commandLine(deps, "rotate", args)}`;
+  const found = await issuer.find?.(name).catch(() => null);
+  if (found?.length === 0) {
+    out.line(`Stopped. ${where} holds no usable key from this run, so running it again is safe.`);
+  } else if (found) {
+    const keys = found.length === 1 ? `key ${found[0]}` : `keys ${found.join(", ")}`;
+    out.line(
+      `Stopped: keypin didn't get the new key back, but ${where} lists ${keys}, named ${name}. Delete it at ${issuer.dashboard()}, ${again}`,
+    );
+  } else {
+    out.line(
+      `Stopped: ${where} may have made the new key before this failed, and a rerun makes another. Delete any key named ${name} at ${issuer.dashboard()}, ${again}`,
+    );
   }
 }
 

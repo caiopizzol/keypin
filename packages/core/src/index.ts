@@ -13,6 +13,7 @@ export {
   type IssuerCheck,
   type ItemIds,
   type KeyRef,
+  NothingChanged,
   type Receipt,
   SignInFailed,
   type SignInReason,

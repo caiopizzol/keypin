@@ -42,6 +42,8 @@ export class HeldForApproval extends Error {}
 
 export class WriteRefused extends Error {}
 
+export class NothingChanged extends Error {}
+
 export type SignInReason =
   | { kind: "no-credentials" }
   | { kind: "no-desktop-app" }
@@ -115,6 +117,7 @@ export interface Issuer {
   dashboard(): string;
   checkAccount(currentId: string | null, current: Secret): Promise<IssuerCheck>;
   create(name: string): Promise<IssuedKey>;
+  find?(name: string): Promise<string[]>;
   revoke(id: string): Promise<"revoked" | "already gone">;
 }
 

@@ -138,5 +138,7 @@ roles = ["app_a", "app_b"]
 
 `admin` is a [Neon API key](https://neon.com/docs/manage/api-keys) that reaches the project. `rotate` resets the
 password of the role the vault's URL doesn't use and saves your URL with that role. Revoking resets the old role's
-password. Each reset drops every open connection to the compute, whatever its role, so apps must reconnect. A table
-belongs to the role that creates it, so run migrations after `SET ROLE app`.
+password, so every connection string with that role stops working, not only this key. keypin refuses a map where two
+keys' issuers share a role, such as a pooled and a direct URL; give the direct URL its own two roles. Each reset drops
+every open connection to the compute, whatever its role, so apps must reconnect. A table belongs to the role that
+creates it, so run migrations after `SET ROLE app`.

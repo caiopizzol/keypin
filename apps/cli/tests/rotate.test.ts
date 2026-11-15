@@ -1,7 +1,8 @@
 import { describe, expect, test } from "vite-plus/test";
-import { generationOf, type Issuer, loadState, Secret } from "@keypin/core";
+import { type Fetch, generationOf, type Issuer, loadState, Secret } from "@keypin/core";
+import { memoryKeys, resendFetch } from "@keypin/connectors/resend/testing";
 import { cli } from "../src/cli";
-import { vaults } from "../src/start";
+import { issuer as connect, vaults } from "../src/start";
 import { NEEDS_APPROVAL } from "../src/publishing";
 import {
   fakeDeps,
@@ -89,6 +90,19 @@ function fakeIssuer(options: IssuerOptions, made: { count: number }) {
   return { build, log, admins };
 }
 
+function resend(options: {
+  failCreate?: number;
+  loseCreated?: boolean;
+  keys?: ReturnType<typeof memoryKeys>;
+}) {
+  return resendFetch({
+    tokenPrefix: "re_new_",
+    keys: options.keys ?? memoryKeys(["key-0"]),
+    effect: () => undefined,
+    ...options,
+  });
+}
+
 function unwritableState() {
   const disk = memoryFiles({ "/work/billing/keypin.toml": MAP });
   const files = { ...disk.files };
@@ -107,6 +121,7 @@ interface Setup extends FakeDestinationOptions, IssuerOptions {
   failSave?: boolean | "refused";
   made?: { count: number };
   serviceAccount?: boolean;
+  resend?: Fetch;
 }
 
 function setup(options: Setup = {}) {
@@ -121,7 +136,7 @@ function setup(options: Setup = {}) {
     backend: vault.vault,
     deps: {
       destination: destinations.build,
-      issuer: issuer.build,
+      issuer: options.resend ? (spec, admin) => connect(spec, admin, options.resend) : issuer.build,
       isTerminal: options.terminal ?? true,
       ...(options.serviceAccount
         ? { signIn: () => ({ mode: "service-account", address: "my.1password.com" }) }
@@ -244,7 +259,42 @@ describe("keypin rotate", () => {
     expect(run.vault.values.get("mailer resend key")).toBe(OLD);
     expect(run.writes()).toEqual([]);
     expect(run.stderr.text).toContain("Resend POST /api-keys returned HTTP 500");
+  });
+
+  test("a create Resend refuses says nothing was created", async () => {
+    const run = setup({ answers: ["y"], resend: resend({ failCreate: 422 }) });
+    expect(await run.run()).toBe(1);
+    expect(run.stderr.text).toContain("Resend POST /api-keys returned HTTP 422");
     expect(run.stderr.text).toContain("Stopped. Nothing was created.");
+  });
+
+  test("a create whose reply is lost names the key Resend made, and doesn't say nothing was created", async () => {
+    const keys = memoryKeys(["key-0"]);
+    const run = setup({ answers: ["y"], resend: resend({ loseCreated: true, keys }) });
+    expect(await run.run()).toBe(1);
+    expect(keys.load().live).toEqual(["key-0", "re-new-1"]);
+    expect(run.stderr.text).not.toContain("Nothing was created");
+    expect(run.stderr.text).toContain(
+      "Stopped: keypin didn't get the new key back, but Resend lists key re-new-1, named RESEND_API_KEY prod 2026-11-09. Delete it at https://resend.com/api-keys, then run this again:",
+    );
+    expect(run.vault.values.get("mailer resend key")).toBe(OLD);
+  });
+
+  test("a create that fails at Resend's end before making a key says a rerun is safe", async () => {
+    const run = setup({ answers: ["y"], resend: resend({ failCreate: 503 }) });
+    expect(await run.run()).toBe(1);
+    expect(run.stderr.text).toContain(
+      "Stopped. Resend holds no usable key from this run, so running it again is safe.",
+    );
+  });
+
+  test("an issuer that can't look for the key says one may exist", async () => {
+    const run = setup({ failCreate: true, answers: ["y"] });
+    expect(await run.run()).toBe(1);
+    expect(run.stderr.text).not.toContain("Nothing was created");
+    expect(run.stderr.text).toContain(
+      "Stopped: Resend may have made the new key before this failed, and a rerun makes another. Delete any key named RESEND_API_KEY prod 2026-11-09 at https://resend.com/api-keys, then run this again:",
+    );
   });
 
   test("a failed vault save says to delete the new key, and the rerun creates a fresh one", async () => {

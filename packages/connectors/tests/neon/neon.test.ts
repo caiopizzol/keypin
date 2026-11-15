@@ -65,6 +65,9 @@ describe("which role keypin resets", () => {
       facts: "roles app_a and app_b, database appdb; the vault uses app_b",
       currentId: "app_b@2026-11-15T12:00:00Z",
     });
+    expect(check.notes?.revoke).toBe(
+      "resets the password of role app_b: every connection string that uses app_b stops working, and every open connection drops",
+    );
     const created = await neonB.create();
     expect(effects).toEqual(["neon reset app_a"]);
     expect(created.id).toBe("app_a@2026-11-15T12:00:01Z");
@@ -358,6 +361,40 @@ describe("checkAccount", () => {
 });
 
 describe("keypin.toml", () => {
+  const twoKeys = (second: string) => `
+[1password]
+account = "my.1password.com"
+
+[keys.DATABASE_URL.prod]
+from = "op://Private/app database/password"
+issuer = { kind = "neon", admin = "op://Private/neon api key/credential", project_id = "proj-1", branch_id = "br-main", database = "appdb", roles = ["app_a", "app_b"] }
+
+[keys.DIRECT_URL.prod]
+from = "op://Private/app direct database/password"
+issuer = { kind = "neon", admin = "op://Private/neon api key/credential", ${second} }
+`;
+  const parseTwo = (second: string) =>
+    parseMap(twoKeys(second), "/w/keypin.toml", [], [neonIssuer], [onePasswordVault]);
+
+  test("two keys whose issuers reset the same role are refused, naming both", () => {
+    const parsed = parseTwo(
+      `project_id = "proj-1", branch_id = "br-main", database = "appdb", roles = ["app_b", "app_c"]`,
+    );
+    assert(!parsed.ok);
+    expect(parsed.errors).toEqual([
+      `/w/keypin.toml: key "DIRECT_URL" prod issuer: key "DATABASE_URL" prod also rotates role app_b on Neon branch br-main of project proj-1, so rotating either key breaks the other. Change one issuer so they share nothing, or remove one`,
+    ]);
+  });
+
+  test("other roles, another branch or another project don't share a role", () => {
+    for (const second of [
+      `project_id = "proj-1", branch_id = "br-main", database = "appdb", roles = ["app_c", "app_d"]`,
+      `project_id = "proj-1", branch_id = "br-dev", database = "appdb", roles = ["app_a", "app_b"]`,
+      `project_id = "proj-2", branch_id = "br-main", database = "appdb", roles = ["app_a", "app_b"]`,
+    ])
+      expect(parseTwo(second).ok).toBe(true);
+  });
+
   const map = (roles: string) => `
 [1password]
 account = "my.1password.com"

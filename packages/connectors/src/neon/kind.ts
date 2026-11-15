@@ -39,4 +39,6 @@ export const neonIssuer: IssuerKind<NeonSpec> = {
       roles,
       ...(fetch === undefined ? {} : { fetch }),
     }),
+  claims: ({ projectId, branchId, roles }) =>
+    roles.map((role) => `role ${role} on Neon branch ${branchId} of project ${projectId}`),
 };

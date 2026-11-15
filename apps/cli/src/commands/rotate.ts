@@ -44,10 +44,12 @@ import {
   lookUpIds,
   NEEDS_APPROVAL,
   type PlanRow,
+  planOnly,
   publishRows,
   rerun,
   showPlan,
   showRemoved,
+  withoutPlan,
   writeAll,
   writesFor,
 } from "../publishing";
@@ -58,6 +60,7 @@ interface Job {
   spec: IssuerSpec;
   owner: KeyOwner;
   yes: boolean;
+  plan: boolean;
   args: string[];
   deps: Deps;
   out: Output;
@@ -75,7 +78,11 @@ interface Ready {
 export async function rotate(args: string[], deps: Deps): Promise<number> {
   const { values, positionals } = parseArgs({
     args,
-    options: { env: { type: "string" }, yes: { type: "boolean", default: false } },
+    options: {
+      env: { type: "string" },
+      yes: { type: "boolean", default: false },
+      plan: { type: "boolean", default: false },
+    },
     allowPositionals: true,
   });
   const [keyId, ...extra] = positionals;
@@ -99,7 +106,18 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);
   const owner = { keyId, environment, mapFile: map.file };
   const label = labels(entry.publish, deps.destinations);
-  const base = { key, entry, spec, owner, yes: values.yes, args, deps, out, label };
+  const base = {
+    key,
+    entry,
+    spec,
+    owner,
+    yes: values.yes,
+    plan: values.plan,
+    args,
+    deps,
+    out,
+    label,
+  };
   return locked(deps, (path) => rotateLocked({ ...base, path }));
 }
 
@@ -120,8 +138,9 @@ async function rotateLocked(job: Job): Promise<number> {
   say(
     `${out.bold(key.name)} ${owner.environment}  ${out.dim(`from ${formatReference(entry.ref, deps.vaults)} in ${vaultAccount(entry.ref, deps.vaults)}`)}`,
   );
+  const unattended = !deps.isTerminal && !job.plan;
   let approvals = approvalsFor(input);
-  if (!deps.isTerminal && !approvals.length) {
+  if (unattended && !approvals.length) {
     try {
       const [ids = null] = await lookUpIds([entry.ref], deps, out);
       approvals = approvalsFor(input, ids);
@@ -130,7 +149,7 @@ async function rotateLocked(job: Job): Promise<number> {
       return 1;
     }
   }
-  if (!deps.isTerminal && approvals.length) {
+  if (unattended && approvals.length) {
     say("Needs approval:");
     for (const needed of approvals) say(`  ${needed.approval}`);
     say(
@@ -173,17 +192,20 @@ async function rotateLocked(job: Job): Promise<number> {
   if (next.action === "resume" && next.issued.held) {
     next = { action: "resume", issued: { ...next.issued, held: false } };
     state = recordIssued(state, next.issued);
-    await saveState(deps.files, job.path, state);
+    if (!job.plan) await saveState(deps.files, job.path, state);
   }
   if (
     next.action === "create" &&
     entry.ref.kind === "1password" &&
     signIn?.mode === "service-account"
   ) {
-    say(
-      "Stopped: saving a new key to 1Password needs the desktop app, and this machine signs in with a service account. Nothing was created.",
-    );
-    return 1;
+    const why =
+      "saving a new key to 1Password needs the desktop app, and this machine signs in with a service account";
+    if (!job.plan) {
+      say(`Stopped: ${why}. Nothing was created.`);
+      return 1;
+    }
+    say(out.dim(`Rotating needs another machine: ${why}.`));
   }
 
   const inVault = next.action === "resume" ? next.issued.id : next.current;
@@ -212,16 +234,11 @@ async function rotateLocked(job: Job): Promise<number> {
       `save it to ${formatReference(entry.ref, deps.vaults)}, rotated today`,
     ),
     ...publishRows(steps, job.label),
-    current === null
-      ? row("-", issuer.describe(), "the old key stays: keypin doesn't know its ID")
-      : row(
-          "-",
-          issuer.describe(),
-          `revoke the old key ${current}, after a second y`,
-          check.notes?.revoke,
-        ),
+    revokeRow(issuer, current, "after a second y", check.notes?.revoke),
   ]);
   showRemoved(out, removed);
+  const needsApproval = steps.some((step) => step.approval !== null);
+  if (job.plan) return planOnly(deps, "rotate", job.args, needsApproval);
   say("");
   const ok = await confirmed(
     deps,
@@ -229,7 +246,7 @@ async function rotateLocked(job: Job): Promise<number> {
       yes: job.yes,
       args: job.args,
       command: "rotate",
-      needsApproval: steps.some((step) => step.approval !== null),
+      needsApproval,
       question: `Rotate ${key.name}?`,
     },
     "Nothing was created.",
@@ -286,7 +303,7 @@ async function rotateLocked(job: Job): Promise<number> {
 }
 
 function heldSteps(job: Job, issuer: Issuer, id: string): string {
-  const again = commandLine(job.deps, "rotate", job.args);
+  const again = commandLine(job.deps, "rotate", withoutPlan(job.args));
   return `Once someone approves it, run this again to publish the new key and revoke the old one:\n  ${again}\nIf the change is rejected or cancelled, delete key ${id} at ${issuer.dashboard()}, then run this again.`;
 }
 
@@ -318,17 +335,26 @@ async function resume(
   out.line(
     `\nResuming: keypin created key ${issued.id} at ${ready.issuer.describe()} on ${issued.at}, and ${vaultName(job.entry.ref, job.deps.vaults)} holds it.`,
   );
-  if (steps.every((step) => step.action === "skip")) return revokeOld(job, ready, issued, state);
+  const published = steps.every((step) => step.action === "skip");
+  if (published && !job.plan) return revokeOld(job, ready, issued, state);
+  const old = issued.old.revoked ? null : issued.old.id;
   out.line("\nPlan");
-  showPlan(out, publishRows(steps, job.label));
+  showPlan(out, [
+    ...publishRows(steps, job.label),
+    ...(old === null
+      ? []
+      : [revokeRow(ready.issuer, old, published ? "after a y" : "after a second y")]),
+  ]);
   showRemoved(out, ready.removed);
+  const needsApproval = published || steps.some((step) => step.approval !== null);
+  if (job.plan) return planOnly(deps, "rotate", job.args, needsApproval);
   out.line("");
   const total = writesFor(steps, ready.checked).length;
   const ok = await confirmed(deps, {
     yes: job.yes,
     args: job.args,
     command: "rotate",
-    needsApproval: steps.some((step) => step.approval !== null),
+    needsApproval,
     question: `Write ${total} secret${total === 1 ? "" : "s"}?`,
   });
   if (!ok) return NEEDS_APPROVAL;
@@ -430,6 +456,12 @@ function abandonedNote(old: Issued, issuer: Issuer, spec: IssuerSpec, vault: str
   if (old.issuer !== spec.kind)
     return `keypin created key ${old.id} at ${old.issuer} on ${old.at}, before this key's issuer became ${issuer.describe()}. If nothing uses it, delete it at ${old.issuer}, not ${issuer.describe()}.`;
   return `keypin created key ${old.id} at ${issuer.describe()} on ${old.at}, but ${vault} doesn't hold it. If nothing uses it, delete it at ${issuer.dashboard()}.`;
+}
+
+function revokeRow(issuer: Issuer, old: string | null, when: string, detail?: string): PlanRow {
+  return old === null
+    ? row("-", issuer.describe(), "the old key stays: keypin doesn't know its ID")
+    : row("-", issuer.describe(), `revoke the old key ${old}, ${when}`, detail);
 }
 
 function row(sign: PlanRow["sign"], place: string, why: string, detail?: string): PlanRow {

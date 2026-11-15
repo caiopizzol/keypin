@@ -456,6 +456,17 @@ describe("keypin rotate", () => {
     expect(run.stderr.text).toContain("needs the desktop app");
   });
 
+  test("a service account can still show the plan, and says rotating needs the desktop app", async () => {
+    const run = setup({ serviceAccount: true });
+    expect(await run.run("--plan")).toBe(NEEDS_APPROVAL);
+    expect(run.issuer.log).toEqual(["check none"]);
+    expect(run.writes()).toEqual([]);
+    expect(run.stderr.text).toContain(
+      "Rotating needs another machine: saving a new key to 1Password needs the desktop app, and this machine signs in with a service account.",
+    );
+    expect(run.stderr.text).toContain("  + Resend                   create a new key");
+  });
+
   test("a service account finishes a saved rotation: publish and revoke", async () => {
     const first = setup({ answers: ["y"] });
     await first.run();
@@ -475,6 +486,79 @@ describe("keypin rotate", () => {
     expect(await resumed.run()).toBe(0);
     expect(resumed.writes()).toEqual([`write ${GITHUB} RESEND_API_KEY (${NEW(2).length} chars)`]);
     expect(resumed.issuer.log).toEqual(["check key-2", "revoke key-1"]);
+  });
+
+  test("--plan runs the checks, shows the plan, and creates, writes and asks nothing", async () => {
+    const run = setup({ terminal: false });
+    expect(await run.run("--plan", "--yes")).toBe(NEEDS_APPROVAL);
+    expect(run.asked).toEqual([]);
+    expect(run.issuer.log).toEqual(["check none"]);
+    expect(run.destinations.log.filter((l) => l.startsWith("check")).toSorted()).toEqual([
+      `check ${WORKER}`,
+      `check ${GITHUB}`,
+    ]);
+    expect(run.vault.log.some((l) => l.startsWith("save"))).toBe(false);
+    expect(run.vault.values.get("mailer resend key")).toBe(OLD);
+    expect(run.writes()).toEqual([]);
+    expect(run.disk.contents.has(STATE)).toBe(false);
+    expect(run.stderr.text).toContain(
+      [
+        "Plan",
+        "  + Resend                   create a new key",
+        "  ~ 1Password                save it to op://Private/mailer resend key/credential, rotated today",
+        "  + Cloudflare  mailer       first write  needs approval",
+        "  + GitHub      acme/mailer  first write  needs approval",
+        "  - Resend                   the old key stays: keypin doesn't know its ID",
+        "",
+        "This plan needs approval in a terminal; --yes can't give it.",
+        "Nothing was written: --plan only shows the plan.",
+        "To approve, run this in a terminal:",
+        "  cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts rotate RESEND_API_KEY --yes",
+      ].join("\n"),
+    );
+    expect(run.leaked()).toBe(false);
+  });
+
+  test("--plan on a resumed rotation shows the rest, revokes nothing and writes nothing", async () => {
+    const first = setup({ answers: ["y"] });
+    await first.run();
+    const failing = setup({
+      disk: first.disk,
+      vault: first.vault,
+      failWrite: [GITHUB],
+      answers: ["y"],
+    });
+    expect(await failing.run()).toBe(1);
+    const saved = first.disk.contents.get(STATE);
+
+    const plan = setup({ disk: first.disk, vault: first.vault, answers: ["y", "y"] });
+    expect(await plan.run("--plan")).toBe(NEEDS_APPROVAL);
+    expect(plan.asked).toEqual([]);
+    expect(plan.issuer.log).toEqual(["check key-2"]);
+    expect(plan.writes()).toEqual([]);
+    expect(plan.disk.contents.get(STATE)).toBe(saved);
+    expect(plan.stderr.text).toContain(
+      [
+        "Plan",
+        "  = Cloudflare  mailer       already has this value",
+        "  ~ GitHub      acme/mailer  new value",
+        "  - Resend                   revoke the old key key-1, after a second y",
+        "",
+        "This plan is routine: --yes can approve it.",
+      ].join("\n"),
+    );
+
+    const published = setup({ disk: first.disk, vault: first.vault, answers: ["y", "n"] });
+    expect(await published.run()).toBe(0);
+    const left = first.disk.contents.get(STATE);
+    const revoke = setup({ disk: first.disk, vault: first.vault, answers: ["y"] });
+    expect(await revoke.run("--plan")).toBe(NEEDS_APPROVAL);
+    expect(revoke.asked).toEqual([]);
+    expect(revoke.issuer.log).toEqual(["check key-2"]);
+    expect(revoke.disk.contents.get(STATE)).toBe(left);
+    expect(revoke.stderr.text).toContain(
+      "  - Resend                   revoke the old key key-1, after a y\n\nThis plan needs approval in a terminal; --yes can't give it.",
+    );
   });
 
   test("the new key's generation is what publish records", async () => {

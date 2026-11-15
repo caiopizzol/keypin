@@ -3,6 +3,7 @@ import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline/promises";
 import {
+  connectIssuer,
   connectTo,
   type Destination,
   type Fetch,
@@ -18,7 +19,7 @@ import {
   wranglerConfigFile,
 } from "@keypin/destination-cloudflare";
 import { ghToken, githubActions, listRepoSecrets } from "@keypin/destination-github";
-import { ResendIssuer } from "@keypin/issuer-resend";
+import { resendIssuer } from "@keypin/issuer-resend";
 import {
   type Connect,
   desktopConnect,
@@ -57,13 +58,10 @@ export function destination(target: PublishTarget, publisher: Publisher): Destin
   return connectTo(destinations, target, publisher);
 }
 
+export const issuers = [resendIssuer];
+
 export function issuer(spec: IssuerSpec, admin: Secret, fetch?: Fetch): Issuer {
-  return new ResendIssuer({
-    admin: async () => admin,
-    permission: spec.permission,
-    ...(spec.domainId === undefined ? {} : { domainId: spec.domainId }),
-    ...(fetch === undefined ? {} : { fetch }),
-  });
+  return connectIssuer(issuers, spec, admin, fetch);
 }
 
 function installed<T>(pending: Promise<T>): Promise<T> {
@@ -178,6 +176,7 @@ export function realDeps(): Deps {
     onSignals,
     destinations,
     destination,
+    issuers,
     issuer,
     wranglerLoginFile: async () => {
       try {

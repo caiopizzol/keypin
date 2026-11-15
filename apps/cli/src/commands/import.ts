@@ -158,7 +158,12 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
   if (planned.length) {
     if (await deps.isLink(target.file))
       throw new Error(`${target.file} is a symbolic link; keypin import doesn't follow one`);
-    const check = parseMap(mapText(target, planned, environment), target.file, deps.destinations);
+    const check = parseMap(
+      mapText(target, planned, environment),
+      target.file,
+      deps.destinations,
+      deps.issuers,
+    );
     if (!check.ok)
       throw new Error(
         `adding the keys to ${target.file} wouldn't parse, so nothing was created: ${check.errors.join("; ")}`,
@@ -466,7 +471,7 @@ async function readTarget(deps: Deps, request: Request): Promise<Target> {
       );
     return { file, found, map: null, account: request.account };
   }
-  const parsed = parseMap(found, file, deps.destinations);
+  const parsed = parseMap(found, file, deps.destinations, deps.issuers);
   if (!parsed.ok) throw new Error(`fix ${file} first: ${parsed.errors.join("; ")}`);
   const account = parsed.map.account ?? request.account;
   if (!parsed.map.account && parsed.map.infisical)
@@ -495,7 +500,12 @@ function extendsKey(
   }: { name: string; vault: string; item: string; environment: string },
 ): boolean {
   const entry: Entry = { name, ref: refFor(target.account, vault, item), existing: true };
-  return parseMap(mapText(target, [entry], environment), target.file, deps.destinations).ok;
+  return parseMap(
+    mapText(target, [entry], environment),
+    target.file,
+    deps.destinations,
+    deps.issuers,
+  ).ok;
 }
 
 function refFor(account: string, vault: string, item: string): OnePasswordRef {
@@ -538,7 +548,7 @@ async function writeMap(
   environment: string,
 ): Promise<void> {
   const text = mapText(target, imports, environment);
-  const check = parseMap(text, target.file, deps.destinations);
+  const check = parseMap(text, target.file, deps.destinations, deps.issuers);
   if (!check.ok)
     throw new Error(`the new ${target.file} doesn't parse: ${check.errors.join("; ")}`);
   const result =

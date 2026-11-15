@@ -3,6 +3,7 @@ import type {
   DestinationKind,
   Files,
   Issuer,
+  IssuerKinds,
   IssuerSpec,
   PublishTarget,
   Secret,
@@ -74,6 +75,7 @@ export interface Deps {
   onSignals: OnSignals;
   destinations: readonly DestinationKind<PublishTarget, Publisher>[];
   destination(target: PublishTarget, publisher: Publisher): Destination;
+  issuers: IssuerKinds;
   issuer(spec: IssuerSpec, admin: Secret): Issuer;
   wranglerLoginFile(): Promise<string | null>;
   ghLogin(login: string | null): Promise<"ok" | "not installed" | "not logged in">;

@@ -1,12 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import {
-  generationOf,
-  type Issuer,
-  type KeyRef,
-  loadState,
-  Secret,
-  type VaultBackend,
-} from "@keypin/core";
+import { generationOf, type Issuer, loadState, Secret } from "@keypin/core";
 import { cli } from "../src/cli";
 import { NEEDS_APPROVAL } from "../src/publishing";
 import {
@@ -15,6 +8,7 @@ import {
   type FakeDestinationOptions,
   memoryFiles,
   STATE,
+  writableVault,
 } from "./fakes";
 
 const OLD = "re_old_sentinel_value_4b1c";
@@ -22,6 +16,8 @@ const ADMIN = "re_admin_sentinel_value_7e2f";
 const NEW = (n: number) => `re_new_sentinel_value_${n}_9a3d`;
 const WORKER = "cloudflare-worker:mailer";
 const GITHUB = "github-actions:acme/mailer";
+
+const VALUES = { "mailer resend key": OLD, "resend admin key": ADMIN };
 
 const MAP = `
 [1password]
@@ -92,52 +88,6 @@ function fakeIssuer(options: IssuerOptions, made: { count: number }) {
   return { build, log, admins };
 }
 
-const itemOf = (ref: KeyRef) => (ref.kind === "1password" ? ref.item : ref.name);
-
-function writableVault(failSave = false) {
-  const values = new Map([
-    ["mailer resend key", OLD],
-    ["resend admin key", ADMIN],
-  ]);
-  const rotated: string[] = [];
-  const log: string[] = [];
-  const made = { count: 0 };
-  const itemIds = new Map<string, string>();
-  const idsOf = (item: string) => ({ vault: "v1", item: itemIds.get(item) ?? `id-${item}` });
-  const vault: VaultBackend = {
-    capabilities: { read: true, write: true, list: false, metadata: true },
-    async read(ref) {
-      log.push(`read ${itemOf(ref)}`);
-      const value = values.get(itemOf(ref));
-      if (value === undefined) throw new Error(`no item "${itemOf(ref)}"`);
-      return new Secret(value);
-    },
-    async readItem(ref) {
-      return { secret: await vault.read(ref), ids: idsOf(itemOf(ref)) };
-    },
-    async itemIds(ref) {
-      log.push(`ids ${itemOf(ref)}`);
-      return idsOf(itemOf(ref));
-    },
-    async write(ref, secret, options = {}) {
-      if (failSave) {
-        log.push(`save ${itemOf(ref)} failed`);
-        throw new Error("1Password: the item is locked");
-      }
-      log.push(`save ${itemOf(ref)}`);
-      values.set(itemOf(ref), secret.reveal());
-      if (options.rotated) rotated.push(options.rotated);
-    },
-    async list() {
-      return [];
-    },
-    async metadata() {
-      return { rotated: null };
-    },
-  };
-  return { vault, values, rotated, log, made, itemIds };
-}
-
 function unwritableState() {
   const disk = memoryFiles({ "/work/billing/keypin.toml": MAP });
   const files = { ...disk.files };
@@ -160,7 +110,7 @@ interface Setup extends FakeDestinationOptions, IssuerOptions {
 
 function setup(options: Setup = {}) {
   const disk = options.disk ?? memoryFiles({ "/work/billing/keypin.toml": MAP });
-  const vault = options.vault ?? writableVault(options.failSave);
+  const vault = options.vault ?? writableVault(VALUES, options.failSave);
   const destinations = fakeDestinations(options);
   const issuer = fakeIssuer(options, options.made ?? vault.made);
   const answers = [...(options.answers ?? [])];
@@ -297,7 +247,7 @@ describe("keypin rotate", () => {
   });
 
   test("a failed vault save says to delete the new key, and the rerun creates a fresh one", async () => {
-    const vault = writableVault(true);
+    const vault = writableVault(VALUES, true);
     const first = setup({ vault, answers: ["y"] });
     expect(await first.run()).toBe(1);
     expect(first.writes()).toEqual([]);
@@ -307,7 +257,7 @@ describe("keypin rotate", () => {
     expect((await first.state()).issued).toEqual([expect.objectContaining({ id: "key-1" })]);
     expect(first.leaked()).toBe(false);
 
-    const fixed = writableVault();
+    const fixed = writableVault(VALUES);
     const again = setup({ disk: first.disk, vault: fixed, made: vault.made, answers: ["y", "n"] });
     expect(await again.run()).toBe(0);
     expect(again.stderr.text).toContain(

@@ -12,7 +12,7 @@ import {
   type VaultMetadata,
 } from "@keypin/core";
 import type { Deps, FolderEntry, Launch, Lock } from "../src/deps";
-import { destinations } from "../src/start";
+import { destinations, issuers } from "../src/start";
 
 export const SENTINEL = "sentinel-value-7f3a9c2e1d";
 
@@ -132,6 +132,49 @@ export function fakeVault(options: FakeVaultOptions = {}) {
     },
   };
   return { vault, calls, created };
+}
+
+const itemOf = (ref: KeyRef) => (ref.kind === "1password" ? ref.item : ref.name);
+
+export function writableVault(initial: Record<string, string>, failSave = false) {
+  const values = new Map(Object.entries(initial));
+  const rotated: string[] = [];
+  const log: string[] = [];
+  const made = { count: 0 };
+  const itemIds = new Map<string, string>();
+  const idsOf = (item: string) => ({ vault: "v1", item: itemIds.get(item) ?? `id-${item}` });
+  const vault: VaultBackend = {
+    capabilities: { read: true, write: true, list: false, metadata: true },
+    async read(ref) {
+      log.push(`read ${itemOf(ref)}`);
+      const value = values.get(itemOf(ref));
+      if (value === undefined) throw new Error(`no item "${itemOf(ref)}"`);
+      return new Secret(value);
+    },
+    async readItem(ref) {
+      return { secret: await vault.read(ref), ids: idsOf(itemOf(ref)) };
+    },
+    async itemIds(ref) {
+      log.push(`ids ${itemOf(ref)}`);
+      return idsOf(itemOf(ref));
+    },
+    async write(ref, secret, options = {}) {
+      if (failSave) {
+        log.push(`save ${itemOf(ref)} failed`);
+        throw new Error("1Password: the item is locked");
+      }
+      log.push(`save ${itemOf(ref)}`);
+      values.set(itemOf(ref), secret.reveal());
+      if (options.rotated) rotated.push(options.rotated);
+    },
+    async list() {
+      return [];
+    },
+    async metadata() {
+      return { rotated: null };
+    },
+  };
+  return { vault, values, rotated, log, made, itemIds };
 }
 
 function output() {
@@ -267,6 +310,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
     },
     onSignals: () => () => {},
     destinations,
+    issuers,
     destination: () => {
       throw new Error("this test publishes nothing");
     },

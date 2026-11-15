@@ -146,7 +146,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
   let fixes: Fix[] = [];
   let empty: string | null = null;
   const found = await locateMap(deps.files, folder);
-  const parsed = found ? parseMap(found.text, found.file, deps.destinations) : null;
+  const parsed = found ? parseMap(found.text, found.file, deps.destinations, deps.issuers) : null;
   const mapped = parsed?.ok
     ? parsed.map.keys.flatMap((key) =>
         Object.values(key.environments).flatMap((e) => (e ? [e.ref] : [])),

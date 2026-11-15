@@ -27,7 +27,7 @@ commands with the dev keys and publishes the prod keys. It reads a value only wh
 | 1Password | GitHub Actions     | Resend   |
 | Infisical | Cloudflare Workers |          |
 
-Want another? 👍 it on the [roadmap](https://github.com/caiopizzol/keypin/issues/138).
+Want another? Vote for it on the [roadmap](https://github.com/caiopizzol/keypin/issues/138).
 
 ## Install
 

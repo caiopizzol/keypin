@@ -10,6 +10,7 @@ export interface PublishTarget {
 export interface TableReader {
   required(field: string): string | undefined;
   optional(field: string): string | undefined;
+  list(field: string): readonly string[] | undefined;
   filledIn(value: string | undefined, field: string, what: string): string | undefined;
   only(fields: readonly string[], outdated?: Readonly<Record<string, string>>): void;
   fail(message: string): void;

@@ -1,9 +1,11 @@
 import { expect, test } from "vite-plus/test";
 import type { Issuer } from "../contracts";
+import type { Secret } from "../secret";
 import { caught, expectNoSentinel, SENTINEL } from "./leaks";
 
 export interface IssuerSubject {
   issuer: Issuer;
+  current: Secret;
   effects: readonly string[];
   failCreate(): void;
 }
@@ -24,9 +26,9 @@ export function issuerContract(make: Make): void {
   });
 
   test("checkAccount fails for an id the account doesn't list, and create then rejects", async () => {
-    const { issuer, effects } = await make(SENTINEL);
-    expect((await issuer.checkAccount(null)).ok).toBe(true);
-    const check = await issuer.checkAccount(UNKNOWN);
+    const { issuer, current, effects } = await make(SENTINEL);
+    expect((await issuer.checkAccount(null, current)).ok).toBe(true);
+    const check = await issuer.checkAccount(UNKNOWN, current);
     expect(check.ok).toBe(false);
     await expect(issuer.create("API_KEY")).rejects.toThrow("checkAccount");
     await expect(issuer.revoke(UNKNOWN)).rejects.toThrow("checkAccount");
@@ -35,17 +37,17 @@ export function issuerContract(make: Make): void {
   });
 
   test("an issued key is listed until revoked, and revoking it again is already gone", async () => {
-    const { issuer, effects } = await make(SENTINEL);
-    const first = await issuer.checkAccount(null);
+    const { issuer, current, effects } = await make(SENTINEL);
+    const first = await issuer.checkAccount(null, current);
     expect(first.ok).toBe(true);
     const created = await issuer.create("API_KEY");
     expect(created.secret.includes(SENTINEL)).toBe(true);
-    const listed = await issuer.checkAccount(created.id);
+    const listed = await issuer.checkAccount(created.id, current);
     expect(listed.ok).toBe(true);
     expect(await issuer.revoke(created.id)).toBe("revoked");
     expect(await issuer.revoke(created.id)).toBe("already gone");
     expect(await issuer.revoke(UNKNOWN)).toBe("already gone");
-    expect((await issuer.checkAccount(created.id)).ok).toBe(false);
+    expect((await issuer.checkAccount(created.id, current)).ok).toBe(false);
     expect(effects).toHaveLength(2);
     expectNoSentinel(
       first,
@@ -60,7 +62,7 @@ export function issuerContract(make: Make): void {
 
   test("a create the service refuses doesn't leak the admin key", async () => {
     const subject = await make(SENTINEL);
-    await subject.issuer.checkAccount(null);
+    await subject.issuer.checkAccount(null, subject.current);
     subject.failCreate();
     const failed = await caught(subject.issuer.create("API_KEY"));
     expectNoSentinel(failed, subject.effects);

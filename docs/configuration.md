@@ -83,7 +83,7 @@ the key is due.
 
 ## Rotating a key
 
-Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key. Resend is the only provider so far:
+Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key, at Resend or [Neon](#neon):
 
 ```toml
 [keys.RESEND_API_KEY.prod]
@@ -110,3 +110,32 @@ Without an issuer, rotate by hand:
 2. Put it in the 1Password field, and set `rotated` to today.
 3. Run `keypin publish <VARIABLE>`.
 4. Once everything uses the new value, revoke the old one at the provider.
+
+### Neon
+
+After a Neon password reset, the old password stops working on the next connection, so keypin switches `DATABASE_URL` between two login roles
+instead. Create them once with SQL, members of one group role so they keep the same grants:
+
+```sql
+CREATE ROLE app NOLOGIN;  -- grant the app's privileges to this role
+CREATE ROLE app_a WITH LOGIN IN ROLE app PASSWORD '<password>';
+CREATE ROLE app_b WITH LOGIN IN ROLE app PASSWORD '<password>';
+```
+
+```toml
+[keys.DATABASE_URL.prod]
+from = "op://Private/app database url/password"
+
+[keys.DATABASE_URL.prod.issuer]
+kind = "neon"
+admin = "op://Private/neon api key/credential"
+project_id = "quiet-lake-12345678"
+branch_id = "br-main-a1b2c3d4"
+database = "appdb"
+roles = ["app_a", "app_b"]
+```
+
+`admin` is a [Neon API key](https://neon.com/docs/manage/api-keys) that reaches the project. `rotate` resets the
+password of the role the vault's URL doesn't use and saves your URL with that role. Revoking resets the old role's
+password. Each reset drops every open connection to the compute, whatever its role, so apps must reconnect. A table
+belongs to the role that creates it, so run migrations after `SET ROLE app`.

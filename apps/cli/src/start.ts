@@ -19,6 +19,7 @@ import {
   wranglerConfigFile,
 } from "@keypin/destination-cloudflare";
 import { ghToken, githubActions, listRepoSecrets } from "@keypin/destination-github";
+import { neonIssuer } from "@keypin/issuer-neon";
 import { resendIssuer } from "@keypin/issuer-resend";
 import {
   type Connect,
@@ -60,7 +61,7 @@ export function destination(target: PublishTarget, publisher: Publisher): Destin
   return connectTo(destinations, target, publisher);
 }
 
-export const issuers = [resendIssuer];
+export const issuers = [resendIssuer, neonIssuer];
 
 export function issuer(spec: IssuerSpec, admin: Secret, fetch?: Fetch): Issuer {
   return connectIssuer(issuers, spec, admin, fetch);

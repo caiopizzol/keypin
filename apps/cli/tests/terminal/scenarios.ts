@@ -18,6 +18,7 @@ export interface Scenario {
   files: Record<string, string>;
   state?: object;
   resend?: { keys: string[]; failCreate?: boolean };
+  neon?: { roles: Record<string, string> };
   registered: boolean;
   git: { origin?: string; account?: string };
   onePassword: {
@@ -204,6 +205,59 @@ const resend: Scenario = {
   resend: { keys: ["re-old"] },
 };
 
+const NEON_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.DATABASE_URL]
+rotate_every = "90d"
+
+[keys.DATABASE_URL.prod]
+from = "op://Private/app database url/password"
+
+[keys.DATABASE_URL.prod.issuer]
+kind = "neon"
+admin = "op://Private/neon api key/credential"
+project_id = "quiet-lake-12345678"
+branch_id = "br-main-a1b2c3d4"
+database = "appdb"
+roles = ["app_a", "app_b"]
+
+[[keys.DATABASE_URL.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+
+[[keys.DATABASE_URL.prod.publish]]
+to = "cloudflare-worker"
+account = "11111111111111111111111111111111"
+worker = "billing"
+`;
+
+export const NEON_HOST = "ep-quiet-lake-a1b2c3d4-pooler.us-east-2.aws.neon.tech";
+export const NEON_PREFIX = "npg_verify_new_";
+const NEON_LIVE = "npg_verify_live_a_7c2e";
+
+const neon: Scenario = {
+  ...ready,
+  about:
+    "DATABASE_URL has a Neon issuer with roles app_a and app_b; the vault's pooled URL uses app_a and keypin has never rotated it",
+  files: { "keypin.toml": NEON_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          {
+            title: "app database url",
+            value: `postgresql://app_a:${NEON_LIVE}@${NEON_HOST}/appdb?sslmode=require&channel_binding=require`,
+            rotated: day(-95),
+          },
+          { title: "neon api key", value: "napi_verify_admin_key_5e8b" },
+        ],
+      },
+    },
+  },
+  neon: { roles: { app_a: NEON_LIVE, app_b: "npg_verify_idle_b_3a9d" } },
+};
+
 export const scenarios: Record<string, Scenario> = {
   ready,
   "env-file": {
@@ -287,6 +341,12 @@ export const scenarios: Record<string, Scenario> = {
     },
   },
   resend,
+  neon,
+  "neon-one-role": {
+    ...neon,
+    about: "neon, but the branch has only app_a: nobody created app_b",
+    neon: { roles: { app_a: NEON_LIVE } },
+  },
   "resend-password": {
     ...resend,
     about: "resend, but keypin.toml reads the key from the item's password field",
@@ -375,7 +435,10 @@ export function valuesOf(scenario: Scenario): string[] {
     scenario.env?.OP_SERVICE_ACCOUNT_TOKEN,
     scenario.env?.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET,
   ].flatMap((token) => (token ? [token] : []));
-  const issued = scenario.resend ? [ISSUED_PREFIX] : [];
+  const issued = [
+    ...(scenario.resend ? [ISSUED_PREFIX] : []),
+    ...(scenario.neon ? [NEON_PREFIX, ...Object.values(scenario.neon.roles)] : []),
+  ];
   return [
     ...items.map((item) => item.value),
     ...infisical.map((secret) => secret.value),

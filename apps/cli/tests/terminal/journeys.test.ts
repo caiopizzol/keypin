@@ -347,6 +347,48 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "Neon: resets the idle role, publishes its URL, then resets the old role after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "neon",
+        args: ["rotate", "DATABASE_URL"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "    resets the password of role app_b, which the vault's URL doesn't use; every open connection drops",
+      );
+      expect(result.screen).toContain(
+        "  - Neon                      revoke the old key app_a@2026-11-15T12:00:00Z, after a second y\n    resets the password of role app_a; every open connection drops",
+      );
+      expect(result.screen).toMatch(/^✓ Neon {2}revoked app_a@2026-11-15T12:00:00Z {2}\d+\.\ds$/m);
+      expect(result.effects).toEqual([
+        "neon reset app_b",
+        "1password update my.1password.com/Private/app database url (135 chars)",
+        "destination write github-actions:acme/billing DATABASE_URL (135 chars)",
+        "destination write cloudflare-worker:billing DATABASE_URL (135 chars)",
+        "neon reset app_a",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "Neon: a role missing from the branch stops before any reset",
+    async () => {
+      const result = await drive({ scenario: "neon-one-role", args: ["rotate", "DATABASE_URL"] });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        "    Neon branch br-main-a1b2c3d4 has no role app_b\n    fix: create app_b with SQL, in the same group role as the other (see docs/configuration.md#neon)",
+      );
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "a key read from the password field saves the new key to that field",
     async () => {
       const result = await drive({

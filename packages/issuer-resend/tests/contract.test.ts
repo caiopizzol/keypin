@@ -20,6 +20,7 @@ describe("the issuer contract", () => {
         permission: "sending_access",
         fetch: resendFetch(fake),
       }),
+      current: new Secret("re_in_the_vault"),
       effects,
       failCreate: () => {
         fake.failCreate = true;

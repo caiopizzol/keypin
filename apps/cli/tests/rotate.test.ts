@@ -482,6 +482,10 @@ describe("keypin rotate", () => {
     expect(await run.run("--plan", "--yes")).toBe(NEEDS_APPROVAL);
     expect(run.asked).toEqual([]);
     expect(run.issuer.log).toEqual(["check none"]);
+    expect(run.destinations.log.filter((l) => l.startsWith("check")).toSorted()).toEqual([
+      `check ${WORKER}`,
+      `check ${GITHUB}`,
+    ]);
     expect(run.vault.log.some((l) => l.startsWith("save"))).toBe(false);
     expect(run.vault.values.get("mailer resend key")).toBe(OLD);
     expect(run.writes()).toEqual([]);

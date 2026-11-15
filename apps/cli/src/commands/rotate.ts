@@ -49,6 +49,7 @@ import {
   rerun,
   showPlan,
   showRemoved,
+  withoutPlan,
   writeAll,
   writesFor,
 } from "../publishing";
@@ -299,7 +300,7 @@ async function rotateLocked(job: Job): Promise<number> {
 }
 
 function heldSteps(job: Job, issuer: Issuer, id: string): string {
-  const again = commandLine(job.deps, "rotate", job.args);
+  const again = commandLine(job.deps, "rotate", withoutPlan(job.args));
   return `Once someone approves it, run this again to publish the new key and revoke the old one:\n  ${again}\nIf the change is rejected or cancelled, delete key ${id} at ${issuer.dashboard()}, then run this again.`;
 }
 

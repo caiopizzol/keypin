@@ -509,6 +509,16 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
       expect(infisical.heldByPolicy).toHaveLength(1);
     });
 
+    test("--plan while the change is held points to a rerun without --plan", async () => {
+      const { infisical, held } = await heldRotation();
+      const waiting = project({ map: ISSUER_MAP, infisical, after: held });
+      expect(await cli(["rotate", "STRIPE_API_KEY", "--plan"], waiting.deps)).toBe(3);
+      expect(waiting.issued).toEqual([]);
+      expect(waiting.stderr.text).toMatch(
+        /run this again to publish the new key and revoke the old one:\n.* rotate STRIPE_API_KEY\n/,
+      );
+    });
+
     test("a rerun after the change is rejected and its key deleted creates a new key", async () => {
       const { infisical, held } = await heldRotation();
       infisical.heldByPolicy = undefined;

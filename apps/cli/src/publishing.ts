@@ -202,10 +202,13 @@ export function finishAll(state: State, owner: KeyOwner): State {
   return unfinishedOperations(state, owner).reduce((s, op) => finishOperation(s, op.id), state);
 }
 
-export function rerun(deps: Deps, command: string, args: readonly string[]): string {
+export function withoutPlan(args: readonly string[]): string[] {
   const end = args.includes("--") ? args.indexOf("--") : args.length;
-  const approve = [...args.slice(0, end).filter((arg) => arg !== "--plan"), ...args.slice(end)];
-  return `To approve, run this in a terminal:\n  ${commandLine(deps, command, approve)}`;
+  return [...args.slice(0, end).filter((arg) => arg !== "--plan"), ...args.slice(end)];
+}
+
+export function rerun(deps: Deps, command: string, args: readonly string[]): string {
+  return `To approve, run this in a terminal:\n  ${commandLine(deps, command, withoutPlan(args))}`;
 }
 
 export function commandLine(deps: Deps, command: string, args: readonly string[]): string {

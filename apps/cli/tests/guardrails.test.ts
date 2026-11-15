@@ -13,43 +13,47 @@ const CLOCK = "keypin(no-hidden-clock)";
 
 const cases: Record<string, { code: string; flags: string[] }> = {
   "packages/core/src/issuer.ts": {
-    code: 'export { ResendIssuer } from "@keypin/issuer-resend";',
+    code: 'export { ResendIssuer } from "@keypin/connectors/resend";',
     flags: [IMPORTS],
   },
   "packages/core/src/future.ts": {
-    code: 'export * from "@keypin/connectors-github";',
+    code: 'export * from "@keypin/connectors";\nexport * from "@keypin/connectors-github";\nexport * from "@keypin/vault-acme";',
+    flags: [IMPORTS, IMPORTS, IMPORTS],
+  },
+  "packages/connectors/src/infisical/peer.ts": {
+    code: 'export { ghToken } from "@keypin/connectors/github";',
     flags: [IMPORTS],
   },
-  "packages/vault-infisical/src/peer.ts": {
-    code: 'export { ghToken } from "@keypin/destination-github";',
+  "packages/connectors/src/github/peer.ts": {
+    code: 'export * from "../onepassword/index";\nexport * from "../onepassword";\nexport * from "..";\nexport * from "./x/../../resend/kind";',
+    flags: [IMPORTS, IMPORTS, IMPORTS, IMPORTS],
+  },
+  "packages/connectors/src/neon/peer.ts": {
+    code: 'export * from "@keypin/cli";',
     flags: [IMPORTS],
   },
-  "packages/connectors/github/src/peer.ts": {
-    code: 'export * from "@keypin/vault-1password";',
-    flags: [IMPORTS],
-  },
-  "packages/issuer-resend/src/core.ts": {
-    code: 'export { isRecord } from "@keypin/core";',
+  "packages/connectors/src/resend/core.ts": {
+    code: 'export { isRecord } from "@keypin/core";\nexport { resendIssuer } from "./kind";\nexport { parse } from "yaml";',
     flags: [],
   },
   "apps/cli/src/publishing.ts": {
-    code: 'export { ResendIssuer } from "@keypin/issuer-resend";',
+    code: 'export { ResendIssuer } from "@keypin/connectors/resend";',
     flags: [IMPORTS],
   },
   "apps/cli/src/commands/publish.ts": {
-    code: 'export { credentialsFrom } from "@keypin/vault-infisical";',
+    code: 'export { credentialsFrom } from "@keypin/connectors/infisical";',
     flags: [IMPORTS],
   },
   "apps/cli/src/start.ts": {
-    code: 'export { ResendIssuer } from "@keypin/issuer-resend";',
+    code: 'export { ResendIssuer } from "@keypin/connectors/resend";',
     flags: [],
   },
   "apps/cli/src/sign-in.ts": {
-    code: 'export { isAccountId } from "@keypin/vault-1password";',
+    code: 'export { isAccountId } from "@keypin/connectors/onepassword";',
     flags: [],
   },
   "apps/cli/src/commands/check.ts": {
-    code: 'export { CLIENT_ID } from "@keypin/vault-infisical";',
+    code: 'export { CLIENT_ID } from "@keypin/connectors/infisical";',
     flags: [IMPORTS],
   },
   "packages/core/src/io.ts": {

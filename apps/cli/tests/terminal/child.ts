@@ -8,11 +8,11 @@ import {
   requireDesktopApp,
   type SdkClient,
   signInAddress,
-} from "@keypin/vault-1password";
-import { neonFetch, type NeonWorld } from "@keypin/issuer-neon/testing";
-import { resendFetch } from "@keypin/issuer-resend/testing";
-import { credentialsFrom, infisicalBackend } from "@keypin/vault-infisical";
-import { fileStore, infisicalFetch } from "@keypin/vault-infisical/testing";
+} from "@keypin/connectors/onepassword";
+import { neonFetch, type NeonWorld } from "@keypin/connectors/neon/testing";
+import { resendFetch } from "@keypin/connectors/resend/testing";
+import { credentialsFrom, infisicalBackend } from "@keypin/connectors/infisical";
+import { fileStore, infisicalFetch } from "@keypin/connectors/infisical/testing";
 import { cli } from "../../src/cli";
 import { onePasswordFrom } from "../../src/sign-in";
 import { destinations, issuer, realDeps } from "../../src/start";

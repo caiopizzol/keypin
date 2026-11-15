@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { generationOf, type Issuer, loadState, Secret } from "@keypin/core";
-import { credentialsFrom, infisicalBackend } from "@keypin/vault-infisical";
+import { credentialsFrom, infisicalBackend } from "@keypin/connectors/infisical";
 import { cli } from "../src/cli";
 import { vaults } from "../src/start";
 import { onePasswordFrom } from "../src/sign-in";
@@ -22,7 +22,7 @@ import {
   infisicalFetch,
   memoryStore,
   mergeHeld,
-} from "@keypin/vault-infisical/testing";
+} from "@keypin/connectors/infisical/testing";
 
 const CREDENTIALS = {
   INFISICAL_UNIVERSAL_AUTH_CLIENT_ID: "client-id-1",

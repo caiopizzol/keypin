@@ -1,6 +1,6 @@
 import { assert, describe, expect, test, vi } from "vite-plus/test";
 import { isRecord, type KeyRef } from "@keypin/core";
-import type { SdkClient } from "@keypin/vault-1password";
+import type { SdkClient } from "@keypin/connectors/onepassword";
 import { cli } from "../src/cli";
 import type { Deps } from "../src/deps";
 import { onePasswordFrom } from "../src/sign-in";

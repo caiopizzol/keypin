@@ -8,15 +8,17 @@ const SUITES = {
   vault: "vaultContract",
 };
 type Role = keyof typeof SUITES;
-const CONNECTOR = /^(destination|issuer|vault)-[a-z0-9-]+$/;
+const KINDS: Record<string, Role> = {
+  DestinationKind: "destination",
+  IssuerKind: "issuer",
+  VaultKind: "vault",
+};
+const PACKAGE = "packages/connectors";
 const HOW = "See docs/development.md#guardrails.";
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const isRole = (value: string): value is Role => value in SUITES;
-
-const TESTING = ["./src/testing.ts", "./src/testing/index.ts"];
 const SKIPPED = new Set(["skip", "todo", "skipIf"]);
 const X_WRAPPERS = new Set(["xdescribe", "xit", "xtest"]);
 
@@ -96,64 +98,98 @@ function imported(body: unknown[], from: (source: string) => boolean, name?: str
   return found;
 }
 
-export function connectors(root: string): { dir: string; role: Role }[] {
-  const found: { dir: string; role: Role }[] = [];
-  for (const base of ["packages", "packages/connectors"]) {
-    const parent = join(root, base);
-    if (!existsSync(parent)) continue;
-    for (const name of readdirSync(parent)) {
-      const role = CONNECTOR.exec(name)?.[1];
-      if (role && isRole(role)) found.push({ dir: join(base, name), role });
+function roles(root: string, provider: string): Role[] {
+  const found = new Set<Role>();
+  const dir = join(root, PACKAGE, "src", provider);
+  for (const file of readdirSync(dir, { recursive: true, encoding: "utf8" })) {
+    if (!file.endsWith(".ts")) continue;
+    const { program } = parseSync(file, readFileSync(join(dir, file), "utf8"));
+    for (const statement of program.body) {
+      if (!isRecord(statement) || statement.type !== "ImportDeclaration") continue;
+      if (!isRecord(statement.source) || statement.source.value !== "@keypin/core") continue;
+      if (!Array.isArray(statement.specifiers)) continue;
+      for (const specifier of statement.specifiers) {
+        const name = isRecord(specifier) && isRecord(specifier.imported) && specifier.imported.name;
+        const role = typeof name === "string" ? KINDS[name] : undefined;
+        if (role) found.add(role);
+      }
     }
   }
-  return found;
+  return [...found].sort();
 }
 
-export function problems(root: string, dir: string, role: Role): string[] {
-  const found: string[] = [];
-  const suite = SUITES[role];
-  const manifest: unknown = JSON.parse(readFileSync(join(root, dir, "package.json"), "utf8"));
-  const exports = isRecord(manifest) && isRecord(manifest.exports) ? manifest.exports : {};
-  const testing = exports["./testing"];
-  const fix = `Put the fake ${role} in src/testing.ts and add "./testing": "./src/testing.ts" to "exports".`;
-  if (typeof testing !== "string")
-    found.push(`${dir}: package.json has no "./testing" export. ${fix}`);
-  else if (!TESTING.includes(testing))
-    found.push(
-      `${dir}: package.json exports "./testing" as ${testing}, not the testing module. ${fix}`,
-    );
-  else if (!existsSync(join(root, dir, testing)))
-    found.push(
-      `${dir}: package.json exports "./testing" as ${testing}, which doesn't exist. ${fix}`,
-    );
+export function connectors(root: string): { provider: string; roles: Role[] }[] {
+  const src = join(root, PACKAGE, "src");
+  if (!existsSync(src)) return [];
+  return readdirSync(src, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map(({ name }) => ({ provider: name, roles: roles(root, name) }))
+    .sort((a, b) => a.provider.localeCompare(b.provider));
+}
 
-  const path = join(root, dir, "tests/contract.test.ts");
-  const add = `Add ${dir}/tests/contract.test.ts that calls ${suite}(...) from @keypin/core/testing with the fake from src/testing.ts.`;
-  if (!existsSync(path)) {
-    found.push(`${dir}: no tests/contract.test.ts. ${add}`);
-    return found;
-  }
-  const { program, errors } = parseSync(path, readFileSync(path, "utf8"));
-  if (errors.length > 0) {
-    found.push(`${dir}: tests/contract.test.ts doesn't parse: ${errors[0]?.message}`);
-    return found;
-  }
-  const locals = imported(program.body, (source) => source === "@keypin/core/testing", suite);
-  if (!locals.some((binding) => runs(program.body, binding, suite)))
-    found.push(`${dir}: tests/contract.test.ts doesn't run ${suite}. ${add}`);
-  const name = isRecord(manifest) ? manifest.name : undefined;
-  const fake = (source: string) =>
-    source === `${String(name)}/testing` ||
-    /^\.\.\/src\/testing(\.ts|\/index(\.ts)?)?$/.test(source);
-  if (!imported(program.body, fake).some(({ local }) => readsValue(program.body, local)))
-    found.push(
-      `${dir}: tests/contract.test.ts doesn't import its fake from ../src/testing. ${add}`,
+export function strays(root: string): string[] {
+  const src = join(root, PACKAGE, "src");
+  if (!existsSync(src)) return [];
+  return readdirSync(src, { withFileTypes: true })
+    .filter((entry) => !entry.isDirectory())
+    .map(
+      ({ name }) =>
+        `${PACKAGE}/src/${name}: ${PACKAGE}/src holds one folder per provider. Move it into its provider's folder, or into packages/core if providers share it.`,
     );
-  return found;
+}
+
+export function problems(root: string, provider: string, roles: Role[]): string[] {
+  const found: string[] = [];
+  const dir = `${PACKAGE}/src/${provider}`;
+  const test = `${PACKAGE}/tests/${provider}/contract.test.ts`;
+  if (roles.length === 0)
+    return [
+      `${dir}: no DestinationKind, IssuerKind or VaultKind imported from @keypin/core. A provider folder implements one, in kind.ts.`,
+    ];
+  const manifest: unknown = JSON.parse(readFileSync(join(root, PACKAGE, "package.json"), "utf8"));
+  const exports = isRecord(manifest) && isRecord(manifest.exports) ? manifest.exports : {};
+  const key = `./${provider}/testing`;
+  const want = `./src/${provider}/testing.ts`;
+  const testing = exports[key];
+  const fix = `Put the fake in ${dir}/testing.ts and add "${key}": "${want}" to "exports" in ${PACKAGE}/package.json.`;
+  if (typeof testing !== "string")
+    found.push(`${dir}: package.json has no "${key}" export. ${fix}`);
+  else if (testing !== want)
+    found.push(`${dir}: package.json exports "${key}" as ${testing}, not ${want}. ${fix}`);
+  else if (!existsSync(join(root, PACKAGE, testing)))
+    found.push(`${dir}: package.json exports "${key}" as ${testing}, which doesn't exist. ${fix}`);
+
+  const path = join(root, test);
+  for (const role of roles) {
+    const suite = SUITES[role];
+    const add = `Add ${test} that calls ${suite}(...) from @keypin/core/testing with the fake from ${dir}/testing.ts.`;
+    if (!existsSync(path)) {
+      found.push(`${dir}: no ${test}. ${add}`);
+      continue;
+    }
+    const { program, errors } = parseSync(path, readFileSync(path, "utf8"));
+    if (errors.length > 0) {
+      found.push(`${dir}: ${test} doesn't parse: ${errors[0]?.message}`);
+      continue;
+    }
+    const locals = imported(program.body, (source) => source === "@keypin/core/testing", suite);
+    if (!locals.some((binding) => runs(program.body, binding, suite)))
+      found.push(`${dir}: ${test} doesn't run ${suite}. ${add}`);
+    const fake = (source: string) =>
+      source === `@keypin/connectors/${provider}/testing` ||
+      source === `../../src/${provider}/testing` ||
+      source === `../../src/${provider}/testing.ts`;
+    if (!imported(program.body, fake).some(({ local }) => readsValue(program.body, local)))
+      found.push(`${dir}: ${test} doesn't import its fake from ${dir}/testing.ts. ${add}`);
+  }
+  return [...new Set(found)];
 }
 
 if (import.meta.main) {
-  const found = connectors(".").flatMap(({ dir, role }) => problems(".", dir, role));
+  const found = [
+    ...strays("."),
+    ...connectors(".").flatMap(({ provider, roles }) => problems(".", provider, roles)),
+  ];
   if (found.length > 0) {
     process.stderr.write(
       `Every connector ships its fake and proves the shared contract. ${HOW}\n${found.join("\n")}\n`,

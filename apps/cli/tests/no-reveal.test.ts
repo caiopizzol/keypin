@@ -25,10 +25,10 @@ const leaks: Record<string, string> = {
 };
 
 const allowed = [
-  "packages/vault-1password/src/backend.ts",
-  "packages/destination-github/src/github.ts",
-  "packages/destination-cloudflare/src/cloudflare.ts",
-  "packages/issuer-resend/src/resend.ts",
+  "packages/connectors/src/onepassword/backend.ts",
+  "packages/connectors/src/github/github.ts",
+  "packages/connectors/src/cloudflare/cloudflare.ts",
+  "packages/connectors/src/resend/resend.ts",
   "packages/core/src/secret.ts",
   "apps/cli/src/commands/run.ts",
   "apps/cli/tests/fakes.ts",
@@ -40,8 +40,8 @@ const forbidden = [
   "packages/provider-cloudflare/src/tokens.ts",
   "apps/cli/src/publishing.ts",
   "packages/core/src/plan.ts",
-  "packages/issuer-resend/scripts/dump.ts",
-  "packages/vault-1password/scripts/dump.ts",
+  "packages/connectors/scripts/resend/dump.ts",
+  "packages/connectors/src/dump.ts",
   "apps/cli/src/tests/helper.ts",
 ];
 

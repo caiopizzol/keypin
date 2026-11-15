@@ -12,13 +12,8 @@
     "typecheck": "tsc"
   },
   "dependencies": {
-    "@keypin/core": "workspace:*",
-    "@keypin/destination-cloudflare": "workspace:*",
-    "@keypin/destination-github": "workspace:*",
-    "@keypin/issuer-neon": "workspace:*",
-    "@keypin/issuer-resend": "workspace:*",
-    "@keypin/vault-1password": "workspace:*",
-    "@keypin/vault-infisical": "workspace:*"
+    "@keypin/connectors": "workspace:*",
+    "@keypin/core": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "1.4.4"

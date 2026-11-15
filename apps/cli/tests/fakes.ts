@@ -10,8 +10,12 @@ import {
   type VaultBackend,
   type VaultMetadata,
 } from "@keypin/core";
-import { type OnePasswordRef, onePasswordRef, onePasswordScope } from "@keypin/vault-1password";
-import { infisicalRef } from "@keypin/vault-infisical";
+import {
+  type OnePasswordRef,
+  onePasswordRef,
+  onePasswordScope,
+} from "@keypin/connectors/onepassword";
+import { infisicalRef } from "@keypin/connectors/infisical";
 import type { Deps, FolderEntry, Launch, Lock } from "../src/deps";
 import { destinations, issuers, vaults } from "../src/start";
 

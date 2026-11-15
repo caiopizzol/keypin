@@ -3,8 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, assert, describe, expect, test, vi } from "vite-plus/test";
 import { isRecord, type PublishTarget } from "@keypin/core";
-import { GitHubSecretDestination } from "@keypin/destination-github";
-import { type FullItem, onePasswordBackend, requireDesktopApp } from "@keypin/vault-1password";
+import { GitHubSecretDestination } from "@keypin/connectors/github";
+import {
+  type FullItem,
+  onePasswordBackend,
+  requireDesktopApp,
+} from "@keypin/connectors/onepassword";
 import { cli } from "../src/cli";
 import { destination as realDestination } from "../src/start";
 import type { Deps } from "../src/deps";

@@ -8,8 +8,8 @@ import {
   saveState,
   Secret,
 } from "@keypin/core";
-import { GitHubSecretDestination } from "@keypin/destination-github";
-import { type FullItem, onePasswordBackend } from "@keypin/vault-1password";
+import { GitHubSecretDestination } from "@keypin/connectors/github";
+import { type FullItem, onePasswordBackend } from "@keypin/connectors/onepassword";
 import { cli } from "../src/cli";
 import type { Publisher } from "../src/deps";
 import { NEEDS_APPROVAL, rerun } from "../src/publishing";

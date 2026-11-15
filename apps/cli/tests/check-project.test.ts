@@ -1,6 +1,6 @@
 import { assert, describe, expect, test } from "vite-plus/test";
 import { isRecord, parseMap, SignInFailed, type StoreRead } from "@keypin/core";
-import { CloudflareReader } from "@keypin/destination-cloudflare";
+import { CloudflareReader } from "@keypin/connectors/cloudflare";
 import { cli } from "../src/cli";
 import { destinations, issuers, vaults } from "../src/start";
 import { AFTER_IMPORT, PASTE, THEN } from "../src/commands/check";

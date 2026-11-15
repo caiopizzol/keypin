@@ -1,0 +1,473 @@
+import { inspect } from "node:util";
+import { assert, describe, expect, test } from "vite-plus/test";
+import type { KeyRef } from "@keypin/core";
+import { Secret, SignInFailed } from "@keypin/core";
+import {
+  desktopLibrary,
+  onePasswordBackend,
+  requireDesktopApp,
+  type SdkClient,
+} from "../../src/onepassword/index";
+import { fakeOnePassword, field, item } from "../../src/onepassword/testing";
+
+const VALUE = "fake-value-7f3a9c";
+const ACCOUNT = "my.1password.com";
+const ref: KeyRef = {
+  kind: "1password",
+  account: ACCOUNT,
+  vault: "Private",
+  item: "demo dev token",
+  section: null,
+  field: "password",
+};
+const scope = { kind: "1password" as const, account: ACCOUNT, vault: "Private" };
+
+const fake = fakeOnePassword;
+
+function backendFor(client: SdkClient) {
+  const accounts: string[] = [];
+  const backend = onePasswordBackend(async (account) => {
+    accounts.push(account);
+    if (account !== ACCOUNT) throw new Error(`no signed-in account named ${account}`);
+    return client;
+  });
+  return { backend, accounts };
+}
+
+describe("list", () => {
+  test("returns id, title, tags and updatedAt only, even when the SDK's items carry a value", async () => {
+    const { client } = fake([item("demo dev token", [field("password", "Concealed", VALUE)])]);
+    const { backend } = backendFor(client);
+    const items = await backend.list(scope);
+    expect(items).toEqual([
+      {
+        id: "id-demo dev token",
+        title: "demo dev token",
+        tags: ["app/demo"],
+        updatedAt: "2026-11-09T12:00:00.000Z",
+      },
+    ]);
+    expect(JSON.stringify(items)).not.toContain(VALUE);
+  });
+
+  test("signs in once per account", async () => {
+    const { client } = fake();
+    const { backend, accounts } = backendFor(client);
+    await backend.list(scope);
+    await backend.list(scope);
+    expect(accounts).toEqual([ACCOUNT]);
+  });
+});
+
+describe("read", () => {
+  test("returns a Secret that prints as [secret]", async () => {
+    const { client } = fake([item("demo dev token", [field("password", "Concealed", VALUE)])]);
+    const secret = await backendFor(client).backend.read(ref);
+    expect(secret).toBeInstanceOf(Secret);
+    expect(secret.reveal()).toBe(VALUE);
+    expect(String(secret)).toBe("[secret]");
+    expect(JSON.stringify({ secret })).toBe('{"secret":"[secret]"}');
+    expect(inspect(secret)).toBe("[secret]");
+  });
+
+  test("readItem returns the value with the item's vault and item IDs", async () => {
+    const { client, calls } = fake([
+      item("demo dev token", [field("password", "Concealed", VALUE)], "item-7"),
+    ]);
+    const read = await backendFor(client).backend.readItem({ ...ref, item: "DEMO DEV TOKEN" });
+    expect(read.secret.reveal()).toBe(VALUE);
+    expect(read.ids).toEqual({ vault: "vault-1", item: "item-7" });
+    expect(JSON.stringify(read)).not.toContain(VALUE);
+    expect(calls.get).toBe(1);
+  });
+
+  test("itemIds finds the item's vault and item IDs without fetching its fields", async () => {
+    const { client, calls } = fake([
+      item("demo dev token", [field("password", "Concealed", VALUE)], "item-7"),
+    ]);
+    const { backend } = backendFor(client);
+    expect(await backend.itemIds({ ...ref, item: "DEMO DEV TOKEN" })).toEqual({
+      vault: "vault-1",
+      item: "item-7",
+    });
+    expect(calls.get).toBe(0);
+    await expect(backend.itemIds({ ...ref, item: "gone" })).rejects.toThrow("no such item");
+  });
+
+  test("fails clearly when the item has no such field", async () => {
+    const { client } = fake([item("demo dev token", [field("rotated", "Date", "2026-11-09")])]);
+    await expect(backendFor(client).backend.read(ref)).rejects.toThrow(
+      'op://Private/demo dev token/password (1Password account my.1password.com): the item has no field "password"',
+    );
+  });
+
+  test("reads the field the reference names, by title in any case, or by ID", async () => {
+    const { client } = fake([
+      item("demo dev token", [
+        field("password", "Concealed", "not-this"),
+        { id: "abc123", title: "Credential", fieldType: "Concealed", value: VALUE },
+      ]),
+    ]);
+    const { backend } = backendFor(client);
+    expect((await backend.read({ ...ref, field: "credential" })).reveal()).toBe(VALUE);
+    expect((await backend.read({ ...ref, field: "abc123" })).reveal()).toBe(VALUE);
+  });
+
+  test("a section picks between fields with the same name", async () => {
+    const sections = [
+      { id: "s-live", title: "live" },
+      { id: "s-test", title: "test" },
+    ];
+    const both = [
+      {
+        id: "f1",
+        title: "key",
+        sectionId: "s-test",
+        fieldType: "Concealed" as const,
+        value: "test-value",
+      },
+      {
+        id: "f2",
+        title: "key",
+        sectionId: "s-live",
+        fieldType: "Concealed" as const,
+        value: VALUE,
+      },
+    ];
+    const { client } = fake([{ ...item("demo dev token", both), sections }]);
+    const { backend } = backendFor(client);
+    expect((await backend.read({ ...ref, section: "live", field: "key" })).reveal()).toBe(VALUE);
+    await expect(backend.read({ ...ref, field: "key" })).rejects.toThrow(
+      '2 fields are named "key"; name a section',
+    );
+    await expect(backend.read({ ...ref, section: "staging", field: "key" })).rejects.toThrow(
+      'the item has no section "staging"',
+    );
+  });
+});
+
+describe("names in a reference", () => {
+  test("find the vault and item by title in any case, or by ID", async () => {
+    const { client } = fake([item("Demo Dev Token", [field("password", "Concealed", VALUE)])]);
+    const { backend } = backendFor(client);
+    for (const named of [
+      { vault: "private", item: "demo dev token" },
+      { vault: "vault-1", item: "id-Demo Dev Token" },
+    ]) {
+      expect((await backend.read({ ...ref, ...named })).reveal()).toBe(VALUE);
+    }
+  });
+
+  test("a name that is one item's ID and another's title is refused, in any case", async () => {
+    const { client } = fake([
+      item("demo dev token", [field("password", "Concealed", VALUE)], "abc"),
+      item("ABC", [field("password", "Concealed", "not-this")], "xyz"),
+    ]);
+    const { backend } = backendFor(client);
+    for (const name of ["abc", "Abc"]) {
+      await expect(backend.read({ ...ref, item: name })).rejects.toThrow("2 items have this name");
+    }
+  });
+
+  test("a field name that is one field's ID and another's title is refused, in any case", async () => {
+    const { client } = fake([
+      item("demo dev token", [
+        { id: "password", title: "old password", fieldType: "Concealed", value: "fake-old" },
+        { id: "custom-field", title: "Password", fieldType: "Concealed", value: VALUE },
+      ]),
+    ]);
+    const { backend } = backendFor(client);
+    for (const name of ["password", "Password"]) {
+      await expect(backend.read({ ...ref, field: name })).rejects.toThrow(
+        `2 fields are named "${name}"`,
+      );
+    }
+    expect((await backend.read({ ...ref, field: "CUSTOM-FIELD" })).reveal()).toBe(VALUE);
+  });
+
+  test("refuses the rotated field, which keypin writes the rotation day into", async () => {
+    const existing = item("demo dev token", [field("rotated", "Date", "2026-11-09")]);
+    const { client, calls } = fake([existing]);
+    const { backend } = backendFor(client);
+    await expect(
+      backend.write({ ...ref, field: "rotated" }, new Secret(VALUE), { rotated: "2026-11-10" }),
+    ).rejects.toThrow('"rotated" holds the day the value last changed');
+    await expect(backend.read({ ...ref, field: "Rotated" })).rejects.toThrow(
+      '"rotated" holds the day the value last changed',
+    );
+    expect(calls.put).toEqual([]);
+  });
+});
+
+describe("write", () => {
+  test("writes the field the reference names, and won't create an item for another field", async () => {
+    const existing = item("demo dev token", [
+      field("password", "Concealed", "keep-this"),
+      field("credential", "Concealed", "old-value"),
+    ]);
+    const { client, calls } = fake([existing]);
+    const { backend } = backendFor(client);
+    await backend.write({ ...ref, field: "credential" }, new Secret(VALUE));
+    expect(calls.put[0]?.fields).toEqual([
+      field("password", "Concealed", "keep-this"),
+      field("credential", "Concealed", VALUE),
+    ]);
+    await expect(
+      backend.write({ ...ref, item: "new item", field: "credential" }, new Secret(VALUE)),
+    ).rejects.toThrow("no such item; create it in 1Password first");
+    expect(calls.create).toEqual([]);
+  });
+
+  test("creates a Password item when it is missing, with rotated when asked", async () => {
+    const { client, calls } = fake();
+    await backendFor(client).backend.write(ref, new Secret(VALUE), { rotated: "2026-11-09" });
+    expect(calls.put).toEqual([]);
+    expect(calls.create).toHaveLength(1);
+    const [created] = calls.create;
+    assert(created);
+    expect(created).toMatchObject({
+      category: "Password",
+      vaultId: "vault-1",
+      title: "demo dev token",
+    });
+    expect(created.fields).toEqual([
+      { id: "password", title: "password", fieldType: "Concealed", value: VALUE },
+      { id: "rotated", title: "rotated", fieldType: "Date", value: "2026-11-09" },
+    ]);
+  });
+
+  test("with newItem, refuses an item that exists, before changing it", async () => {
+    const { client, calls } = fake([
+      item("Demo Dev Token", [field("password", "Concealed", "keep-this")]),
+    ]);
+    await expect(
+      backendFor(client).backend.write(ref, new Secret(VALUE), { newItem: true }),
+    ).rejects.toThrow("the item already exists; keypin doesn't overwrite it");
+    expect(calls).toEqual({ create: [], put: [], get: 0 });
+
+    const empty = fake();
+    await backendFor(empty.client).backend.write(ref, new Secret(VALUE), { newItem: true });
+    expect(empty.calls.create).toHaveLength(1);
+  });
+
+  test("updates the password field when the item exists and leaves other fields alone", async () => {
+    const existing = item("demo dev token", [
+      field("password", "Concealed", "old-value"),
+      field("rotate_every", "Text", "180d"),
+      field("rotated", "Date", "2026-01-01"),
+    ]);
+    const { client, calls } = fake([existing]);
+    await backendFor(client).backend.write(ref, new Secret(VALUE), { rotated: "2026-11-09" });
+    expect(calls.create).toEqual([]);
+    expect(calls.put).toHaveLength(1);
+    const [put] = calls.put;
+    assert(put);
+    expect(put.id).toBe(existing.id);
+    expect(put.fields).toEqual([
+      field("password", "Concealed", VALUE),
+      field("rotate_every", "Text", "180d"),
+      field("rotated", "Date", "2026-11-09"),
+    ]);
+  });
+
+  test("leaves rotated unchanged when not asked", async () => {
+    const { client, calls } = fake([
+      item("demo dev token", [
+        field("password", "Concealed", "old-value"),
+        field("rotated", "Date", "2026-01-01"),
+      ]),
+    ]);
+    await backendFor(client).backend.write(ref, new Secret(VALUE));
+    expect(calls.put[0]?.fields).toContainEqual(field("rotated", "Date", "2026-01-01"));
+  });
+
+  test.each(["today", "2026-02-30", "2025-02-29", "2026-13-01", "2026-11-00"])(
+    "refuses rotated %s, before touching the vault",
+    async (rotated) => {
+      const { client, calls } = fake();
+      const { backend, accounts } = backendFor(client);
+      await expect(backend.write(ref, new Secret(VALUE), { rotated })).rejects.toThrow(
+        `rotated must be a real day as YYYY-MM-DD, got "${rotated}"`,
+      );
+      expect(accounts).toEqual([]);
+      expect(calls).toEqual({ create: [], put: [], get: 0 });
+    },
+  );
+
+  test("accepts a leap day", async () => {
+    const { client, calls } = fake();
+    await backendFor(client).backend.write(ref, new Secret(VALUE), { rotated: "2028-02-29" });
+    expect(calls.create[0]?.fields).toContainEqual(field("rotated", "Date", "2028-02-29"));
+  });
+});
+
+describe("the fake 1Password", () => {
+  const twin = (vault: string, value: string) => ({
+    ...item("demo dev token", [field("password", "Concealed", value)], "same-id"),
+    vaultId: vault,
+  });
+  const shared = { ...ref, vault: "Shared" };
+
+  test("keeps items with the same ID in different vaults apart", async () => {
+    const { client } = fake([twin("vault-1", "private-value"), twin("vault-Shared", VALUE)]);
+    const { backend } = backendFor(client);
+    expect((await backend.read(shared)).reveal()).toBe(VALUE);
+    await backend.write(shared, new Secret("fake-new"));
+    expect((await backend.read(shared)).reveal()).toBe("fake-new");
+    expect((await backend.read(ref)).reveal()).toBe("private-value");
+  });
+
+  test("refuses a read or write that names the wrong vault", async () => {
+    const { client } = fake([twin("vault-Shared", VALUE)]);
+    const swapped: SdkClient = {
+      ...client,
+      items: {
+        ...client.items,
+        get: (_vault, id) => client.items.get("vault-1", id),
+        put: (updated) => client.items.put({ ...updated, vaultId: "vault-1" }),
+      },
+    };
+    const { backend } = backendFor(swapped);
+    await expect(backend.read(shared)).rejects.toThrow("not found");
+    const real = await client.items.get("vault-Shared", "same-id");
+    await expect(swapped.items.put(real)).rejects.toThrow("not found");
+  });
+
+  test("gives created items IDs unique across vaults", async () => {
+    const { client } = fake();
+    const { backend } = backendFor(client);
+    await backend.write(ref, new Secret(VALUE));
+    await backend.write(shared, new Secret(VALUE));
+    const [mine, theirs] = await Promise.all([backend.itemIds(ref), backend.itemIds(shared)]);
+    expect(mine.item).not.toBe(theirs.item);
+    expect((await backend.read(shared)).reveal()).toBe(VALUE);
+  });
+});
+
+describe("metadata", () => {
+  test("reads the rotated date only", async () => {
+    const { client } = fake([
+      item("demo dev token", [
+        field("password", "Concealed", VALUE),
+        field("rotated", "Date", "2026-11-09"),
+        field("rotate_every", "Text", "365d"),
+        field("notes", "Text", "unrelated"),
+      ]),
+    ]);
+    const metadata = await backendFor(client).backend.metadata(ref);
+    expect(metadata).toEqual({ rotated: "2026-11-09" });
+    expect(JSON.stringify(metadata)).not.toContain(VALUE);
+  });
+
+  test("converts a date stored as Unix seconds to that local day", async () => {
+    const localMidnight = new Date(2026, 10, 9).getTime() / 1000;
+    const { client } = fake([
+      item("demo dev token", [field("rotated", "Date", String(localMidnight))]),
+    ]);
+    expect(await backendFor(client).backend.metadata(ref)).toEqual({ rotated: "2026-11-09" });
+  });
+
+  test("gives null for missing fields", async () => {
+    const { client } = fake([item("demo dev token", [field("password", "Concealed", VALUE)])]);
+    expect(await backendFor(client).backend.metadata(ref)).toEqual({ rotated: null });
+  });
+
+  test("refuses a concealed rotation field without returning its value", async () => {
+    const { client } = fake([item("demo dev token", [field("rotated", "Concealed", VALUE)])]);
+    const failure = backendFor(client).backend.metadata(ref);
+    await expect(failure).rejects.toThrow('field "rotated" is Concealed, expected Text or Date');
+    await expect(failure).rejects.not.toThrow(VALUE);
+  });
+
+  test("refuses a rotated value that isn't a date", async () => {
+    const { client } = fake([item("demo dev token", [field("rotated", "Text", "last week")])]);
+    await expect(backendFor(client).backend.metadata(ref)).rejects.toThrow(
+      '"rotated" isn\'t a date: "last week"',
+    );
+  });
+});
+
+describe("errors", () => {
+  test("names the account when sign-in fails", async () => {
+    const { client } = fake();
+    const { backend } = backendFor(client);
+    await expect(backend.list({ ...scope, account: "wrong.1password.com" })).rejects.toThrow(
+      '1Password account "wrong.1password.com": sign-in failed: no signed-in account named wrong.1password.com',
+    );
+  });
+
+  test("tries a failed sign-in once per account, however many items it reads", async () => {
+    const accounts: string[] = [];
+    const backend = onePasswordBackend(async (account) => {
+      accounts.push(account);
+      throw new Error("the app is locked");
+    });
+    const other = { ...ref, account: "other.1password.com" };
+    for (const each of [ref, { ...ref, item: "second" }, other, { ...other, item: "second" }]) {
+      await expect(backend.read(each)).rejects.toThrow("sign-in failed: the app is locked");
+    }
+    expect(accounts).toEqual([ACCOUNT, "other.1password.com"]);
+  });
+
+  test("without the desktop app, says so and never loads the SDK, which prints a trace", async () => {
+    const printed: string[] = [];
+    const sdk = requireDesktopApp(
+      async () => {
+        printed.push(
+          "A critical error occurred while loading the native addon: find1PasswordLibPath",
+        );
+        throw new Error("Native library is not available.");
+      },
+      () => null,
+    );
+    const backend = onePasswordBackend(sdk);
+    await expect(backend.read(ref)).rejects.toThrow(
+      new SignInFailed(
+        `1Password account "${ACCOUNT}": sign-in failed: the 1Password desktop app isn't installed`,
+        { kind: "no-desktop-app" },
+      ),
+    );
+    await expect(backend.read({ ...ref, item: "second" })).rejects.toThrow("isn't installed");
+    expect(printed).toEqual([]);
+  });
+
+  test("looks for the desktop app's library where the SDK does", () => {
+    const seen: string[] = [];
+    const look = (os: string, found: string | null) =>
+      desktopLibrary(os, "/home/me", (path) => {
+        seen.push(path);
+        return path === found;
+      });
+    expect(look("linux", "/opt/1Password/libop_sdk_ipc_client.so")).toBe(
+      "/opt/1Password/libop_sdk_ipc_client.so",
+    );
+    expect(look("linux", null)).toBeNull();
+    expect(look("darwin", null)).toBeNull();
+    expect(seen).toContain(
+      "/home/me/Applications/1Password.app/Contents/Frameworks/libop_sdk_ipc_client.dylib",
+    );
+    expect(look("freebsd", null)).toBeNull();
+  });
+
+  test("names the account and vault when the vault is missing", async () => {
+    const { client } = fake([], ["Shared"]);
+    await expect(backendFor(client).backend.list(scope)).rejects.toThrow(
+      '1Password account "my.1password.com" has no vault "Private"',
+    );
+  });
+
+  test("names the item when it is missing", async () => {
+    const { client } = fake();
+    await expect(backendFor(client).backend.metadata(ref)).rejects.toThrow(
+      "op://Private/demo dev token/password (1Password account my.1password.com): no such item",
+    );
+  });
+
+  test("refuses two items with the same name", async () => {
+    const { client } = fake([
+      item("demo dev token", [], "id-a"),
+      item("demo dev token", [], "id-b"),
+    ]);
+    await expect(backendFor(client).backend.read(ref)).rejects.toThrow("2 items have this name");
+  });
+});

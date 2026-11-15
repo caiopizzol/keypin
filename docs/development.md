@@ -24,9 +24,9 @@ bun run typecheck  # tsc in every package
 
 `bun run check` fails when code breaks one of these, so the code keeps its shape:
 
-- `packages/core` never imports a connector (`@keypin/destination-*`, `issuer-*`, `vault-*`). Core defines the
-  contracts; register connectors in `apps/cli/src/start.ts`.
-- A connector imports only `@keypin/core` among keypin packages. Put shared code in core.
+- Each provider is a folder in `packages/connectors/src`, imported as `@keypin/connectors/<provider>`. `packages/core`
+  never imports it. Core defines the contracts; register connectors in `apps/cli/src/start.ts`.
+- A provider folder imports only its own files and `@keypin/core`, never another provider. Put shared code in core.
 - In `apps/cli/src`, only `start.ts` and `sign-in.ts` import connectors. Elsewhere, take them from `deps`. A
   connector's sign-in checks and project discovery for `keypin check` live in its kind (`prerequisites`,
   `discovery`), not in `check.ts` or core.
@@ -40,8 +40,9 @@ bun run typecheck  # tsc in every package
   check silently. Throw a typed error from `@keypin/core`, like `SignInFailed`, and check it with `instanceof`. Match
   a third-party error's text only where you translate it into a typed error, and list that file in
   `TEXT_MATCH_ALLOWED` in `lint-plugin.ts`.
-- Every `destination-*`, `issuer-*` and `vault-*` package ships its fake as a `./testing` export and runs the shared
-  contract in `tests/contract.test.ts` (`scripts/check-connectors.ts`), so each connector behaves the same way.
+- Every provider folder ships its fake as `testing.ts`, exported as `@keypin/connectors/<provider>/testing`, and runs
+  the shared contract in `tests/<provider>/contract.test.ts` (`scripts/check-connectors.ts`), so each connector
+  behaves the same way.
 - README.md and skills/keypin/SKILL.md grow by at most 5 lines per PR (`scripts/check-docs-growth.ts`), per
   [AGENTS.md](../AGENTS.md). Remove a line for each one you add, or add a `Docs-Growth: <reason>` trailer to a commit.
 

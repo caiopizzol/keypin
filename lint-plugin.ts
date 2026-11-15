@@ -21,7 +21,7 @@ export function repoPath(file: string, plugin: string = import.meta.url): string
 }
 
 const REVEAL_ALLOWED = [
-  /^packages\/(vault|destination|issuer)-[^/]+\/src\//,
+  /^packages\/connectors\/src\/[^/]+\//,
   /^packages\/core\/src\/secret\.ts$/,
   /^apps\/cli\/src\/commands\/run\.ts$/,
   /^(apps|packages)\/[^/]+\/tests\//,
@@ -42,7 +42,7 @@ const noReveal = defineRule({
   meta: {
     messages: {
       reveal:
-        "Don't read a Secret's raw value here. Compare it with secret.equals(), secret.isEmpty() or secret.includes(), or keep the value inside a vault or destination package, which hands it to the account it belongs to.",
+        "Don't read a Secret's raw value here. Compare it with secret.equals(), secret.isEmpty() or secret.includes(), or keep the value inside a connector, which hands it to the account it belongs to.",
     },
   },
   create(context) {
@@ -219,7 +219,7 @@ const TEXT_TESTS = new Set(["includes", "startsWith", "endsWith", "search"]);
 const CASE_CHANGES = new Set(["toLowerCase", "toUpperCase", "trim"]);
 const EQUALITY = new Set(["===", "!==", "==", "!="]);
 
-const TEXT_MATCH_ALLOWED = [/^packages\/vault-1password\/src\/backend\.ts$/];
+const TEXT_MATCH_ALLOWED = [/^packages\/connectors\/src\/onepassword\/backend\.ts$/];
 
 type Held = "text" | "match" | null;
 

@@ -5,11 +5,7 @@
     "": {
       "name": "keys",
       "devDependencies": {
-        "@keypin/destination-cloudflare": "workspace:*",
-        "@keypin/destination-github": "workspace:*",
-        "@keypin/issuer-resend": "workspace:*",
-        "@keypin/vault-1password": "workspace:*",
-        "@keypin/vault-infisical": "workspace:*",
+        "@keypin/connectors": "workspace:*",
         "@types/bun": "1.4.4",
         "typescript": "7.0.2",
         "vite": "catalog:",
@@ -22,16 +18,25 @@
         "keypin": "./src/main.ts",
       },
       "dependencies": {
+        "@keypin/connectors": "workspace:*",
         "@keypin/core": "workspace:*",
-        "@keypin/destination-cloudflare": "workspace:*",
-        "@keypin/destination-github": "workspace:*",
-        "@keypin/issuer-neon": "workspace:*",
-        "@keypin/issuer-resend": "workspace:*",
-        "@keypin/vault-1password": "workspace:*",
-        "@keypin/vault-infisical": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "1.4.4",
+      },
+    },
+    "packages/connectors": {
+      "name": "@keypin/connectors",
+      "dependencies": {
+        "@1password/sdk": "0.5.0",
+        "@keypin/core": "workspace:*",
+        "jsonc-parser": "3.3.1",
+        "libsodium-wrappers": "0.8.4",
+        "smol-toml": "1.9.1",
+        "yaml": "2.9.1",
+      },
+      "devDependencies": {
+        "@types/node": "26.6.6",
       },
     },
     "packages/core": {
@@ -41,66 +46,6 @@
       },
       "devDependencies": {
         "@types/bun": "1.4.4",
-      },
-    },
-    "packages/destination-cloudflare": {
-      "name": "@keypin/destination-cloudflare",
-      "dependencies": {
-        "@keypin/core": "workspace:*",
-        "jsonc-parser": "3.3.1",
-        "smol-toml": "1.9.1",
-      },
-      "devDependencies": {
-        "@types/node": "26.6.6",
-      },
-    },
-    "packages/destination-github": {
-      "name": "@keypin/destination-github",
-      "dependencies": {
-        "@keypin/core": "workspace:*",
-        "libsodium-wrappers": "0.8.4",
-        "yaml": "2.9.1",
-      },
-      "devDependencies": {
-        "@types/node": "26.6.6",
-      },
-    },
-    "packages/issuer-neon": {
-      "name": "@keypin/issuer-neon",
-      "dependencies": {
-        "@keypin/core": "workspace:*",
-      },
-      "devDependencies": {
-        "@keypin/vault-1password": "workspace:*",
-        "@types/node": "26.6.6",
-      },
-    },
-    "packages/issuer-resend": {
-      "name": "@keypin/issuer-resend",
-      "dependencies": {
-        "@keypin/core": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/node": "26.6.6",
-      },
-    },
-    "packages/vault-1password": {
-      "name": "@keypin/vault-1password",
-      "dependencies": {
-        "@1password/sdk": "0.5.0",
-        "@keypin/core": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/node": "26.6.6",
-      },
-    },
-    "packages/vault-infisical": {
-      "name": "@keypin/vault-infisical",
-      "dependencies": {
-        "@keypin/core": "workspace:*",
-      },
-      "devDependencies": {
-        "@types/node": "26.6.6",
       },
     },
   },
@@ -132,19 +77,9 @@
 
     "@keypin/cli": ["@keypin/cli@workspace:apps/cli"],
 
+    "@keypin/connectors": ["@keypin/connectors@workspace:packages/connectors"],
+
     "@keypin/core": ["@keypin/core@workspace:packages/core"],
-
-    "@keypin/destination-cloudflare": ["@keypin/destination-cloudflare@workspace:packages/destination-cloudflare"],
-
-    "@keypin/destination-github": ["@keypin/destination-github@workspace:packages/destination-github"],
-
-    "@keypin/issuer-neon": ["@keypin/issuer-neon@workspace:packages/issuer-neon"],
-
-    "@keypin/issuer-resend": ["@keypin/issuer-resend@workspace:packages/issuer-resend"],
-
-    "@keypin/vault-1password": ["@keypin/vault-1password@workspace:packages/vault-1password"],
-
-    "@keypin/vault-infisical": ["@keypin/vault-infisical@workspace:packages/vault-infisical"],
 
     "@oxc-project/runtime": ["@oxc-project/runtime@0.157.0", "", {}, "sha512-srnUknwVoji5JdmU664pA4XyjBJXmgxP8rWlnZhFovzw6XQxaICGWAuScZdlLmIHI+ZRc7WgeiC2CURF4tAszQ=="],
 

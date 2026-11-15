@@ -24,11 +24,7 @@
     "prepare": "vp config"
   },
   "devDependencies": {
-    "@keypin/destination-cloudflare": "workspace:*",
-    "@keypin/destination-github": "workspace:*",
-    "@keypin/issuer-resend": "workspace:*",
-    "@keypin/vault-1password": "workspace:*",
-    "@keypin/vault-infisical": "workspace:*",
+    "@keypin/connectors": "workspace:*",
     "@types/bun": "1.4.4",
     "typescript": "7.0.2",
     "vite": "catalog:",

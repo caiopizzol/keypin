@@ -6,7 +6,7 @@ import {
   type SignIn,
   signInAddress,
   type TokenClient,
-} from "@keypin/vault-1password";
+} from "@keypin/connectors/onepassword";
 import { type Deps, UsageError } from "./deps";
 
 export type { SignIn };

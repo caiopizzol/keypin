@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { connectIssuer, type IssuerKind, type IssuerSpec, loadState, Secret } from "@keypin/core";
-import { memoryKeys, resendFetch } from "@keypin/issuer-resend/testing";
+import { memoryKeys, resendFetch } from "@keypin/connectors/resend/testing";
 import { cli } from "../src/cli";
 import { issuer, issuers, vaults } from "../src/start";
 import { fakeDeps, fakeDestinations, memoryFiles, STATE, writableVault } from "./fakes";

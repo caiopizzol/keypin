@@ -1,7 +1,7 @@
 import { assert, describe, expect, test } from "vite-plus/test";
 import { isRecord } from "@keypin/core";
-import { credentialsFrom, infisicalBackend } from "@keypin/vault-infisical";
-import { infisicalFetch, memoryStore } from "@keypin/vault-infisical/testing";
+import { credentialsFrom, infisicalBackend } from "@keypin/connectors/infisical";
+import { infisicalFetch, memoryStore } from "@keypin/connectors/infisical/testing";
 import { cli } from "../src/cli";
 import { routedVault } from "../src/vault";
 import {

@@ -17,18 +17,18 @@ import {
   CloudflareReader,
   currentWranglerToken,
   wranglerConfigFile,
-} from "@keypin/destination-cloudflare";
-import { ghToken, githubActions, listRepoSecrets } from "@keypin/destination-github";
-import { neonIssuer } from "@keypin/issuer-neon";
-import { resendIssuer } from "@keypin/issuer-resend";
+} from "@keypin/connectors/cloudflare";
+import { ghToken, githubActions, listRepoSecrets } from "@keypin/connectors/github";
+import { neonIssuer } from "@keypin/connectors/neon";
+import { resendIssuer } from "@keypin/connectors/resend";
 import {
   type Connect,
   desktopConnect,
   onePasswordVault,
   type TokenClient,
   tokenClient,
-} from "@keypin/vault-1password";
-import { credentialsFrom, infisicalBackend, infisicalVault } from "@keypin/vault-infisical";
+} from "@keypin/connectors/onepassword";
+import { credentialsFrom, infisicalBackend, infisicalVault } from "@keypin/connectors/infisical";
 import { cli } from "./cli";
 import type { Deps, Publisher } from "./deps";
 import {

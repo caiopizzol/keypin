@@ -1,8 +1,8 @@
-import { cloudflareWorker } from "@keypin/destination-cloudflare";
-import { githubActions } from "@keypin/destination-github";
-import { resendIssuer } from "@keypin/issuer-resend";
-import { onePasswordVault } from "@keypin/vault-1password";
-import { infisicalVault } from "@keypin/vault-infisical";
+import { cloudflareWorker } from "@keypin/connectors/cloudflare";
+import { githubActions } from "@keypin/connectors/github";
+import { resendIssuer } from "@keypin/connectors/resend";
+import { onePasswordVault } from "@keypin/connectors/onepassword";
+import { infisicalVault } from "@keypin/connectors/infisical";
 import type { Files, KeyEntry, Receipt } from "../src/index";
 
 export const MAP_FILE = "/work/web/keypin.toml";

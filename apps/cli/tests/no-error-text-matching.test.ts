@@ -69,12 +69,12 @@ const allowed = [
 ];
 
 const fileOf = (kind: string, index: number) => `apps/cli/src/${kind}-${index}.ts`;
-const inside = "packages/vault-acme/src/helper.ts";
+const inside = "packages/connectors/src/acme/helper.ts";
 const outside = [
   "apps/cli/tests/helper.ts",
-  "packages/vault-acme/tests/helper.ts",
+  "packages/connectors/tests/acme/helper.ts",
   "scripts/helper.ts",
-  "packages/vault-1password/src/backend.ts",
+  "packages/connectors/src/onepassword/backend.ts",
 ];
 
 let temp = "";

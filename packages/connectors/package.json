@@ -1,0 +1,33 @@
+{
+  "name": "@keypin/connectors",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./cloudflare": "./src/cloudflare/index.ts",
+    "./cloudflare/testing": "./src/cloudflare/testing.ts",
+    "./github": "./src/github/index.ts",
+    "./github/testing": "./src/github/testing.ts",
+    "./infisical": "./src/infisical/index.ts",
+    "./infisical/testing": "./src/infisical/testing.ts",
+    "./neon": "./src/neon/index.ts",
+    "./neon/testing": "./src/neon/testing.ts",
+    "./onepassword": "./src/onepassword/index.ts",
+    "./onepassword/testing": "./src/onepassword/testing.ts",
+    "./resend": "./src/resend/index.ts",
+    "./resend/testing": "./src/resend/testing.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@1password/sdk": "0.5.0",
+    "@keypin/core": "workspace:*",
+    "jsonc-parser": "3.3.1",
+    "libsodium-wrappers": "0.8.4",
+    "smol-toml": "1.9.1",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6"
+  }
+}

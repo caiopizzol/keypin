@@ -2,7 +2,7 @@ import { defineConfig } from "vite-plus";
 
 const TESTING_ONLY = [
   {
-    group: ["@keypin/*/testing", "./testing", "./testing/*", "../testing", "../testing/*"],
+    group: ["@keypin/**/testing", "./testing", "./testing/*", "../testing", "../testing/*"],
     message: "testing modules hold fakes for tests; production code must not import them",
   },
 ];
@@ -14,6 +14,7 @@ const CONNECTORS = [
   "@keypin/issuer-*",
   "@keypin/vault-*",
   "@keypin/connectors*",
+  "@keypin/connectors/**",
 ];
 
 const NO_CONNECTORS_IN_CORE = [
@@ -25,15 +26,19 @@ const NO_CONNECTORS_IN_CORE = [
 
 const ONLY_CORE_IN_CONNECTORS = [
   {
-    group: ["@keypin/*", "!@keypin/core"],
+    group: ["@keypin/**", "!@keypin/core"],
     message: `A connector imports only @keypin/core among keypin packages; move shared code into packages/core. ${GUARDRAILS}`,
+  },
+  {
+    group: ["..", "../**", "**/../**"],
+    message: `A provider folder imports only its own files; move code two providers share into packages/core. ${GUARDRAILS}`,
   },
 ];
 
 const CONNECTORS_IN_COMPOSITION = [
   {
     group: CONNECTORS,
-    message: `Only apps/cli/src/start.ts and sign-in.ts import connector packages; take the connector from deps (deps.vault(), deps.destination(), deps.issuer(), deps.destinations, deps.vaults) instead. ${GUARDRAILS}`,
+    message: `Only apps/cli/src/start.ts and sign-in.ts import @keypin/connectors; take the connector from deps (deps.vault(), deps.destination(), deps.issuer(), deps.destinations, deps.vaults) instead. ${GUARDRAILS}`,
   },
 ];
 
@@ -135,12 +140,7 @@ export default defineConfig({
         },
       },
       {
-        files: [
-          "packages/destination-*/src/**",
-          "packages/issuer-*/src/**",
-          "packages/vault-*/src/**",
-          "packages/connectors/**",
-        ],
+        files: ["packages/connectors/src/**"],
         rules: {
           "no-restricted-imports": [
             "error",

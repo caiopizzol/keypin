@@ -7,6 +7,7 @@ import { fakeDeps, fakeVault, memoryFiles, SENTINEL, STATE } from "./fakes";
 type ShelfTarget = { to: "shelf"; account: string; shelf: string };
 
 const written: string[] = [];
+let shelfCli: "ok" | "not installed" = "ok";
 
 const shelf: DestinationKind<ShelfTarget> = {
   kind: "shelf",
@@ -27,6 +28,19 @@ const shelf: DestinationKind<ShelfTarget> = {
   named: ({ shelf: name }) => `the ${name} shelf`,
   where: ({ shelf: name }) => `the ${name} shelf`,
   login: () => "the shelf key",
+  prerequisites: async ({ targets }) =>
+    targets.length && shelfCli === "not installed"
+      ? [
+          {
+            name: "Shelf",
+            status: "not installed",
+            fix: "install the shelf CLI, then run shelf login",
+            title: "Install the shelf CLI",
+            body: ["  brew install shelf", "  shelf login"],
+            coversFailures: false,
+          },
+        ]
+      : [],
   connect: ({ account, shelf: name }) => ({
     capabilities: { write: true, accountCheck: true, evidence: true },
     describe: () => `shelf ${name}`,
@@ -84,5 +98,31 @@ describe("a destination kind defined outside keypin", () => {
     expect(await cli(["publish", "API_KEY"], run.deps)).toBe(0);
     expect(written).toEqual(["top API_KEY the value"]);
     expect((await run.state()).receipts.map((r) => r.destinationId)).toEqual(["shelf:top:API_KEY"]);
+  });
+});
+
+describe("a destination kind's own sign-in", () => {
+  test("keypin check lists it first, with its fix", async () => {
+    shelfCli = "not installed";
+    const run = setup("");
+    expect(await cli(["check"], run.deps)).toBe(0);
+    expect(run.stdout.text).toContain(
+      "1 thing to do:\n1 Install the shelf CLI\n    brew install shelf\n    shelf login\n",
+    );
+    const json = setup("");
+    await cli(["check", "--json"], json.deps);
+    expect(JSON.parse(json.stdout.text)).toMatchObject({
+      prerequisites: [
+        {
+          name: "Shelf",
+          status: "not installed",
+          fix: "install the shelf CLI, then run shelf login",
+        },
+      ],
+    });
+    shelfCli = "ok";
+    const ready = setup("");
+    expect(await cli(["check"], ready.deps)).toBe(0);
+    expect(ready.stdout.text).not.toContain("shelf CLI");
   });
 });

@@ -33,7 +33,7 @@ const ONLY_CORE_IN_CONNECTORS = [
 const CONNECTORS_IN_COMPOSITION = [
   {
     group: CONNECTORS,
-    message: `Only apps/cli/src/start.ts, sign-in.ts and commands/check.ts import connector packages; take the connector from deps (deps.vault(), deps.destination(), deps.issuer()) instead. ${GUARDRAILS}`,
+    message: `Only apps/cli/src/start.ts and sign-in.ts import connector packages; take the connector from deps (deps.vault(), deps.destination(), deps.issuer(), deps.destinations, deps.vaults) instead. ${GUARDRAILS}`,
   },
 ];
 
@@ -169,12 +169,6 @@ export default defineConfig({
       {
         files: ["apps/cli/src/start.ts", "apps/cli/src/sign-in.ts"],
         rules: { "no-restricted-imports": ["error", { patterns: TESTING_ONLY }] },
-      },
-      {
-        files: ["apps/cli/src/commands/check.ts"],
-        rules: {
-          "no-restricted-imports": ["error", { patterns: [...TESTING_ONLY, ...NO_OUTSIDE_WORLD] }],
-        },
       },
       {
         files: ["packages/*/src/**", "apps/*/src/**"],

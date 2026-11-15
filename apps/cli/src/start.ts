@@ -23,10 +23,11 @@ import { resendIssuer } from "@keypin/issuer-resend";
 import {
   type Connect,
   desktopConnect,
+  onePasswordVault,
   type TokenClient,
   tokenClient,
 } from "@keypin/vault-1password";
-import { credentialsFrom, infisicalBackend } from "@keypin/vault-infisical";
+import { credentialsFrom, infisicalBackend, infisicalVault } from "@keypin/vault-infisical";
 import { cli } from "./cli";
 import type { Deps, Publisher } from "./deps";
 import {
@@ -52,7 +53,8 @@ let onePassword: ReturnType<typeof onePasswordFrom> | undefined;
 let cloudflare: CloudflareReader | undefined;
 let infisical: ReturnType<typeof infisicalBackend> | undefined;
 
-export const destinations = [cloudflareWorker, githubActions];
+export const destinations = [githubActions, cloudflareWorker];
+export const vaults = [infisicalVault, onePasswordVault];
 
 export function destination(target: PublishTarget, publisher: Publisher): Destination {
   return connectTo(destinations, target, publisher);
@@ -175,6 +177,7 @@ export function realDeps(): Deps {
     launch,
     onSignals,
     destinations,
+    vaults,
     destination,
     issuers,
     issuer,

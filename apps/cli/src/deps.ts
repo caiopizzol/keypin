@@ -9,6 +9,7 @@ import type {
   Secret,
   StoreRead,
   VaultBackend,
+  VaultKind,
 } from "@keypin/core";
 import type { Self } from "./self";
 import type { SignIn } from "./sign-in";
@@ -73,7 +74,8 @@ export interface Deps {
   stderr: Writer;
   launch: Launch;
   onSignals: OnSignals;
-  destinations: readonly DestinationKind<PublishTarget, Publisher>[];
+  destinations: readonly DestinationKind<PublishTarget, Publisher, Deps>[];
+  vaults: readonly VaultKind<{ readonly signIn: SignIn | null }>[];
   destination(target: PublishTarget, publisher: Publisher): Destination;
   issuers: IssuerKinds;
   issuer(spec: IssuerSpec, admin: Secret): Issuer;

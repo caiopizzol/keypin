@@ -4,13 +4,13 @@ import {
   envNames,
   type ProjectScan,
   SKIPPED_FOLDERS,
+  usesSecrets,
   WRANGLER_FILES,
   workflowRefs,
   wranglerWorkers,
 } from "@keypin/core";
 import type { Deps } from "./deps";
 import { errorCode, messageOf } from "./errors";
-import { describeLogin, githubLogin } from "./publisher";
 
 export interface Unknown {
   what: string;
@@ -135,6 +135,14 @@ export async function scanProject(deps: Deps, root: string): Promise<ScanResult>
   };
 }
 
+async function githubLogin(deps: Deps, folder: string): Promise<string | null> {
+  return (await deps.git(folder, ["config", "--get", "github.account"]))?.trim() || null;
+}
+
+function describeLogin(login: string | null): string {
+  return login === null ? "the active gh login" : `${login} (git config github.account)`;
+}
+
 function jobEnvironments(workflows: ProjectScan["workflows"]): string[] {
   const names = new Map<string, string>();
   for (const workflow of workflows)
@@ -147,12 +155,6 @@ function jobEnvironments(workflows: ProjectScan["workflows"]): string[] {
         if (!names.has(use.environment.toLowerCase()))
           names.set(use.environment.toLowerCase(), use.environment);
   return [...names.values()];
-}
-
-export function usesSecrets(workflows: ProjectScan["workflows"]): boolean {
-  return workflows.some(
-    (w) => w.refs.hidesUses || w.refs.secrets.some((name) => !name.startsWith("GITHUB_")),
-  );
 }
 
 async function walk(deps: Deps, root: string, unknowns: Unknown[]) {

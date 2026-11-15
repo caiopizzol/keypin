@@ -12,7 +12,7 @@ import {
   type VaultMetadata,
 } from "@keypin/core";
 import type { Deps, FolderEntry, Launch, Lock } from "../src/deps";
-import { destinations, issuers } from "../src/start";
+import { destinations, issuers, vaults } from "../src/start";
 
 export const SENTINEL = "sentinel-value-7f3a9c2e1d";
 
@@ -311,6 +311,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
     onSignals: () => () => {},
     destinations,
     issuers,
+    vaults,
     destination: () => {
       throw new Error("this test publishes nothing");
     },

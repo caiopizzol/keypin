@@ -86,7 +86,7 @@ export async function checkAccounts(
 ): Promise<Map<string, Checked> | null> {
   const checked = new Map<string, Checked>();
   let failed = false;
-  const publisher = await publisherFor(entry.publish, deps);
+  const { publisher } = await publisherFor(entry.publish, deps);
   for (const target of entry.publish) {
     const place = label(target);
     try {

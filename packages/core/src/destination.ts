@@ -1,4 +1,5 @@
 import type { Destination } from "./contracts";
+import type { LoginProject, Prerequisite, PublisherPart } from "./login";
 
 export interface PublishTarget {
   readonly to: string;
@@ -14,7 +15,11 @@ export interface TableReader {
   fail(message: string): void;
 }
 
-export interface DestinationKind<T extends PublishTarget = PublishTarget, P = unknown> {
+export interface DestinationKind<
+  T extends PublishTarget = PublishTarget,
+  P = unknown,
+  H = unknown,
+> {
   readonly kind: T["to"];
   readonly label: string;
   parse(read: TableReader): T | undefined;
@@ -26,6 +31,8 @@ export interface DestinationKind<T extends PublishTarget = PublishTarget, P = un
   named(target: T): string;
   where(target: T): string;
   login(target: T, publisher: P): string;
+  publisher?(host: H, folder: string): Promise<PublisherPart<P>>;
+  prerequisites?(project: LoginProject<T>, host: H): Promise<readonly Prerequisite[]>;
   refuses?(secretName: string): string | undefined;
   connect(target: T, publisher: P): Destination;
 }

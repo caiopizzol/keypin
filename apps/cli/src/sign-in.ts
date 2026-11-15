@@ -3,14 +3,13 @@ import {
   type Connect,
   onePasswordBackend,
   serviceAccountConnect,
+  type SignIn,
   signInAddress,
   type TokenClient,
 } from "@keypin/vault-1password";
 import { type Deps, UsageError } from "./deps";
 
-export type SignIn =
-  | { mode: "desktop"; tokenIgnored: boolean }
-  | { mode: "service-account"; address: string };
+export type { SignIn };
 
 export const APPROVE = "1Password may be asking you to approve keypin";
 

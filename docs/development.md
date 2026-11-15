@@ -26,7 +26,8 @@ bun run typecheck  # tsc in every package
 
 - Each provider is a folder in `packages/connectors/src`, imported as `@keypin/connectors/<provider>`. `packages/core`
   never imports it. Core defines the contracts; register connectors in `apps/cli/src/start.ts`.
-- A provider folder imports only its own files and `@keypin/core`, never another provider. Put shared code in core.
+- Among keypin code, a provider folder imports only its own files and `@keypin/core`, never another provider. Put
+  shared code in core.
 - In `apps/cli/src`, only `start.ts` and `sign-in.ts` import connectors. Elsewhere, take them from `deps`. A
   connector's sign-in checks and project discovery for `keypin check` live in its kind (`prerequisites`,
   `discovery`), not in `check.ts` or core.

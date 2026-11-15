@@ -16,7 +16,7 @@ export function usesSecrets(workflows: readonly { refs: WorkflowRefs }[]): boole
 }
 
 const CONTEXT_REF =
-  /(?<![\w.])(secrets|vars)\s*(?:\.\s*([A-Za-z_][A-Za-z0-9_]*)|\[\s*'([A-Za-z_][A-Za-z0-9_]*)'\s*\])/g;
+  /(?<![\w.])(secrets|vars)\s*(?:\.\s*([A-Za-z_][A-Za-z0-9_]*)|\[\s*'([A-Za-z_][A-Za-z0-9_]*)'\s*\])/gi;
 
 export function workflowRefs(text: string): WorkflowRefs | null {
   let data: unknown;
@@ -34,11 +34,11 @@ export function workflowRefs(text: string): WorkflowRefs | null {
   const secretsIn = (root: unknown, skip: unknown): Set<string> => {
     const secrets = new Set<string>();
     const scan = (expression: string) => {
-      if (/toJSON\(\s*secrets\s*\)/.test(expression)) refs.hidesUses = true;
+      if (/toJSON\(\s*secrets\s*\)/i.test(expression)) refs.hidesUses = true;
       for (const match of expression.matchAll(CONTEXT_REF)) {
         const name = (match[2] ?? match[3])?.toUpperCase();
         if (!name) continue;
-        (match[1] === "secrets" ? secrets : refs.vars).add(name);
+        (match[1]?.toLowerCase() === "secrets" ? secrets : refs.vars).add(name);
       }
     };
     const seen = new Set<unknown>([skip]);
@@ -101,7 +101,7 @@ function withoutStrings(expression: string): string {
     }
     const end = endOfString(expression, i);
     const literal = expression.slice(i, end);
-    code += /(?:secrets|vars)\s*\[\s*$/.test(code) ? literal : "''";
+    code += /(?:secrets|vars)\s*\[\s*$/i.test(code) ? literal : "''";
     i = end;
   }
   return code;

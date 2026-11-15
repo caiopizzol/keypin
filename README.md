@@ -20,8 +20,14 @@ keypin runs your apps with keys from your vault, and keeps one map of every key 
 paste in a chat, or leave on a laptop.
 
 Each project lists its keys in a `keypin.toml`: names, vault items and destinations, never values. keypin runs your
-commands with the dev keys and publishes the prod keys to GitHub Actions and Cloudflare Workers. It reads a value
-only while a command runs.
+commands with the dev keys and publishes the prod keys. It reads a value only while a command runs.
+
+| Vaults    | Destinations       | Rotation |
+| --------- | ------------------ | -------- |
+| 1Password | GitHub Actions     | Resend   |
+| Infisical | Cloudflare Workers |          |
+
+Want another? 👍 it on the [roadmap](https://github.com/caiopizzol/keypin/issues/138).
 
 ## Install
 
@@ -90,8 +96,7 @@ Then publish:
 keypin publish --all
 ```
 
-`publish` shows what it will write where and waits for you to answer `y`. See
-[Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md).
+`publish` shows what it will write where and waits for you to answer `y`.
 
 ## Commands
 

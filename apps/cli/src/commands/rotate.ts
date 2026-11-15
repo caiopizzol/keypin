@@ -547,10 +547,13 @@ async function mayHaveCreated({ deps, out, args }: Job, issuer: Issuer, name: st
   const found = await issuer.find?.(name).catch(() => null);
   if (found?.length === 0) {
     out.line(`Stopped. ${where} holds no usable key from this run, so running it again is safe.`);
-  } else if (found) {
-    const keys = found.length === 1 ? `key ${found[0]}` : `keys ${found.join(", ")}`;
+  } else if (found?.length === 1) {
     out.line(
-      `Stopped: keypin didn't get the new key back, but ${where} lists ${keys}, named ${name}. Delete it at ${issuer.dashboard()}, ${again}`,
+      `Stopped: keypin didn't get the new key back, but ${where} lists key ${found[0]}, named ${name}, made since the check. Unless another rotation of this key ran at the same time, delete it at ${issuer.dashboard()}, ${again}`,
+    );
+  } else if (found) {
+    out.line(
+      `Stopped: keypin didn't get the new key back, and ${where} lists keys ${found.join(", ")}, all named ${name} and made since the check, so another rotation ran at the same time. Delete only the one this run made, at ${issuer.dashboard()}, ${again}`,
     );
   } else {
     out.line(

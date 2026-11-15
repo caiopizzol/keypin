@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { type Fetch, generationOf, type Issuer, loadState, Secret } from "@keypin/core";
+import { type Fetch, generationOf, isRecord, type Issuer, loadState, Secret } from "@keypin/core";
 import { memoryKeys, resendFetch } from "@keypin/connectors/resend/testing";
 import { cli } from "../src/cli";
 import { issuer as connect, vaults } from "../src/start";
@@ -275,9 +275,30 @@ describe("keypin rotate", () => {
     expect(keys.load().live).toEqual(["key-0", "re-new-1"]);
     expect(run.stderr.text).not.toContain("Nothing was created");
     expect(run.stderr.text).toContain(
-      "Stopped: keypin didn't get the new key back, but Resend lists key re-new-1, named RESEND_API_KEY prod 2026-11-09. Delete it at https://resend.com/api-keys, then run this again:",
+      "Stopped: keypin didn't get the new key back, but Resend lists key re-new-1, named RESEND_API_KEY prod 2026-11-09, made since the check. Unless another rotation of this key ran at the same time, delete it at https://resend.com/api-keys, then run this again:",
     );
     expect(run.vault.values.get("mailer resend key")).toBe(OLD);
+  });
+
+  test("two keys with the run's name since the check say another rotation ran, not which to delete", async () => {
+    const keys = memoryKeys(["key-0"]);
+    const lost = resend({ loseCreated: true, keys });
+    const raced: Fetch = async (url, init) => {
+      if (init.method === "POST") {
+        const { live, created, names = {} } = keys.load();
+        const twin = `re-twin-${created}`;
+        const asked: unknown = JSON.parse(init.body ?? "{}");
+        const name = isRecord(asked) && typeof asked.name === "string" ? asked.name : twin;
+        keys.save({ live: [...live, twin], created, names: { ...names, [twin]: name } });
+      }
+      return lost(url, init);
+    };
+    const run = setup({ answers: ["y"], resend: raced });
+    expect(await run.run()).toBe(1);
+    expect(run.stderr.text).toContain(
+      "Stopped: keypin didn't get the new key back, and Resend lists keys re-twin-0, re-new-1, all named RESEND_API_KEY prod 2026-11-09 and made since the check, so another rotation ran at the same time. Delete only the one this run made, at https://resend.com/api-keys, then run this again:",
+    );
+    expect(run.stderr.text).not.toContain("Unless another rotation");
   });
 
   test("a create that fails at Resend's end before making a key says a rerun is safe", async () => {

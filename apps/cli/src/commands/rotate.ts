@@ -199,10 +199,13 @@ async function rotateLocked(job: Job): Promise<number> {
     entry.ref.kind === "1password" &&
     signIn?.mode === "service-account"
   ) {
-    say(
-      "Stopped: saving a new key to 1Password needs the desktop app, and this machine signs in with a service account. Nothing was created.",
-    );
-    return 1;
+    const why =
+      "saving a new key to 1Password needs the desktop app, and this machine signs in with a service account";
+    if (!job.plan) {
+      say(`Stopped: ${why}. Nothing was created.`);
+      return 1;
+    }
+    say(out.dim(`Rotating needs another machine: ${why}.`));
   }
 
   const inVault = next.action === "resume" ? next.issued.id : next.current;

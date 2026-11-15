@@ -456,6 +456,17 @@ describe("keypin rotate", () => {
     expect(run.stderr.text).toContain("needs the desktop app");
   });
 
+  test("a service account can still show the plan, and says rotating needs the desktop app", async () => {
+    const run = setup({ serviceAccount: true });
+    expect(await run.run("--plan")).toBe(NEEDS_APPROVAL);
+    expect(run.issuer.log).toEqual(["check none"]);
+    expect(run.writes()).toEqual([]);
+    expect(run.stderr.text).toContain(
+      "Rotating needs another machine: saving a new key to 1Password needs the desktop app, and this machine signs in with a service account.",
+    );
+    expect(run.stderr.text).toContain("  + Resend                   create a new key");
+  });
+
   test("a service account finishes a saved rotation: publish and revoke", async () => {
     const first = setup({ answers: ["y"] });
     await first.run();

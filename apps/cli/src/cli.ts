@@ -69,10 +69,12 @@ const COMMAND_USAGE: [string, string][] = [
   ],
   [
     "rotate",
-    `  keypin rotate <VARIABLE> [--env <name>] [--yes]
+    `  keypin rotate <VARIABLE> [--env <name>] [--yes | --plan]
                            replace a key that has an issuer: create a new key at the provider, save
                            it to 1Password, publish it, then ask before revoking the old key; run it
-                           again to continue after a failure or to revoke the old key later
+                           again to continue after a failure or to revoke the old key later; --plan
+                           reads the keys, prints the plan and the command to approve it, and changes
+                           nothing
 `,
   ],
 ];

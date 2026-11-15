@@ -37,6 +37,14 @@ export const infisicalVault: VaultKind<unknown, InfisicalRef, InfisicalReference
     a.path === b.path &&
     a.name === b.name,
   stored: decode,
+  addByHand: (map) => {
+    const refs = map.keys.flatMap((key) =>
+      Object.values(key.environments).flatMap((entry) => (entry ? [entry.ref] : [])),
+    );
+    return map.pins.infisical !== undefined && refs.every((ref) => ref.kind === "infisical")
+      ? `add the secrets in Infisical and map them with ${SCHEME} references (docs/infisical.md)`
+      : undefined;
+  },
   prerequisites({ failures }) {
     if (!failures.length) return [];
     const fix = fixFor(failures);

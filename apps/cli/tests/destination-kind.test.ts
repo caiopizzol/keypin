@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { connectTo, type DestinationKind, loadState } from "@keypin/core";
+import { connectTo, type DestinationKind, type Discovery, isRecord, loadState } from "@keypin/core";
 import { cli } from "../src/cli";
 import { destinations, vaults } from "../src/start";
 import { fakeDeps, fakeVault, memoryFiles, SENTINEL, STATE } from "./fakes";
@@ -8,6 +8,52 @@ type ShelfTarget = { to: "shelf"; account: string; shelf: string };
 
 const written: string[] = [];
 let shelfCli: "ok" | "not installed" = "ok";
+
+let shelfReport: Record<string, unknown> = {};
+
+const shelfFiles: Discovery = {
+  files: { key: "shelves", noun: "shelf file", names: ["shelf.json"] },
+  async scan(project) {
+    const shelves: { path: string; account: string; shelf: string; needs: string[] }[] = [];
+    for (const path of project.found) {
+      const data: unknown = JSON.parse((await project.read(path)) ?? "null");
+      if (!isRecord(data) || !Array.isArray(data.needs)) continue;
+      const needs = data.needs.filter((n): n is string => typeof n === "string");
+      shelves.push({ path, account: String(data.account), shelf: String(data.shelf), needs });
+    }
+    const discovered = {
+      files: project.found,
+      used: shelves.length > 0,
+      about: null,
+      report: shelfReport,
+      needs: () => ({
+        notes: [],
+        needs: shelves.flatMap(({ path, account, shelf: name, needs }) =>
+          needs.map((secret) => ({
+            name: secret,
+            usedBy: path,
+            place: {
+              id: `shelf:${name}`,
+              to: "shelf",
+              label: `the ${name} shelf`,
+              verb: "needs",
+              fields: [
+                ["to", "shelf"],
+                ["account", account],
+                ["shelf", name],
+              ] as const,
+              matches: (keyName: string, wanted: string) => keyName === wanted,
+              covers: (target: { to: string; shelf?: string }) =>
+                target.to === "shelf" && target.shelf === name,
+              holds: () => null,
+            },
+          })),
+        ),
+      }),
+    };
+    return { finish: async () => discovered };
+  },
+};
 
 const shelf: DestinationKind<ShelfTarget> = {
   kind: "shelf",
@@ -28,6 +74,7 @@ const shelf: DestinationKind<ShelfTarget> = {
   named: ({ shelf: name }) => `the ${name} shelf`,
   where: ({ shelf: name }) => `the ${name} shelf`,
   login: () => "the shelf key",
+  discovery: shelfFiles,
   prerequisites: async ({ targets }) =>
     targets.length && shelfCli === "not installed"
       ? [
@@ -68,9 +115,9 @@ prod = { from = "op://Private/api key/password", publish = [
 ] }
 `;
 
-function setup(answer: string) {
+function setup(answer: string, files: Record<string, string> = {}) {
   const kinds = [...destinations, shelf];
-  const disk = memoryFiles({ "/work/billing/keypin.toml": MAP });
+  const disk = memoryFiles({ "/work/billing/keypin.toml": MAP, ...files });
   const fake = fakeDeps({
     disk,
     backend: fakeVault({ values: { "api key": SENTINEL } }).vault,
@@ -124,5 +171,70 @@ describe("a destination kind's own sign-in", () => {
     const ready = setup("");
     expect(await cli(["check"], ready.deps)).toBe(0);
     expect(ready.stdout.text).not.toContain("shelf CLI");
+  });
+});
+
+describe("a destination kind's own discovery", () => {
+  test("keypin check finds what its files need, and suggests the TOML to add", async () => {
+    const shelfJson = JSON.stringify({
+      account: "library",
+      shelf: "bottom",
+      needs: ["NEW_KEY"],
+    });
+    const run = setup("", { "/work/billing/shelf.json": shelfJson });
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(run.stdout.text).toContain("read 0 env files, 0 wrangler configs, 1 shelf file");
+    expect(run.stdout.text).toContain(
+      "NEW_KEY: shelf.json needs it; keypin.toml doesn't publish it to the bottom shelf.",
+    );
+    expect(run.stdout.text).toContain(`[keys.NEW_KEY]
+rotate_every = "90d"
+
+[keys.NEW_KEY.prod]
+from = "op://<vault>/<item>/<field>"
+
+[[keys.NEW_KEY.prod.publish]]
+to = "shelf"
+account = "library"
+shelf = "bottom"
+`);
+    const json = setup("", { "/work/billing/shelf.json": shelfJson });
+    await cli(["check", "--json"], json.deps);
+    expect(JSON.parse(json.stdout.text)).toMatchObject({
+      read: { shelves: ["shelf.json"] },
+      production: [{ name: "NEW_KEY", to: "shelf", place: "the bottom shelf", mapped: null }],
+    });
+  });
+});
+
+describe("a destination kind's report fields", () => {
+  test("reach check --json under the kind's own key", async () => {
+    shelfReport = { shelves: { count: 1 } };
+    const run = setup("", { "/work/billing/shelf.json": "{}" });
+    await cli(["check", "--json"], run.deps);
+    shelfReport = {};
+    expect(JSON.parse(run.stdout.text)).toMatchObject({ shelves: { count: 1 } });
+  });
+
+  test("can't replace a field keypin check owns", async () => {
+    shelfReport = { read: "mine" };
+    const run = setup("", { "/work/billing/shelf.json": "{}" });
+    const code = await cli(["check", "--json"], run.deps);
+    shelfReport = {};
+    expect(code).toBe(1);
+    expect(run.stderr.text).toContain(
+      "a destination's discovery reports read, which keypin check owns",
+    );
+  });
+
+  test("can't report the same field as another kind", async () => {
+    shelfReport = { github: "mine" };
+    const run = setup("", { "/work/billing/shelf.json": "{}" });
+    const code = await cli(["check", "--json"], run.deps);
+    shelfReport = {};
+    expect(code).toBe(1);
+    expect(run.stderr.text).toContain(
+      "the github-actions and shelf destinations both report github",
+    );
   });
 });

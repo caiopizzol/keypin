@@ -2,6 +2,8 @@ import { parse as parseToml } from "smol-toml";
 import type { Environment } from "./contracts";
 import { DEFAULT_ENVIRONMENTS } from "./contracts";
 import type { PublishTarget } from "./destination";
+import type { Discovered, Needs, Place } from "./discovery";
+import type { NewKeys, VaultKind, VaultKinds } from "./login";
 import {
   envFlag,
   isEnvironmentName,
@@ -12,19 +14,12 @@ import {
   runEnvironment,
 } from "./map";
 import { isRecord } from "./record";
-import type { VaultKinds } from "./login";
 import { formatReference } from "./reference";
-import type { EnvFileKind, StoreRead, WorkerDeclaration, WorkflowRefs } from "./scan";
+import { type EnvFileKind, envFileSuffix } from "./scan";
 
 export interface ProjectScan {
   envFiles: { path: string; kind: EnvFileKind; names: string[]; tracked: boolean | null }[];
-  workflows: { path: string; refs: WorkflowRefs }[];
-  workers: (WorkerDeclaration & { read: StoreRead | null })[];
-  github: {
-    repo: string | null;
-    read: StoreRead | null;
-    environments: { name: string; read: StoreRead }[];
-  };
+  discovered: readonly Discovered[];
 }
 
 export interface Need {
@@ -51,6 +46,7 @@ export type Fix =
       kind: "import";
       text: string;
       why: string;
+      vault: string;
       file: string;
       names: string[];
       options: string;
@@ -64,33 +60,34 @@ export interface Gaps {
   production: Need[];
   local: LocalFile[];
   add: string | null;
+  addsPin: boolean;
   problems: string[];
   notes: string[];
   fixes: Fix[];
 }
 
-interface Place {
-  id: string;
-  to: PublishTarget["to"];
-  label: string;
-  fields: [string, string][];
-  covers: (target: PublishTarget) => boolean;
-  holds: (name: string) => boolean | null;
-  onlyFrom: readonly Environment[];
+const ROTATE_EVERY = "90d";
+
+interface Creates {
+  readonly vault: string;
+  readonly from: string;
+  readonly pin: readonly string[];
+  readonly options: string;
+  readonly pinOptions: string;
+  pinned(map: KeysMap | null): boolean;
 }
 
-const PLACEHOLDER = {
-  account: "<1Password sign-in address>",
-  from: "op://<vault>/<item>/<field>",
-  repo: "<owner>/<repo>",
-  cloudflare: "<Cloudflare account ID>",
-  worker: "<Worker name>",
-  vault: "<vault>",
-};
-
-const ROTATE_EVERY = "90d";
-const IN_INFISICAL =
-  "add the secrets in Infisical and map them with infisical:// references (docs/infisical.md)";
+function creating(vault: VaultKind, keys: NewKeys): Creates {
+  const pin = Object.entries(keys.pin);
+  return {
+    vault: vault.name,
+    from: `${vault.scheme}${keys.reference}`,
+    pin: [`[${vault.kind}]`, ...pin.map(([field, value]) => `${field} = ${str(value)}`)],
+    options: keys.options,
+    pinOptions: pin.map(([field, value]) => ` --${field} ${value}`).join(""),
+    pinned: (map) => Boolean(map?.pins[vault.kind]),
+  };
+}
 
 interface Found {
   need: Need;
@@ -104,6 +101,9 @@ export function findGaps(
   vaults: VaultKinds,
 ): Gaps {
   const keys = map?.map ?? null;
+  const creates = vaults.find((vault) => vault.newKeys);
+  if (!creates?.newKeys) throw new Error("keypin has no vault kind that creates new keys");
+  const newKeys = creating(creates, creates.newKeys);
   const listed = keys?.environments ?? DEFAULT_ENVIRONMENTS;
   const environment = publishEnvironment({ environments: listed });
   const notes: string[] = [];
@@ -118,9 +118,7 @@ export function findGaps(
     needs.push(resolve(name, place, [usedBy]));
   };
   const resolve = (name: string, place: Place, usedBy: string[]): Found => {
-    const candidates = (keys?.keys ?? []).filter((k) =>
-      place.to === "github-actions" ? k.name.toUpperCase() === name : k.name === name,
-    );
+    const candidates = (keys?.keys ?? []).filter((k) => place.matches(k.name, name));
     const key =
       candidates.find((k) => mappedIn(keys, k, place) !== null) ??
       candidates.find((k) => k.name === name) ??
@@ -143,69 +141,25 @@ export function findGaps(
     };
   };
 
-  const repo = githubPlace(scan, null);
-  const uses = scan.workflows.flatMap((workflow) =>
-    workflow.refs.uses.flatMap(({ environment, secrets }) =>
-      secrets
-        .filter((name) => !name.startsWith("GITHUB_"))
-        .map((name) => ({ name, path: workflow.path, environment })),
-    ),
-  );
-  const declared = new Map<string, Set<string>>();
-  for (const use of uses) {
-    const literal = literalEnvironment(use.environment);
-    const environment = literal === null ? null : githubPlace(scan, literal);
-    const alone = uses
-      .filter((u) => u.name === use.name)
-      .every((u) => literalEnvironment(u.environment)?.toLowerCase() === literal?.toLowerCase());
-    const place =
-      environment !== null &&
-      (publishes(keys, use.name, environment) ||
-        (alone && !publishes(keys, use.name, repo) && repo.holds(use.name) === false))
-        ? environment
-        : repo;
-    if (place === repo && use.environment !== null)
-      declared.set(use.name, (declared.get(use.name) ?? new Set()).add(use.environment));
-    need(use.name, place, use.path);
-  }
-  const accounts = new Map<string, Set<string | null>>();
-  for (const worker of scan.workers)
-    if (worker.worker !== null)
-      accounts.set(worker.worker, (accounts.get(worker.worker) ?? new Set()).add(worker.account));
-  const places = scan.workers.map((worker) =>
-    workerPlace(worker, (accounts.get(worker.worker ?? "")?.size ?? 0) > 1),
-  );
-  const declaredBy = new Map<string, Set<Environment>>();
-  scan.workers.forEach((worker, i) => {
-    const id = places[i]?.id ?? "";
-    if (!declaredBy.has(id)) declaredBy.set(id, new Set());
-    if (worker.env !== null && isEnvironmentName(worker.env)) declaredBy.get(id)?.add(worker.env);
-  });
-  for (const [i, worker] of scan.workers.entries()) {
-    const base = places[i];
-    if (!base) continue;
-    const place = { ...base, onlyFrom: [...(declaredBy.get(base.id) ?? [])].sort() };
-    if (worker.env !== null && !isEnvironmentName(worker.env) && worker.required?.length)
-      notes.push(
-        `${worker.config} env ${worker.env} isn't a keypin environment name, so check proposes its Worker under ${environment}; publish it from the environment that holds its value`,
-      );
-    for (const name of worker.required ?? []) need(name, place, worker.config);
-  }
-
-  for (const [id, envs] of declaredBy) {
-    const label = needs.find((n) => n.place.id === id)?.place.label;
-    if (envs.size < 2 || label === undefined) continue;
-    notes.push(
-      `${label} is declared by the wrangler envs ${[...envs].sort().join(" and ")}; it holds one value, so check accepts it from any of them. Give each env its own Worker name to check them apart`,
-    );
+  const view = {
+    publishEnvironment: environment,
+    publishes: (name: string, place: Place) =>
+      (keys?.keys ?? []).some(
+        (k) => place.matches(k.name, name) && mappedIn(keys, k, place) !== null,
+      ),
+  };
+  const after: NonNullable<Needs["notesAfter"]>[] = [];
+  for (const discovered of scan.discovered) {
+    const found = discovered.needs(view);
+    for (const { name, place, usedBy } of found.needs) need(name, place, usedBy);
+    notes.push(...found.notes);
+    if (found.notesAfter) after.push(found.notesAfter);
   }
 
   const elsewhere = (found: Found) =>
-    found.place.onlyFrom.length
-      ? mappedIn(keys, found.key, { ...found.place, onlyFrom: [] })
-      : null;
+    found.place.onlyFrom ? mappedIn(keys, found.key, found.place, []) : null;
   const missing = needs.filter((n) => n.need.mapped === null && elsewhere(n) === null);
-  const add = tomlToAdd(missing, keys, environment, map?.text ?? "", vaults);
+  const add = tomlToAdd(missing, keys, environment, map?.text ?? "", newKeys, vaults);
 
   const problems: string[] = [];
   const fixes: Fix[] = [];
@@ -213,15 +167,12 @@ export function findGaps(
     fixes.push(found);
     problems.push(found.text);
   };
-  const unlisted = [
-    ...new Set(
-      needs.flatMap(({ need: n, place }) => {
-        const env = proposedIn(place, environment);
-        return n.mapped === null && !listed.includes(env) ? [env] : [];
-      }),
-    ),
-  ];
-  if (unlisted.length) {
+  const outside = needs.filter(
+    ({ need: n, place }) => n.mapped === null && !listed.includes(proposedIn(place, environment)),
+  );
+  const unlisted = [...new Set(outside.map(({ place }) => proposedIn(place, environment)))];
+  const source = outside[0]?.place.onlyFrom?.source;
+  if (unlisted.length && source !== undefined) {
     const order =
       listed.length > 1
         ? [...listed.slice(0, -1), ...unlisted, environment]
@@ -230,7 +181,7 @@ export function findGaps(
     const at = hasEnvironments(map?.text ?? "")
       ? "replace the environments line in keypin.toml with"
       : "add at the top of keypin.toml";
-    const why = `keypin.toml has no environment for the wrangler env${unlisted.length > 1 ? "s" : ""} ${unlisted.join(" and ")}`;
+    const why = `keypin.toml has no environment for the ${source}${unlisted.length > 1 ? "s" : ""} ${unlisted.join(" and ")}`;
     fix({
       kind: "environments",
       text: `${why}; ${at}: ${line} (keypin run uses the first, keypin publish the last)`,
@@ -242,11 +193,12 @@ export function findGaps(
   for (const found of needs) {
     const { need: n, place, key } = found;
     if (n.ok) continue;
-    const uses = `${n.usedBy.join(", ")} ${n.to === "github-actions" ? "uses" : "requires"} it`;
+    const uses = `${n.usedBy.join(", ")} ${place.verb} it`;
     const other = elsewhere(found);
-    if (other !== null && n.mapped === null) {
+    const only = place.onlyFrom;
+    if (other !== null && only && n.mapped === null) {
       const why = `${n.name}: ${uses}`;
-      const edit = `keypin.toml publishes it to ${place.label} from ${other}, but that Worker is the wrangler env ${place.onlyFrom.join(" and ")}, so it would get the ${other} value; move that publish entry to ${place.onlyFrom.join(" or ")}`;
+      const edit = `keypin.toml publishes it to ${place.label} from ${other}, but that ${only.thing} is the ${only.source} ${only.environments.join(" and ")}, so it would get the ${other} value; move that publish entry to ${only.environments.join(" or ")}`;
       fix({ kind: "edit", text: `${why}; ${edit}` });
       continue;
     }
@@ -261,7 +213,7 @@ export function findGaps(
       n.holds === true
         ? `${place.label} has it, but keypin.toml doesn't publish it there`
         : n.holds === false
-          ? `${place.label} doesn't have it${maybeEnvironment(place === repo ? [...(declared.get(n.name) ?? [])] : [])}, and keypin.toml doesn't publish it there`
+          ? `${place.label} doesn't have it${place.aside?.(n.name) ?? ""}, and keypin.toml doesn't publish it there`
           : `keypin.toml doesn't publish it to ${place.label}`;
     const why = `${n.name}: ${uses}; ${held}`;
     const edit = add.edits.get(`${n.name} ${place.id}`);
@@ -271,33 +223,18 @@ export function findGaps(
         : { kind: "edit", text: `${why}. ${edit}` },
     );
   }
-  if (repo.hidden && scan.github.read?.ok) {
-    const unmapped = scan.github.read.secrets
-      .map((s) => s.name)
-      .filter(
-        (name) =>
-          !needs.some((n) => n.place.id === repo.id && n.need.name === name.toUpperCase()) &&
-          !keys?.keys.some(
-            (k) => k.name.toUpperCase() === name.toUpperCase() && mappedIn(keys, k, repo) !== null,
-          ),
-      );
-    if (unmapped.length)
-      notes.push(
-        `${repo.label} has ${unmapped.join(", ")}, which no workflow names and keypin.toml doesn't publish there; a workflow that passes secrets on may use them`,
-      );
-  }
+  const resolved = needs.map((n) => ({ name: n.need.name, place: n.place.id }));
+  for (const notesAfter of after) notes.push(...notesAfter(resolved));
 
   const environments = keys?.environments ?? DEFAULT_ENVIRONMENTS;
   const run = runEnvironment({ environments });
-  const refs = (keys?.keys ?? []).flatMap((key) =>
-    Object.values(key.environments).flatMap((entry) => (entry ? [entry.ref] : [])),
-  );
-  const infisicalOnly =
-    keys?.pins.infisical !== undefined && !refs.some((ref) => ref.kind === "1password");
+  const byHand = keys
+    ? vaults.map((vault) => vault.addByHand?.(keys)).find((text) => text !== undefined)
+    : undefined;
   const local: LocalFile[] = [];
   for (const file of scan.envFiles) {
     if (file.kind !== "set") continue;
-    const suffix = /^(?:\.env|\.dev\.vars)\.(.+)$/.exec(file.path.split("/").at(-1) ?? "")?.[1];
+    const suffix = envFileSuffix(file.path.split("/").at(-1) ?? "");
     const env = suffix !== undefined && environments.includes(suffix) ? suffix : run;
     const flag = envFlag(env, run);
     const caveat =
@@ -325,25 +262,26 @@ export function findGaps(
     const importing = (why: string, names: string[], account: string) => ({
       kind: "import" as const,
       why,
+      vault: newKeys.vault,
       file: file.path,
       names,
-      options: `${flag} --vault ${PLACEHOLDER.vault}${account}`,
+      options: `${flag} ${newKeys.options}${account}`,
       caveat: caveat && `That command ${caveat}`,
     });
-    if (unmapped.length && infisicalOnly) {
+    if (unmapped.length && byHand !== undefined) {
       const sets = `${file.path} sets ${unmapped.join(", ")}, which keypin.toml doesn't map`;
-      notes.push(`${sets}; a plain setting can stay, and for a key ${IN_INFISICAL}`);
+      notes.push(`${sets}; a plain setting can stay, and for a key ${byHand}`);
     } else if (unmapped.length) {
-      const account = keys?.pins["1password"] ? "" : ` --account ${PLACEHOLDER.account}`;
+      const account = newKeys.pinned(keys) ? "" : newKeys.pinOptions;
       const sets = `${file.path} sets ${unmapped.join(", ")}, which keypin.toml doesn't map`;
       const found = importing(sets, unmapped, account);
       const text = `${sets}; a plain setting can stay, and for a key run keypin import ${file.path} NAME...${found.options}${other}`;
       notes.push(text);
       fixes.push({ ...found, text });
     }
-    if (elsewhere.length && infisicalOnly) {
+    if (elsewhere.length && byHand !== undefined) {
       const why = `${file.path} sets ${elsewhere.join(", ")}, which keypin.toml maps with no ${env} entry`;
-      fix({ kind: "edit", text: `${why}; for a key ${IN_INFISICAL}` });
+      fix({ kind: "edit", text: `${why}; for a key ${byHand}` });
     } else if (elsewhere.length) {
       const why = `${file.path} sets ${elsewhere.join(", ")}, which keypin.toml maps with no ${env} entry`;
       const found = importing(why, elsewhere, "");
@@ -358,87 +296,31 @@ export function findGaps(
     production: needs.map((n) => n.need),
     local,
     add: add.text,
+    addsPin: add.pinned,
     problems,
     notes,
     fixes,
   };
 }
 
-function mappedIn(map: KeysMap | null, key: KeyEntry | null, place: Place): Environment | null {
+function mappedIn(
+  map: KeysMap | null,
+  key: KeyEntry | null,
+  place: Place,
+  only: readonly Environment[] = place.onlyFrom?.environments ?? [],
+): Environment | null {
   if (!key) return null;
   for (const environment of map?.environments ?? []) {
-    if (place.onlyFrom.length && !place.onlyFrom.includes(environment)) continue;
-    if (key.environments[environment]?.publish.some(place.covers)) return environment;
+    if (only.length && !only.includes(environment)) continue;
+    if (key.environments[environment]?.publish.some((target) => place.covers(target)))
+      return environment;
   }
   return null;
 }
 
-function literalEnvironment(environment: string | null): string | null {
-  return environment === null || environment.includes("${{") ? null : environment;
-}
-
-function publishes(map: KeysMap | null, name: string, place: Place): boolean {
-  return (map?.keys ?? []).some(
-    (k) => k.name.toUpperCase() === name && mappedIn(map, k, place) !== null,
-  );
-}
-
-function githubPlace(scan: ProjectScan, environment: string | null): Place & { hidden: boolean } {
-  const repo = scan.github.repo;
-  const env = environment?.toLowerCase();
-  const read =
-    env === undefined
-      ? scan.github.read
-      : scan.github.environments.find((e) => e.name.toLowerCase() === env)?.read;
-  const held = read?.ok ? new Set(read.secrets.map((s) => s.name.toUpperCase())) : null;
-  const fields: [string, string][] = [
-    ["to", "github-actions"],
-    ["repo", repo ?? PLACEHOLDER.repo],
-  ];
-  if (environment !== null) fields.push(["environment", environment]);
-  return {
-    id: `github-actions:${repo?.toLowerCase() ?? ""}${env === undefined ? "" : `/environments/${env}`}`,
-    hidden: scan.workflows.some((w) => w.refs.hidesUses),
-    to: "github-actions",
-    label: `${repo ?? "the GitHub repository"}${environment === null ? "" : ` (environment ${environment})`}`,
-    fields,
-    covers: (target) =>
-      target.to === "github-actions" &&
-      (repo === null || target.repo?.toLowerCase() === repo.toLowerCase()) &&
-      target.environment?.toLowerCase() === env,
-    holds: (name) => (held ? held.has(name.toUpperCase()) : null),
-    onlyFrom: [],
-  };
-}
-
-function workerPlace(worker: ProjectScan["workers"][number], ambiguous: boolean): Place {
-  const held = worker.read?.ok ? new Set(worker.read.secrets.map((s) => s.name)) : null;
-  const name = worker.worker;
-  const where = `${worker.config}${worker.env ? ` (env ${worker.env})` : ""}`;
-  const account = ambiguous ? ` in account ${worker.account ?? `unknown (${worker.config})`}` : "";
-  return {
-    id: `cloudflare-worker:${worker.account ?? (ambiguous ? where : "")}:${name ?? where}`,
-    to: "cloudflare-worker",
-    label: `the Worker ${name === null ? `in ${where}` : `${name}${account}`}`,
-    fields: [
-      ["to", "cloudflare-worker"],
-      ["account", worker.account ?? PLACEHOLDER.cloudflare],
-      ["worker", name ?? PLACEHOLDER.worker],
-    ],
-    covers: (target) =>
-      target.to === "cloudflare-worker" &&
-      name !== null &&
-      target.worker === name &&
-      (worker.account === null || target.account === worker.account),
-    holds: (secret) => (held ? held.has(secret) : null),
-    onlyFrom: [],
-  };
-}
-
 function proposedIn(place: Place, publish: Environment): Environment {
-  return place.onlyFrom.length && !place.onlyFrom.includes(publish)
-    ? (place.onlyFrom[0] ?? publish)
-    : publish;
+  const only = place.onlyFrom?.environments ?? [];
+  return only.length && !only.includes(publish) ? (only[0] ?? publish) : publish;
 }
 
 function hasEnvironments(text: string): boolean {
@@ -449,19 +331,14 @@ function hasEnvironments(text: string): boolean {
   }
 }
 
-function maybeEnvironment(environments: readonly string[]): string {
-  return environments.length
-    ? ` as a repo secret (it may be a secret of the environment ${environments.join(" or ")}, which check doesn't read)`
-    : "";
-}
-
 function tomlToAdd(
   needs: readonly Found[],
   map: KeysMap | null,
   publish: Environment,
   text: string,
+  newKeys: Creates,
   vaults: VaultKinds,
-): { text: string | null; edits: Map<string, string> } {
+): { text: string | null; pinned: boolean; edits: Map<string, string> } {
   const blocks: string[][] = [];
   const edits = new Map<string, string>();
   const groups = new Map<string, Found[]>();
@@ -475,24 +352,21 @@ function tomlToAdd(
     const environment = all[0] ? proposedIn(all[0].place, publish) : publish;
     const key = all[0]?.key ?? null;
     const id = key?.name ?? name;
-    const workers = new Map<string, string>();
+    const claimed = new Map<string, string>();
     for (const target of key?.environments[environment]?.publish ?? [])
-      if (target.to === "cloudflare-worker" && target.worker !== undefined)
-        workers.set(target.worker, target.account);
+      for (const { place } of all) {
+        const slot = place.slot?.of(target);
+        if (slot) claimed.set(`${target.to}:${slot.name}`, slot.detail);
+      }
     const found = all.filter(({ place }) => {
-      const worker = fieldOf(place, "worker");
-      const account = fieldOf(place, "account");
-      if (place.to !== "cloudflare-worker" || worker === null || worker === PLACEHOLDER.worker)
-        return true;
-      const taken = workers.get(worker);
+      const slot = place.slot;
+      if (!slot) return true;
+      const taken = claimed.get(`${place.to}:${slot.name}`);
       if (taken === undefined) {
-        workers.set(worker, account ?? "");
+        claimed.set(`${place.to}:${slot.name}`, slot.detail);
         return true;
       }
-      edits.set(
-        `${name} ${place.id}`,
-        `keypin.toml can't publish ${id} to two Workers named ${worker} from one environment (accounts ${taken} and ${account}); publish one of them from another environment, listed in environments`,
-      );
+      edits.set(`${name} ${place.id}`, slot.twice(id, taken));
       return false;
     });
     if (!found.length) continue;
@@ -500,7 +374,7 @@ function tomlToAdd(
     if (!key && !started.has(id)) own.push([`[keys.${id}]`, `rotate_every = ${str(ROTATE_EVERY)}`]);
     started.add(id);
     if (!key?.environments[environment])
-      own.push([`[keys.${id}.${environment}]`, `from = ${str(PLACEHOLDER.from)}`]);
+      own.push([`[keys.${id}.${environment}]`, `from = ${str(newKeys.from)}`]);
     for (const { place } of found)
       own.push([
         `[[keys.${id}.${environment}.publish]]`,
@@ -512,6 +386,7 @@ function tomlToAdd(
         key,
         environment,
         found.map((f) => f.place),
+        newKeys,
         vaults,
       );
       for (const { place } of found) edits.set(`${name} ${place.id}`, edit);
@@ -519,11 +394,11 @@ function tomlToAdd(
     }
     blocks.push(...own);
   }
-  if (!blocks.length) return { text: null, edits };
-  const onePassword = blocks.some((block) => block.includes(`from = ${str(PLACEHOLDER.from)}`));
-  if (onePassword && !map?.pins["1password"])
-    blocks.unshift(["[1password]", `account = ${str(PLACEHOLDER.account)}`]);
-  return { text: `${blocks.map((block) => block.join("\n")).join("\n\n")}\n`, edits };
+  if (!blocks.length) return { text: null, pinned: false, edits };
+  const pinned =
+    blocks.some((block) => block.includes(`from = ${str(newKeys.from)}`)) && !newKeys.pinned(map);
+  if (pinned) blocks.unshift([...newKeys.pin]);
+  return { text: `${blocks.map((block) => block.join("\n")).join("\n\n")}\n`, pinned, edits };
 }
 
 function inlineEdit(
@@ -531,6 +406,7 @@ function inlineEdit(
   key: KeyEntry,
   environment: Environment,
   places: readonly Place[],
+  newKeys: Creates,
   vaults: VaultKinds,
 ): string {
   const entries = places.map(
@@ -540,7 +416,7 @@ function inlineEdit(
   const entry = key.environments[environment];
   const at = `[keys.${key.name}]`;
   if (!entry)
-    return `Add ${environment} = { from = ${str(PLACEHOLDER.from)}, ${list} } to ${at} in keypin.toml`;
+    return `Add ${environment} = { from = ${str(newKeys.from)}, ${list} } to ${at} in keypin.toml`;
   const from = `from = ${str(formatReference(entry.ref, vaults))}`;
   const raw = rawEntry(text, key.name, environment);
   if (typeof raw === "string")
@@ -567,10 +443,6 @@ function appends(text: string, blocks: readonly string[][]): boolean {
   } catch {
     return false;
   }
-}
-
-function fieldOf(place: Place, field: string): string | null {
-  return place.fields.find(([name]) => name === field)?.[1] ?? null;
 }
 
 function str(value: string): string {

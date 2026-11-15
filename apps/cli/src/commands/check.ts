@@ -27,7 +27,7 @@ import { registryPath } from "../paths";
 import { locateMap, MAP_FILE } from "../project";
 import { publisherFor } from "../publisher";
 import { type ScanResult, scanProject, type Unknown } from "../scan";
-import { approval, type SignIn, signInFor } from "../sign-in";
+import { approval, mapSignIn, type SignIn } from "../sign-in";
 import { distinctRefs, refKey } from "../vault";
 
 interface ItemResult {
@@ -66,7 +66,7 @@ interface Report {
   map: string | null;
   registered: boolean;
   read: ScanResult["files"] & { notScanned: string[] };
-  github: { repo: string | null; login: string | null };
+  [discovered: string]: unknown;
   onePassword: { signIn: SignIn["mode"]; address: string | null } | null;
   keys: KeyResult[];
   production: Gaps["production"];
@@ -89,11 +89,11 @@ export async function check(args: string[], deps: Deps): Promise<number> {
   const folder = resolve(deps.cwd, positionals[0] ?? ".");
   if (!(await deps.isFolder(folder))) throw new Error(`${folder} isn't a folder`);
 
-  const { report, steps } = await build(folder, deps);
+  const { report, steps, read } = await build(folder, deps);
   deps.stdout.write(
     values.json
       ? `${JSON.stringify(report, null, 2)}\n`
-      : render(report, steps, output(deps.stdout, deps.styled.stdout), deps.home),
+      : render(report, read, steps, output(deps.stdout, deps.styled.stdout), deps.home),
   );
   return report.ok ? 0 : 1;
 }
@@ -127,7 +127,10 @@ const ORDER = {
 const ITEM_NOTE =
   "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields";
 
-async function build(folder: string, deps: Deps): Promise<{ report: Report; steps: Step[] }> {
+async function build(
+  folder: string,
+  deps: Deps,
+): Promise<{ report: Report; steps: Step[]; read: string }> {
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);
   const steps: Step[] = [];
   const problem = (
@@ -141,6 +144,7 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
     steps.push({ order, title, body, covers: [text], signIn });
   };
   let fixes: Fix[] = [];
+  let addsPin = false;
   let empty: string | null = null;
   const found = await locateMap(deps.files, folder);
   const parsed = found
@@ -151,16 +155,16 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
         Object.values(key.environments).flatMap((e) => (e ? [e.ref] : [])),
       )
     : [];
-  const infisicalOnly = parsed?.ok && parsed.map.pins.infisical && !parsed.map.pins["1password"];
-  const signIn = mapped.length || infisicalOnly ? signInFor(deps, mapped) : deps.signIn();
+  const signIn = mapSignIn(deps, parsed?.ok ? parsed.map : null, mapped);
   const root = found ? dirname(found.file) : folder;
   const scanned = await scanProject(deps, root);
-  const report: Report = {
+  const head = {
     folder: root,
     map: found?.file ?? null,
     registered: false,
     read: { ...scanned.files, notScanned: scanned.nested },
-    github: { repo: scanned.scan.github.repo, login: scanned.login },
+  };
+  const tail = {
     onePassword: signIn && {
       signIn: signIn.mode,
       address: signIn.mode === "service-account" ? signIn.address : null,
@@ -175,6 +179,12 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
     problems: [],
     ok: false,
   };
+  const taken = Object.keys(scanned.report).filter((key) => key in head || key in tail);
+  if (taken.length)
+    throw new Error(
+      `a destination's discovery reports ${taken.join(", ")}, which keypin check owns`,
+    );
+  const report: Report = { ...head, ...scanned.report, ...tail };
   for (const vault of deps.vaults) report.notes.push(...(vault.signInNotes?.({ signIn }) ?? []));
   const targets = new Map<string, PublishTarget>();
   const items = new Map<string, CheckedItem>();
@@ -191,17 +201,18 @@ async function build(folder: string, deps: Deps): Promise<{ report: Report; step
     );
     report.prerequisites = setup.map(({ name, status, fix }) => ({ name, status, fix }));
     finish(report);
-    return { report, steps: plan(report, [...setup.map((p) => p.step), ...steps], fixes, empty) };
+    const all = [...setup.map((p) => p.step), ...steps];
+    const counts = scanned.read.map(({ noun, count: n }) => count(n, noun)).join(", ");
+    const read = [`read ${counts}`, ...scanned.about].join("; ");
+    return { report, steps: plan(report, all, fixes, addsPin, empty), read };
   };
   const gaps = (map: KeysMap | null) => {
-    const result = findGaps(
-      scanned.scan,
-      map && found ? { map, text: found.text } : null,
-      deps.vaults,
-    );
+    const text = map && found ? { map, text: found.text } : null;
+    const result = findGaps(scanned.scan, text, deps.vaults);
     report.production = result.production;
     report.local = result.local;
     report.add = result.add;
+    addsPin = result.addsPin;
     report.problems.push(...result.problems);
     report.notes.push(...result.notes);
     fixes = result.fixes;
@@ -380,13 +391,16 @@ async function prerequisites(
         },
       });
   };
-  const project = { folder: root, scan: scanned.scan, files: scanned.files };
   for (const kind of deps.destinations)
     if (kind.prerequisites)
       add(
         kind.kind,
         await kind.prerequisites(
-          { ...project, targets: targets.filter((t) => t.to === kind.kind) },
+          {
+            folder: root,
+            used: scanned.used.get(kind.kind) ?? false,
+            targets: targets.filter((t) => t.to === kind.kind),
+          },
           deps,
         ),
       );
@@ -454,7 +468,13 @@ async function checkDestination(
   }
 }
 
-function plan(report: Report, found: Step[], fixes: Fix[], empty: string | null): Step[] {
+function plan(
+  report: Report,
+  found: Step[],
+  fixes: Fix[],
+  addsPin: boolean,
+  empty: string | null,
+): Step[] {
   const steps: Step[] = [];
   const login = (provider: string | undefined) =>
     provider === undefined
@@ -491,9 +511,10 @@ function plan(report: Report, found: Step[], fixes: Fix[], empty: string | null)
   const imports = of("import").filter((fix) => !report.ok || report.problems.includes(fix.text));
   if (imports.length) {
     const files = [...new Set(imports.map((fix) => fix.file))];
+    const vault = imports[0]?.vault ?? "";
     all(
       ORDER.import,
-      `Move ${files.length === 1 ? `${files[0]}'s` : "env-file"} keys into 1Password`,
+      `Move ${files.length === 1 ? `${files[0]}'s` : "env-file"} keys into ${vault}`,
       imports,
       [
         ...imports.flatMap((fix) => [
@@ -507,9 +528,7 @@ function plan(report: Report, found: Step[], fixes: Fix[], empty: string | null)
   }
   const add = of("add");
   const imported = new Set(imports.flatMap((fix) => fix.names));
-  const overlaps =
-    imports.length > 0 &&
-    (/^\[1password\]$/m.test(report.add ?? "") || add.some((fix) => imported.has(fix.key)));
+  const overlaps = imports.length > 0 && (addsPin || add.some((fix) => imported.has(fix.key)));
   if (report.add !== null)
     all(
       ORDER.add,
@@ -568,11 +587,9 @@ export const THEN = "Then run keypin check again.";
 export const AFTER_IMPORT =
   "If you ran the import above, run keypin check again for this TOML instead; the import wrote some of these tables.";
 
-function render(report: Report, steps: Step[], out: Output, home: string): string {
+function render(report: Report, read: string, steps: Step[], out: Output, home: string): string {
   const { bold, dim, mark } = out;
-  const { env, wrangler, workflows, notScanned } = report.read;
-  const github = report.github.repo ? `; GitHub ${report.github.repo}` : "";
-  const read = `read ${count(env.length, "env file")}, ${count(wrangler.length, "wrangler config")}, ${count(workflows.length, "workflow")}${github}`;
+  const { notScanned } = report.read;
   const lines = [`${bold(basename(report.folder))} ${dim(`${report.folder} · ${read}`)}`];
   if (notScanned.length)
     lines.push(dim(`Not scanned (own git repository): ${notScanned.join(", ")}`));

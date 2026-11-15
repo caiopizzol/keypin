@@ -1,4 +1,4 @@
-import type { KeyRef, VaultBackend } from "@keypin/core";
+import type { KeyRef, KeysMap, VaultBackend } from "@keypin/core";
 import {
   type Connect,
   onePasswordBackend,
@@ -38,6 +38,15 @@ export function onePasswordFrom(
 
 export function signInFor(deps: Pick<Deps, "signIn">, refs: readonly KeyRef[]): SignIn | null {
   return refs.some((ref) => ref.kind === "1password") ? deps.signIn() : null;
+}
+
+export function mapSignIn(
+  deps: Pick<Deps, "signIn">,
+  map: KeysMap | null,
+  refs: readonly KeyRef[],
+): SignIn | null {
+  const infisicalOnly = map?.pins.infisical && !map.pins["1password"];
+  return refs.length || infisicalOnly ? signInFor(deps, refs) : deps.signIn();
 }
 
 export function approval(deps: Pick<Deps, "signIn">, refs: readonly KeyRef[]): string | undefined {

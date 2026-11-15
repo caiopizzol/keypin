@@ -411,6 +411,7 @@ function validateIssuer(
     },
   };
   const spec = found.parse(reader);
+  if (spec === undefined && !failed) err(`the "${kind}" issuer couldn't read this table`);
   return failed ? undefined : spec;
 }
 
@@ -484,6 +485,8 @@ function destination(
     return undefined;
   }
   const target = kind.parse(tableReader(raw, ["to"], kind.kind, err));
+  if (target === undefined && !failed)
+    err(`the "${kind.kind}" destination couldn't read this table`);
   return failed ? undefined : target;
 }
 

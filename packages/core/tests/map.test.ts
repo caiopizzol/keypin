@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { parseMap } from "../src/index";
+import { type DestinationKind, type IssuerKind, parseMap } from "../src/index";
 import { ISSUERS, KINDS, MAP_FILE, VALID_MAP } from "./fixtures";
 
 const VAULTS = `
@@ -947,5 +947,59 @@ describe("Infisical references", () => {
     ],
   ])("%s is refused", (text, message) => {
     expect(errorsOf(text)).toEqual([`${MAP_FILE}: ${message}`]);
+  });
+});
+
+describe("a kind that reads nothing without saying why", () => {
+  const silentIssuer: IssuerKind = {
+    kind: "silent",
+    parse: () => undefined,
+    connect: () => {
+      throw new Error("never connected");
+    },
+  };
+  const never = (): never => {
+    throw new Error("never called");
+  };
+  const silentDestination: DestinationKind = {
+    kind: "silent",
+    label: "Silent",
+    parse: () => undefined,
+    id: never,
+    secretId: never,
+    checkId: never,
+    fromId: () => undefined,
+    describe: never,
+    named: never,
+    where: never,
+    login: never,
+    connect: never,
+  };
+
+  test("an issuer that returns nothing rejects the map instead of dropping the issuer", () => {
+    const text = `${VAULTS}
+[keys.API_KEY.prod]
+from = "op://Private/api key/credential"
+
+[keys.API_KEY.prod.issuer]
+kind = "silent"
+`;
+    const result = parseMap(text, MAP_FILE, KINDS, [...ISSUERS, silentIssuer]);
+    assert(!result.ok, "the map was accepted without its issuer");
+    expect(result.errors).toEqual([
+      `${MAP_FILE}: key "API_KEY" prod: issuer: the "silent" issuer couldn't read this table`,
+    ]);
+  });
+
+  test("a destination that returns nothing rejects the map instead of dropping the destination", () => {
+    const text = `${VAULTS}
+[keys.API_KEY]
+prod = { from = "op://Private/api key/credential", publish = [{ to = "silent" }] }
+`;
+    const result = parseMap(text, MAP_FILE, [...KINDS, silentDestination], ISSUERS);
+    assert(!result.ok, "the map was accepted without its destination");
+    expect(result.errors).toEqual([
+      `${MAP_FILE}: key "API_KEY" prod: publish[0]: the "silent" destination couldn't read this table`,
+    ]);
   });
 });

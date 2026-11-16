@@ -1081,9 +1081,35 @@ required = ["RESEND_API_KEY"]
         `worker ${ACCOUNT} billing-worker`,
         `worker ${ACCOUNT} billing-worker-staging`,
       ]);
-      expect(JSON.stringify(data)).not.toContain("billing-worker-dev");
+      expect(JSON.stringify(data.production)).not.toContain("billing-worker-dev");
+      expect(data.notes).toContain(
+        "wrangler.toml env dev has no routes, workers.dev URL, trigger or binding to it, so check skips it as a Worker only wrangler dev runs",
+      );
       assert(typeof data.add === "string");
       expect(data.add.match(/worker = /g)).toHaveLength(2);
+    });
+
+    test("that only hosts Durable Objects is still checked, though it has no routes", async () => {
+      const wrangler = `${STAGED}
+[env.dev]
+routes = []
+workers_dev = false
+
+[[env.dev.durable_objects.bindings]]
+name = "ROOMS"
+class_name = "Room"
+
+[env.dev.secrets]
+required = ["RESEND_API_KEY"]
+`;
+      const run = setup({ files: files(MAPPED, wrangler) });
+      expect(await cli(["check", "--json"], run.deps)).toBe(1);
+      const data = json(run.stdout.text);
+      expect(run.calls.filter((c) => c.startsWith("worker "))).toContain(
+        `worker ${ACCOUNT} billing-worker-dev`,
+      );
+      expect(JSON.stringify(data.production)).toContain("the Worker billing-worker-dev");
+      expect(JSON.stringify(data.notes)).not.toContain("skips it");
     });
 
     test("whose env name isn't a keypin environment name stays under the publish environment, with a note", async () => {

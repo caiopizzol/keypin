@@ -81,6 +81,11 @@ describe("wrangler configs", () => {
     "workflow": { "routes": [], "workflows": [{ "name": "jobs", "binding": "JOBS", "class_name": "Jobs" }] },
     "bound": { "routes": [], "workflows": [{ "name": "jobs", "binding": "JOBS", "class_name": "Jobs", "script_name": "other" }] },
     "self": { "routes": [], "workflows": [{ "name": "jobs", "binding": "JOBS", "class_name": "Jobs", "script_name": "api-self" }] },
+    "objects": { "routes": [], "durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "Room" }] } },
+    "elsewhere": { "routes": [], "durable_objects": { "bindings": [{ "name": "ROOMS", "class_name": "Room", "script_name": "other" }] } },
+    "service": { "routes": [] },
+    "tail": { "routes": [] },
+    "caller": { "routes": [], "services": [{ "binding": "API", "service": "api-service" }], "tail_consumers": [{ "service": "api-tail" }] },
   },
 }`,
       "wrangler.json",
@@ -95,7 +100,11 @@ describe("wrangler configs", () => {
       "preview",
       "workflow",
       "self",
+      "objects",
+      "service",
+      "tail",
     ]);
+    expect(parsed.skipped).toEqual(["dev", "own", "bound", "elsewhere", "caller"]);
     const previewUnset = wranglerWorkers(
       `{ "name": "api", "workers_dev": false, "env": { "dev": { "routes": [] } } }`,
       "wrangler.json",
@@ -117,6 +126,22 @@ routes = []
     );
     assert(unset.ok);
     expect(unset.workers.map((w) => w.env)).toEqual([null, "dev"]);
+  });
+
+  test("keeps an env whose Worker exports Durable Objects or receives email", () => {
+    const env = `"env": { "dev": { "routes": [] } }`;
+    for (const top of [
+      `"exports": { "Room": { "type": "durable-object", "storage": "sqlite" } }`,
+      `"migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room"] }]`,
+      `"addresses": ["support@example.com"]`,
+    ]) {
+      const parsed = wranglerWorkers(
+        `{ "name": "api", "workers_dev": false, ${top}, ${env} }`,
+        "wrangler.json",
+      );
+      assert(parsed.ok);
+      expect(parsed.workers.map((w) => w.env)).toEqual([null, "dev"]);
+    }
   });
 
   test("reads a config saved with a byte order mark, as Wrangler does", () => {

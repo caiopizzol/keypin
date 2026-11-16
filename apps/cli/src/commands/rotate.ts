@@ -188,14 +188,7 @@ async function rotateLocked(job: Job): Promise<number> {
     state = recordIssued(state, next.issued);
     if (!job.plan) await saveState(deps.files, job.path, state);
   }
-  if (next.action === "create") {
-    try {
-      await deps.vault().checkWrite?.(entry.ref);
-    } catch (error) {
-      say(`Stopped: ${messageOf(error)}. Nothing was created.`);
-      return 1;
-    }
-  }
+  if (next.action === "create" && !(await vaultTakesWrites(job))) return 1;
 
   const inVault = next.action === "resume" ? next.issued.id : next.current;
   const check = await checkIssuer(issuer, inVault, read.secret, out);
@@ -206,6 +199,7 @@ async function rotateLocked(job: Job): Promise<number> {
   }
   const ready = { ids: read.ids, issuer, checked, removed };
   if (next.action === "resume" && check.gone !== undefined) {
+    if (!(await vaultTakesWrites(job))) return 1;
     const { old } = next.issued;
     if (old.id !== null && !old.revoked)
       say(
@@ -315,6 +309,16 @@ async function rotateLocked(job: Job): Promise<number> {
     return 1;
   }
   return publishThenRevoke(job, { ...ready, ids }, issued, created.secret, steps, state);
+}
+
+async function vaultTakesWrites({ entry, deps, out }: Job): Promise<boolean> {
+  try {
+    await deps.vault().checkWrite?.(entry.ref);
+    return true;
+  } catch (error) {
+    out.line(`Stopped: ${messageOf(error)}. Nothing was created.`);
+    return false;
+  }
 }
 
 function heldSteps(job: Job, issuer: Issuer, id: string): string {

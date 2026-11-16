@@ -1,6 +1,7 @@
-import type { DestinationKind, Prerequisite } from "@keypin/core";
+import { type DestinationKind, type Prerequisite, sentence } from "@keypin/core";
 import { workflowDiscovery, type WorkflowHost } from "./discovery";
 import { GitHubSecretDestination } from "./github";
+import { envTokens, tokenOnly } from "./token";
 
 export type GitHubTarget = {
   to: "github-actions";
@@ -15,6 +16,7 @@ export interface GitHubPublisher {
 }
 
 export interface GitHubHost extends WorkflowHost {
+  readonly env: Readonly<Record<string, string | undefined>>;
   ghLogin(login: string | null): Promise<"ok" | "not installed" | "not logged in">;
 }
 
@@ -40,8 +42,27 @@ async function ghPrerequisites(host: GitHubHost, folder: string): Promise<Prereq
         body: ["Install gh from https://cli.github.com, then run:", ...body],
       },
     ];
-  if (status === "not logged in")
+  if (status === "not logged in") {
+    const tokens = envTokens(host.env);
+    if (tokens.length) {
+      const { why, command } = tokenOnly(tokens);
+      const withToken = `${SIGN_IN} --with-token < token.txt`;
+      return [
+        {
+          ...step,
+          status,
+          fix: `${why}; ${command}`,
+          title: "Sign in to GitHub",
+          body: [
+            `${sentence(why)} Unset ${tokens.join(" ")}, then run:`,
+            `  ${withToken}`,
+            `Use a classic token with the repo, read:org and gist scopes (gh needs all three)${login ? `, for ${login}` : ""}.`,
+          ],
+        },
+      ];
+    }
     return [{ ...step, status, fix: `run ${signIn}`, title: "Sign in to GitHub", body }];
+  }
   return [];
 }
 

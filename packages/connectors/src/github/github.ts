@@ -8,11 +8,17 @@ import {
   parseObject,
   type Secret,
 } from "@keypin/core";
+import { gitHubSaid, NOT_ENTERPRISE, ssoFix } from "./refusal";
 import { ghToken } from "./token";
 
 const API = "https://api.github.com";
 const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 const SECRET_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const MAX_VALUE_BYTES = 48 * 1024;
+const MAX_SECRETS = 100;
+
+type Reply = { status: number; headers: Headers; body: Record<string, unknown> };
+type Refusal = { reason: string; fix: string };
 
 export interface GitHubSecretOptions {
   repo: string;
@@ -61,23 +67,24 @@ export class GitHubSecretDestination implements Destination {
       throw new Error(
         `GitHub refused the token for ${this.#login ?? "the active gh login"} (HTTP 401): the login expired or was revoked; run gh auth status to refresh it, or gh auth login --hostname github.com`,
       );
-    if (user.status !== 200) throw new Error(`GitHub GET /user returned HTTP ${user.status}`);
+    if (user.status !== 200) throw this.#failure("GitHub GET /user", user);
     const publisher = stringField(user.body, "login");
     const scopes = user.headers.get("x-oauth-scopes");
 
     const repo = await this.#get(`/repos/${this.#repo}`);
     const facts = { publisher, expected: this.#owner };
+    const sso = this.#ssoRefusal(repo);
+    if (sso !== null) return { ...facts, destinationAccount: null, ok: false, ...sso };
     if (repo.status === 404) {
       return {
         ...facts,
         destinationAccount: null,
         ok: false,
         reason: `${publisher} can't see ${this.#repo}`,
-        fix: `check repo in keypin.toml, or publish as a login that can see it: git config github.account <login>`,
+        fix: `check repo in keypin.toml, or publish as a login that can see it: git config github.account <login> (${NOT_ENTERPRISE})`,
       };
     }
-    if (repo.status !== 200)
-      throw new Error(`GitHub GET /repos/${this.#repo} returned HTTP ${repo.status}`);
+    if (repo.status !== 200) throw this.#failure(`GitHub GET /repos/${this.#repo}`, repo);
     const owner = stringField(objectField(repo.body, "owner"), "login");
     const write = objectField(repo.body, "permissions").push === true;
 
@@ -88,6 +95,9 @@ export class GitHubSecretDestination implements Destination {
     } else if (this.#login !== null && !sameLogin(publisher, this.#login)) {
       check.reason = `the token acts as ${publisher}, not ${this.#login}`;
       check.fix = `run gh auth login --hostname github.com and sign in as ${this.#login}, or change git config github.account`;
+    } else if (repo.body.archived === true) {
+      check.reason = `${this.#repo} is archived, so it's read-only and GitHub won't let anyone set its secrets`;
+      check.fix = `unarchive it in the repository's Settings, or remove it from keypin.toml`;
     } else if (!write) {
       check.reason = `${publisher} has no write access to ${this.#repo}, so GitHub won't let it set Actions secrets`;
       check.fix = `ask an admin of ${this.#owner} for the Write role, or publish as another login: git config github.account <login>`;
@@ -97,12 +107,10 @@ export class GitHubSecretDestination implements Destination {
         this.#login === null
           ? "run gh auth refresh --hostname github.com --scopes repo"
           : `run gh auth switch --hostname github.com --user ${this.#login}, then gh auth refresh --hostname github.com --scopes repo, then switch back to your usual login`;
-    } else if (this.#environment !== null && (await this.#environmentKey()) === 404) {
-      check.reason = `${this.#repo} has no environment named ${this.#environment}, or ${publisher} can't see its secrets`;
-      check.fix = `create it in the repository's Settings > Environments, or fix environment in keypin.toml`;
     } else {
-      check.ok = true;
-      this.#passed = true;
+      const refusal = await this.#secretsRefusal(publisher);
+      if (refusal !== null) Object.assign(check, refusal);
+      else check.ok = this.#passed = true;
     }
     return check;
   }
@@ -112,23 +120,31 @@ export class GitHubSecretDestination implements Destination {
       throw new Error(`refusing to write to ${this.describe()}: checkAccount hasn't passed`);
     if (!SECRET_NAME.test(name) || /^GITHUB_/i.test(name))
       throw new Error(`"${name}" isn't a valid GitHub secret name`);
+    const value = secret.reveal();
 
     const key = await this.#get(`${this.#secrets}/public-key`);
     if (key.status !== 200)
-      throw new Error(`GitHub public key for ${this.describe()}: HTTP ${key.status}`);
-    const encrypted = await sealedBox(secret.reveal(), stringField(key.body, "key"));
+      throw this.#failure(`GitHub GET ${this.#secrets}/public-key`, key, [value]);
+    const encrypted = await sealedBox(value, stringField(key.body, "key"));
 
     const path = `${this.#secrets}/${name}`;
     const put = await this.#request("PUT", path, {
       encrypted_value: encrypted,
       key_id: stringField(key.body, "key_id"),
     });
-    if (put.status !== 201 && put.status !== 204)
-      throw new Error(`GitHub PUT ${path} returned HTTP ${put.status}`);
+    if (put.status !== 201 && put.status !== 204) {
+      const limit =
+        put.status >= 400 && put.status < 500 && put.status !== 401 && put.status !== 403
+          ? await this.#limitReached(name, Buffer.byteLength(value), path).catch(() => null)
+          : null;
+      if (limit !== null)
+        throw new Error(`${limit} (GitHub PUT ${path} returned HTTP ${put.status})`);
+      throw this.#failure(`GitHub PUT ${path}`, put, [value]);
+    }
 
     const after = await this.#get(path);
     if (after.status !== 200)
-      throw new Error(`GitHub GET ${path} after the write returned HTTP ${after.status}`);
+      throw this.#failure(`GitHub GET ${path} after the write`, after, [value]);
     return {
       destination: this.describe(),
       secret: name,
@@ -137,19 +153,55 @@ export class GitHubSecretDestination implements Destination {
     };
   }
 
-  async #environmentKey(): Promise<number> {
+  async #secretsRefusal(publisher: string): Promise<Refusal | null> {
     const path = `${this.#secrets}/public-key`;
     const key = await this.#get(path);
-    if (key.status !== 200 && key.status !== 404)
-      throw new Error(`GitHub GET ${path} returned HTTP ${key.status}`);
-    return key.status;
+    if (key.status === 200) return null;
+    const sso = this.#ssoRefusal(key);
+    if (sso !== null) return sso;
+    if (key.status === 404 && this.#environment !== null)
+      return {
+        reason: `${this.#repo} has no environment named ${this.#environment}, or ${publisher} can't see its secrets`,
+        fix: `create it in the repository's Settings > Environments, or fix environment in keypin.toml`,
+      };
+    if (key.status === 403 || key.status === 404)
+      return {
+        reason: `the token can't use ${this.#repo}'s Actions secrets (HTTP ${key.status}${gitHubSaid(key.body)})`,
+        fix: `give the token the repository permission ${this.#environment === null ? "Secrets" : "Environments"}: Read and write, or sign gh in with the browser: gh auth login --hostname github.com`,
+      };
+    throw this.#failure(`GitHub GET ${path}`, key);
+  }
+
+  async #limitReached(name: string, bytes: number, path: string): Promise<string | null> {
+    if (bytes > MAX_VALUE_BYTES)
+      return `${name} is ${Math.ceil(bytes / 1024)} KB, and GitHub allows at most 48 KB in a secret`;
+    if ((await this.#get(path)).status !== 404) return null;
+    const total = (await this.#get(`${this.#secrets}?per_page=1`)).body.total_count;
+    return typeof total === "number" && total >= MAX_SECRETS
+      ? `${this.describe()} already has ${total} secrets, and GitHub allows ${MAX_SECRETS}; delete one it no longer uses, then publish again`
+      : null;
+  }
+
+  #ssoRefusal(reply: Reply): Refusal | null {
+    const fix =
+      reply.status === 403 || reply.status === 404 ? ssoFix(reply.headers, this.#owner) : null;
+    return fix === null
+      ? null
+      : { reason: `the gh token isn't authorized for SAML SSO in ${this.#owner}`, fix };
+  }
+
+  #failure(what: string, reply: Reply, hide: readonly string[] = []): Error {
+    const sso = ssoFix(reply.headers, this.#owner);
+    const needs = reply.headers.get("x-accepted-github-permissions");
+    const next = sso ? `; ${sso}` : needs ? `; the token needs the permission ${needs}` : "";
+    return new Error(`${what} returned HTTP ${reply.status}${gitHubSaid(reply.body, hide)}${next}`);
   }
 
   #get(path: string) {
     return this.#request("GET", path);
   }
 
-  async #request(method: string, path: string, body?: unknown) {
+  async #request(method: string, path: string, body?: unknown): Promise<Reply> {
     this.#token ??= this.#tokenSource();
     const response = await this.#fetch(`${API}${path}`, {
       method,

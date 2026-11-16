@@ -9,6 +9,7 @@ import {
   type ProjectReader,
   type StoreRead,
 } from "@keypin/core";
+import { NOT_ENTERPRISE } from "./refusal";
 import { isSshName } from "./ssh";
 import { usesSecrets, type WorkflowRefs, workflowRefs } from "./workflows";
 
@@ -302,6 +303,17 @@ const GITHUB_REMOTE =
   /^(?:https:\/\/(?:[^@/]+@)?github\.com\/|ssh:\/\/(?:([^@/:]+)@)?([^/:]+)(?::\d+)?\/|(?:([^@/:]+)@)?([^/:]+):)([A-Za-z0-9-]+)\/([A-Za-z0-9._-]+?)(?:\.git)?\/?$/;
 const GITHUB_SSH_HOST = /^(?:ssh\.)?github\.com$/i;
 const NOT_GITHUB = "the origin remote isn't on github.com";
+const ENTERPRISE_HOST = /^(?!(?:ssh\.)?github\.com$).*(?:github|(?:^|\.)ghe\.com$)/i;
+
+function notGitHub(host: string | undefined): { reason: string } {
+  return {
+    reason: host && ENTERPRISE_HOST.test(host) ? `${NOT_GITHUB}; ${NOT_ENTERPRISE}` : NOT_GITHUB,
+  };
+}
+
+function hostOf(url: string): string | undefined {
+  return /^(?:[a-z+]+:\/\/)?(?:[^@/]+@)?([^/:]+)/i.exec(url)?.[1];
+}
 
 async function githubOrigin(
   host: WorkflowHost,
@@ -310,7 +322,7 @@ async function githubOrigin(
   const url = (await host.git(folder, ["remote", "get-url", "origin"]))?.trim();
   if (!url) return null;
   const [, sshUser, sshHost, scpUser, scpHost, owner, name] = GITHUB_REMOTE.exec(url) ?? [];
-  if (!owner || !name) return { reason: NOT_GITHUB };
+  if (!owner || !name) return notGitHub(hostOf(url));
   const alias = sshHost ?? scpHost;
   const user = sshUser ?? scpUser;
   if (alias !== undefined && !GITHUB_SSH_HOST.test(alias)) {
@@ -326,7 +338,7 @@ async function githubOrigin(
       return {
         reason: `ssh -G couldn't tell which server the origin remote's host ${alias} is, so check can't tell whether it's on github.com`,
       };
-    if (!GITHUB_SSH_HOST.test(real)) return { reason: NOT_GITHUB };
+    if (!GITHUB_SSH_HOST.test(real)) return notGitHub(real);
   }
   return { repo: `${owner}/${name}` };
 }

@@ -1227,24 +1227,30 @@ required = ["RESEND_API_KEY"]
     },
   );
 
+  const ENTERPRISE =
+    "the origin remote isn't on github.com; keypin publishes only to github.com; GitHub Enterprise Server and ghe.com aren't supported yet";
+
   test.each([
-    "git@gitlab.com:acme/billing.git",
-    "git@bitbucket.org:acme/billing.git",
-    "git@github.acme.corp:acme/billing.git",
-    "ssh://git@gitlab.com/acme/billing.git",
-    "git@work-gitlab:acme/billing.git",
-  ])("an SSH origin on another server (%s) isn't read as github.com", async (remote) => {
+    ["git@gitlab.com:acme/billing.git", "the origin remote isn't on github.com"],
+    ["git@bitbucket.org:acme/billing.git", "the origin remote isn't on github.com"],
+    ["ssh://git@gitlab.com/acme/billing.git", "the origin remote isn't on github.com"],
+    ["git@work-gitlab:acme/billing.git", "the origin remote isn't on github.com"],
+    ["git@github.acme.corp:acme/billing.git", ENTERPRISE],
+    ["https://github.acme.corp/acme/billing.git", ENTERPRISE],
+    ["https://acme.ghe.com/acme/billing.git", ENTERPRISE],
+    ["git@work-ghe:acme/billing.git", ENTERPRISE],
+  ])("an origin on another server (%s) isn't read as github.com", async (remote, reason) => {
     const run = setup({
       files: { [MAP]: MAPPED },
       git: { "remote get-url origin": `${remote}\n` },
-      deps: sshConfig({ "work-gitlab": "gitlab.com" }),
+      deps: sshConfig({ "work-gitlab": "gitlab.com", "work-ghe": "ssh.acme.ghe.com" }),
     });
     await cli(["check", "--json"], run.deps);
     const data = json(run.stdout.text);
     expect(data.github).toMatchObject({ repo: null });
     expect(data.unknown).toContainEqual({
       what: "the GitHub repository's Actions secrets",
-      reason: "the origin remote isn't on github.com",
+      reason,
     });
     expect(run.calls.some((c) => c.startsWith("github"))).toBe(false);
   });
@@ -1996,6 +2002,32 @@ describe("keypin check's prerequisites", () => {
       `${MAP} maps no keys yet; run keypin import for an env file, and add the TOML below for production`,
     ]);
   });
+
+  test.each([
+    [{ GH_TOKEN: "ghp_x" }, "GH_TOKEN", "GH_TOKEN"],
+    [{ GITHUB_TOKEN: "ghp_y" }, "GITHUB_TOKEN", "GITHUB_TOKEN"],
+    [
+      { GH_TOKEN: "ghp_x", GITHUB_TOKEN: "ghp_y" },
+      "GH_TOKEN and GITHUB_TOKEN",
+      "GH_TOKEN GITHUB_TOKEN",
+    ],
+  ])(
+    "with only %o set, says keypin uses gh's saved login and how to save one",
+    async (env, ignored, unset) => {
+      const run = setup({
+        files: { [MAP]: TEMPLATE },
+        git: { "config --get github.account": "alice\n" },
+        deps: { ghLogin: async () => "not logged in", env },
+      });
+      await cli(["check"], run.deps);
+      expect(run.stdout.text).toContain(`1 Sign in to GitHub
+  keypin ignores ${ignored}: it publishes only as a login gh has saved, so a token meant for another tool can't pick the account. Unset ${unset}, then run:
+    gh auth login --hostname github.com --with-token < token.txt
+  Use a classic token with the repo, read:org and gist scopes (gh needs all three), for alice.
+`);
+      expect(run.stdout.text).not.toContain("ghp_");
+    },
+  );
 
   test("says to install gh when it isn't on PATH", async () => {
     const run = setup({

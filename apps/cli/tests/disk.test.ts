@@ -1,8 +1,10 @@
 import {
+  type FileHandle,
   chmod,
   lstat,
   mkdir,
   mkdtemp,
+  open,
   readdir,
   readFile,
   rename,
@@ -233,6 +235,34 @@ describe("diskFiles", () => {
     await writeFile(path, "[1password]\n");
     expect(await diskFiles.read(path)).toBe("[1password]\n");
     expect(await diskFiles.read(join(folder, "missing.toml"))).toBeNull();
+  });
+
+  test("a write reaches the disk before it returns", async () => {
+    const probe = await open(join(folder, "probe"), "w");
+    await probe.close();
+    const handles: unknown = Object.getPrototypeOf(probe);
+    assert(typeof handles === "object" && handles !== null);
+    const sync: unknown = Reflect.get(handles, "sync");
+    assert(typeof sync === "function");
+    let synced = 0;
+    Reflect.set(handles, "sync", function (this: FileHandle, ...args: unknown[]): unknown {
+      synced++;
+      const result: unknown = Reflect.apply(sync, this, args);
+      return result;
+    });
+    try {
+      await diskFiles.write(join(folder, "state.json"), "{}");
+    } finally {
+      Reflect.set(handles, "sync", sync);
+    }
+    expect(synced).toBe(1);
+  });
+
+  test("a save whose rename fails leaves no temporary file", async () => {
+    const state = join(folder, "keypin", "state.json");
+    await mkdir(state, { recursive: true });
+    await expect(saveState(diskFiles, state, emptyState())).rejects.toThrow();
+    expect(await readdir(join(folder, "keypin"))).toEqual(["state.json"]);
   });
 
   test("a write never follows a symbolic link", async () => {

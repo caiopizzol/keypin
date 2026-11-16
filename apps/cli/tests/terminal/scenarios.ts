@@ -41,7 +41,7 @@ export interface Scenario {
   infisical?: FakeInfisical;
 }
 
-export const FAKE_TOKEN = `ops_${Buffer.from(JSON.stringify({ signInAddress: "my.1password.com" })).toString("base64url")}`;
+export const FAKE_TOKEN = `ops_${Buffer.from(JSON.stringify({ signInAddress: "https://my.1password.com/" })).toString("base64url")}`;
 
 function day(offset: number): string {
   const date = new Date();

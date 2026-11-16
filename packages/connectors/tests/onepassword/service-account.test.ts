@@ -11,7 +11,7 @@ import {
 
 const tokenFor = (fields: Record<string, unknown>) =>
   `ops_${Buffer.from(JSON.stringify(fields)).toString("base64url")}`;
-const TOKEN = tokenFor({ signInAddress: "Acme.1Password.com" });
+const TOKEN = tokenFor({ signInAddress: "https://Acme.1Password.com/" });
 
 const ref = (account: string, vault = "Deploy"): KeyRef => ({
   kind: "1password",
@@ -62,12 +62,20 @@ function fakeSdk(vaults = ["Deploy"], create = () => {}) {
 }
 
 describe("signInAddress", () => {
-  test("reads only signInAddress from the token, in lower case", () => {
+  test("reads the host of signInAddress from the token, in lower case", () => {
     expect(signInAddress(TOKEN)).toBe("acme.1password.com");
+    expect(signInAddress(tokenFor({ signInAddress: "acme.1password.com" }))).toBe(
+      "acme.1password.com",
+    );
   });
 
   test("a value that isn't a service account token fails without showing it", () => {
-    for (const token of ["not-a-token", "ops_%%%", tokenFor({ email: "me@example.com" })]) {
+    for (const token of [
+      "not-a-token",
+      "ops_%%%",
+      tokenFor({ email: "me@example.com" }),
+      tokenFor({ signInAddress: "https:///" }),
+    ]) {
       expect(() => signInAddress(token)).toThrow(
         "OP_SERVICE_ACCOUNT_TOKEN isn't a 1Password service account token",
       );

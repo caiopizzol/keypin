@@ -18,8 +18,9 @@ export function signInAddress(token: string): string {
     throw invalid;
   }
   const address = isRecord(parsed) ? parsed.signInAddress : undefined;
-  if (typeof address !== "string" || !address) throw invalid;
-  return address.toLowerCase();
+  const host = typeof address === "string" ? pinnedAddress(address) : "";
+  if (!host) throw invalid;
+  return host;
 }
 
 export function isSharedAddress(address: string): boolean {

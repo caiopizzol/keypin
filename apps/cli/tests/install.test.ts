@@ -1,3 +1,7 @@
+import { cp, mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vite-plus/test";
 import { INSTALL, installProblem, REINSTALL } from "../src/install";
 
@@ -36,6 +40,28 @@ describe("installProblem", () => {
     expect(installProblem(moduleNotFound("Cannot find package '@1password/sdk'"), null)).toBe(
       `the package @1password/sdk isn't installed; reinstall keypin with "${REINSTALL}"`,
     );
+  });
+
+  test("a checkout without dependencies starts with the install hint", async () => {
+    const repo = await realpath(await mkdtemp(join(tmpdir(), "keypin-uninstalled-")));
+    try {
+      await cp(fileURLToPath(new URL("../src", import.meta.url)), join(repo, "apps/cli/src"), {
+        recursive: true,
+      });
+      await cp(
+        fileURLToPath(new URL("../../../package.json", import.meta.url)),
+        join(repo, "package.json"),
+      );
+      const child = Bun.spawnSync(
+        [process.execPath, "--no-install", "--no-env-file", "apps/cli/src/main.ts", "--help"],
+        { cwd: repo },
+      );
+      expect(child.stderr.toString()).toBe(
+        `keypin: the package @keypin/core isn't installed; run "${INSTALL}" in ${repo}\n`,
+      );
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
   });
 
   test("any other error is left alone", () => {

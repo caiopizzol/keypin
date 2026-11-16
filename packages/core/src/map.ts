@@ -160,7 +160,8 @@ function validateIgnore(
       fail(
         `ignore "${name}": a variable name uses letters, digits and _, not starting with a digit`,
       );
-    else if (names.includes(name)) fail(`ignore "${name}" is listed twice`);
+    else if (names.some((each) => each.toUpperCase() === name.toUpperCase()))
+      fail(`ignore "${name}" is listed twice`);
     else if (key !== undefined)
       fail(`ignore "${name}" is also [keys.${key}]; remove it from one of them`);
     else names.push(name);

@@ -109,11 +109,13 @@ export function findGaps(
   const notes: string[] = [];
   const needs: Found[] = [];
   const ignore = keys?.ignore ?? [];
+  const ignoring = (name: string) =>
+    ignore.find((each) => each.toUpperCase() === name.toUpperCase());
   const ignored = new Set<string>();
   const skipped: { name: string; place: string }[] = [];
   const need = (name: string, place: Place, usedBy: string) => {
     if (!isVariableName(name)) return;
-    const skip = ignore.find((each) => place.matches(each, name));
+    const skip = ignoring(name);
     if (skip !== undefined) {
       ignored.add(skip);
       skipped.push({ name, place: place.id });
@@ -156,7 +158,7 @@ export function findGaps(
       (keys?.keys ?? []).some(
         (k) => place.matches(k.name, name) && mappedIn(keys, k, place) !== null,
       ),
-    ignores: (name: string, place: Place) => ignore.some((each) => place.matches(each, name)),
+    ignores: (name: string) => ignoring(name) !== undefined,
   };
   const after: NonNullable<Needs["notesAfter"]>[] = [];
   const conflicts: string[] = [];
@@ -260,8 +262,9 @@ export function findGaps(
     const names = file.names.filter(isVariableName);
     const key = (name: string) => keys?.keys.find((k) => k.name === name);
     const unmapped = names.filter((name) => {
-      if (!ignore.includes(name)) return !key(name);
-      ignored.add(name);
+      const skip = ignoring(name);
+      if (skip === undefined) return !key(name);
+      ignored.add(skip);
       return false;
     });
     const elsewhere = names.filter((name) => {

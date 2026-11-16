@@ -58,7 +58,7 @@ export interface FoundNeed {
 export interface MapView {
   readonly publishEnvironment: Environment;
   publishes(name: string, place: Place): boolean;
-  ignores(name: string, place: Place): boolean;
+  ignores(name: string): boolean;
 }
 
 export interface Needs {

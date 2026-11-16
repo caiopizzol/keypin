@@ -526,6 +526,23 @@ jobs:
     expect(without.stdout.text).not.toContain("ignored in keypin.toml");
   });
 
+  test("ignore matches names in any case, so check never proposes a key ignore would reject", async () => {
+    const run = setup({
+      files: {
+        [MAP]: `ignore = ["extra_key", "local_key"]\n${PUBLISHED}`,
+        [`${ROOT}/.env`]: `LOCAL_KEY=${SENTINEL}\n`,
+        [`${ROOT}/wrangler.toml`]: `name = "billing-worker"\naccount_id = "${ACCOUNT}"\n\n[secrets]\nrequired = ["RESEND_API_KEY", "EXTRA_KEY"]\n`,
+      },
+      deps: { workerSignIn: () => fakeSignIn("oauth") },
+      github: { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+    });
+    expect(await cli(["check"], run.deps)).toBe(0);
+    expect(run.stdout.text).toContain("Note: 2 keys ignored in keypin.toml");
+    expect(run.stdout.text).not.toContain("EXTRA_KEY");
+    expect(run.stdout.text).not.toContain("LOCAL_KEY");
+  });
+
   test("a mapped secret the place doesn't have yet says to publish it", async () => {
     const run = setup({ files: { [MAP]: PUBLISHED, [`${ROOT}/.env`]: null } });
     expect(await cli(["check", "--json"], run.deps)).toBe(1);

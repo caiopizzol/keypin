@@ -184,6 +184,7 @@ describe("ignore", () => {
       `ignore "1PASSWORD": a variable name uses letters, digits and _, not starting with a digit`,
     ],
     [`ignore = ["A", "A"]`, `ignore "A" is listed twice`],
+    [`ignore = ["A", "a"]`, `ignore "a" is listed twice`],
     [
       `ignore = ["A"]\n${VAULTS}[keys.A]\ndev = "op://Private/a/password"`,
       `ignore "A" is also [keys.A]; remove it from one of them`,

@@ -1,9 +1,10 @@
 import {
+  type Day,
   type Fetch,
   HeldForApproval,
-  isDay,
   isRecord,
   type KeyRef,
+  parseDay,
   parseObject,
   Secret,
   SignInFailed,
@@ -263,10 +264,6 @@ export function infisicalBackend(
     async write(given, value, options = {}) {
       const ref = own(given);
       const rotated = options.rotated;
-      if (rotated !== undefined && !isDay(rotated))
-        throw new Error(
-          `${describeRef(ref)}: rotated must be a real day as YYYY-MM-DD, got "${rotated}"`,
-        );
       const found = await ownSecret(ref);
       if (found && options.newItem)
         throw new Error(
@@ -334,11 +331,12 @@ export function infisicalBackend(
     async metadata(given) {
       const ref = own(given);
       const { secret } = await existing(ref, false);
-      const rotated = metadataOf(secret).find((entry) => entry.key === ROTATED)?.value ?? "";
-      if (rotated === "") return { rotated: null };
-      if (!isDay(rotated))
+      const value = metadataOf(secret).find((entry) => entry.key === ROTATED)?.value ?? "";
+      if (value === "") return { rotated: null };
+      const rotated = parseDay(value);
+      if (!rotated)
         throw new Error(
-          `${describeRef(ref)}: the metadata "${ROTATED}" isn't a YYYY-MM-DD date: "${rotated}"`,
+          `${describeRef(ref)}: the metadata "${ROTATED}" isn't a YYYY-MM-DD date: "${value}"`,
         );
       return { rotated };
     },
@@ -415,7 +413,7 @@ function metadataOf(secret: Json): Metadata[] {
   );
 }
 
-function withRotated(metadata: Metadata[], rotated: string | undefined): Metadata[] {
+function withRotated(metadata: Metadata[], rotated: Day | undefined): Metadata[] {
   if (rotated === undefined) return metadata;
   return [
     ...metadata.filter((entry) => entry.key !== ROTATED),

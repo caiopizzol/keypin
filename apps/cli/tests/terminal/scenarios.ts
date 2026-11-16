@@ -1,5 +1,5 @@
 import { envValues } from "@keypin/core";
-import { localDay } from "../../src/deps";
+import { localDay } from "@keypin/core";
 import type { FakeInfisical } from "@keypin/connectors/infisical/testing";
 
 export interface FakeItem {

@@ -7,6 +7,7 @@ import {
   type VaultScope,
   WriteRefused,
 } from "../contracts";
+import { day } from "./day";
 import { Secret } from "../secret";
 import { caught, expectNoSentinel, SENTINEL } from "./leaks";
 
@@ -22,7 +23,7 @@ export interface VaultSubject {
 
 type Make = (sentinel: string) => VaultSubject | Promise<VaultSubject>;
 
-const ROTATED = "2026-11-14";
+const ROTATED = day("2026-11-14");
 const ITEM_KEYS = ["id", "tags", "title", "updatedAt"];
 
 export function vaultContract(make: Make): void {

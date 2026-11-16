@@ -2,6 +2,7 @@ import { inspect } from "node:util";
 import { assert, describe, expect, test } from "vite-plus/test";
 import type { KeyRef } from "@keypin/core";
 import { Secret, SignInFailed } from "@keypin/core";
+import { day } from "@keypin/core/testing";
 import {
   desktopLibrary,
   onePasswordBackend,
@@ -272,7 +273,9 @@ describe("names in a reference", () => {
     const { client, calls } = fake([existing]);
     const { backend } = backendFor(client);
     await expect(
-      backend.write({ ...ref, field: "rotated" }, new Secret(VALUE), { rotated: "2026-11-10" }),
+      backend.write({ ...ref, field: "rotated" }, new Secret(VALUE), {
+        rotated: day("2026-11-10"),
+      }),
     ).rejects.toThrow('"rotated" holds the day the value last changed');
     await expect(backend.read({ ...ref, field: "Rotated" })).rejects.toThrow(
       '"rotated" holds the day the value last changed',
@@ -316,7 +319,7 @@ describe("write", () => {
 
   test("creates a Password item when it is missing, with rotated when asked", async () => {
     const { client, calls } = fake();
-    await backendFor(client).backend.write(ref, new Secret(VALUE), { rotated: "2026-11-09" });
+    await backendFor(client).backend.write(ref, new Secret(VALUE), { rotated: day("2026-11-09") });
     expect(calls.put).toEqual([]);
     expect(calls.create).toHaveLength(1);
     const [created] = calls.create;
@@ -368,7 +371,7 @@ describe("write", () => {
       field("rotated", "Date", "2026-01-01"),
     ]);
     const { client, calls } = fake([existing]);
-    await backendFor(client).backend.write(ref, new Secret(VALUE), { rotated: "2026-11-09" });
+    await backendFor(client).backend.write(ref, new Secret(VALUE), { rotated: day("2026-11-09") });
     expect(calls.create).toEqual([]);
     expect(calls.put).toHaveLength(1);
     const [put] = calls.put;
@@ -392,22 +395,9 @@ describe("write", () => {
     expect(calls.put[0]?.fields).toContainEqual(field("rotated", "Date", "2026-01-01"));
   });
 
-  test.each(["today", "2026-02-30", "2025-02-29", "2026-13-01", "2026-11-00"])(
-    "refuses rotated %s, before touching the vault",
-    async (rotated) => {
-      const { client, calls } = fake();
-      const { backend, accounts } = backendFor(client);
-      await expect(backend.write(ref, new Secret(VALUE), { rotated })).rejects.toThrow(
-        `rotated must be a real day as YYYY-MM-DD, got "${rotated}"`,
-      );
-      expect(accounts).toEqual([]);
-      expect(calls).toEqual({ create: [], put: [], get: 0, lists: { vaults: 0, items: 0 } });
-    },
-  );
-
   test("accepts a leap day", async () => {
     const { client, calls } = fake();
-    await backendFor(client).backend.write(ref, new Secret(VALUE), { rotated: "2028-02-29" });
+    await backendFor(client).backend.write(ref, new Secret(VALUE), { rotated: day("2028-02-29") });
     expect(calls.create[0]?.fields).toContainEqual(field("rotated", "Date", "2028-02-29"));
   });
 });
@@ -466,7 +456,7 @@ describe("metadata", () => {
       ]),
     ]);
     const metadata = await backendFor(client).backend.metadata(ref);
-    expect(metadata).toEqual({ rotated: "2026-11-09" });
+    expect(metadata).toEqual({ rotated: day("2026-11-09") });
     expect(JSON.stringify(metadata)).not.toContain(VALUE);
   });
 
@@ -475,7 +465,7 @@ describe("metadata", () => {
     const { client } = fake([
       item("demo dev token", [field("rotated", "Date", String(localMidnight))]),
     ]);
-    expect(await backendFor(client).backend.metadata(ref)).toEqual({ rotated: "2026-11-09" });
+    expect(await backendFor(client).backend.metadata(ref)).toEqual({ rotated: day("2026-11-09") });
   });
 
   test("gives null for missing fields", async () => {
@@ -490,12 +480,15 @@ describe("metadata", () => {
     await expect(failure).rejects.not.toThrow(VALUE);
   });
 
-  test("refuses a rotated value that isn't a date", async () => {
-    const { client } = fake([item("demo dev token", [field("rotated", "Text", "last week")])]);
-    await expect(backendFor(client).backend.metadata(ref)).rejects.toThrow(
-      '"rotated" isn\'t a date: "last week"',
-    );
-  });
+  test.each(["last week", "2026-13-45", "2026-02-30"])(
+    "refuses a rotated value that isn't a real day: %s",
+    async (rotated) => {
+      const { client } = fake([item("demo dev token", [field("rotated", "Text", rotated)])]);
+      await expect(backendFor(client).backend.metadata(ref)).rejects.toThrow(
+        `"rotated" isn't a date: "${rotated}"`,
+      );
+    },
+  );
 });
 
 describe("errors", () => {

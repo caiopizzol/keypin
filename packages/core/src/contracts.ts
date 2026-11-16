@@ -1,3 +1,4 @@
+import type { Day } from "./days";
 import type { Generation, Secret } from "./secret";
 
 export type KeyId = string;
@@ -23,7 +24,7 @@ export interface VaultItem {
 }
 
 export interface VaultMetadata {
-  rotated: string | null;
+  rotated: Day | null;
 }
 
 export interface ItemIds {
@@ -58,11 +59,7 @@ export interface VaultBackend {
   read(ref: KeyRef): Promise<Secret>;
   readItem(ref: KeyRef): Promise<{ secret: Secret; ids: ItemIds }>;
   itemIds(ref: KeyRef): Promise<ItemIds>;
-  write(
-    ref: KeyRef,
-    secret: Secret,
-    options?: { rotated?: string; newItem?: boolean },
-  ): Promise<void>;
+  write(ref: KeyRef, secret: Secret, options?: { rotated?: Day; newItem?: boolean }): Promise<void>;
   checkWrite?(ref: KeyRef): Promise<void>;
   list(scope: VaultScope): Promise<VaultItem[]>;
   metadata(ref: KeyRef): Promise<VaultMetadata>;

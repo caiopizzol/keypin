@@ -7,6 +7,7 @@ import {
   kindOf,
   loadRegistry,
   loadState,
+  localDay,
   type MapResult,
   messageOf,
   parseMap,
@@ -17,7 +18,7 @@ import {
   type VaultMetadata,
   vaultAccounts,
 } from "@keypin/core";
-import { type Deps, localDay, UsageError } from "../deps";
+import { type Deps, UsageError } from "../deps";
 import { registryPath, statePath } from "../paths";
 import { MAP_FILE } from "../project";
 import { columns, count, type Output, output, tilde } from "../output";
@@ -222,7 +223,7 @@ function nextStep(problem: Problem, rows: readonly StatusRow[], context: Context
       ? `${rotate}, then run ${context.publish(row)} in ${row.project}.`
       : `${rotate}.`;
   }
-  if (problem.kind === "no-rotation-date" && row.rotated === null)
+  if (problem.kind === "no-rotation-date")
     return infisical
       ? "Add rotated to the Infisical secret's metadata, with the day the value last changed as YYYY-MM-DD."
       : "Add a rotated Date field to the 1Password item, with the day the value last changed.";

@@ -8,6 +8,7 @@ import {
   type VaultBackend,
   type VaultKind,
 } from "@keypin/core";
+import { day } from "@keypin/core/testing";
 import { cli } from "../src/cli";
 import { vaults } from "../src/start";
 import { routedVault } from "../src/vault";
@@ -78,7 +79,7 @@ const toyBackend = (values: Record<string, string>, reads: KeyRef[]): VaultBacke
       throw new Error("the toy vault doesn't write");
     },
     list: async () => [],
-    metadata: async () => ({ rotated: "2026-11-01" }),
+    metadata: async () => ({ rotated: day("2026-11-01") }),
   };
 };
 

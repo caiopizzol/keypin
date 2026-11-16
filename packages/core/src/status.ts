@@ -6,7 +6,7 @@ import type { VaultKinds } from "./login";
 import { sameRef } from "./reference";
 import type { Registry } from "./registry";
 import { ownedBy } from "./state";
-import { addDays, isDay, periodDays } from "./days";
+import { addDays, type Day, periodDays } from "./days";
 import type { Generation } from "./secret";
 
 const DUE_SOON_DAYS = 14;
@@ -46,9 +46,9 @@ export interface StatusRow {
   keyId: KeyId;
   environment: Environment;
   ref: KeyRef;
-  rotated: string | null;
+  rotated: Day | null;
   rotateEvery: string | null;
-  due: string | null;
+  due: Day | null;
   issuer: string | null;
   destinations: DestinationRow[];
 }
@@ -61,7 +61,7 @@ export interface StatusInput {
   receipts: readonly Receipt[];
   metadata(ref: KeyRef): VaultMetadata | null;
   generation?(keyId: KeyId, environment: Environment): Generation | undefined;
-  today: string;
+  today: Day;
 }
 
 export interface Status {
@@ -72,7 +72,6 @@ export interface Status {
 const NOTICES: readonly ProblemKind[] = ["due-soon", "never-published"];
 
 export function buildStatus(input: StatusInput): Status {
-  if (!isDay(input.today)) throw new Error(`today must be YYYY-MM-DD, got "${input.today}"`);
   const rows: StatusRow[] = [];
   const problems: Problem[] = [];
 
@@ -202,11 +201,11 @@ export function buildStatus(input: StatusInput): Status {
 function rotationDue(input: {
   label: string;
   metadata: VaultMetadata | null;
-  rotated: string | null;
+  rotated: Day | null;
   rotateEvery: string | null;
-  today: string;
+  today: Day;
   add: (kind: ProblemKind, message: string) => void;
-}): string | null {
+}): Day | null {
   const { label, metadata, rotated, rotateEvery, today, add } = input;
   if (!metadata) {
     add(
@@ -215,11 +214,8 @@ function rotationDue(input: {
     );
     return null;
   }
-  if (!rotated || !isDay(rotated)) {
-    add(
-      "no-rotation-date",
-      `${label}: ${rotated ? `rotated "${rotated}" isn't YYYY-MM-DD` : "no rotated date"}`,
-    );
+  if (!rotated) {
+    add("no-rotation-date", `${label}: no rotated date`);
     return null;
   }
   const days = periodDays(rotateEvery);

@@ -26,7 +26,7 @@ function fixFor(failures: readonly SignInReason[], { env }: InfisicalHost): stri
   if (failures.some((reason) => reason.kind === "no-credentials"))
     return `${NO_CREDENTIALS} (docs/infisical.md)`;
   if (failures.some((reason) => reason.kind === "wrong-account"))
-    return "use a machine identity from the organization keypin.toml pins under [infisical]";
+    return "use a machine identity from the organization keypin.toml pins under [infisical]; keypin can't read from a sub-organization";
   const credentials = credentialsFrom(env);
   const variables =
     credentials && "variable" in credentials

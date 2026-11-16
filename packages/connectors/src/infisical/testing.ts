@@ -28,6 +28,8 @@ export interface FakeInfisical {
   refuseLogin?: number;
   accessToken?: string;
   userToken?: string;
+  missingRoutes?: string[];
+  rateLimited?: { times: number; retryAfter?: number };
   hideValues?: boolean;
   requireEncryptedMetadata?: boolean;
 }
@@ -86,8 +88,43 @@ export function infisicalFetch(fake: FakeInfisical, store: Store): Fetch {
       ...Object.fromEntries(added.map((s) => [s.name, s.secret])),
     };
   };
+  const folderExists = (project: string, environment: string, path: string) => {
+    const keys = [
+      ...Object.keys(fake.projects[project]?.[environment] ?? {}),
+      ...store
+        .load()
+        .filter((s) => s.project === project && s.environment === environment)
+        .map((s) => `${s.path ?? ROOT}/${s.name}`),
+    ];
+    if (!fake.projects[project]?.[environment]) return false;
+    return path === ROOT || keys.some((key) => `${pathOf(key)}/`.startsWith(`${path}/`));
+  };
   return async (url, init) => {
     const parsed = new URL(url);
+    if (fake.rateLimited && fake.rateLimited.times > 0) {
+      fake.rateLimited.times--;
+      const wait = fake.rateLimited.retryAfter ?? 42;
+      return new Response(
+        JSON.stringify({
+          statusCode: 429,
+          message: `Rate limit exceeded. Please try again in ${wait} seconds`,
+          error: "RateLimitExceeded",
+        }),
+        {
+          status: 429,
+          headers:
+            fake.rateLimited.retryAfter === undefined
+              ? {}
+              : { "Retry-After": String(fake.rateLimited.retryAfter) },
+        },
+      );
+    }
+    if (fake.missingRoutes?.some((route) => parsed.pathname.startsWith(route)))
+      return reply(404, {
+        statusCode: 404,
+        message: `Route ${init.method}:${parsed.pathname} not found`,
+        error: "Not Found",
+      });
     const sent: unknown = init.body ? JSON.parse(init.body) : null;
     const body = isRecord(sent) ? sent : {};
     const text = (value: unknown) => (typeof value === "string" ? value : "");
@@ -120,6 +157,12 @@ export function infisicalFetch(fake: FakeInfisical, store: Store): Fetch {
     const project = slugOf(query.projectId ?? text(body.projectId));
     const environment = query.environment ?? text(body.environment);
     const path = query.secretPath ?? (text(body.secretPath) || ROOT);
+    if (!folderExists(project, environment, path))
+      return reply(404, {
+        statusCode: 404,
+        message: `Folder with path '${path}' in environment with slug '${environment}' not found`,
+        error: "GetSecretByName",
+      });
     const secrets = secretsOf(project, environment, path);
     const imported =
       query.includeImports !== "false" && !secrets[name]

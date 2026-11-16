@@ -52,9 +52,12 @@ export function credentialsFrom(
   return variable && token ? { token, variable } : null;
 }
 
+const LONGEST_WAIT_SECONDS = 60;
+
 export function infisicalBackend(
   credentials: Credentials | null,
   fetch: Fetch = globalThis.fetch,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((done) => setTimeout(done, ms)),
 ): VaultBackend {
   const sessions = new Map<string, Promise<Session>>();
 
@@ -62,19 +65,48 @@ export function infisicalBackend(
     place: Place,
     method: string,
     path: string,
-    options: { token?: string; body?: Json; query?: Record<string, string> } = {},
+    options: {
+      token?: string;
+      body?: Json;
+      query?: Record<string, string>;
+      signIn?: boolean;
+      always?: boolean;
+    } = {},
   ): Promise<{ status: number; body: Json }> {
+    const fail = (why: string) =>
+      options.signIn
+        ? new SignInFailed(`${account(place)}: sign-in failed: ${why}`, { kind: "other" })
+        : new Error(`${account(place)}: ${why}`);
     const query = options.query ? `?${new URLSearchParams(options.query)}` : "";
-    const response = await fetch(`${place.url}${path}${query}`, {
-      method,
-      headers: {
-        Accept: "application/json",
-        ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
-      },
-      ...(options.body ? { body: JSON.stringify(options.body) } : {}),
-    });
-    return { status: response.status, body: parseObject(await response.text()) };
+    const send = () =>
+      fetch(`${place.url}${path}${query}`, {
+        method,
+        headers: {
+          Accept: "application/json",
+          ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
+          ...(options.body ? { "Content-Type": "application/json" } : {}),
+        },
+        ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+      });
+    let response = await send();
+    const wait = Number(response.headers.get("Retry-After"));
+    if (response.status === 429 && wait > 0 && wait <= LONGEST_WAIT_SECONDS) {
+      await response.text();
+      await sleep(wait * 1000);
+      response = await send();
+    }
+    const body = parseObject(await response.text());
+    if (response.status === 404 && body.error === "Not Found")
+      throw fail(
+        options.always
+          ? `the server has no ${method} ${path}; check that url in keypin.toml points to the Infisical server itself, with no path`
+          : `the server has no ${method} ${path}, so it may be older than keypin supports; keypin needs Infisical from September 2025 or later`,
+      );
+    if (response.status === 429)
+      throw fail(
+        `Infisical is limiting how often keypin can ask (${problem({ status: response.status, body })}); wait, then run the command again`,
+      );
+    return { status: response.status, body };
   }
 
   async function signIn(place: Place): Promise<Session> {
@@ -84,7 +116,10 @@ export function infisicalBackend(
         kind: "no-credentials",
       });
     const token = await accessToken(place, credentials);
-    const details = await request(place, "GET", "/api/v1/identities/details", { token });
+    const details = await request(place, "GET", "/api/v1/identities/details", {
+      token,
+      signIn: true,
+    });
     if ("variable" in credentials && (details.status === 401 || details.status === 403))
       throw new SignInFailed(
         details.status === 401
@@ -97,12 +132,12 @@ export function infisicalBackend(
       isRecord(identity) && isRecord(identity.organization) ? identity.organization.slug : null;
     if (details.status !== 200 || typeof organization !== "string")
       throw new SignInFailed(
-        `${where}: sign-in failed: couldn't read the machine identity's organization: ${problem(details)}`,
+        `${where}: sign-in failed: couldn't read the machine identity's organization (${problem(details)}); a machine identity created in a sub-organization has none keypin can check, so use one from the top-level organization`,
         { kind: "other" },
       );
     if (organization !== place.organization)
       throw new SignInFailed(
-        `${where}: sign-in failed: the machine identity belongs to the organization ${organization}, but keypin.toml pins ${place.organization}`,
+        `${where}: sign-in failed: the machine identity belongs to the organization ${organization}, but keypin.toml pins ${place.organization}; keypin reads only from top-level organizations, not sub-organizations`,
         { kind: "wrong-account", pinned: place.organization, actual: organization },
       );
     return { token, projects: new Map() };
@@ -112,6 +147,8 @@ export function infisicalBackend(
     if ("token" in given) return given.token;
     const login = await request(place, "POST", "/api/v1/auth/universal-auth/login", {
       body: { clientId: given.clientId, clientSecret: given.clientSecret },
+      signIn: true,
+      always: true,
     });
     const token = login.body.accessToken;
     if (login.status !== 200 || typeof token !== "string")
@@ -153,7 +190,7 @@ export function infisicalBackend(
   async function secretOf(
     ref: InfisicalRef,
     view: { value: boolean; imports: boolean; expand: boolean },
-  ): Promise<{ secret: Json; project: string } | null> {
+  ): Promise<{ secret: Json; project: string } | string> {
     const current = await session(ref);
     const project = await projectId(ref, current, ref.project);
     const found = await request(ref, "GET", `/api/v4/secrets/${encodeURIComponent(ref.name)}`, {
@@ -167,7 +204,7 @@ export function infisicalBackend(
         includeImports: String(view.imports),
       },
     });
-    if (found.status === 404) return null;
+    if (found.status === 404) return problem(found);
     if (found.status !== 200 || !isRecord(found.body.secret))
       throw new Error(`${describeRef(ref)}: ${problem(found)}`);
     return { secret: found.body.secret, project };
@@ -175,15 +212,15 @@ export function infisicalBackend(
 
   async function existing(ref: InfisicalRef, value: boolean) {
     const found = await secretOf(ref, { value, imports: true, expand: true });
-    if (!found) throw new Error(`${describeRef(ref)}: no such secret`);
+    if (typeof found === "string") throw new Error(`${describeRef(ref)}: ${found}`);
     return found;
   }
 
   async function ownSecret(ref: InfisicalRef) {
     const local = await secretOf(ref, { value: true, imports: false, expand: false });
-    if (!local) {
+    if (typeof local === "string") {
       const imported = await secretOf(ref, { value: false, imports: true, expand: false });
-      if (imported)
+      if (typeof imported !== "string")
         throw new Error(
           fromElsewhere(ref, "is imported from", [importSource(ref, imported.secret)]),
         );

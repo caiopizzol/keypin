@@ -20,6 +20,7 @@ import { createFile, diskFiles, diskLock, git, replaceFile, replaceFileWith } fr
 import { signInNames } from "../src/start";
 
 const HOLDER = fileURLToPath(new URL("lock-holder.ts", import.meta.url));
+const GRAB = fileURLToPath(new URL("lock-grab.ts", import.meta.url));
 
 let folder = "";
 beforeEach(async () => {
@@ -50,7 +51,7 @@ describe("diskLock", () => {
     expect(await readFile(path, "utf8")).toBe(`${process.pid}\n`);
     expect(await diskLock(path)).toEqual({
       held: false,
-      holder: { pid: process.pid, running: true },
+      holder: { file: path, pid: process.pid, running: true },
     });
     await first.lock.release();
     expect(await readdir(join(folder, "state"))).toEqual([]);
@@ -59,16 +60,86 @@ describe("diskLock", () => {
     await again.lock.release();
   });
 
-  test("a lock left by a process that no longer runs is reported, and left in place", async () => {
-    const pid = await deadPid();
-    const path = await leftLock(`${pid}\n`);
-    expect(await diskLock(path)).toEqual({ held: false, holder: { pid, running: false } });
-    expect(await readFile(path, "utf8")).toBe(`${pid}\n`);
+  test("a lock left by a process that no longer runs is taken over", async () => {
+    const path = await leftLock(`${await deadPid()}\n`);
+    const taken = await diskLock(path);
+    assert(taken.held);
+    expect(await readFile(path, "utf8")).toBe(`${process.pid}\n`);
+    await taken.lock.release();
+    expect(await readdir(join(folder, "state"))).toEqual([]);
+  });
+
+  test("two runs that find the same stale lock: one takes it, the other sees it held", async () => {
+    const path = await leftLock(`${await deadPid()}\n`);
+    const children = [0, 1].map(() =>
+      Bun.spawn([process.execPath, HOLDER, path], { stdout: "pipe" }),
+    );
+    const said = await Promise.all(
+      children.map(async (child) =>
+        new TextDecoder().decode((await child.stdout.getReader().read()).value),
+      ),
+    );
+    for (const child of children) child.kill("SIGTERM");
+    await Promise.all(children.map((child) => child.exited));
+    expect(said.toSorted()).toEqual(["holding\n", "refused\n"]);
+  });
+
+  test("three runs in one process that find the same stale lock: exactly one holds it", async () => {
+    for (let round = 0; round < 20; round++) {
+      const path = await leftLock(`${await deadPid()}\n`);
+      const runs = await Promise.all([diskLock(path), diskLock(path), diskLock(path)]);
+      const holders = runs.filter((run) => run.held);
+      expect(holders).toHaveLength(1);
+      expect(await readFile(path, "utf8")).toBe(`${process.pid}\n`);
+      for (const run of holders) if (run.held) await run.lock.release();
+      expect(await readdir(join(folder, "state"))).toEqual([]);
+    }
+  });
+
+  test("processes racing for a free lock never see one that names no process", async () => {
+    const path = join(folder, "state", "state.json.lock");
+    for (let round = 0; round < 10; round++) {
+      const runs = Array.from({ length: 8 }, () =>
+        Bun.spawn([process.execPath, GRAB, path], { stdout: "pipe" }),
+      );
+      const said = await Promise.all(runs.map((run) => new Response(run.stdout).text()));
+      expect(said.filter((text) => text !== "held\n" && text !== "busy\n")).toEqual([]);
+    }
+  }, 30_000);
+
+  test("a takeover another run is doing is reported as that run, not as the stale lock", async () => {
+    const path = await leftLock(`${await deadPid()}\n`);
+    await writeFile(`${path}.takeover`, `${process.pid}\n`);
+    expect(await diskLock(path)).toEqual({
+      held: false,
+      holder: { file: `${path}.takeover`, pid: process.pid, running: true },
+    });
+  }, 5_000);
+
+  test("a takeover guard that names no process is reported once the retries run out", async () => {
+    const path = await leftLock(`${await deadPid()}\n`);
+    await writeFile(`${path}.takeover`, "");
+    expect(await diskLock(path)).toEqual({
+      held: false,
+      holder: { file: `${path}.takeover`, pid: null, running: null },
+    });
+  }, 5_000);
+
+  test("closing the terminal while holding the lock removes it", async () => {
+    const path = join(folder, "state", "state.json.lock");
+    const child = Bun.spawn([process.execPath, HOLDER, path], { stdout: "pipe" });
+    await child.stdout.getReader().read();
+    child.kill("SIGHUP");
+    expect(await child.exited).toBe(129);
+    expect(await readdir(join(folder, "state"))).toEqual([]);
   });
 
   test("a lock without a process ID is reported as such", async () => {
     const path = await leftLock("locked\n");
-    expect(await diskLock(path)).toEqual({ held: false, holder: { pid: null, running: null } });
+    expect(await diskLock(path)).toEqual({
+      held: false,
+      holder: { file: path, pid: null, running: null },
+    });
   });
 
   test("Ctrl-C while holding the lock removes it, and the process still ends by SIGINT", async () => {

@@ -442,13 +442,13 @@ describe("keypin publish", () => {
 
   test("a held lock names its process: still running, gone, or none recorded", async () => {
     for (const [holder, says] of [
-      [{ pid: 4242, running: true }, "another publish (process 4242) holds"],
+      [{ file: `${STATE}.lock`, pid: 4242, running: true }, "another publish (process 4242) holds"],
       [
-        { pid: 4242, running: false },
+        { file: `${STATE}.lock`, pid: 4242, running: false },
         "was left by process 4242, which isn't running any more. Delete that file",
       ],
       [
-        { pid: null, running: null },
+        { file: `${STATE}.lock`, pid: null, running: null },
         "exists but names no process. If no publish is running, delete that file",
       ],
     ] as const) {

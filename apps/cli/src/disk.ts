@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { chmod, lstat, mkdir, open, readdir, rename, rm, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import { type Files, withoutSignIn } from "@keypin/core";
-import type { CreateFile, FolderEntry, HeldLock, Lock, ReplaceFile } from "./deps";
+import type { CreateFile, FolderEntry, HeldLock, Lock, LockHolder, ReplaceFile } from "./deps";
 import { errorCode } from "./errors";
 import { onSignals } from "./launch";
 
@@ -179,10 +179,31 @@ export function git(
 
 export const diskLock: Lock = async (path) => {
   await privateFolder(dirname(path));
-  if (await take(path)) return { held: true, lock: held(path) };
-  const pid = await holderOf(path);
-  return { held: false, holder: { pid, running: pid === null ? null : isRunning(pid) } };
+  for (let tries = 1; ; tries++) {
+    if (await take(path)) return { held: true, lock: held(path) };
+    const holder = await holderAt(path);
+    const found = holder.running === false ? await takeOver(path, holder) : holder;
+    if (found !== null && (found.pid !== null || tries === LOCK_TRIES))
+      return { held: false, holder: found };
+    await Bun.sleep(LOCK_WAIT_MS);
+  }
 };
+
+const LOCK_TRIES = 50;
+const LOCK_WAIT_MS = 2;
+
+async function takeOver(path: string, stale: LockHolder): Promise<LockHolder | null> {
+  const guardPath = `${path}.takeover`;
+  if (!(await take(guardPath))) return holderAt(guardPath);
+  const guard = held(guardPath);
+  try {
+    const now = await holderAt(path);
+    if (now.pid === stale.pid && now.running === false) await rm(path, { force: true });
+    return null;
+  } finally {
+    await guard.release();
+  }
+}
 
 async function take(path: string): Promise<boolean> {
   try {
@@ -196,10 +217,11 @@ async function take(path: string): Promise<boolean> {
   }
 }
 
-async function holderOf(path: string): Promise<number | null> {
-  const text = await diskFiles.read(path);
-  const pid = text?.match(/^(\d+)\n?$/)?.[1];
-  return pid === undefined ? null : Number(pid);
+async function holderAt(file: string): Promise<LockHolder> {
+  const text = await diskFiles.read(file);
+  const found = text?.match(/^(\d+)\n?$/)?.[1];
+  const pid = found === undefined ? null : Number(found);
+  return { file, pid, running: pid === null ? null : isRunning(pid) };
 }
 
 function isRunning(pid: number): boolean {

@@ -65,8 +65,12 @@ export function infisicalBackend(
     place: Place,
     method: string,
     path: string,
-    options: { token?: string; body?: Json; query?: Record<string, string> } = {},
+    options: { token?: string; body?: Json; query?: Record<string, string>; signIn?: boolean } = {},
   ): Promise<{ status: number; body: Json }> {
+    const fail = (why: string) =>
+      options.signIn
+        ? new SignInFailed(`${account(place)}: sign-in failed: ${why}`, { kind: "other" })
+        : new Error(`${account(place)}: ${why}`);
     const query = options.query ? `?${new URLSearchParams(options.query)}` : "";
     const send = () =>
       fetch(`${place.url}${path}${query}`, {
@@ -87,12 +91,12 @@ export function infisicalBackend(
     }
     const body = parseObject(await response.text());
     if (response.status === 404 && body.error === "Not Found")
-      throw new Error(
-        `${account(place)}: the server has no ${method} ${path}, so it may be older than keypin supports; keypin needs Infisical from September 2025 or later`,
+      throw fail(
+        `the server has no ${method} ${path}, so it may be older than keypin supports; keypin needs Infisical from September 2025 or later`,
       );
     if (response.status === 429)
-      throw new Error(
-        `${account(place)}: Infisical is limiting how often keypin can ask (${problem({ status: response.status, body })}); wait, then run the command again`,
+      throw fail(
+        `Infisical is limiting how often keypin can ask (${problem({ status: response.status, body })}); wait, then run the command again`,
       );
     return { status: response.status, body };
   }
@@ -104,7 +108,10 @@ export function infisicalBackend(
         kind: "no-credentials",
       });
     const token = await accessToken(place, credentials);
-    const details = await request(place, "GET", "/api/v1/identities/details", { token });
+    const details = await request(place, "GET", "/api/v1/identities/details", {
+      token,
+      signIn: true,
+    });
     if ("variable" in credentials && (details.status === 401 || details.status === 403))
       throw new SignInFailed(
         details.status === 401
@@ -132,6 +139,7 @@ export function infisicalBackend(
     if ("token" in given) return given.token;
     const login = await request(place, "POST", "/api/v1/auth/universal-auth/login", {
       body: { clientId: given.clientId, clientSecret: given.clientSecret },
+      signIn: true,
     });
     const token = login.body.accessToken;
     if (login.status !== 200 || typeof token !== "string")

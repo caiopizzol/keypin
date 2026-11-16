@@ -320,6 +320,43 @@ describe("keypin with Infisical", () => {
     expect(other.stdout.text).not.toContain("1Password");
   });
 
+  describe("a rate limit or old server while signing in is the Infisical sign-in step in check", () => {
+    const TOKEN = "access-token-sentinel-9d1e";
+    const cases: [string, Record<string, string>, Partial<FakeInfisical>, string][] = [
+      [
+        "a rate-limited login",
+        {},
+        { rateLimited: { times: 1 } },
+        "Infisical is limiting how often",
+      ],
+      [
+        "a rate-limited identity check",
+        { INFISICAL_UNIVERSAL_AUTH_CLIENT_ID: "", INFISICAL_TOKEN: TOKEN },
+        { accessToken: TOKEN, rateLimited: { times: 1 } },
+        "Infisical is limiting how often",
+      ],
+      [
+        "a server without the identity check",
+        {},
+        { missingRoutes: ["/api/v1/identities/details"] },
+        "the server has no GET /api/v1/identities/details",
+      ],
+    ];
+    test.each(cases)("%s", async (_, env, infisical, said) => {
+      const fresh = () => ({ ...INFISICAL, ...structuredClone(infisical) });
+      const run = project({ env, infisical: fresh() });
+      expect(await cli(["check"], run.deps)).toBe(1);
+      expect(run.stdout.text.split("Sign in to Infisical")).toHaveLength(2);
+      expect(run.stdout.text).toContain(`sign-in failed: ${said}`);
+      expect(run.stdout.text).not.toContain("Fix the vault item");
+      const json = project({ env, infisical: fresh() });
+      expect(await cli(["check", "--json"], json.deps)).toBe(1);
+      expect(parseJson(json.stdout.text)).toMatchObject({
+        prerequisites: [{ name: "Infisical", status: "sign-in failed" }],
+      });
+    });
+  });
+
   test.each([["run", "--", "env"], ["check"], ["status"], ["publish", "STRIPE_API_KEY"]])(
     "%s never needs 1Password when every key is in Infisical",
     async (...command) => {

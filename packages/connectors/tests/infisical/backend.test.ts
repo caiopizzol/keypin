@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { type Fetch, isRecord, Secret } from "@keypin/core";
+import { type Fetch, isRecord, Secret, SignInFailed } from "@keypin/core";
 import { credentialsFrom, infisicalBackend, type InfisicalRef } from "../../src/infisical/index";
 import {
   type FakeInfisical,
@@ -307,13 +307,17 @@ describe("reading", () => {
   });
 
   test("a server without keypin's endpoints may be too old", async () => {
-    for (const route of ["/api/v1/identities/details", "/api/v4/secrets"]) {
+    const stages: [string, string][] = [
+      ["/api/v1/identities/details", "sign-in failed: "],
+      ["/api/v4/secrets", ""],
+    ];
+    for (const [route, stage] of stages) {
       const fake = fakeInfisical({
         missingRoutes: [route],
         secrets: { "prod:/:STRIPE_KEY": STRIPE },
       });
       await expect(infisicalBackend(CREDENTIALS, fake.fetch).read(REF)).rejects.toThrow(
-        `Infisical organization acme at https://app.infisical.com: the server has no GET ${route}`,
+        `Infisical organization acme at https://app.infisical.com: ${stage}the server has no GET ${route}`,
       );
       await expect(infisicalBackend(CREDENTIALS, fake.fetch).read(REF)).rejects.toThrow(
         "it may be older than keypin supports; keypin needs Infisical from September 2025 or later",
@@ -344,6 +348,20 @@ describe("reading", () => {
         ),
       );
       expect(waits).toEqual(rateLimited.retryAfter ? [3000] : []);
+    }
+  });
+
+  test("a rate limit or a missing route while signing in is a failed sign-in", async () => {
+    const limited = fakeInfisical({ rateLimited: { times: 2, retryAfter: 3 } });
+    const missing = fakeInfisical({ missingRoutes: ["/api/v1/identities/details"] });
+    for (const fake of [limited, missing]) {
+      const error = await infisicalBackend(CREDENTIALS, fake.fetch, async () => {})
+        .read(REF)
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(SignInFailed);
+      expect(String(error)).toContain(
+        "Infisical organization acme at https://app.infisical.com: sign-in failed: ",
+      );
     }
   });
 

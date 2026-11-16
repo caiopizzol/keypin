@@ -56,7 +56,7 @@ async function ghPrerequisites(host: GitHubHost, folder: string): Promise<Prereq
           body: [
             `${sentence(why)} Unset ${tokens.join(" ")}, then run:`,
             `  ${withToken}`,
-            `Use a classic token with the repo scope${login ? `, for ${login}` : ""}.`,
+            `Use a classic token with the repo, read:org and gist scopes (gh needs all three)${login ? `, for ${login}` : ""}.`,
           ],
         },
       ];

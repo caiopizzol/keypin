@@ -2023,7 +2023,7 @@ describe("keypin check's prerequisites", () => {
       expect(run.stdout.text).toContain(`1 Sign in to GitHub
   keypin ignores ${ignored}: it publishes only as a login gh has saved, so a token meant for another tool can't pick the account. Unset ${unset}, then run:
     gh auth login --hostname github.com --with-token < token.txt
-  Use a classic token with the repo scope, for alice.
+  Use a classic token with the repo, read:org and gist scopes (gh needs all three), for alice.
 `);
       expect(run.stdout.text).not.toContain("ghp_");
     },

@@ -112,7 +112,7 @@ describe("ghToken", () => {
     const error = await failure(ghToken("someone"));
     expect(error).toEqual(
       new Error(
-        "gh has no token for someone; keypin ignores GITHUB_TOKEN: it publishes only as a login gh has saved, so a token meant for another tool can't pick the account; unset GITHUB_TOKEN, then run gh auth login --hostname github.com --with-token < token.txt with a classic token that has the repo scope",
+        "gh has no token for someone; keypin ignores GITHUB_TOKEN: it publishes only as a login gh has saved, so a token meant for another tool can't pick the account; unset GITHUB_TOKEN, then run gh auth login --hostname github.com --with-token < token.txt with a classic token that has the repo, read:org and gist scopes (gh needs all three)",
       ),
     );
   });

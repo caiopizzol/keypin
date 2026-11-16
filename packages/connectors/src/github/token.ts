@@ -38,7 +38,7 @@ export function tokenOnly(names: readonly string[]): { why: string; command: str
   const unset = names.join(" and ");
   return {
     why: `keypin ignores ${unset}: it publishes only as a login gh has saved, so a token meant for another tool can't pick the account`,
-    command: `unset ${names.join(" ")}, then run ${SIGN_IN} --with-token < token.txt with a classic token that has the repo scope`,
+    command: `unset ${names.join(" ")}, then run ${SIGN_IN} --with-token < token.txt with a classic token that has the repo, read:org and gist scopes (gh needs all three)`,
   };
 }
 

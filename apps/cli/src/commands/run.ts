@@ -5,6 +5,7 @@ import {
   envNames,
   formatReference,
   type KeyRef,
+  messageOf,
   runEnvironment,
   type Secret,
   SIGN_IN_VARIABLES,
@@ -12,7 +13,7 @@ import {
   withoutSignIn,
 } from "@keypin/core";
 import { type Child, type Deps, UsageError } from "../deps";
-import { errorCode, messageOf } from "../errors";
+import { errorCode } from "../errors";
 import { findMap, pickEnvironment } from "../project";
 import { type Output, output } from "../output";
 import { approval } from "../sign-in";

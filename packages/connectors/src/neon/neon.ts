@@ -4,6 +4,7 @@ import {
   type Issuer,
   type IssuerCheck,
   isRecord,
+  parseObject,
   Secret,
 } from "@keypin/core";
 
@@ -398,13 +399,4 @@ function failure(method: string, path: string, reply: Reply): Error {
 function codeOf(reply: Reply): string {
   const code = reply.body.code;
   return typeof code === "string" && /^[A-Z_]+$/.test(code) ? ` ${code}` : "";
-}
-
-function parseObject(text: string): Record<string, unknown> {
-  try {
-    const data: unknown = JSON.parse(text);
-    return isRecord(data) ? data : {};
-  } catch {
-    return {};
-  }
 }

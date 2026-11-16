@@ -12,6 +12,7 @@ import {
   type KeyEntry,
   type KeyOwner,
   type KeyRef,
+  messageOf,
   type PlanStep,
   type PublishTarget,
   recordReceipt,
@@ -24,7 +25,6 @@ import {
   vaultAccounts,
 } from "@keypin/core";
 import type { Deps, LockHolder } from "./deps";
-import { messageOf } from "./errors";
 import { statePath } from "./paths";
 import { columns, confirm, type Output } from "./output";
 import { publisherFor } from "./publisher";

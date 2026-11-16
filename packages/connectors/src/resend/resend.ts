@@ -4,6 +4,7 @@ import {
   type Issuer,
   type IssuerCheck,
   isRecord,
+  parseObject,
   Secret,
 } from "@keypin/core";
 
@@ -140,13 +141,4 @@ function failure(method: string, path: string, reply: Reply): Error {
 function errorName(reply: Reply): string | null {
   const name = reply.body.name;
   return typeof name === "string" && /^[a-z_]+$/.test(name) ? name : null;
-}
-
-function parseObject(text: string): Record<string, unknown> {
-  try {
-    const data: unknown = JSON.parse(text);
-    return isRecord(data) ? data : {};
-  } catch {
-    return {};
-  }
 }

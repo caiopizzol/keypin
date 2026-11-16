@@ -4,13 +4,14 @@ import {
   envFileKind,
   envNames,
   type FolderListing,
+  messageOf,
   type ProjectFiles,
   type ProjectReader,
   type ProjectScan,
   SKIPPED_FOLDERS,
 } from "@keypin/core";
 import type { Deps } from "./deps";
-import { errorCode, messageOf } from "./errors";
+import { errorCode } from "./errors";
 
 export interface Unknown {
   what: string;

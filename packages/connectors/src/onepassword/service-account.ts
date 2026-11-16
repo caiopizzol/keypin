@@ -1,4 +1,4 @@
-import { isRecord, SignInFailed } from "@keypin/core";
+import { isRecord, messageOf, SignInFailed } from "@keypin/core";
 import type { Connect, SdkClient } from "./sdk";
 
 const PREFIX = "ops_";
@@ -46,8 +46,4 @@ export function serviceAccountConnect(token: string, open: TokenClient): Connect
     });
     return client;
   };
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

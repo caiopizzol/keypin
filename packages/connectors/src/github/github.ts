@@ -4,7 +4,8 @@ import {
   type Destination,
   type Evidence,
   type Fetch,
-  isRecord,
+  objectField,
+  parseObject,
   type Secret,
 } from "@keypin/core";
 import { ghToken } from "./token";
@@ -180,20 +181,6 @@ export async function sealedBox(value: string, publicKey: string): Promise<strin
 
 function sameLogin(a: string, b: string): boolean {
   return a.toLowerCase() === b.toLowerCase();
-}
-
-function parseObject(text: string): Record<string, unknown> {
-  try {
-    const data: unknown = JSON.parse(text);
-    return isRecord(data) ? data : {};
-  } catch {
-    return {};
-  }
-}
-
-function objectField(data: Record<string, unknown>, field: string): Record<string, unknown> {
-  const value = data[field];
-  return isRecord(value) ? value : {};
 }
 
 function stringField(data: Record<string, unknown>, field: string): string {

@@ -3,6 +3,7 @@ import {
   type Environment,
   type FoundNeed,
   isEnvironmentName,
+  messageOf,
   type Place,
   type StoreRead,
 } from "@keypin/core";
@@ -138,8 +139,4 @@ function workerPlace(worker: Worker, ambiguous: boolean): Place {
       (worker.account === null || target.account === worker.account),
     holds: (secret) => (held ? held.has(secret) : null),
   };
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

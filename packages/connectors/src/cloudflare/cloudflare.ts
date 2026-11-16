@@ -4,6 +4,8 @@ import {
   type Evidence,
   type Fetch,
   isRecord,
+  objectField,
+  parseObject,
   type Secret,
 } from "@keypin/core";
 import { wranglerToken } from "./token";
@@ -165,18 +167,4 @@ function newestVersion(body: Record<string, unknown>) {
   if (!newest?.id || !newest.createdOn)
     throw new Error("Cloudflare listed no version for the Worker after the write");
   return newest;
-}
-
-function parseObject(text: string): Record<string, unknown> {
-  try {
-    const data: unknown = JSON.parse(text);
-    return isRecord(data) ? data : {};
-  } catch {
-    return {};
-  }
-}
-
-function objectField(data: Record<string, unknown>, field: string): Record<string, unknown> {
-  const value = data[field];
-  return isRecord(value) ? value : {};
 }

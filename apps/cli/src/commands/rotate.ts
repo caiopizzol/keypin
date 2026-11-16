@@ -15,6 +15,7 @@ import {
   type KeyEntry,
   type KeyOwner,
   loadState,
+  messageOf,
   nextRotation,
   planNewValue,
   planPublish,
@@ -30,7 +31,6 @@ import {
   vaultName,
 } from "@keypin/core";
 import { type Deps, localDay, UsageError } from "../deps";
-import { messageOf } from "../errors";
 import { confirm, type Output, output } from "../output";
 import { findMap, pickEnvironment } from "../project";
 import { approval } from "../sign-in";

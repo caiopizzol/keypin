@@ -4,6 +4,7 @@ import {
   isDay,
   isRecord,
   type KeyRef,
+  parseObject,
   Secret,
   SignInFailed,
   type VaultBackend,
@@ -316,13 +317,4 @@ function withRotated(metadata: Metadata[], rotated: string | undefined): Metadat
 function problem(response: { status: number; body: Json }): string {
   const message = typeof response.body.message === "string" ? `: ${response.body.message}` : "";
   return `Infisical returned HTTP ${response.status}${message}`;
-}
-
-function parseObject(text: string): Json {
-  try {
-    const parsed: unknown = JSON.parse(text);
-    return isRecord(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
 }

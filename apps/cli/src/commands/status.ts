@@ -8,6 +8,7 @@ import {
   loadRegistry,
   loadState,
   type MapResult,
+  messageOf,
   parseMap,
   publishEnvironment,
   type Status,
@@ -19,7 +20,6 @@ import {
 import { type Deps, localDay, UsageError } from "../deps";
 import { registryPath, statePath } from "../paths";
 import { MAP_FILE } from "../project";
-import { messageOf } from "../errors";
 import { columns, type Output, output, tilde } from "../output";
 import { approval } from "../sign-in";
 import { distinctRefs, refKey } from "../vault";

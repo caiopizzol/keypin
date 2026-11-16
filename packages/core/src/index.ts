@@ -58,7 +58,8 @@ export { addDays, isDay, periodDays } from "./rotation";
 export { nextRotation, type NextRotation } from "./rotations";
 export { formatReference, vaultAccount, vaultAccounts, vaultName } from "./reference";
 export { type Files } from "./files";
-export { isRecord } from "./record";
+export { messageOf } from "./error";
+export { isRecord, objectField, parseObject } from "./record";
 export { loadRegistry, register, unregister, type Registry } from "./registry";
 export {
   emptyState,

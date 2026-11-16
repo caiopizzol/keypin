@@ -69,31 +69,37 @@ async function oauthToken(options: SignInOptions): Promise<string> {
       `keypin can't run wrangler on Windows yet; set ${API_TOKEN_VARIABLE} to a Cloudflare API token`,
       "failed",
     );
-  const wrangler = findWrangler(options.folder, options.env.PATH ?? "");
-  if (wrangler === null)
+  const found = wranglers(options.folder, options.env.PATH ?? "");
+  if (!found.length)
     throw new CloudflareSignInFailed(
       `keypin can't find wrangler in the project's node_modules or on PATH; install it and run wrangler login, or set ${API_TOKEN_VARIABLE}`,
       "no-wrangler",
     );
   const logs = await mkdtemp(join(tmpdir(), "keypin-wrangler-"));
   try {
-    const run = (args: string[], timeout: number) =>
-      runWrangler(wrangler, args, {
-        cwd: logs,
-        env: wranglerEnv(options.env, options.signIn, logs),
-        timeout,
-      });
-    const asked = await run(
-      ["auth", "token", "--json", "--env-file", devNull],
-      options.timeoutMs ?? 30_000,
-    );
-    if (asked.timedOut)
-      throw new CloudflareSignInFailed(
-        "wrangler auth token didn't answer in time; run it to see why",
-        "failed",
+    let tooOld: CloudflareSignInFailed | null = null;
+    for (const wrangler of found) {
+      const run = (args: string[], timeout: number) =>
+        runWrangler(wrangler, args, {
+          cwd: logs,
+          env: wranglerEnv(options.env, options.signIn, logs),
+          timeout,
+        });
+      const asked = await run(
+        ["auth", "token", "--json", "--env-file", devNull],
+        options.timeoutMs ?? 30_000,
       );
-    if (!asked.ok) throw await whyNot(asked.stderr, () => run(["--version"], 15_000));
-    return tokenFrom(asked.stdout);
+      if (asked.timedOut)
+        throw new CloudflareSignInFailed(
+          "wrangler auth token didn't answer in time; run it to see why",
+          "failed",
+        );
+      if (asked.ok) return tokenFrom(asked.stdout);
+      const why = await whyNot(asked.stderr, () => run(["--version"], 15_000));
+      if (why.kind !== "old-wrangler") throw why;
+      tooOld ??= why;
+    }
+    throw tooOld ?? new CloudflareSignInFailed("wrangler couldn't give keypin its login", "failed");
   } finally {
     await rm(logs, { recursive: true, force: true });
   }
@@ -117,28 +123,22 @@ function wranglerEnv(
 }
 
 export function findWrangler(folder: string, path: string): string | null {
-  for (let dir = folder; ; dir = dirname(dir)) {
-    const local = join(dir, "node_modules", ".bin", "wrangler");
-    if (executable(local)) return local;
-    if (dirname(dir) === dir) break;
-  }
-  for (const dir of path.split(delimiter)) {
-    if (!dir) continue;
-    const found = resolve(join(dir, "wrangler"));
-    if (executable(found)) return found;
-  }
-  return workspaceWrangler(folder);
+  return wranglers(folder, path)[0] ?? null;
 }
 
-function workspaceWrangler(folder: string): string | null {
-  for (const group of readable(folder)) {
-    if (group === "node_modules" || group.startsWith(".")) continue;
-    for (const member of readable(join(folder, group))) {
-      const local = join(folder, group, member, "node_modules", ".bin", "wrangler");
-      if (executable(local)) return local;
-    }
+export function wranglers(folder: string, path: string): string[] {
+  const found: string[] = [];
+  for (let dir = folder; ; dir = dirname(dir)) {
+    found.push(join(dir, "node_modules", ".bin", "wrangler"));
+    if (dirname(dir) === dir) break;
   }
-  return null;
+  for (const dir of path.split(delimiter)) if (dir) found.push(resolve(join(dir, "wrangler")));
+  for (const group of readable(folder))
+    if (group !== "node_modules" && !group.startsWith("."))
+      for (const member of readable(join(folder, group)))
+        if (!member.startsWith("."))
+          found.push(join(folder, group, member, "node_modules", ".bin", "wrangler"));
+  return [...new Set(found)].filter(executable);
 }
 
 function readable(dir: string): string[] {

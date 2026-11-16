@@ -70,7 +70,6 @@ const toyBackend = (values: Record<string, string>, reads: KeyRef[]): VaultBacke
   };
   const ids = (ref: KeyRef) => ({ vault: "toy", item: toyRef(ref)?.slot ?? "" });
   return {
-    capabilities: { read: true, write: false, list: false, metadata: true },
     read: async (ref) => value(ref),
     readItem: async (ref) => ({ secret: value(ref), ids: ids(ref) }),
     itemIds: async (ref) => (stored(ref), ids(ref)),

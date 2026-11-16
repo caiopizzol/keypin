@@ -89,7 +89,6 @@ const shelf: DestinationKind<ShelfTarget> = {
         ]
       : [],
   connect: ({ account, shelf: name }) => ({
-    capabilities: { write: true, accountCheck: true, evidence: true },
     describe: () => `shelf ${name}`,
     checkAccount: async () => ({
       publisher: "librarian",

@@ -22,7 +22,6 @@ export interface WorkerSecretOptions {
 }
 
 export class WorkerSecretDestination implements Destination {
-  readonly capabilities = { write: true, accountCheck: true, evidence: true } as const;
   readonly #account: string;
   readonly #worker: string;
   readonly #tokenSource: () => Promise<string>;

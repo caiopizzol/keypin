@@ -22,7 +22,6 @@ export function routedVault(vaults: Vaults): VaultBackend {
     return open();
   };
   return {
-    capabilities: { read: true, write: false, list: true, metadata: true },
     read: (ref) => of(ref).read(ref),
     readItem: (ref) => of(ref).readItem(ref),
     itemIds: (ref) => of(ref).itemIds(ref),

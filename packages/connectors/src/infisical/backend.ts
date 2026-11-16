@@ -171,8 +171,6 @@ export function infisicalBackend(
   }
 
   return {
-    capabilities: { read: true, write: true, list: true, metadata: true },
-
     async read(given) {
       return (await valueOf(own(given))).secret;
     },

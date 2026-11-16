@@ -103,8 +103,6 @@ export function onePasswordBackend(
   }
 
   return {
-    capabilities: { read: true, write: true, list: true, metadata: true },
-
     async read(given) {
       const ref = own(given);
       const item = await get(ref);

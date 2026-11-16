@@ -278,7 +278,6 @@ process.exitCode = await cli(process.argv.slice(2), {
     const place = placeId(target, destinations);
     const scripted = run.places[place] ?? {};
     return {
-      capabilities: { write: true, accountCheck: true, evidence: true },
       describe: () => place,
       async checkAccount() {
         const failed = scripted.check;

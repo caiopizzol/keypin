@@ -149,9 +149,8 @@ describe("a service account sign-in", () => {
     );
   });
 
-  test("writes when the service account may: it says it can write, and creates the item", async () => {
+  test("writes when the service account may: it creates the item", async () => {
     const { backend, calls } = fakeSdk();
-    expect(backend.capabilities.write).toBe(true);
     await backend.write(ref("acme.1password.com"), new Secret("value-1234"), { newItem: true });
     expect(calls).toEqual(["vaults.list", "items.list", "items.create"]);
   });

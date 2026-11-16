@@ -528,7 +528,11 @@ async function createKey(
   issuer: Issuer,
 ): Promise<IssuedKey | { unchanged: boolean; name: string }> {
   const where = issuer.describe();
-  const name = `${key.name} ${owner.environment} ${localDay(deps.now())}`;
+  const now = deps.now();
+  const time = [now.getHours(), now.getMinutes(), now.getSeconds()]
+    .map((n) => String(n).padStart(2, "0"))
+    .join(":");
+  const name = `${key.name} ${owner.environment} ${localDay(now)} ${time}`;
   try {
     return await out.step(
       `${where}  creating ${name}`,
@@ -546,10 +550,12 @@ async function mayHaveCreated({ deps, out, args }: Job, issuer: Issuer, name: st
   const again = `then run this again:\n  ${commandLine(deps, "rotate", args)}`;
   const found = await issuer.find?.(name).catch(() => null);
   if (found?.length === 0) {
-    out.line(`Stopped. ${where} holds no usable key from this run, so running it again is safe.`);
+    out.line(
+      `Stopped: ${where} doesn't list a key named ${name} yet, but it may still appear. Check ${issuer.dashboard()} and delete it if it's there, ${again}`,
+    );
   } else if (found?.length === 1) {
     out.line(
-      `Stopped: keypin didn't get the new key back, but ${where} lists key ${found[0]}, named ${name}, made since the check. Unless another rotation of this key ran at the same time, delete it at ${issuer.dashboard()}, ${again}`,
+      `Stopped: keypin didn't get the new key back, but ${where} lists key ${found[0]}, named ${name}. Delete it at ${issuer.dashboard()}, ${again}`,
     );
   } else if (found) {
     out.line(

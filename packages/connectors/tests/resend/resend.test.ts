@@ -138,13 +138,13 @@ describe("create", () => {
     expect(resend.dashboard()).toBe("https://resend.com/api-keys");
   });
 
-  test("a name longer than Resend's 50 characters is cut", async () => {
+  test("a name longer than Resend's 50 characters keeps its end, where the time is", async () => {
     const { resend, requests } = issuer(happyRoutes(), { permission: "full_access" });
     await resend.checkAccount(null);
-    await resend.create("A".repeat(60));
+    await resend.create(`${"A".repeat(60)} 12:00:00`);
     const post = requests.find((r) => r.method === "POST");
     expect(JSON.parse(post?.body ?? "{}")).toEqual({
-      name: "A".repeat(50),
+      name: `…${"A".repeat(40)} 12:00:00`,
       permission: "full_access",
     });
   });
@@ -182,8 +182,8 @@ describe("after a failed create", () => {
   });
 
   test("find lists keys with the name create sent, cut to 50 characters, that checkAccount didn't see", async () => {
-    const name = `${"K".repeat(60)} prod 2026-11-09`;
-    const sent = name.slice(0, 50);
+    const name = `${"K".repeat(60)} prod 2026-11-09 12:00:00`;
+    const sent = `…${name.slice(name.length - 49)}`;
     const routes = happyRoutes();
     routes["GET /api-keys"] = {
       status: 200,

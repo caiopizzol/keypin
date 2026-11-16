@@ -11,6 +11,9 @@ import {
 
 const API = "https://api.resend.com";
 const NAME_LIMIT = 50;
+
+const fitName = (name: string) =>
+  name.length <= NAME_LIMIT ? name : `…${name.slice(name.length - NAME_LIMIT + 1)}`;
 const DASHBOARD = "https://resend.com/api-keys";
 
 export interface ResendIssuerOptions {
@@ -72,7 +75,7 @@ export class ResendIssuer implements Issuer {
     if (!this.#passed)
       throw new NothingChanged("refusing to create a Resend key: checkAccount hasn't passed");
     const body = {
-      name: name.slice(0, NAME_LIMIT),
+      name: fitName(name),
       permission: this.#permission,
       ...(this.#domainId === undefined ? {} : { domain_id: this.#domainId }),
     };
@@ -88,7 +91,7 @@ export class ResendIssuer implements Issuer {
   async find(name: string): Promise<string[]> {
     const list = await this.#request("GET", "/api-keys");
     if (list.status !== 200) throw failure("GET", "/api-keys", list);
-    const sent = name.slice(0, NAME_LIMIT);
+    const sent = fitName(name);
     return keysOf(list).flatMap((key) =>
       key.name === sent && !this.#listed.has(key.id) ? [key.id] : [],
     );

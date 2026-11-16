@@ -122,7 +122,7 @@ describe("state", () => {
     expect(fake.contents.get(STATE)).toContain('"version": 5');
   });
 
-  test("a version 2 file loads with no project on its receipts, so none is any project's own, and its operations are dropped", async () => {
+  test("a version 2 file loads with no project on its receipts, so none is any project's own, and its operations are ignored", async () => {
     const { mapFile: _mapFile, ...old } = receipt(WORKER, "aaaaaaaaaaaaaaaa");
     const operation = {
       id: "op-1",
@@ -140,7 +140,18 @@ describe("state", () => {
     expect(state).toEqual({ version: 5, receipts: [{ ...old, mapFile: null }], issued: [] });
     expect(receiptsFor(state, OWNER)).toEqual([]);
     await saveState(fake.files, STATE, state);
-    expect(fake.contents.get(STATE)).not.toContain("operations");
+    expect(JSON.parse(fake.contents.get(STATE) ?? "{}")).toMatchObject({ operations: [] });
+  });
+
+  test("a saved state file keeps an empty operations list, so keypin 0.22 and older can still read it", async () => {
+    const fake = fakeFiles();
+    await saveState(fake.files, STATE, emptyState());
+    expect(JSON.parse(fake.contents.get(STATE) ?? "{}")).toEqual({
+      version: 5,
+      receipts: [],
+      issued: [],
+      operations: [],
+    });
   });
 
   test("a version 3 file's receipts record no item IDs, and a version 4 file keeps them", async () => {

@@ -60,7 +60,7 @@ export async function loadState(files: Files, path: string, vaults: VaultKinds):
 }
 
 export async function saveState(files: Files, path: string, state: State): Promise<void> {
-  await writeJsonAtomic(files, path, state);
+  await writeJsonAtomic(files, path, { ...state, operations: [] });
 }
 
 export interface KeyOwner {

@@ -1,7 +1,7 @@
 import { type DestinationKind, type Prerequisite, sentence } from "@keypin/core";
 import { workflowDiscovery, type WorkflowHost } from "./discovery";
 import { GitHubSecretDestination } from "./github";
-import { envTokens, tokenOnly } from "./token";
+import { envTokens, ghToken, tokenOnly } from "./token";
 
 export type GitHubTarget = {
   to: "github-actions";
@@ -13,6 +13,7 @@ export type GitHubTarget = {
 export interface GitHubPublisher {
   githubLogin: string | null;
   refreshLogins: boolean;
+  signInVariables: readonly string[];
 }
 
 export interface GitHubHost extends WorkflowHost {
@@ -138,6 +139,10 @@ export const githubActions: DestinationKind<GitHubTarget, GitHubPublisher, GitHu
       repo,
       ...(environment === undefined ? {} : { environment }),
       login: publisher.githubLogin,
-      refresh: publisher.refreshLogins,
+      token: () =>
+        ghToken(publisher.githubLogin, {
+          refresh: publisher.refreshLogins,
+          signIn: publisher.signInVariables,
+        }),
     }),
 };

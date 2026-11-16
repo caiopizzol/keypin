@@ -1,17 +1,15 @@
-export const SIGN_IN_VARIABLES: readonly string[] = [
-  "OP_SERVICE_ACCOUNT_TOKEN",
-  "KEYPIN_1PASSWORD",
-  "INFISICAL_UNIVERSAL_AUTH_CLIENT_ID",
-  "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET",
-];
+export function signInVariables(
+  kinds: readonly { readonly signInVariables?: readonly string[] }[],
+): readonly string[] {
+  return [...new Set(kinds.flatMap((kind) => kind.signInVariables ?? []))];
+}
 
 export function withoutSignIn(
   env: Readonly<Record<string, string | undefined>>,
-  also: readonly string[] = [],
+  signIn: readonly string[],
 ): Record<string, string> {
   const kept: Record<string, string> = {};
   for (const [name, value] of Object.entries(env))
-    if (value !== undefined && !SIGN_IN_VARIABLES.includes(name) && !also.includes(name))
-      kept[name] = value;
+    if (value !== undefined && !signIn.includes(name)) kept[name] = value;
   return kept;
 }

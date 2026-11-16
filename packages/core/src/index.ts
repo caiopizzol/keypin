@@ -121,4 +121,4 @@ export {
   type VaultUse,
 } from "./login";
 export { findGaps, type Fix, type Gaps, type LocalFile, type Need, type ProjectScan } from "./gaps";
-export { SIGN_IN_VARIABLES, withoutSignIn } from "./env";
+export { signInVariables, withoutSignIn } from "./env";

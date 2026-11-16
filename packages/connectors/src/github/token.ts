@@ -3,20 +3,27 @@ import { withoutSignIn } from "@keypin/core";
 
 const NO_REFRESH = "--no-refresh";
 
-export async function ghToken(
-  login: string | null,
-  options: { refresh?: boolean } = {},
-): Promise<string> {
+export interface GhTokenOptions {
+  signIn: readonly string[];
+  refresh?: boolean;
+}
+
+export async function ghToken(login: string | null, options: GhTokenOptions): Promise<string> {
   const args = ["auth", "token", "--hostname", "github.com", ...(login ? ["--user", login] : [])];
-  if (options.refresh !== false) return askGh(args, login);
-  const asked = await runGh([...args, NO_REFRESH]);
+  if (options.refresh !== false) return askGh(args, login, options.signIn);
+  const asked = await runGh([...args, NO_REFRESH], options.signIn);
   if (asked.ok) return tokenFrom(asked.stdout, login);
-  if (asked.stderr.includes(`unknown flag: ${NO_REFRESH}`)) return askGh(args, login);
+  if (asked.stderr.includes(`unknown flag: ${NO_REFRESH}`))
+    return askGh(args, login, options.signIn);
   throw noToken(login);
 }
 
-async function askGh(args: string[], login: string | null): Promise<string> {
-  const asked = await runGh(args);
+async function askGh(
+  args: string[],
+  login: string | null,
+  signIn: readonly string[],
+): Promise<string> {
+  const asked = await runGh(args, signIn);
   if (!asked.ok) throw noToken(login);
   return tokenFrom(asked.stdout, login);
 }
@@ -49,8 +56,11 @@ function noToken(login: string | null): Error {
   );
 }
 
-function runGh(args: string[]): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-  const env = withoutSignIn(process.env);
+function runGh(
+  args: string[],
+  signIn: readonly string[],
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+  const env = withoutSignIn(process.env, signIn);
   delete env.GH_TOKEN;
   delete env.GITHUB_TOKEN;
   return new Promise((resolve) => {

@@ -9,7 +9,6 @@ import {
   type Secret,
 } from "@keypin/core";
 import { gitHubSaid, NOT_ENTERPRISE, ssoFix } from "./refusal";
-import { ghToken } from "./token";
 
 const API = "https://api.github.com";
 const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
@@ -24,8 +23,7 @@ export interface GitHubSecretOptions {
   repo: string;
   environment?: string;
   login?: string | null;
-  refresh?: boolean;
-  token?: () => Promise<string>;
+  token: () => Promise<string>;
   fetch?: Fetch;
 }
 
@@ -49,8 +47,7 @@ export class GitHubSecretDestination implements Destination {
     this.#environment = options.environment ?? null;
     this.#secrets = secretsPath(options.repo, options.environment);
     this.#login = options.login ?? null;
-    const refresh = options.refresh ?? true;
-    this.#tokenSource = options.token ?? (() => ghToken(this.#login, { refresh }));
+    this.#tokenSource = options.token;
     this.#fetch = options.fetch ?? globalThis.fetch;
   }
 

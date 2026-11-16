@@ -7,7 +7,10 @@ export function isSshName(name: string): boolean {
   return SSH_NAME.test(name);
 }
 
-export function sshHostname(destination: string): Promise<string | null> {
+export function sshHostname(
+  destination: string,
+  signIn: readonly string[],
+): Promise<string | null> {
   const at = destination.lastIndexOf("@");
   const names = at === -1 ? [destination] : [destination.slice(0, at), destination.slice(at + 1)];
   if (!names.every(isSshName)) return Promise.resolve(null);
@@ -15,7 +18,7 @@ export function sshHostname(destination: string): Promise<string | null> {
     execFile(
       "ssh",
       ["-G", "--", destination],
-      { timeout: 3000, env: withoutSignIn(process.env) },
+      { timeout: 3000, env: withoutSignIn(process.env, signIn) },
       (error, stdout) => {
         const line = error ? undefined : /^hostname\s+(\S+)\s*$/m.exec(String(stdout));
         resolve(line?.[1] ?? null);

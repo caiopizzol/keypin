@@ -94,6 +94,7 @@ export interface Deps {
 export interface Publisher {
   githubLogin: string | null;
   refreshLogins: boolean;
+  signInVariables: readonly string[];
   workerSignIn: WorkerSignIn | null;
 }
 

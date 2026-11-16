@@ -11,7 +11,7 @@ import {
   requireDesktopApp,
 } from "@keypin/connectors/onepassword";
 import { cli } from "../src/cli";
-import { destination as realDestination } from "../src/start";
+import { destination as realDestination, signInNames } from "../src/start";
 import type { Deps } from "../src/deps";
 import {
   BILLING_MAP,
@@ -505,6 +505,7 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
         githubLogin: "alice",
         workerSignIn: null,
         refreshLogins: true,
+        signInVariables: signInNames,
       }).checkAccount();
       expect(check.ok).toBe(true);
       expect(await asked()).toEqual(["auth token --hostname github.com --user alice"]);

@@ -12,6 +12,7 @@ import {
 const TOKEN = "oauth-sentinel-5c1d";
 const AMBIENT = "ambient-cf-token-9e0a";
 const OAUTH = JSON.stringify({ type: "oauth", token: TOKEN });
+const SIGN_IN = ["OP_SERVICE_ACCOUNT_TOKEN"];
 
 const made: string[] = [];
 afterEach(async () => {
@@ -66,7 +67,11 @@ const failure = (promise: Promise<unknown>) =>
 describe("cloudflareSignIn through wrangler auth token", () => {
   test("returns the OAuth token wrangler gives, however the login is stored", async () => {
     const { root, seen } = await project();
-    const signIn = cloudflareSignIn({ env: { PATH: "/usr/bin:/bin" }, folder: root });
+    const signIn = cloudflareSignIn({
+      signIn: SIGN_IN,
+      env: { PATH: "/usr/bin:/bin" },
+      folder: root,
+    });
     expect(signIn.via).toBe("oauth");
     expect(await signIn.token()).toBe(TOKEN);
     const ran = await readFile(seen, "utf8");
@@ -86,14 +91,22 @@ printf '%s' '${OAUTH}'
 `;
     await writeFile(join(bin, "wrangler"), script);
     await chmod(join(bin, "wrangler"), 0o755);
-    expect(await cloudflareSignIn({ env: { PATH: "/usr/bin:/bin" }, folder: root }).token()).toBe(
-      TOKEN,
-    );
+    expect(
+      await cloudflareSignIn({
+        signIn: SIGN_IN,
+        env: { PATH: "/usr/bin:/bin" },
+        folder: root,
+      }).token(),
+    ).toBe(TOKEN);
   });
 
   test("asks wrangler once per sign-in", async () => {
     const { root, seen } = await project();
-    const signIn = cloudflareSignIn({ env: { PATH: "/usr/bin:/bin" }, folder: root });
+    const signIn = cloudflareSignIn({
+      signIn: SIGN_IN,
+      env: { PATH: "/usr/bin:/bin" },
+      folder: root,
+    });
     await signIn.token();
     await rm(seen);
     expect(await signIn.token()).toBe(TOKEN);
@@ -108,7 +121,11 @@ printf '%s' '${OAUTH}'
       join(home, ".wrangler/config/default.toml"),
       `oauth_token = "stale"\nexpiration_time = "2000-01-01T00:00:00Z"\n`,
     );
-    const signIn = cloudflareSignIn({ env: { PATH: "/usr/bin:/bin", HOME: home }, folder: root });
+    const signIn = cloudflareSignIn({
+      signIn: SIGN_IN,
+      env: { PATH: "/usr/bin:/bin", HOME: home },
+      folder: root,
+    });
     expect(await signIn.token()).toBe("fresh");
   });
 
@@ -126,7 +143,7 @@ printf '%s' '${OAUTH}'
       WRANGLER_LOG: "debug",
       KEEP_ME: "yes",
     };
-    expect(await cloudflareSignIn({ env, folder: root }).token()).toBe(TOKEN);
+    expect(await cloudflareSignIn({ signIn: SIGN_IN, env, folder: root }).token()).toBe(TOKEN);
     const ran = await readFile(seen, "utf8");
     expect(ran).not.toContain(AMBIENT);
     expect(ran).not.toMatch(/^(CLOUDFLARE_EMAIL|CF_EMAIL)=/m);
@@ -144,12 +161,16 @@ printf '%s' '${OAUTH}'
     const sub = join(root, "apps", "web");
     await mkdir(sub, { recursive: true });
     expect(findWrangler(sub, onPath)).toBe(join(root, "node_modules/.bin/wrangler"));
-    expect(await cloudflareSignIn({ env: { PATH: onPath }, folder: sub }).token()).toBe(TOKEN);
+    expect(
+      await cloudflareSignIn({ signIn: SIGN_IN, env: { PATH: onPath }, folder: sub }).token(),
+    ).toBe(TOKEN);
     expect(await readFile(seen, "utf8")).toContain("args=auth token --json");
     await expect(readFile(pathSeen, "utf8")).rejects.toThrow();
 
     const bare = await folder();
-    expect(await cloudflareSignIn({ env: { PATH: onPath }, folder: bare }).token()).toBe("path");
+    expect(
+      await cloudflareSignIn({ signIn: SIGN_IN, env: { PATH: onPath }, folder: bare }).token(),
+    ).toBe("path");
   });
 
   test("a wrangler found through a relative PATH entry still runs from the temporary folder", async () => {
@@ -160,7 +181,9 @@ printf '%s' '${OAUTH}'
     try {
       const bare = await folder();
       expect(findWrangler(bare, "bin")).toBe(join(tools, "bin", "wrangler"));
-      expect(await cloudflareSignIn({ env: { PATH: "bin" }, folder: bare }).token()).toBe(TOKEN);
+      expect(
+        await cloudflareSignIn({ signIn: SIGN_IN, env: { PATH: "bin" }, folder: bare }).token(),
+      ).toBe(TOKEN);
       expect(await readFile(seen, "utf8")).toContain("args=auth token --json");
     } finally {
       process.chdir(before);
@@ -170,7 +193,7 @@ printf '%s' '${OAUTH}'
   test("without wrangler, says to install it", async () => {
     const bare = await folder();
     const error = await failure(
-      cloudflareSignIn({ env: { PATH: await folder() }, folder: bare }).token(),
+      cloudflareSignIn({ signIn: SIGN_IN, env: { PATH: await folder() }, folder: bare }).token(),
     );
     expect(error).toBeInstanceOf(CloudflareSignInFailed);
     expect(error).toMatchObject({ kind: "no-wrangler" });
@@ -185,7 +208,7 @@ printf '%s' '${OAUTH}'
       stderr: `Unknown arguments: json, ${TOKEN}`,
     });
     const error = await failure(
-      cloudflareSignIn({ env: { PATH: "/usr/bin:/bin" }, folder: root }).token(),
+      cloudflareSignIn({ signIn: SIGN_IN, env: { PATH: "/usr/bin:/bin" }, folder: root }).token(),
     );
     expect(error).toMatchObject({ kind: "old-wrangler" });
     expect(String(error)).toContain(
@@ -201,7 +224,7 @@ printf '%s' '${OAUTH}'
       stderr: "✘ [ERROR] Not logged in. Please run `wrangler login` to authenticate.",
     });
     const error = await failure(
-      cloudflareSignIn({ env: { PATH: "/usr/bin:/bin" }, folder: root }).token(),
+      cloudflareSignIn({ signIn: SIGN_IN, env: { PATH: "/usr/bin:/bin" }, folder: root }).token(),
     );
     expect(error).toMatchObject({ kind: "not-logged-in" });
     expect(String(error)).toContain("wrangler isn't signed in; run wrangler login");
@@ -214,7 +237,7 @@ printf '%s' '${OAUTH}'
       stderr: `refresh failed for ${TOKEN}`,
     });
     const error = await failure(
-      cloudflareSignIn({ env: { PATH: "/usr/bin:/bin" }, folder: root }).token(),
+      cloudflareSignIn({ signIn: SIGN_IN, env: { PATH: "/usr/bin:/bin" }, folder: root }).token(),
     );
     expect(error).toMatchObject({ kind: "failed" });
     expect(error).toBeInstanceOf(Error);
@@ -237,7 +260,7 @@ printf '%s' '${OAUTH}'
   ])("refuses %s, without printing it", async (_name, stdout, says) => {
     const { root } = await project({ stdout });
     const error = await failure(
-      cloudflareSignIn({ env: { PATH: "/usr/bin:/bin" }, folder: root }).token(),
+      cloudflareSignIn({ signIn: SIGN_IN, env: { PATH: "/usr/bin:/bin" }, folder: root }).token(),
     );
     expect(error).toBeInstanceOf(CloudflareSignInFailed);
     expect(String(error)).toContain(says);
@@ -248,7 +271,12 @@ printf '%s' '${OAUTH}'
     const { root } = await project({ sleep: 5 });
     const started = Date.now();
     const error = await failure(
-      cloudflareSignIn({ env: { PATH: "/usr/bin:/bin" }, folder: root, timeoutMs: 300 }).token(),
+      cloudflareSignIn({
+        signIn: SIGN_IN,
+        env: { PATH: "/usr/bin:/bin" },
+        folder: root,
+        timeoutMs: 300,
+      }).token(),
     );
     expect(String(error)).toContain("didn't answer in time");
     expect(Date.now() - started).toBeLessThan(4_000);
@@ -257,6 +285,7 @@ printf '%s' '${OAUTH}'
   test("on Windows, says to use an API token", async () => {
     const { root } = await project();
     const signIn = cloudflareSignIn({
+      signIn: SIGN_IN,
       env: { PATH: "/usr/bin:/bin" },
       folder: root,
       platform: "win32",
@@ -270,6 +299,7 @@ describe(`cloudflareSignIn with ${API_TOKEN_VARIABLE}`, () => {
     const { root, seen } = await project();
     for (const platform of ["darwin", "win32"]) {
       const signIn = cloudflareSignIn({
+        signIn: SIGN_IN,
         env: {
           PATH: "/usr/bin:/bin",
           [API_TOKEN_VARIABLE]: ` ${TOKEN}\n`,
@@ -287,6 +317,7 @@ describe(`cloudflareSignIn with ${API_TOKEN_VARIABLE}`, () => {
   test("an empty variable fails instead of falling back to wrangler", async () => {
     const { root, seen } = await project();
     const signIn = cloudflareSignIn({
+      signIn: SIGN_IN,
       env: { PATH: "/usr/bin:/bin", [API_TOKEN_VARIABLE]: "" },
       folder: root,
     });
@@ -300,6 +331,7 @@ describe(`cloudflareSignIn with ${API_TOKEN_VARIABLE}`, () => {
   test("CLOUDFLARE_API_TOKEN alone is never used to sign in", async () => {
     const { root } = await project();
     const signIn = cloudflareSignIn({
+      signIn: SIGN_IN,
       env: { PATH: "/usr/bin:/bin", CLOUDFLARE_API_TOKEN: AMBIENT },
       folder: root,
     });

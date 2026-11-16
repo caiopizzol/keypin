@@ -10,6 +10,7 @@ import {
   type IssuerSpec,
   type PublishTarget,
   type Secret,
+  signInVariables,
 } from "@keypin/core";
 import {
   cloudflareWorker,
@@ -56,6 +57,7 @@ let infisical: ReturnType<typeof infisicalBackend> | undefined;
 
 export const destinations = [githubActions, cloudflareWorker];
 export const vaults = [infisicalVault, onePasswordVault];
+export const signInNames = signInVariables([...vaults, ...destinations]);
 
 export function destination(target: PublishTarget, publisher: Publisher): Destination {
   return connectTo<Publisher>(destinations, target, publisher);
@@ -80,7 +82,7 @@ const signedIn = () => (onePassword ??= onePasswordFrom(process.env, { desktop: 
 function workerSignIn(folder: string): CloudflareSignIn {
   const known = cloudflareLogins.get(folder);
   if (known) return known;
-  const made = cloudflareSignIn({ env: process.env, folder });
+  const made = cloudflareSignIn({ env: process.env, signIn: signInNames, folder });
   cloudflareLogins.set(folder, made);
   return made;
 }
@@ -176,12 +178,16 @@ export function realDeps(): Deps {
     files: diskFiles,
     isFolder,
     listFolder,
-    git,
+    git: (folder, args) => git(folder, args, signInNames),
     githubSecrets: (repo, login, environment) =>
-      listRepoSecrets({ repo, environment, token: () => ghToken(login) }),
+      listRepoSecrets({ repo, environment, token: () => ghToken(login, { signIn: signInNames }) }),
     organizationSecrets: (repo, login) =>
-      listRepoSecrets({ repo, organization: true, token: () => ghToken(login) }),
-    sshHostname,
+      listRepoSecrets({
+        repo,
+        organization: true,
+        token: () => ghToken(login, { signIn: signInNames }),
+      }),
+    sshHostname: (destination) => sshHostname(destination, signInNames),
     workerSecrets: (folder, account, worker) =>
       workerReader(folder).listWorkerSecrets(account, worker),
     createFile,
@@ -203,7 +209,7 @@ export function realDeps(): Deps {
     workerSignIn,
     ghLogin: async (login) => {
       if (!Bun.which("gh")) return "not installed";
-      return ghToken(login, { refresh: false }).then(
+      return ghToken(login, { refresh: false, signIn: signInNames }).then(
         () => "ok" as const,
         () => "not logged in" as const,
       );

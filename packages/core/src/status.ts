@@ -6,8 +6,10 @@ import type { VaultKinds } from "./login";
 import { sameRef } from "./reference";
 import type { Registry } from "./registry";
 import { ownedBy } from "./state";
-import { addDays, DUE_SOON_DAYS, isDay, periodDays } from "./rotation";
+import { addDays, isDay, periodDays } from "./days";
 import type { Generation } from "./secret";
+
+const DUE_SOON_DAYS = 14;
 
 export type ProblemKind =
   | "no-map"

@@ -65,6 +65,7 @@ describe("which role keypin resets", () => {
       facts: "roles app_a and app_b, database appdb; the vault uses app_b",
       currentId: "app_b@2026-11-15T12:00:00Z",
     });
+    assert(check.ok);
     expect(check.notes?.revoke).toBe(
       "resets the password of role app_b: every connection string that uses app_b stops working, and every open connection drops",
     );
@@ -108,6 +109,7 @@ describe("which role keypin resets", () => {
     const check = await each.checkAccount(null, urlFor("app_a", LIVE_A));
     const created = await each.create();
     const passwordB = world.load().roles.app_b?.password;
+    assert(check.ok);
     expect(await each.revoke(check.currentId ?? "")).toBe("revoked");
     expect(effects).toEqual(["neon reset app_b", "neon reset app_a"]);
     expect(world.load().roles.app_b?.password).toBe(passwordB);
@@ -121,6 +123,7 @@ describe("which role keypin resets", () => {
     const each = issuer();
     const check = await each.checkAccount("app_b@2026-11-15T12:00:00Z", urlFor("app_a", LIVE_A));
     expect(check).toMatchObject({ ok: true });
+    assert(check.ok);
     expect(check.notes).toBeUndefined();
     const error: unknown = await each.create().catch((e: unknown) => e);
     assert(error instanceof Error);
@@ -191,6 +194,7 @@ describe("which role keypin resets", () => {
       urlFor("app_b", LIVE_B),
     );
     expect(check).toMatchObject({ ok: false });
+    assert(!check.ok);
     expect(check.reason).toContain("role app_b's password changed at 2026-11-15T12:00:07Z");
     expectNoSecret(check);
   });
@@ -340,10 +344,12 @@ describe("checkAccount", () => {
     const database = await neon({ database: "otherdb" })
       .issuer()
       .checkAccount(null, urlFor("app_a", LIVE_A));
+    assert(!database.ok);
     expect(database.reason).toBe("Neon branch br-main has no database appdb");
     const branch = await neon({ branchId: "br-other" })
       .issuer()
       .checkAccount(null, urlFor("app_a", LIVE_A));
+    assert(!branch.ok);
     expect(branch.reason).toBe("Neon project proj-1 has no branch br-main");
   });
 
@@ -355,6 +361,7 @@ describe("checkAccount", () => {
     const wrongProject = await neon({ projectId: "proj-2" })
       .issuer()
       .checkAccount(null, urlFor("app_a", LIVE_A));
+    assert(!wrongProject.ok);
     expect(wrongProject.reason).toContain("can't reach Neon project proj-1");
     expectNoSecret(wrongKey, wrongProject);
   });
@@ -471,7 +478,6 @@ issuer = { kind = "neon", admin = "op://Private/neon api key/credential", projec
   test("roles must be two different names", () => {
     for (const roles of [`["app_a"]`, `["app_a", "app_a"]`, `["a", "b", "c"]`, `"app_a"`]) {
       const parsed = parse(roles);
-      expect(parsed.ok).toBe(false);
       assert(!parsed.ok);
       expect(parsed.errors.join("\n")).toMatch(/field "roles" must/);
     }

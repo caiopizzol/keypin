@@ -127,6 +127,7 @@ describe("checkAccount", () => {
     const check = await github.checkAccount();
     expect(check.ok).toBe(false);
     expect(check.destinationAccount).toBe("someone-else");
+    assert(!check.ok);
     expect(check.reason).toContain("someone-else");
     await expect(github.write("API_KEY", new Secret(SENTINEL))).rejects.toThrow(
       /checkAccount hasn't passed/,
@@ -177,6 +178,7 @@ describe("checkAccount", () => {
     };
     const check = await destination(routes, { login: "alice" }).github.checkAccount();
     expect(check).toMatchObject({ publisher: "acme-ops", expected: "acme", ok: false });
+    assert(!check.ok);
     expect(check.reason).toBe("the token acts as acme-ops, not alice");
     expect(check.fix).toBe(
       "run gh auth login --hostname github.com and sign in as alice, or change git config github.account",
@@ -203,6 +205,7 @@ describe("checkAccount", () => {
     const { github, requests } = destination(readOnly);
     const check = await github.checkAccount();
     expect(check).toMatchObject({ publisher: "acme", destinationAccount: "acme", ok: false });
+    assert(!check.ok);
     expect(check.reason).toBe(
       "acme has no write access to acme/billing, so GitHub won't let it set Actions secrets",
     );
@@ -221,6 +224,7 @@ describe("checkAccount", () => {
       headers: { "x-oauth-scopes": "gist" },
     };
     const check = await destination(noScope).github.checkAccount();
+    assert(!check.ok);
     expect(check.reason).toBe("the token lacks the repo scope (it has: gist)");
     expect(check.fix).toBe("run gh auth refresh --hostname github.com --scopes repo");
   });
@@ -233,6 +237,7 @@ describe("checkAccount", () => {
       headers: { "x-oauth-scopes": "gist" },
     };
     const check = await destination(noScope, { login: "acme" }).github.checkAccount();
+    assert(!check.ok);
     expect(check.reason).toBe("the token lacks the repo scope (it has: gist)");
     expect(check.fix).toBe(
       "run gh auth switch --hostname github.com --user acme, then gh auth refresh --hostname github.com --scopes repo, then switch back to your usual login",
@@ -371,6 +376,7 @@ describe("an environment secret", () => {
     const { github, requests } = destination(routes, { environment: "prod/eu" });
     const check = await github.checkAccount();
     expect(check).toMatchObject({ ok: false, destinationAccount: "acme" });
+    assert(!check.ok);
     expect(check.reason).toBe(
       `${REPO} has no environment named prod/eu, or acme can't see its secrets`,
     );
@@ -388,7 +394,7 @@ describe("an environment secret", () => {
       body: { message: "Resource not accessible by personal access token" },
     };
     const check = await destination(routes, { environment: "prod/eu" }).github.checkAccount();
-    expect(check.ok).toBe(false);
+    assert(!check.ok);
     expect(check.fix).toBe(
       "give the token the repository permission Environments: Read and write, or sign gh in with the browser: gh auth login --hostname github.com",
     );
@@ -465,6 +471,7 @@ describe("refusals that say what to do", () => {
     const { github, requests } = destination(routes);
     const check = await github.checkAccount();
     expect(check).toMatchObject({ ok: false, destinationAccount: "acme" });
+    assert(!check.ok);
     expect(check.reason).toBe(
       "acme/billing is archived, so it's read-only and GitHub won't let anyone set its secrets",
     );
@@ -485,6 +492,7 @@ describe("refusals that say what to do", () => {
       };
       const check = await destination(routes).github.checkAccount();
       expect(check).toMatchObject({ ok: false, destinationAccount: null });
+      assert(!check.ok);
       expect(check.reason).toBe("the gh token isn't authorized for SAML SSO in acme");
       expect(check.fix).toBe(
         `authorize the gh token for SSO in acme: ${SSO_URL} (the link expires in an hour)`,
@@ -500,6 +508,7 @@ describe("refusals that say what to do", () => {
       headers: { "x-github-sso": "required" },
     };
     const check = await destination(routes).github.checkAccount();
+    assert(!check.ok);
     expect(check.reason).toBe("the gh token isn't authorized for SAML SSO in acme");
     expect(check.fix).toBe("authorize the gh token for SSO in acme on github.com");
   });
@@ -515,6 +524,7 @@ describe("refusals that say what to do", () => {
     const { github, requests } = destination(routes);
     const check = await github.checkAccount();
     expect(check).toMatchObject({ ok: false, destinationAccount: "acme" });
+    assert(!check.ok);
     expect(check.reason).toBe(
       "the token can't use acme/billing's Actions secrets (HTTP 403: Resource not accessible by personal access token)",
     );
@@ -616,6 +626,7 @@ describe("refusals that say what to do", () => {
     const routes = happyRoutes();
     delete routes[`GET /repos/${REPO}`];
     const check = await destination(routes).github.checkAccount();
+    assert(!check.ok);
     expect(check.fix).toBe(
       "check repo in keypin.toml, or publish as a login that can see it: git config github.account <login> (keypin publishes only to github.com; GitHub Enterprise Server and ghe.com aren't supported yet)",
     );

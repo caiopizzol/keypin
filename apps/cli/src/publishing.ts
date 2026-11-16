@@ -32,7 +32,7 @@ import { approval } from "./sign-in";
 export interface Checked {
   target: PublishTarget;
   destination: Destination;
-  check: AccountCheck;
+  check: Extract<AccountCheck, { ok: true }>;
 }
 
 export async function locked(deps: Deps, body: (path: string) => Promise<number>): Promise<number> {
@@ -114,14 +114,15 @@ export async function checkAccounts(
         () => destination.checkAccount(),
         (result) => ({ ok: result.ok, text: `${place}  ${out.dim(accountFacts(result))}` }),
       );
-      checked.set(destinationId(target, key.name, deps.destinations), {
-        target,
-        destination,
-        check,
-      });
-      if (!check.ok) {
+      if (check.ok) {
+        checked.set(destinationId(target, key.name, deps.destinations), {
+          target,
+          destination,
+          check,
+        });
+      } else {
         failed = true;
-        out.line(`    ${check.reason ?? "the account check failed"}`);
+        out.line(`    ${check.reason}`);
         if (check.fix) out.line(`    fix: ${check.fix}`);
       }
     } catch (error) {
@@ -222,7 +223,7 @@ function receiptOf(job: WriteJob, write: Write, at: string, evidence: Evidence):
     account: {
       pinned: target.account,
       publisher: check.publisher,
-      destinationAccount: check.destinationAccount ?? target.account,
+      destinationAccount: check.destinationAccount,
     },
     at,
     evidence,
@@ -250,7 +251,7 @@ export function writeTogether(jobs: readonly WriteJob[], kinds: DestinationKinds
 
 function accountFacts(check: AccountCheck): string {
   return check.ok
-    ? `as ${check.publisher}, account ${check.destinationAccount ?? check.expected}`
+    ? `as ${check.publisher}, account ${check.destinationAccount}`
     : `as ${check.publisher}, pinned ${check.expected}, reaches ${check.destinationAccount ?? "unknown"}`;
 }
 

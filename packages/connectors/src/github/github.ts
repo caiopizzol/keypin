@@ -85,31 +85,44 @@ export class GitHubSecretDestination implements Destination {
     const owner = stringField(objectField(repo.body, "owner"), "login");
     const write = objectField(repo.body, "permissions").push === true;
 
-    const check: AccountCheck = { ...facts, destinationAccount: owner, ok: false };
-    if (!sameLogin(owner, this.#owner)) {
-      check.reason = `${this.#repo} is owned by ${owner}, not ${this.#owner} (moved or renamed?)`;
-      check.fix = `if the repository moved, set repo to its current owner/name in keypin.toml`;
-    } else if (this.#login !== null && !sameLogin(publisher, this.#login)) {
-      check.reason = `the token acts as ${publisher}, not ${this.#login}`;
-      check.fix = `run gh auth login --hostname github.com and sign in as ${this.#login}, or change git config github.account`;
-    } else if (repo.body.archived === true) {
-      check.reason = `${this.#repo} is archived, so it's read-only and GitHub won't let anyone set its secrets`;
-      check.fix = `unarchive it in the repository's Settings, or remove it from keypin.toml`;
-    } else if (!write) {
-      check.reason = `${publisher} has no write access to ${this.#repo}, so GitHub won't let it set Actions secrets`;
-      check.fix = `ask an admin of ${this.#owner} for the Write role, or publish as another login: git config github.account <login>`;
-    } else if (scopes !== null && !scopes.split(",").some((s) => s.trim() === "repo")) {
-      check.reason = `the token lacks the repo scope (it has: ${scopes || "none"})`;
-      check.fix =
-        this.#login === null
-          ? "run gh auth refresh --hostname github.com --scopes repo"
-          : `run gh auth switch --hostname github.com --user ${this.#login}, then gh auth refresh --hostname github.com --scopes repo, then switch back to your usual login`;
-    } else {
-      const refusal = await this.#secretsRefusal(publisher);
-      if (refusal !== null) Object.assign(check, refusal);
-      else check.ok = this.#passed = true;
-    }
-    return check;
+    const refused = (refusal: Refusal): AccountCheck => ({
+      ...facts,
+      destinationAccount: owner,
+      ok: false,
+      ...refusal,
+    });
+    if (!sameLogin(owner, this.#owner))
+      return refused({
+        reason: `${this.#repo} is owned by ${owner}, not ${this.#owner} (moved or renamed?)`,
+        fix: `if the repository moved, set repo to its current owner/name in keypin.toml`,
+      });
+    if (this.#login !== null && !sameLogin(publisher, this.#login))
+      return refused({
+        reason: `the token acts as ${publisher}, not ${this.#login}`,
+        fix: `run gh auth login --hostname github.com and sign in as ${this.#login}, or change git config github.account`,
+      });
+    if (repo.body.archived === true)
+      return refused({
+        reason: `${this.#repo} is archived, so it's read-only and GitHub won't let anyone set its secrets`,
+        fix: `unarchive it in the repository's Settings, or remove it from keypin.toml`,
+      });
+    if (!write)
+      return refused({
+        reason: `${publisher} has no write access to ${this.#repo}, so GitHub won't let it set Actions secrets`,
+        fix: `ask an admin of ${this.#owner} for the Write role, or publish as another login: git config github.account <login>`,
+      });
+    if (scopes !== null && !scopes.split(",").some((s) => s.trim() === "repo"))
+      return refused({
+        reason: `the token lacks the repo scope (it has: ${scopes || "none"})`,
+        fix:
+          this.#login === null
+            ? "run gh auth refresh --hostname github.com --scopes repo"
+            : `run gh auth switch --hostname github.com --user ${this.#login}, then gh auth refresh --hostname github.com --scopes repo, then switch back to your usual login`,
+      });
+    const refusal = await this.#secretsRefusal(publisher);
+    if (refusal !== null) return refused(refusal);
+    this.#passed = true;
+    return { ...facts, destinationAccount: owner, ok: true };
   }
 
   async write(name: string, secret: Secret): Promise<Evidence> {

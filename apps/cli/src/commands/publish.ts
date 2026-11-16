@@ -37,6 +37,7 @@ import {
   type Write,
   writeAll,
   writesFor,
+  writeTogether,
 } from "../publishing";
 
 interface Request {
@@ -245,6 +246,7 @@ async function publishLocked(
   }
   if (request.plan) return planOnly(deps, "publish", request.args, needsApproval);
 
+  writeTogether(pending, deps.destinations);
   const total = pending.reduce((sum, job) => sum + job.writes.length, 0);
   say("");
   const question = `Write ${count(total, "secret")}?`;

@@ -14,7 +14,7 @@ export interface FakeCloudflare {
 }
 
 const SCRIPT =
-  /^\/client\/v4\/accounts\/([^/]+)\/workers\/scripts\/([^/]+)\/(settings|secrets|versions)$/;
+  /^\/client\/v4\/accounts\/([^/]+)\/workers\/scripts\/([^/]+)\/(settings|secrets|secrets-bulk|versions)$/;
 
 export function cloudflareFetch(fake: FakeCloudflare) {
   const stored = new Map<string, string>();
@@ -49,20 +49,32 @@ export function cloudflareFetch(fake: FakeCloudflare) {
           annotations: { "workers/triggered_by": "secret" },
         })),
       });
-    if (init.method !== "PUT") return refuse(405, 10000, "Method not allowed");
+    const bulk = part === "secrets-bulk";
+    if (init.method !== (bulk ? "PATCH" : "PUT")) return refuse(405, 10000, "Method not allowed");
     const sent: unknown = JSON.parse(init.body ?? "{}");
-    const name = isRecord(sent) && typeof sent.name === "string" ? sent.name : "";
-    const text = isRecord(sent) && typeof sent.text === "string" ? sent.text : "";
-    if (fake.failPut) return refuse(500, 10013, `could not store ${text}`);
-    stored.set(`${where} ${name}`, text);
-    const list = versions.get(where) ?? [];
-    list.push({
-      id: `v-${list.length + 1}`,
-      created_on: new Date(Date.UTC(2026, 10, 9, list.length)).toISOString(),
+    const list = bulk
+      ? Object.values(isRecord(sent) && isRecord(sent.secrets) ? sent.secrets : {})
+      : [sent];
+    const secrets = list.flatMap((s) =>
+      isRecord(s) && typeof s.name === "string" && typeof s.text === "string"
+        ? [{ name: s.name, text: s.text }]
+        : [],
+    );
+    if (fake.failPut) return refuse(500, 10013, `could not store ${secrets[0]?.text ?? ""}`);
+    for (const { name, text } of secrets) stored.set(`${where} ${name}`, text);
+    const name = secrets.map((s) => s.name).join(" ");
+    const made = versions.get(where) ?? [];
+    made.push({
+      id: `v-${made.length + 1}`,
+      created_on: new Date(Date.UTC(2026, 10, 9, made.length)).toISOString(),
     });
-    versions.set(where, list);
+    versions.set(where, made);
     effects.push(`cloudflare put ${where} ${name}`);
-    return ok({ name, type: "secret_text" });
+    return ok(
+      bulk
+        ? Object.fromEntries(secrets.map((s) => [s.name, { name: s.name, type: "secret_text" }]))
+        : { name, type: "secret_text" },
+    );
   };
 
   return {

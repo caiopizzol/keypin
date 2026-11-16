@@ -82,6 +82,7 @@ export interface Destination {
   describe(): string;
   checkAccount(): Promise<AccountCheck>;
   write(name: string, secret: Secret): Promise<Evidence>;
+  writeMany?(secrets: readonly { name: string; secret: Secret }[]): Promise<Evidence>;
 }
 
 export interface IssuerCheck {

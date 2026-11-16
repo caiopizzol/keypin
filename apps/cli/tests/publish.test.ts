@@ -1195,6 +1195,32 @@ describe("keypin publish --all", () => {
     expect(state.receipts.map((r) => r.destinationId)).toEqual([WORKER, GITHUB]);
   });
 
+  test("several keys to one Worker go in one request, so it deploys once", async () => {
+    const disk = memoryFiles({
+      "/work/billing/keypin.toml": ALL_MAP.replace(
+        '{ to = "github-actions", repo = "acme/other" },',
+        '{ to = "github-actions", repo = "acme/other" },\n  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },',
+      ),
+    });
+    const run = setupAll({ terminal: "yes", disk });
+    expect(await cli(["publish", "--all"], run.deps)).toBe(0);
+    expect(run.writes()).toEqual([
+      `write ${WORKER_PLACE} STRIPE_API_KEY OTHER_KEY in one request`,
+      `write ${GITHUB_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
+      `write ${OTHER_PLACE} OTHER_KEY (${SENTINEL.length + 6} chars)`,
+    ]);
+    expect(run.stderr.text).toContain("wrote STRIPE_API_KEY, OTHER_KEY in one version");
+    const state = await run.state();
+    expect(state.receipts.map((r) => r.destinationId)).toEqual([
+      WORKER,
+      GITHUB,
+      OTHER,
+      `${WORKER_PLACE}:OTHER_KEY`,
+    ]);
+    expect(state.operations).toEqual([]);
+    expect(leaks(...run.everything())).toBe(false);
+  });
+
   test("a variable and --all together are a usage error", async () => {
     const run = setupAll({ terminal: "yes" });
     expect(await cli(["publish", "STRIPE_API_KEY", "--all"], run.deps)).toBe(2);

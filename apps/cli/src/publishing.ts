@@ -5,6 +5,7 @@ import {
   type DestinationKinds,
   type EnvEntry,
   type Environment,
+  type Evidence,
   finishOperation,
   type Generation,
   kindOf,
@@ -13,6 +14,7 @@ import {
   type KeyOwner,
   type KeyRef,
   messageOf,
+  placeId,
   type PlanStep,
   type PublishTarget,
   recordReceipt,
@@ -113,6 +115,12 @@ export async function checkAccounts(
 export interface Write {
   destinationId: string;
   found: Checked;
+  together?: Together;
+}
+
+export interface Together {
+  secrets: { name: string; secret: Secret }[];
+  written?: Promise<Evidence>;
 }
 
 export function writesFor(steps: readonly PlanStep[], checked: Map<string, Checked>): Write[] {
@@ -153,13 +161,22 @@ export async function writeAll(input: {
   });
   await saveState(deps.files, path, state);
 
-  for (const { destinationId: written, found } of writes) {
+  for (const { destinationId: written, found, together } of writes) {
     const place = input.label(found.target);
+    const names = together?.secrets.map((s) => s.name).join(", ") ?? key.name;
+    const writeMany = found.destination.writeMany?.bind(found.destination);
+    const first = together?.written === undefined;
     try {
       const evidence = await out.step(
-        `${place}  writing ${key.name}`,
-        () => found.destination.write(key.name, secret),
-        () => ({ ok: true, text: `${place}  wrote ${key.name}` }),
+        `${place}  writing ${first ? names : key.name}`,
+        () =>
+          together && writeMany
+            ? (together.written ??= writeMany(together.secrets))
+            : found.destination.write(key.name, secret),
+        () => ({
+          ok: true,
+          text: `${place}  wrote ${first && together ? `${names} in one version` : key.name}`,
+        }),
       );
       state = recordReceipt(
         state,
@@ -192,6 +209,28 @@ export async function writeAll(input: {
   state = finishAll(state, { keyId: key.name, environment, mapFile });
   await saveState(deps.files, path, state);
   return { ok: true, state };
+}
+
+const BULK_LIMIT = 100;
+
+export function writeTogether(
+  jobs: readonly { key: KeyEntry; secret: Secret; writes: Write[] }[],
+  kinds: DestinationKinds,
+): void {
+  const byPlace = new Map<string, { name: string; secret: Secret; write: Write }[]>();
+  for (const { key, secret, writes } of jobs)
+    for (const write of writes) {
+      if (!write.found.destination.writeMany) continue;
+      const place = placeId(write.found.target, kinds);
+      byPlace.set(place, [...(byPlace.get(place) ?? []), { name: key.name, secret, write }]);
+    }
+  for (const group of byPlace.values())
+    for (let i = 0; i < group.length; i += BULK_LIMIT) {
+      const chunk = group.slice(i, i + BULK_LIMIT);
+      if (chunk.length < 2) continue;
+      const together = { secrets: chunk.map(({ name, secret }) => ({ name, secret })) };
+      for (const { write } of chunk) write.together = together;
+    }
 }
 
 export function finishAll(state: State, owner: KeyOwner): State {

@@ -57,7 +57,7 @@ export class WorkerSecretDestination implements Destination {
     const settings = await this.#request("GET", `${this.#base()}/settings`);
     if (settings.status === 404) {
       const reason = `account ${this.#account} has no Worker ${this.#worker}`;
-      const fix = `deploy the Worker first, or fix worker in keypin.toml`;
+      const fix = `deploy the Worker first, or fix worker in keypin.toml. A Worker in a Workers for Platforms dispatch namespace isn't listed here, and keypin doesn't publish to one`;
       return { ...facts, destinationAccount: null, ok: false, reason, fix };
     }
     if (accounts === null && DENIED.includes(settings.status)) {
@@ -71,25 +71,41 @@ export class WorkerSecretDestination implements Destination {
   }
 
   async write(name: string, secret: Secret): Promise<Evidence> {
+    if (!name) throw new Error("a Worker secret needs a name");
+    return this.writeMany([{ name, secret }]);
+  }
+
+  async writeMany(secrets: readonly { name: string; secret: Secret }[]): Promise<Evidence> {
     if (!this.#passed)
       throw new Error(`refusing to write to ${this.describe()}: checkAccount hasn't passed`);
-    if (!name) throw new Error("a Worker secret needs a name");
-
-    const path = `${this.#base()}/secrets`;
-    const put = await this.#request("PUT", path, {
+    const [only] = secrets;
+    const path = `${this.#base()}/${secrets.length === 1 ? "secrets" : "secrets-bulk"}`;
+    const text = (name: string, secret: Secret) => ({
       name,
       text: secret.reveal(),
       type: "secret_text",
     });
-    if (put.status !== 200 && put.status !== 201)
-      throw failure("PUT", path, put, [secret.reveal(), await this.#tokenOrEmpty()]);
+    const sent =
+      secrets.length === 1 && only
+        ? await this.#request("PUT", path, text(only.name, only.secret))
+        : await this.#request(
+            "PATCH",
+            path,
+            { secrets: Object.fromEntries(secrets.map((s) => [s.name, text(s.name, s.secret)])) },
+            "application/merge-patch+json",
+          );
+    if (sent.status !== 200 && sent.status !== 201)
+      throw failure(secrets.length === 1 ? "PUT" : "PATCH", path, sent, [
+        ...secrets.map((s) => s.secret.reveal()),
+        await this.#tokenOrEmpty(),
+      ]);
 
     const versions = await this.#request("GET", `${this.#base()}/versions?per_page=10`);
     if (versions.status !== 200) throw failure("GET", `${this.#base()}/versions`, versions);
     const newest = newestVersion(versions.body);
     return {
       destination: this.describe(),
-      secret: name,
+      secret: secrets.map((s) => s.name).join(", "),
       versionId: newest.id,
       createdOn: newest.createdOn,
       triggeredBySecret: newest.triggeredBy === "secret",
@@ -128,13 +144,13 @@ export class WorkerSecretDestination implements Destination {
     return this.#token ? await this.#token.catch(() => "") : "";
   }
 
-  async #request(method: string, path: string, body?: unknown) {
+  async #request(method: string, path: string, body?: unknown, type = "application/json") {
     this.#token ??= this.#tokenSource();
     const response = await this.#fetch(`${API}${path}`, {
       method,
       headers: {
         Authorization: `Bearer ${await this.#token}`,
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...(body === undefined ? {} : { "Content-Type": type }),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });

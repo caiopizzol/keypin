@@ -26,15 +26,23 @@ export function isSharedAddress(address: string): boolean {
   return SHARED_ADDRESSES.includes(address.toLowerCase());
 }
 
-export function isAccountId(account: string): boolean {
-  return !account.includes(".");
+const SIGN_IN_ADDRESS = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
+const ACCOUNT_ID = /^[a-z0-9]{26}$/i;
+
+function isSignInAddress(account: string): boolean {
+  return SIGN_IN_ADDRESS.test(account);
+}
+
+export function pinKind(account: string): "address" | "account ID" | "account name" {
+  if (isSignInAddress(account)) return "address";
+  return ACCOUNT_ID.test(account) ? "account ID" : "account name";
 }
 
 export function serviceAccountConnect(token: string, open: TokenClient): Connect {
   const address = signInAddress(token);
   let client: Promise<SdkClient> | undefined;
   return async (account) => {
-    if (!isAccountId(account) && account.toLowerCase() !== address) {
+    if (isSignInAddress(account) && account.toLowerCase() !== address) {
       throw new SignInFailed(
         `the service account signs in to ${address}, but keypin.toml pins ${account}`,
         { kind: "wrong-account", pinned: account, actual: address },

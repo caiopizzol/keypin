@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { type KeyRef, Secret } from "@keypin/core";
 import {
   onePasswordBackend,
+  pinKind,
   type SdkClient,
   serviceAccountConnect,
   signInAddress,
@@ -101,12 +102,22 @@ describe("a service account sign-in", () => {
     expect(calls).toEqual(["vaults.list", "items.list"]);
   });
 
-  test("the pinned address matches in any case, and the client opens once", async () => {
+  test("a map pinning an account name is accepted like an ID, not taken for an address", async () => {
+    const { backend, calls } = fakeSdk();
+    await backend.list({ kind: "1password", account: "Acme Corp", vault: "Deploy" });
+    expect(calls).toEqual(["vaults.list", "items.list"]);
+    expect(pinKind("Acme Corp")).toBe("account name");
+    expect(pinKind("Acme.Corp Ltd.")).toBe("account name");
+    expect(pinKind("4Q6Z73JHSJESBM36AP3W57YOOU")).toBe("account ID");
+    expect(pinKind("acme.1password.com")).toBe("address");
+  });
+
+  test("the pinned address matches in any case, and the client and its lists are shared", async () => {
     const { backend, calls, opened } = fakeSdk();
     await backend.list({ kind: "1password", account: "ACME.1password.com", vault: "Deploy" });
     await backend.list({ kind: "1password", account: "acme.1password.com", vault: "Deploy" });
     expect(opened).toEqual(["the token"]);
-    expect(calls).toEqual(["vaults.list", "items.list", "vaults.list", "items.list"]);
+    expect(calls).toEqual(["vaults.list", "items.list"]);
   });
 
   test("a sign-in error never shows the token", async () => {

@@ -159,28 +159,35 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
     };
     const sdk: string[] = [];
     const titles = ["billing stripe api key"];
-    const backend = onePasswordBackend(async () => ({
-      vaults: { list: async () => [{ id: "vault-1", title: "Private" }] },
-      items: {
-        list: async () => {
-          sdk.push("list");
-          return titles.map((title) => ({ id: stored.id, title, tags: [], updatedAt: new Date() }));
+    const backend = () =>
+      onePasswordBackend(async () => ({
+        vaults: { list: async () => [{ id: "vault-1", title: "Private" }] },
+        items: {
+          list: async () => {
+            sdk.push("list");
+            return titles.map((title) => ({
+              id: stored.id,
+              title,
+              tags: [],
+              updatedAt: new Date(),
+            }));
+          },
+          get: async () => {
+            sdk.push("get");
+            return stored;
+          },
+          create: async () => {
+            sdk.push("create");
+            return stored;
+          },
+          put: async () => {
+            sdk.push("put");
+            return stored;
+          },
         },
-        get: async () => {
-          sdk.push("get");
-          return stored;
-        },
-        create: async () => {
-          sdk.push("create");
-          return stored;
-        },
-        put: async () => {
-          sdk.push("put");
-          return stored;
-        },
-      },
-    }));
-    const run = setup({ deps: { vault: () => backend } });
+      }));
+    const first = backend();
+    const run = setup({ deps: { vault: () => first } });
     expect(await cli(["check", "--json"], run.deps)).toBe(0);
     expect(sdk).toEqual(["list"]);
     expect(parseJson(run.stdout.text)).toHaveProperty(
@@ -193,7 +200,8 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
     );
 
     titles.pop();
-    const missing = setup({ deps: { vault: () => backend } });
+    const second = backend();
+    const missing = setup({ deps: { vault: () => second } });
     expect(await cli(["check"], missing.deps)).toBe(1);
     expect(missing.stdout.text).toContain(
       "  op://Private/billing stripe api key/password (1Password account my.1password.com): no such item.\n  Used by STRIPE_API_KEY (dev), STRIPE_API_KEY (prod).\n",

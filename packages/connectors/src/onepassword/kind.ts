@@ -10,7 +10,7 @@ import {
   SCHEME,
   sameName,
 } from "./reference";
-import { isAccountId, isSharedAddress } from "./service-account";
+import { isSharedAddress, pinKind } from "./service-account";
 
 export type SignIn =
   | { mode: "desktop"; tokenIgnored: boolean }
@@ -93,9 +93,10 @@ export const onePasswordVault: VaultKind<
     const limit = "the vaults granted to the service account are what limit it";
     const accounts = refs.flatMap((ref) => decode(ref)?.account ?? []);
     return [...new Set(accounts)].flatMap((account) => {
-      if (isAccountId(account))
+      const pinned = pinKind(account);
+      if (pinned !== "address")
         return [
-          `${MAP_FILE} pins the account ID ${account}, which a service account token can't be checked against, so ${limit}`,
+          `${MAP_FILE} pins the ${pinned} ${account}, which a service account token can't be checked against, so ${limit}`,
         ];
       if (isSharedAddress(account) && isSharedAddress(signIn.address))
         return [

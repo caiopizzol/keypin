@@ -21,8 +21,9 @@ repo = "me/my-project"
 
 ## 1Password account
 
-`account` is the account's sign-in address, as shown at the top left of the 1Password app, or its account ID. A team
-shares one account, and each member signs in to it. For Infisical, see [Infisical](infisical.md).
+`account` is the account's sign-in address, such as `my.1password.com`, its name as shown at the top left of the
+1Password app, or its account ID. A team shares one account, and each member signs in to it. For Infisical, see
+[Infisical](infisical.md).
 
 ## Keys
 
@@ -32,7 +33,8 @@ Each `[keys.NAME]` table is named after the variable your program reads.
   show when the key is due.
 - One entry per environment, `dev` and `prod` by default. Each names a 1Password secret reference:
   `op://<vault>/<item>/<field>`, or `op://<vault>/<item>/<section>/<field>` when two fields share a name. In
-  1Password, open the field's menu and select **Copy Secret Reference**.
+  1Password, open the field's menu and select **Copy Secret Reference**. keypin reads a field's value, or the item's
+  notes as `notesPlain`; not one-time passwords, files or empty values.
 
 Write an environment as `dev = "op://..."`, or as a `[keys.NAME.prod]` table with `from` when it also has
 destinations.

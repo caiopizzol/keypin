@@ -32,6 +32,8 @@ export interface SdkClient {
 
 export type Connect = (account: string) => Promise<SdkClient>;
 
+export class RateLimited extends Error {}
+
 type Sdk = typeof import("@1password/sdk");
 
 export const desktopConnect: Connect = (account) =>
@@ -49,23 +51,31 @@ async function sdkClient(
     integrationVersion: "0.0.0",
   });
   const field = (f: Field): ItemField => ({ ...f, fieldType: sdk.ItemFieldType[f.fieldType] });
+  const call = <T>(request: Promise<T>): Promise<T> =>
+    request.catch((error: unknown) => {
+      throw error instanceof sdk.RateLimitExceededError ? new RateLimited(error.message) : error;
+    });
   return {
-    vaults: { list: () => client.vaults.list() },
+    vaults: { list: () => call(client.vaults.list()) },
     items: {
-      list: (vaultId) => client.items.list(vaultId),
-      get: (vaultId, itemId) => client.items.get(vaultId, itemId),
+      list: (vaultId) => call(client.items.list(vaultId)),
+      get: (vaultId, itemId) => call(client.items.get(vaultId, itemId)),
       create: (params) =>
-        client.items.create({
-          ...params,
-          category: sdk.ItemCategory[params.category],
-          fields: params.fields?.map(field),
-        }),
+        call(
+          client.items.create({
+            ...params,
+            category: sdk.ItemCategory[params.category],
+            fields: params.fields?.map(field),
+          }),
+        ),
       put: (item) =>
-        client.items.put({
-          ...item,
-          category: sdk.ItemCategory[item.category],
-          fields: item.fields.map(field),
-        }),
+        call(
+          client.items.put({
+            ...item,
+            category: sdk.ItemCategory[item.category],
+            fields: item.fields.map(field),
+          }),
+        ),
     },
   };
 }

@@ -5,7 +5,9 @@ import { Secret, SignInFailed } from "@keypin/core";
 import {
   desktopLibrary,
   onePasswordBackend,
+  RateLimited,
   requireDesktopApp,
+  sandboxedApp,
   type SdkClient,
 } from "../../src/onepassword/index";
 import { fakeOnePassword, field, item } from "../../src/onepassword/testing";
@@ -48,6 +50,21 @@ describe("list", () => {
       },
     ]);
     expect(JSON.stringify(items)).not.toContain(VALUE);
+  });
+
+  test("lists vaults and items once however many keys a run reads, and again after a write", async () => {
+    const { client, calls } = fake([
+      item("a", [field("password", "Concealed", VALUE)]),
+      item("b", [field("password", "Concealed", VALUE)]),
+    ]);
+    const { backend } = backendFor(client);
+    for (const name of ["a", "b", "a"]) await backend.read({ ...ref, item: name });
+    await backend.itemIds({ ...ref, item: "b" });
+    await backend.list(scope);
+    expect(calls.lists).toEqual({ vaults: 1, items: 1 });
+    await backend.write({ ...ref, item: "c" }, new Secret(VALUE));
+    expect((await backend.read({ ...ref, item: "c" })).reveal()).toBe(VALUE);
+    expect(calls.lists).toEqual({ vaults: 1, items: 2 });
   });
 
   test("signs in once per account", async () => {
@@ -142,6 +159,71 @@ describe("read", () => {
     );
     await expect(backend.read({ ...ref, section: "staging", field: "key" })).rejects.toThrow(
       'the item has no section "staging"',
+    );
+  });
+});
+
+describe("what keypin can't read", () => {
+  const at = "op://Private/demo dev token";
+
+  test("a one-time password is refused, not passed on as its otpauth URI", async () => {
+    const { client } = fake([
+      item("demo dev token", [field("one-time password", "Totp", "otpauth://totp/x?secret=ABC")]),
+    ]);
+    await expect(
+      backendFor(client).backend.read({ ...ref, field: "one-time password" }),
+    ).rejects.toThrow(
+      `${at}/one-time password (1Password account ${ACCOUNT}): "one-time password" is a one-time password, which changes every 30 seconds; keypin reads only values that stay the same`,
+    );
+  });
+
+  test("an SSH private key is read as 1Password stores it", async () => {
+    const pem = "-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n";
+    const { client } = fake([item("demo dev token", [field("private key", "SshKey", pem)])]);
+    expect((await backendFor(client).backend.read({ ...ref, field: "private key" })).reveal()).toBe(
+      pem,
+    );
+  });
+
+  test("an empty field is refused, not passed on as an empty variable", async () => {
+    const { client } = fake([item("demo dev token", [field("password", "Concealed", "")])]);
+    const { backend } = backendFor(client);
+    const empty = `${at}/password (1Password account ${ACCOUNT}): the value is empty`;
+    await expect(backend.read(ref)).rejects.toThrow(empty);
+    await expect(backend.readItem(ref)).rejects.toThrow(empty);
+  });
+
+  test("notesPlain reads and writes the item's notes, and empty notes are refused", async () => {
+    const notes = { ...ref, field: "notesPlain" };
+    const { client, calls } = fake([
+      { ...item("demo dev token", []), category: "SecureNote", notes: VALUE },
+      { ...item("blank", []), notes: "" },
+    ]);
+    const { backend } = backendFor(client);
+    expect((await backend.read({ ...notes, field: "NOTESPLAIN" })).reveal()).toBe(VALUE);
+    await backend.write(notes, new Secret("fake-new-note"));
+    expect(calls.put.map((put) => [put.notes, put.fields])).toEqual([["fake-new-note", []]]);
+    await expect(backend.read({ ...notes, item: "blank" })).rejects.toThrow(
+      "op://Private/blank/notesPlain (1Password account my.1password.com): the value is empty",
+    );
+  });
+
+  test("a file attachment or a Document is refused, naming files", async () => {
+    const file = {
+      attributes: { name: "key.pem", id: "f1", size: 3 },
+      sectionId: "s",
+      fieldId: "f",
+    };
+    const { client } = fake([
+      { ...item("demo dev token", []), files: [file] },
+      { ...item("contract", []), category: "Document" },
+    ]);
+    const { backend } = backendFor(client);
+    await expect(backend.read({ ...ref, field: "KEY.pem" })).rejects.toThrow(
+      `${at}/KEY.pem (1Password account ${ACCOUNT}): "KEY.pem" is a file attached to the item; keypin reads text fields and notes, not files`,
+    );
+    await expect(backend.read({ ...ref, item: "contract" })).rejects.toThrow(
+      "the item is a Document; keypin reads text fields and notes, not files",
     );
   });
 });
@@ -243,7 +325,7 @@ describe("write", () => {
     await expect(
       backendFor(client).backend.write(ref, new Secret(VALUE), { newItem: true }),
     ).rejects.toThrow("the item already exists; keypin doesn't overwrite it");
-    expect(calls).toEqual({ create: [], put: [], get: 0 });
+    expect(calls).toEqual({ create: [], put: [], get: 0, lists: { vaults: 1, items: 1 } });
 
     const empty = fake();
     await backendFor(empty.client).backend.write(ref, new Secret(VALUE), { newItem: true });
@@ -290,7 +372,7 @@ describe("write", () => {
         `rotated must be a real day as YYYY-MM-DD, got "${rotated}"`,
       );
       expect(accounts).toEqual([]);
-      expect(calls).toEqual({ create: [], put: [], get: 0 });
+      expect(calls).toEqual({ create: [], put: [], get: 0, lists: { vaults: 0, items: 0 } });
     },
   );
 
@@ -429,6 +511,59 @@ describe("errors", () => {
     );
     await expect(backend.read({ ...ref, item: "second" })).rejects.toThrow("isn't installed");
     expect(printed).toEqual([]);
+  });
+
+  test("a Snap or Flatpak desktop app is named as the reason, with what to install", async () => {
+    const backend = onePasswordBackend(
+      requireDesktopApp(
+        async () => {
+          throw new Error("Native library is not available.");
+        },
+        () => null,
+        () => true,
+      ),
+    );
+    await expect(backend.read(ref)).rejects.toThrow(
+      new SignInFailed(
+        `1Password account "${ACCOUNT}": sign-in failed: the 1Password desktop app is installed as a Snap or Flatpak, and those packages don't support integrations with other apps; install it from the .deb or .rpm package instead`,
+        { kind: "no-desktop-app" },
+      ),
+    );
+  });
+
+  test("finds a Snap or Flatpak install on Linux only", () => {
+    const seen: string[] = [];
+    const look = (os: string, found: string | null) =>
+      sandboxedApp(os, "/home/me", (path) => {
+        seen.push(path);
+        return path === found;
+      });
+    expect(look("linux", "/snap/1password")).toBe(true);
+    expect(look("linux", "/var/lib/flatpak/app/com.onepassword.OnePassword")).toBe(true);
+    expect(look("linux", "/home/me/.local/share/flatpak/app/com.onepassword.OnePassword")).toBe(
+      true,
+    );
+    expect(look("linux", null)).toBe(false);
+    expect(look("darwin", "/snap/1password")).toBe(false);
+  });
+
+  test("a rate limit says so, and with a service account gives the limits", async () => {
+    const limited = (): SdkClient => ({
+      ...fake().client,
+      vaults: {
+        list: async () => {
+          throw new RateLimited("Too Many Requests");
+        },
+      },
+    });
+    const desktop = onePasswordBackend(async () => limited());
+    await expect(desktop.read(ref)).rejects.toThrow(
+      /^1Password's rate limit was reached: Too Many Requests$/,
+    );
+    const service = onePasswordBackend(async () => limited(), "service-account");
+    await expect(service.read(ref)).rejects.toThrow(
+      "1Password's rate limit was reached: Too Many Requests. A service account token gets 1,000 reads and 100 writes an hour",
+    );
   });
 
   test("looks for the desktop app's library where the SDK does", () => {

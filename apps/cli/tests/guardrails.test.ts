@@ -49,7 +49,7 @@ const cases: Record<string, { code: string; flags: string[] }> = {
     flags: [],
   },
   "apps/cli/src/sign-in.ts": {
-    code: 'export { isAccountId } from "@keypin/connectors/onepassword";',
+    code: 'export { pinKind } from "@keypin/connectors/onepassword";',
     flags: [],
   },
   "apps/cli/src/commands/check.ts": {

@@ -242,6 +242,7 @@ export function infisicalBackend(
       throw new Error(
         `${describeRef(ref)}: the machine identity can see this secret but not its value`,
       );
+    if (secret.secretValue === "") throw new Error(`${describeRef(ref)}: the value is empty`);
     return { secret: new Secret(secret.secretValue), ids: idsOf(secret, project) };
   }
 

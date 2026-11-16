@@ -380,6 +380,15 @@ describe("reading", () => {
     }
   });
 
+  test("an empty value is refused, not passed on as an empty variable", async () => {
+    const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": { ...STRIPE, value: "" } } });
+    const vault = infisicalBackend(CREDENTIALS, fake.fetch);
+    const empty =
+      "infisical://billing/prod/STRIPE_KEY (Infisical organization acme at https://app.infisical.com): the value is empty";
+    await expect(vault.read(REF)).rejects.toThrow(empty);
+    await expect(vault.readItem(REF)).rejects.toThrow(empty);
+  });
+
   test("no rotated metadata is no rotated date", async () => {
     const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": { ...STRIPE, rotated: "" } } });
     expect(await infisicalBackend(CREDENTIALS, fake.fetch).metadata(REF)).toEqual({

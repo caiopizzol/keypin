@@ -1,5 +1,6 @@
 import { assert, describe, expect, test } from "vite-plus/test";
 import { calledAcross, wranglerWorkers } from "../../src/cloudflare/index";
+import { configsWranglerUses } from "../../src/cloudflare/wrangler";
 
 const SENTINEL = "sentinel-value-7f3a9c2e1d";
 const ACCOUNT = "11111111111111111111111111111111";
@@ -166,6 +167,41 @@ routes = []
       const parsed = wranglerWorkers(`\uFEFF${text}`, config);
       assert(parsed.ok, config);
       expect(parsed.workers.map((w) => w.worker)).toEqual(["api"]);
+    }
+  });
+
+  test("reads only the config wrangler uses in a folder: json, then jsonc, then toml", () => {
+    expect(
+      configsWranglerUses([
+        "wrangler.toml",
+        "wrangler.jsonc",
+        "apps/api/wrangler.toml",
+        "apps/web/wrangler.jsonc",
+        "apps/web/wrangler.json",
+      ]),
+    ).toEqual({
+      used: ["wrangler.jsonc", "apps/api/wrangler.toml", "apps/web/wrangler.json"],
+      ignored: [
+        { config: "wrangler.toml", used: "wrangler.jsonc" },
+        { config: "apps/web/wrangler.jsonc", used: "apps/web/wrangler.json" },
+      ],
+    });
+  });
+
+  test("a Pages config declares no Worker", () => {
+    for (const [text, config] of [
+      [
+        `name = "site"\npages_build_output_dir = "dist"\n[secrets]\nrequired = ["KEY"]\n`,
+        "wrangler.toml",
+      ],
+      [`{ "name": "site", "pages_build_output_dir": "./dist" }`, "wrangler.jsonc"],
+    ] as const) {
+      expect(wranglerWorkers(text, config)).toEqual({
+        ok: true,
+        workers: [],
+        skipped: [],
+        pages: true,
+      });
     }
   });
 });

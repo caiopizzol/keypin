@@ -2128,3 +2128,58 @@ describe("keypin check's prerequisites", () => {
     expect(plain.stdout.text).not.toContain("Sign in to 1Password");
   });
 });
+
+describe("keypin check on Cloudflare cases", () => {
+  const only = (wrangler: Record<string, string>) => ({
+    [MAP]: PUBLISHED,
+    [`${ROOT}/.env`]: null,
+    [`${ROOT}/.github/workflows/deploy.yml`]: null,
+    [`${ROOT}/wrangler.toml`]: null,
+    ...Object.fromEntries(
+      Object.entries(wrangler).map(([name, text]) => [`${ROOT}/${name}`, text]),
+    ),
+  });
+
+  test("reads the one config wrangler uses and notes the one it ignores", async () => {
+    const run = setup({
+      files: only({
+        "wrangler.jsonc": `{ "name": "billing-worker", "account_id": "${ACCOUNT}", "secrets": { "required": ["RESEND_API_KEY"] } }`,
+        "wrangler.toml": `name = "old-worker"\naccount_id = "${ACCOUNT}"\n[secrets]\nrequired = ["LEFTOVER_KEY"]\n`,
+      }),
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+    });
+    await cli(["check", "--json"], run.deps);
+    const data = json(run.stdout.text);
+    expect(JSON.stringify(data.production)).not.toContain("LEFTOVER_KEY");
+    expect(data.notes).toContain(
+      "wrangler reads wrangler.jsonc, not wrangler.toml, so check ignores wrangler.toml",
+    );
+  });
+
+  test("says a Pages project isn't a Worker keypin publishes to", async () => {
+    const run = setup({
+      files: only({
+        "wrangler.toml": `name = "site"\npages_build_output_dir = "dist"\n[secrets]\nrequired = ["RESEND_API_KEY"]\n`,
+      }),
+    });
+    await cli(["check", "--json"], run.deps);
+    const data = json(run.stdout.text);
+    expect(data.production).toEqual([]);
+    expect(data.notes).toContain(
+      "wrangler.toml is a Cloudflare Pages project, and keypin publishes only to Workers; set its secrets with wrangler pages secret put",
+    );
+  });
+
+  test("reports a published key the config also sets in vars", async () => {
+    const run = setup({
+      files: only({
+        "wrangler.toml": `name = "billing-worker"\naccount_id = "${ACCOUNT}"\n[vars]\nRESEND_API_KEY = "x"\nREGION = "eu"\n`,
+      }),
+    });
+    expect(await cli(["check", "--json"], run.deps)).toBe(1);
+    const data = json(run.stdout.text);
+    expect(data.problems).toEqual([
+      "RESEND_API_KEY: keypin.toml publishes it to the Worker billing-worker as a secret, but wrangler.toml sets it in vars, so the next wrangler deploy replaces the secret with that var; remove it from vars",
+    ]);
+  });
+});

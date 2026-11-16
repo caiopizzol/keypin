@@ -149,10 +149,12 @@ export function findGaps(
       ),
   };
   const after: NonNullable<Needs["notesAfter"]>[] = [];
+  const conflicts: string[] = [];
   for (const discovered of scan.discovered) {
     const found = discovered.needs(view);
     for (const { name, place, usedBy } of found.needs) need(name, place, usedBy);
     notes.push(...found.notes);
+    conflicts.push(...(found.problems ?? []));
     if (found.notesAfter) after.push(found.notesAfter);
   }
 
@@ -161,7 +163,7 @@ export function findGaps(
   const missing = needs.filter((n) => n.need.mapped === null && elsewhere(n) === null);
   const add = tomlToAdd(missing, keys, environment, map?.text ?? "", newKeys, vaults);
 
-  const problems: string[] = [];
+  const problems: string[] = [...conflicts];
   const fixes: Fix[] = [];
   const fix = (found: Fix) => {
     fixes.push(found);

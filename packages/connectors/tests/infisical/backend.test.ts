@@ -40,6 +40,7 @@ function fakeInfisical(
     hidden?: boolean;
     approval?: boolean;
     encryptedMetadata?: boolean;
+    imports?: FakeInfisical["imports"];
   } = {},
 ) {
   const store = memoryStore();
@@ -51,6 +52,7 @@ function fakeInfisical(
     ...(options.hidden ? { hideValues: true } : {}),
     ...(options.approval ? { heldByPolicy: [] } : {}),
     ...(options.encryptedMetadata ? { requireEncryptedMetadata: true } : {}),
+    ...(options.imports ? { imports: options.imports } : {}),
   };
   for (const [where, secret] of Object.entries(options.secrets ?? {})) {
     const [environment = "", path = "/", name = ""] = where.split(":");
@@ -320,6 +322,41 @@ describe("writing", () => {
     ]);
     expect(fake.calls.some((c) => c.method !== "GET" && c.path.startsWith("/api/v4"))).toBe(false);
     expect(fake.effects).toEqual([]);
+  });
+
+  test.each([
+    ["another project's secret", "${@backend-api.prod.KEY1}", "infisical://backend-api/prod/KEY1"],
+    ["a name with spaces", "${BASE KEY}", "infisical://billing/prod/BASE KEY"],
+  ])("a reference to %s is refused too", async (_, value, source) => {
+    const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": { ...STRIPE, value } } });
+    const vault = infisicalBackend(CREDENTIALS, fake.fetch);
+    await expect(vault.checkWrite?.(REF)).rejects.toThrow(`the secret references ${source}`);
+    expect(fake.effects).toEqual([]);
+  });
+
+  test("a local reference in an imported secret reads the importing environment first", async () => {
+    const fake = fakeInfisical({
+      secrets: {
+        "dev:/:STRIPE_KEY": { value: "postgres://${DB_HOST}/app" },
+        "dev:/:DB_HOST": { value: "dev-host" },
+        "prod:/:DB_HOST": { value: "prod-host" },
+      },
+      imports: [{ into: "prod", environment: "dev" }],
+    });
+    const vault = infisicalBackend(CREDENTIALS, fake.fetch);
+    expect((await vault.read(REF)).equals(new Secret("postgres://prod-host/app"))).toBe(true);
+  });
+
+  test("reading expands nested references", async () => {
+    const fake = fakeInfisical({
+      secrets: {
+        "prod:/:STRIPE_KEY": { ...STRIPE, value: "${OUTER}" },
+        "prod:/:OUTER": { value: "a-${INNER}" },
+        "prod:/:INNER": { value: SENTINEL },
+      },
+    });
+    const vault = infisicalBackend(CREDENTIALS, fake.fetch);
+    expect((await vault.read(REF)).equals(new Secret(`a-${SENTINEL}`))).toBe(true);
   });
 
   test("a bad rotated day is refused before any request", async () => {

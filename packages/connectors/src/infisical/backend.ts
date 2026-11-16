@@ -315,7 +315,7 @@ function importSource(ref: InfisicalRef, secret: Json): string {
   return format({ ...ref, environment, path: secretPath });
 }
 
-const REFERENCE = /\$\{([a-zA-Z0-9-_.]+)\}/g;
+const REFERENCE = /\$\{([a-zA-Z0-9-_.@]+(?: +[a-zA-Z0-9-_@]+)*)\}/g;
 
 function referencedBy(ref: InfisicalRef, raw: string): string[] {
   return [
@@ -325,10 +325,12 @@ function referencedBy(ref: InfisicalRef, raw: string): string[] {
 
 function referenceTo(ref: InfisicalRef, inner: string): string {
   const parts = inner.split(".");
+  const project = parts[0]?.startsWith("@") ? parts.shift()?.slice(1) : undefined;
   const name = parts.pop() ?? "";
   const [environment, ...folders] = parts;
-  if (environment === undefined) return format({ ...ref, name });
-  return format({ ...ref, environment, path: `/${folders.join("/")}`, name });
+  const place = project === undefined ? ref : { ...ref, project };
+  if (environment === undefined) return format({ ...place, name });
+  return format({ ...place, environment, path: `/${folders.join("/")}`, name });
 }
 
 function idsOf(secret: Json, project: string) {

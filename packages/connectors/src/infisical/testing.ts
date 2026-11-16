@@ -52,7 +52,7 @@ export interface Store {
 
 const ROOT = "/";
 const ROTATED = "rotated";
-const REFERENCE = /\$\{([a-zA-Z0-9-_.]+)\}/g;
+const REFERENCE = /\$\{([a-zA-Z0-9-_.@]+(?: +[a-zA-Z0-9-_@]+)*)\}/g;
 const pathOf = (key: string) => {
   const slash = key.lastIndexOf("/");
   return slash <= 0 ? ROOT : key.slice(0, slash);
@@ -123,19 +123,45 @@ export function infisicalFetch(fake: FakeInfisical, store: Store): Fetch {
             .at(-1)
         : undefined;
     const found = secrets[name];
+    const expand = (
+      raw: string,
+      here: { environment: string; path: string },
+      from: { environment: string; path: string },
+      seen: Set<string>,
+    ): string =>
+      raw.replace(REFERENCE, (_, inner: string) => {
+        const parts = inner.split(".");
+        const target = parts[0]?.startsWith("@") ? (parts.shift()?.slice(1) ?? project) : project;
+        const key = parts.pop() ?? "";
+        const absolute = parts.length > 0;
+        const [env = here.environment, ...folders] = parts;
+        const folder = absolute ? `/${folders.join("/")}` : here.path;
+        const places = absolute
+          ? [{ environment: env, path: folder }]
+          : [here, from].filter(
+              (p, i, all) =>
+                all.findIndex((q) => q.environment === p.environment && q.path === p.path) === i,
+            );
+        for (const place of places) {
+          const id = `${target}/${place.environment}${place.path}/${key}`;
+          const secret = secretsOf(target, place.environment, place.path)[key];
+          if (!secret || seen.has(id)) continue;
+          return expand(secret.value, here, place, new Set([...seen, id]));
+        }
+        return "";
+      });
     const shape = (key: string, secret: FakeSecret, value: boolean, at = { environment, path }) => {
       const shown = value && !fake.hideValues;
       const raw = secret.value;
       const expanded =
         query.expandSecretReferences === "false"
           ? raw
-          : raw.replace(REFERENCE, (_, inner: string) => {
-              const parts = inner.split(".");
-              const key = parts.pop() ?? "";
-              const [env = at.environment, ...folders] = parts;
-              const folder = parts.length ? `/${folders.join("/")}` : at.path;
-              return secretsOf(project, env, folder)[key]?.value ?? "";
-            });
+          : expand(
+              raw,
+              { environment, path },
+              at,
+              new Set([`${project}/${at.environment}${at.path}/${key}`]),
+            );
       return {
         id: secret.id ?? `${project}/${at.environment}/${key}`,
         environment: at.environment,

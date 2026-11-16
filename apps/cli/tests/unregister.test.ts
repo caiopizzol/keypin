@@ -48,3 +48,17 @@ describe("keypin unregister", () => {
     expect(disk.contents.get(REGISTRY)).toBe(before);
   });
 });
+
+describe("keypin unregister at the same time", () => {
+  test("two folders unregistering at once both go", async () => {
+    const disk = registered("/work/billing", "/work/web", "/work/api");
+    const first = fakeDeps({ disk });
+    const second = fakeDeps({ disk, deps: { cwd: "/work/web" } });
+    const codes = await Promise.all([
+      cli(["unregister"], first.deps),
+      cli(["unregister"], second.deps),
+    ]);
+    expect(codes).toEqual([0, 0]);
+    expect((await loadRegistry(disk.files, REGISTRY)).projects).toEqual(["/work/api"]);
+  });
+});

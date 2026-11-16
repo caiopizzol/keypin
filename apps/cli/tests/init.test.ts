@@ -193,3 +193,29 @@ describe("keypin init", () => {
     }
   });
 });
+
+describe("keypin init at the same time", () => {
+  test("two projects registering at once both stay registered", async () => {
+    const first = fakeDeps();
+    const second = fakeDeps({ disk: first.disk, deps: { cwd: "/work/web" } });
+    const codes = await Promise.all([cli(["init"], first.deps), cli(["init"], second.deps)]);
+    expect(codes).toEqual([0, 0]);
+    expect((await loadRegistry(first.disk.files, REGISTRY)).projects).toEqual([
+      "/work/billing",
+      "/work/web",
+    ]);
+    expect(first.disk.contents.has(`${REGISTRY}.lock`)).toBe(false);
+  });
+});
+
+describe("keypin init while another keypin holds the registry", () => {
+  test("waits, then says which process holds it, and writes nothing", async () => {
+    const { deps, disk, stderr } = fakeDeps();
+    disk.contents.set(`${REGISTRY}.lock`, "4242\n");
+    expect(await cli(["init"], deps)).toBe(1);
+    expect(stderr.text).toContain(
+      `keypin init: another publish (process 4242) holds ${REGISTRY}.lock and is still running. Wait for it to finish.`,
+    );
+    expect(disk.contents.has(REGISTRY)).toBe(false);
+  }, 10_000);
+});

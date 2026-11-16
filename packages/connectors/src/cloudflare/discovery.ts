@@ -7,7 +7,7 @@ import {
   type Place,
   type StoreRead,
 } from "@keypin/core";
-import { WRANGLER_FILES, type WorkerDeclaration, wranglerWorkers } from "./wrangler";
+import { calledAcross, WRANGLER_FILES, type WorkerDeclaration, wranglerWorkers } from "./wrangler";
 
 export interface WranglerHost {
   workerSecrets(folder: string, account: string, worker: string): Promise<StoreRead>;
@@ -23,10 +23,14 @@ export const wranglerDiscovery: Discovery<WranglerHost> = {
   async scan(project, host) {
     const workers: Worker[] = [];
     const skipped: string[] = [];
+    const texts: { text: string; config: string }[] = [];
     for (const config of project.found) {
       const text = await project.read(config);
-      if (text === null) continue;
-      const parsed = wranglerWorkers(text, config);
+      if (text !== null) texts.push({ text, config });
+    }
+    const called = calledAcross(texts);
+    for (const { text, config } of texts) {
+      const parsed = wranglerWorkers(text, config, called);
       if (!parsed.ok) {
         project.unknown(`the Workers in ${config}`, "it couldn't be parsed");
         continue;

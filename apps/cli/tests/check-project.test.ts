@@ -1089,6 +1089,34 @@ required = ["RESEND_API_KEY"]
       expect(data.add.match(/worker = /g)).toHaveLength(2);
     });
 
+    test("that another wrangler config in the project calls is still checked, though it has no routes", async () => {
+      const wrangler = `${STAGED}
+[env.dev]
+routes = []
+workers_dev = false
+
+[env.dev.secrets]
+required = ["RESEND_API_KEY"]
+`;
+      const caller = `name = "web"
+account_id = "${ACCOUNT}"
+
+[[services]]
+binding = "BILLING"
+service = "billing-worker-dev"
+`;
+      const run = setup({
+        files: { ...files(MAPPED, wrangler), [`${ROOT}/apps/web/wrangler.toml`]: caller },
+      });
+      for (const folder of [`${ROOT}/apps`, `${ROOT}/apps/web`]) run.disk.folders.add(folder);
+      await cli(["check", "--json"], run.deps);
+      const data = json(run.stdout.text);
+      expect(run.calls.filter((c) => c.startsWith("worker "))).toContain(
+        `worker ${ACCOUNT} billing-worker-dev`,
+      );
+      expect(JSON.stringify(data.notes)).not.toContain("skips it");
+    });
+
     test("that only hosts Durable Objects is still checked, though it has no routes", async () => {
       const wrangler = `${STAGED}
 [env.dev]

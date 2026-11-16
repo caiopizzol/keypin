@@ -1,10 +1,26 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { wranglerWorkers } from "../../src/cloudflare/index";
+import { calledAcross, wranglerWorkers } from "../../src/cloudflare/index";
 
 const SENTINEL = "sentinel-value-7f3a9c2e1d";
 const ACCOUNT = "11111111111111111111111111111111";
 
 describe("wrangler configs", () => {
+  test("an env another config's binding calls is reported, not skipped", () => {
+    const api = `name = "api"\n\n[env.internal]\nroutes = []\nworkers_dev = false\n`;
+    const web = `name = "web"\n\n[[services]]\nbinding = "API"\nservice = "api-internal"\n`;
+    const configs = [
+      { text: api, config: "apps/api/wrangler.toml" },
+      { text: web, config: "apps/web/wrangler.toml" },
+    ];
+    const alone = wranglerWorkers(api, "apps/api/wrangler.toml");
+    assert(alone.ok);
+    expect(alone.skipped).toEqual(["internal"]);
+    const parsed = wranglerWorkers(api, "apps/api/wrangler.toml", calledAcross(configs));
+    assert(parsed.ok);
+    expect(parsed.skipped).toEqual([]);
+    expect(parsed.workers.map((w) => w.worker)).toEqual(["api", "api-internal"]);
+  });
+
   test("reads the Worker, account, required secrets and var names from JSONC", () => {
     const parsed = wranglerWorkers(
       `{

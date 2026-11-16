@@ -27,23 +27,40 @@ function jsonc(text: string): unknown {
   return errors.length ? undefined : data;
 }
 
-export function wranglerWorkers(
-  text: string,
-  config: string,
-): { ok: true; workers: WorkerDeclaration[]; skipped: string[] } | { ok: false } {
+function parseConfig(text: string, config: string): Record<string, unknown> | null {
   let data: unknown;
   try {
     data = config.endsWith(".toml") ? parseToml(text) : jsonc(text);
   } catch {
-    return { ok: false };
+    return null;
   }
-  if (!isRecord(data)) return { ok: false };
+  return isRecord(data) ? data : null;
+}
+
+export function calledAcross(configs: readonly { text: string; config: string }[]): Set<string> {
+  const names = new Set<string>();
+  for (const { text, config } of configs) {
+    const data = parseConfig(text, config);
+    if (!data) continue;
+    const envs = isRecord(data.env) ? Object.values(data.env) : [];
+    for (const name of calledWorkers([data, ...envs])) names.add(name);
+  }
+  return names;
+}
+
+export function wranglerWorkers(
+  text: string,
+  config: string,
+  calledElsewhere: ReadonlySet<string> = new Set(),
+): { ok: true; workers: WorkerDeclaration[]; skipped: string[] } | { ok: false } {
+  const data = parseConfig(text, config);
+  if (!data) return { ok: false };
   const topName = stringOf(data.name);
   const topAccount = stringOf(data.account_id);
   const workers = [declaration(config, null, data, topName, topAccount)];
   const skipped: string[] = [];
   const envs = isRecord(data.env) ? data.env : {};
-  const called = calledWorkers([data, ...Object.values(envs)]);
+  const called = new Set([...calledWorkers([data, ...Object.values(envs)]), ...calledElsewhere]);
   for (const [env, raw] of Object.entries(envs)) {
     if (!isRecord(raw)) continue;
     const name = stringOf(raw.name) ?? (topName ? `${topName}-${env}` : null);

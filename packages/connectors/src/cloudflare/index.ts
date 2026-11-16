@@ -9,5 +9,5 @@ export {
   type SignInProblem,
 } from "./token";
 export { CloudflareReader } from "./list";
-export { wranglerWorkers } from "./wrangler";
+export { calledAcross, wranglerWorkers } from "./wrangler";
 export { cloudflareWorker, type WorkerHost, type WorkerPublisher, type WorkerTarget } from "./kind";

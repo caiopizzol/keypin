@@ -507,7 +507,7 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
-    "a create whose reply is lost names the key Resend made",
+    "a create whose reply is lost names the key to delete",
     async () => {
       const result = await drive({
         scenario: "resend-reply-lost",
@@ -516,7 +516,7 @@ describe("keypin rotate in a real terminal", () => {
       });
       expect(result.exit).toBe(1);
       expect(result.screen).toMatch(
-        /^Stopped: keypin didn't get the new key back, but Resend lists key re-new-1, named RESEND_API_KEY prod \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}, which this run likely made\. If no other machine rotated this key just now, delete it at https:\/\/resend\.com\/api-keys, then run this again:$/m,
+        /^Stopped: keypin didn't get the new key back\. Resend may have made the key before the reply was lost\. Delete any key named "RESEND_API_KEY prod \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}" at https:\/\/resend\.com\/api-keys before you run this again, or the rerun leaves it live\.$/m,
       );
       expect(result.screen).not.toContain("Nothing was created");
       expect(result.effects).toEqual(["resend create re-new-1"]);

@@ -263,6 +263,15 @@ describe("the reset operation", () => {
     expectNoSecret(error);
   });
 
+  test("a lost reset says the idle role's password may have changed and a rerun is safe", async () => {
+    const { issuer } = neon();
+    const each = issuer();
+    await each.checkAccount(null, urlFor("app_a", LIVE_A));
+    expect(each.lostCreate()).toBe(
+      "Neon may have reset the password of role app_b before the reply was lost. Nothing uses that role yet, so running this again is safe.",
+    );
+  });
+
   test("a project busy with another operation (423) is retried", async () => {
     const { issuer, effects } = neon({ locked: 2 });
     const each = issuer();

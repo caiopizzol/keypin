@@ -209,8 +209,8 @@ export class NeonIssuer implements Issuer {
     return { id: `${role}@${at}`, secret: new Secret(url.toString()) };
   }
 
-  async find(): Promise<string[]> {
-    return [];
+  lostCreate(): string {
+    return `Neon may have reset the password of role ${this.#idle?.role ?? "the idle role"} before the reply was lost. Nothing uses that role yet, so running this again is safe.`;
   }
 
   async revoke(id: string): Promise<"revoked" | "already gone"> {
@@ -241,7 +241,7 @@ export class NeonIssuer implements Issuer {
         "POST",
         `/roles/${role}/reset_password`,
         reply,
-        reply.status < 500 ? NothingChanged : Error,
+        reply.status >= 400 && reply.status < 500 ? NothingChanged : Error,
       );
     const reset = isRecord(reply.body.role) ? reply.body.role : {};
     const { password, updated_at: at } = reset;

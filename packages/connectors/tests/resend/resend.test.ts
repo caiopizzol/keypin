@@ -181,33 +181,20 @@ describe("after a failed create", () => {
     expect(error).not.toBeInstanceOf(NothingChanged);
   });
 
-  test("find lists keys with the name create sent, cut to 50 characters, that checkAccount didn't see", async () => {
-    const name = `${"K".repeat(60)} prod 2026-11-09 12:00:00`;
-    const sent = `…${name.slice(name.length - 49)}`;
+  test("a create that answers 2xx or 3xx without a key isn't counted as nothing created", async () => {
     const routes = happyRoutes();
-    routes["GET /api-keys"] = {
-      status: 200,
-      body: {
-        object: "list",
-        has_more: false,
-        data: [{ id: "key-before", name: sent }],
-      },
-    };
+    routes["POST /api-keys"] = { status: 202, body: {} };
     const { resend } = issuer(routes);
     await resend.checkAccount(null);
-    routes["GET /api-keys"] = {
-      status: 200,
-      body: {
-        object: "list",
-        has_more: false,
-        data: [
-          { id: "key-before", name: sent },
-          { id: "key-made", name: sent },
-          { id: "key-other", name: "Production" },
-        ],
-      },
-    };
-    expect(await resend.find(name)).toEqual(["key-made"]);
+    const error: unknown = await resend.create("K").catch((e: unknown) => e);
+    assert(error instanceof Error);
+    expect(error).not.toBeInstanceOf(NothingChanged);
+  });
+
+  test("a lost create names the key as Resend stores it, cut to 50 characters", () => {
+    const name = `${"K".repeat(60)} prod 2026-11-09 12:00:00`;
+    const { resend } = issuer(happyRoutes());
+    expect(resend.lostCreate(name)).toContain(`"…${name.slice(name.length - 49)}"`);
   });
 });
 

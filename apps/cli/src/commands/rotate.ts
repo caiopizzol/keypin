@@ -245,7 +245,7 @@ async function rotateLocked(job: Job): Promise<number> {
   const created = await createKey(job, issuer);
   if ("unchanged" in created) {
     if (created.unchanged) say("Stopped. Nothing was created.");
-    else await mayHaveCreated(job, issuer, created.name);
+    else mayHaveCreated(job, issuer, created.name);
     return 1;
   }
   const issued: Issued = {
@@ -545,27 +545,12 @@ async function createKey(
   }
 }
 
-async function mayHaveCreated({ deps, out, args }: Job, issuer: Issuer, name: string) {
-  const where = issuer.describe();
-  const again = `then run this again:\n  ${commandLine(deps, "rotate", args)}`;
-  const found = await issuer.find?.(name).catch(() => null);
-  if (found?.length === 0) {
-    out.line(
-      `Stopped: ${where} doesn't list a key named ${name} yet, but it may still appear. Check ${issuer.dashboard()} and delete it if it's there, ${again}`,
-    );
-  } else if (found?.length === 1) {
-    out.line(
-      `Stopped: keypin didn't get the new key back, but ${where} lists key ${found[0]}, named ${name}, which this run likely made. If no other machine rotated this key just now, delete it at ${issuer.dashboard()}, ${again}`,
-    );
-  } else if (found) {
-    out.line(
-      `Stopped: keypin didn't get the new key back, and ${where} lists keys ${found.join(", ")}, all named ${name} and made since the check, so another rotation ran at the same time. Delete only the one this run made, at ${issuer.dashboard()}, ${again}`,
-    );
-  } else {
-    out.line(
-      `Stopped: ${where} may have made the new key before this failed, and a rerun makes another. Delete any key named ${name} at ${issuer.dashboard()}, ${again}`,
-    );
-  }
+function mayHaveCreated({ deps, out, args }: Job, issuer: Issuer, name: string) {
+  const again = commandLine(deps, "rotate", args);
+  const why =
+    issuer.lostCreate?.(name) ??
+    `${issuer.describe()} may have made the new key before this failed. Delete any key named "${name}" at ${issuer.dashboard()} before you run this again.`;
+  out.line(`Stopped: keypin didn't get the new key back. ${why}\n  ${again}`);
 }
 
 async function undoCreate(

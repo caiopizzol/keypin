@@ -35,7 +35,6 @@ export class ResendIssuer implements Issuer {
   readonly #fetch: Fetch;
   #key: Promise<Secret> | undefined;
   #passed = false;
-  #listed = new Set<string>();
 
   constructor(options: ResendIssuerOptions) {
     this.#admin = options.admin;
@@ -67,7 +66,6 @@ export class ResendIssuer implements Issuer {
       };
     }
     this.#passed = true;
-    this.#listed = new Set(ids);
     return { ok: true, facts: currentId === null ? facts : `${facts}, with key ${currentId}` };
   }
 
@@ -81,20 +79,20 @@ export class ResendIssuer implements Issuer {
     };
     const created = await this.#request("POST", "/api-keys", body);
     if (created.status !== 200 && created.status !== 201)
-      throw failure("POST", "/api-keys", created, created.status < 500 ? NothingChanged : Error);
+      throw failure(
+        "POST",
+        "/api-keys",
+        created,
+        created.status >= 400 && created.status < 500 ? NothingChanged : Error,
+      );
     const { id, token } = created.body;
     if (typeof id !== "string" || typeof token !== "string" || !token)
       throw new Error("Resend's POST /api-keys response has no id and token");
     return { id, secret: new Secret(token) };
   }
 
-  async find(name: string): Promise<string[]> {
-    const list = await this.#request("GET", "/api-keys");
-    if (list.status !== 200) throw failure("GET", "/api-keys", list);
-    const sent = fitName(name);
-    return keysOf(list).flatMap((key) =>
-      key.name === sent && !this.#listed.has(key.id) ? [key.id] : [],
-    );
+  lostCreate(name: string): string {
+    return `Resend may have made the key before the reply was lost. Delete any key named "${fitName(name)}" at ${DASHBOARD} before you run this again, or the rerun leaves it live.`;
   }
 
   async revoke(id: string): Promise<"revoked" | "already gone"> {

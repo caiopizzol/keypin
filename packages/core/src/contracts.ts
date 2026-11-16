@@ -117,7 +117,7 @@ export interface Issuer {
   dashboard(): string;
   checkAccount(currentId: string | null, current: Secret): Promise<IssuerCheck>;
   create(name: string): Promise<IssuedKey>;
-  find?(name: string): Promise<string[]>;
+  lostCreate?(name: string): string;
   revoke(id: string): Promise<"revoked" | "already gone">;
 }
 

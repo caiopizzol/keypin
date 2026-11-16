@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { type Fetch, generationOf, isRecord, type Issuer, loadState, Secret } from "@keypin/core";
+import { type Fetch, generationOf, type Issuer, loadState, Secret } from "@keypin/core";
 import { memoryKeys, resendFetch } from "@keypin/connectors/resend/testing";
 import { cli } from "../src/cli";
 import { issuer as connect, vaults } from "../src/start";
@@ -268,64 +268,33 @@ describe("keypin rotate", () => {
     expect(run.stderr.text).toContain("Stopped. Nothing was created.");
   });
 
-  test("a create whose reply is lost names the key Resend made, and doesn't say nothing was created", async () => {
+  test("a create whose reply is lost names the key to delete, and doesn't say nothing was created", async () => {
     const keys = memoryKeys(["key-0"]);
     const run = setup({ answers: ["y"], resend: resend({ loseCreated: true, keys }) });
     expect(await run.run()).toBe(1);
     expect(keys.load().live).toEqual(["key-0", "re-new-1"]);
     expect(run.stderr.text).not.toContain("Nothing was created");
     expect(run.stderr.text).toContain(
-      "Stopped: keypin didn't get the new key back, but Resend lists key re-new-1, named RESEND_API_KEY prod 2026-11-09 12:00:00, which this run likely made. If no other machine rotated this key just now, delete it at https://resend.com/api-keys, then run this again:",
+      'Stopped: keypin didn\'t get the new key back. Resend may have made the key before the reply was lost. Delete any key named "RESEND_API_KEY prod 2026-11-09 12:00:00" at https://resend.com/api-keys before you run this again, or the rerun leaves it live.',
     );
     expect(run.vault.values.get("mailer resend key")).toBe(OLD);
   });
 
-  test("a key from an earlier rotation the same day isn't named for deletion", async () => {
-    const keys = memoryKeys(["key-0"]);
-    keys.save({ ...keys.load(), names: { "key-0": "RESEND_API_KEY prod 2026-11-09 09:30:00" } });
-    const run = setup({ answers: ["y"], resend: resend({ loseCreated: true, keys }) });
-    expect(await run.run()).toBe(1);
-    expect(run.stderr.text).toContain(
-      "Resend lists key re-new-1, named RESEND_API_KEY prod 2026-11-09 12:00:00, which this run likely made.",
-    );
-    expect(run.stderr.text).not.toContain("key-0");
-  });
-
-  test("two keys with the run's name since the check say another rotation ran, not which to delete", async () => {
-    const keys = memoryKeys(["key-0"]);
-    const lost = resend({ loseCreated: true, keys });
-    const raced: Fetch = async (url, init) => {
-      if (init.method === "POST") {
-        const { live, created, names = {} } = keys.load();
-        const twin = `re-twin-${created}`;
-        const asked: unknown = JSON.parse(init.body ?? "{}");
-        const name = isRecord(asked) && typeof asked.name === "string" ? asked.name : twin;
-        keys.save({ live: [...live, twin], created, names: { ...names, [twin]: name } });
-      }
-      return lost(url, init);
-    };
-    const run = setup({ answers: ["y"], resend: raced });
-    expect(await run.run()).toBe(1);
-    expect(run.stderr.text).toContain(
-      "Stopped: keypin didn't get the new key back, and Resend lists keys re-twin-0, re-new-1, all named RESEND_API_KEY prod 2026-11-09 12:00:00 and made since the check, so another rotation ran at the same time. Delete only the one this run made, at https://resend.com/api-keys, then run this again:",
-    );
-    expect(run.stderr.text).not.toContain("Delete it at");
-  });
-
-  test("a create that fails at Resend's end with no key listed yet says to check, not that a rerun is safe", async () => {
+  test("a create that fails at Resend's end gives the same advice", async () => {
     const run = setup({ answers: ["y"], resend: resend({ failCreate: 503 }) });
     expect(await run.run()).toBe(1);
+    expect(run.stderr.text).not.toContain("Nothing was created");
     expect(run.stderr.text).toContain(
-      "Stopped: Resend doesn't list a key named RESEND_API_KEY prod 2026-11-09 12:00:00 yet, but it may still appear. Check https://resend.com/api-keys and delete it if it's there, then run this again:",
+      'Delete any key named "RESEND_API_KEY prod 2026-11-09 12:00:00" at https://resend.com/api-keys before you run this again',
     );
   });
 
-  test("an issuer that can't look for the key says one may exist", async () => {
+  test("an issuer without its own advice says a key may exist and where to delete it", async () => {
     const run = setup({ failCreate: true, answers: ["y"] });
     expect(await run.run()).toBe(1);
     expect(run.stderr.text).not.toContain("Nothing was created");
     expect(run.stderr.text).toContain(
-      "Stopped: Resend may have made the new key before this failed, and a rerun makes another. Delete any key named RESEND_API_KEY prod 2026-11-09 12:00:00 at https://resend.com/api-keys, then run this again:",
+      'Stopped: keypin didn\'t get the new key back. Resend may have made the new key before this failed. Delete any key named "RESEND_API_KEY prod 2026-11-09 12:00:00" at https://resend.com/api-keys before you run this again.',
     );
   });
 

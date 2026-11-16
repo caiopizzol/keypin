@@ -55,6 +55,7 @@ const toy: VaultKind<unknown, ToyRef, ToyReference, string> = {
   account: ({ box }) => `toy box ${box}`,
   sameItem: (a, b) => a.shelf === b.shelf && a.slot === b.slot,
   stored: toyRef,
+  signInVariables: ["TOY_KEY_RING"],
 };
 
 const toyBackend = (values: Record<string, string>, reads: KeyRef[]): VaultBackend => {
@@ -104,7 +105,7 @@ const issuer = (): Issuer => ({
   revoke: async () => "revoked",
 });
 
-function setup(map = MAP) {
+function setup(map = MAP, env: Record<string, string> = {}) {
   const disk = memoryFiles({
     "/work/billing/keypin.toml": map,
     [REGISTRY]: registryWith("/work/billing"),
@@ -118,6 +119,7 @@ function setup(map = MAP) {
       "1password": () => fakeVault({ values: { "other key": `${SENTINEL}-other` } }).vault,
     }),
     deps: {
+      env,
       vaults: [...vaults, toy],
       issuer,
       launch: launcher.launch,
@@ -161,6 +163,20 @@ describe("a vault kind defined outside keypin", () => {
     expect(run.stderr.text).toContain(
       "Read 2 dev values from 1Password account my.1password.com and toy box attic  toy://top/left, op://Private/other key/password",
     );
+  });
+
+  test("run keeps its sign-in variable from the command, and refuses to map it", async () => {
+    const run = setup(MAP, { TOY_KEY_RING: "toy-sign-in", KEEP_ME: "yes" });
+    expect(await cli(["run", "--", "env"], run.deps)).toBe(0);
+    expect(run.launcher.launches[0]?.env).not.toHaveProperty("TOY_KEY_RING");
+    expect(run.launcher.launches[0]?.env.KEEP_ME).toBe("yes");
+
+    const mapped = setup(`${MAP}\n[keys.TOY_KEY_RING]\ndev = "toy://top/left"\n`);
+    expect(await cli(["run", "--", "env"], mapped.deps)).toBe(1);
+    expect(mapped.stderr.text).toContain(
+      "keypin.toml maps TOY_KEY_RING, which keypin uses to sign in; keypin run doesn't pass it to a command",
+    );
+    expect(mapped.launcher.launches).toEqual([]);
   });
 
   test("rotate names the vault by its kind's name", async () => {

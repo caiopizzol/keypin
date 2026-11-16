@@ -37,6 +37,7 @@ export interface CloudflareSignIn {
 
 export interface SignInOptions {
   env: Readonly<Record<string, string | undefined>>;
+  signIn: readonly string[];
   folder: string;
   platform?: string;
   timeoutMs?: number;
@@ -79,7 +80,7 @@ async function oauthToken(options: SignInOptions): Promise<string> {
     const run = (args: string[], timeout: number) =>
       runWrangler(wrangler, args, {
         cwd: logs,
-        env: wranglerEnv(options.env, logs),
+        env: wranglerEnv(options.env, options.signIn, logs),
         timeout,
       });
     const asked = await run(
@@ -100,9 +101,10 @@ async function oauthToken(options: SignInOptions): Promise<string> {
 
 function wranglerEnv(
   env: Readonly<Record<string, string | undefined>>,
+  signIn: readonly string[],
   logs: string,
 ): Record<string, string> {
-  const kept = withoutSignIn(env, [API_TOKEN_VARIABLE, ...WRANGLER_CREDENTIALS]);
+  const kept = withoutSignIn(env, [...signIn, API_TOKEN_VARIABLE, ...WRANGLER_CREDENTIALS]);
   return {
     ...kept,
     WRANGLER_LOG: "log",

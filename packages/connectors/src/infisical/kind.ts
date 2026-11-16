@@ -37,6 +37,7 @@ export const infisicalVault: VaultKind<unknown, InfisicalRef, InfisicalReference
     a.path === b.path &&
     a.name === b.name,
   stored: decode,
+  signInVariables: [CLIENT_ID, CLIENT_SECRET],
   addByHand: (map) => {
     const refs = map.keys.flatMap((key) =>
       Object.values(key.environments).flatMap((entry) => (entry ? [entry.ref] : [])),

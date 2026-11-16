@@ -8,7 +8,7 @@ import {
   messageOf,
   runEnvironment,
   type Secret,
-  SIGN_IN_VARIABLES,
+  signInVariables,
   vaultAccounts,
   withoutSignIn,
 } from "@keypin/core";
@@ -33,10 +33,8 @@ export async function run(args: string[], deps: Deps): Promise<number> {
     return entry ? [{ key, ref: entry.ref }] : [];
   });
   const keys = values.only ? pick(available, values.only, environment) : available;
-  const signInNames = deps.destinations.flatMap((kind) => kind.signInVariables ?? []);
-  const reserved = keys.filter(
-    (k) => SIGN_IN_VARIABLES.includes(k.key.name) || signInNames.includes(k.key.name),
-  );
+  const signInNames = signInVariables([...deps.vaults, ...deps.destinations]);
+  const reserved = keys.filter((k) => signInNames.includes(k.key.name));
   if (reserved.length)
     throw new Error(
       `keypin.toml maps ${reserved.map((k) => k.key.name).join(", ")}, which keypin uses to sign in; keypin run doesn't pass it to a command`,

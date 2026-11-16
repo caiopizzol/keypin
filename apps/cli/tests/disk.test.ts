@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, assert, beforeEach, describe, expect, test } from "vite-plus/test";
 import { emptyState, register, saveState } from "@keypin/core";
 import { createFile, diskFiles, diskLock, git, replaceFile, replaceFileWith } from "../src/disk";
+import { signInNames } from "../src/start";
 
 const HOLDER = fileURLToPath(new URL("lock-holder.ts", import.meta.url));
 
@@ -111,7 +112,7 @@ describe("git", () => {
       process.env.PATH = `${dir}:/usr/bin:/bin`;
       process.env.OP_SERVICE_ACCOUNT_TOKEN = "ops_sentinel-sign-in";
       process.env.KEYPIN_1PASSWORD = "service-account";
-      expect(await git(dir, ["remote"])).toBe("token= mode=\n");
+      expect(await git(dir, ["remote"], signInNames)).toBe("token= mode=\n");
     } finally {
       for (const name of Object.keys(process.env)) if (!(name in saved)) delete process.env[name];
       Object.assign(process.env, saved);

@@ -61,6 +61,7 @@ export interface VaultKind<
   sameField?(a: R, b: R): boolean;
   stored(value: Readonly<Record<string, unknown>>): R | null;
   readonly newKeys?: NewKeys;
+  readonly signInVariables?: readonly string[];
   addByHand?(map: KeysMap): string | undefined;
   signInNotes?(host: H): readonly string[];
   itemNotes?(refs: readonly KeyRef[], host: H): readonly string[];

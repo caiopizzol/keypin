@@ -160,12 +160,16 @@ export async function listFolder(path: string): Promise<FolderEntry[]> {
   }));
 }
 
-export function git(folder: string, args: readonly string[]): Promise<string | null> {
+export function git(
+  folder: string,
+  args: readonly string[],
+  signIn: readonly string[],
+): Promise<string | null> {
   return new Promise((resolve) => {
     execFile(
       "git",
       ["-C", folder, ...args],
-      { maxBuffer: 64 * 1024 * 1024, env: withoutSignIn(process.env) },
+      { maxBuffer: 64 * 1024 * 1024, env: withoutSignIn(process.env, signIn) },
       (error, stdout) => {
         resolve(error ? null : String(stdout));
       },

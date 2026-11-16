@@ -76,6 +76,7 @@ export const onePasswordVault: VaultKind<
   sameItem: (a, b) => sameName(a.vault, b.vault) && sameName(a.item, b.item),
   sameField: (a, b) => sameName(a.section, b.section) && sameName(a.field, b.field),
   stored: decode,
+  signInVariables: ["OP_SERVICE_ACCOUNT_TOKEN", "KEYPIN_1PASSWORD"],
   newKeys: {
     reference: "<vault>/<item>/<field>",
     pin: { account: "<1Password sign-in address>" },

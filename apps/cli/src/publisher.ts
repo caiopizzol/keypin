@@ -1,4 +1,4 @@
-import type { PublishTarget } from "@keypin/core";
+import { type PublishTarget, signInVariables } from "@keypin/core";
 import type { Deps, Publisher } from "./deps";
 
 export async function publisherFor(
@@ -7,7 +7,12 @@ export async function publisherFor(
   folder = deps.cwd,
   refreshLogins = true,
 ): Promise<{ publisher: Publisher; notes: string[] }> {
-  let publisher: Publisher = { githubLogin: null, workerSignIn: null, refreshLogins };
+  let publisher: Publisher = {
+    githubLogin: null,
+    workerSignIn: null,
+    refreshLogins,
+    signInVariables: signInVariables([...deps.vaults, ...deps.destinations]),
+  };
   const notes: string[] = [];
   for (const kind of deps.destinations) {
     if (!kind.publisher || !targets.some((target) => target.to === kind.kind)) continue;

@@ -9,6 +9,7 @@ const USER_TOKEN = "sentinel-user-token-5d1e";
 const ENV_TOKEN = "sentinel-env-token-9a7c";
 const ACTIVE_TOKEN = "sentinel-active-token-3e8f";
 const SAVED = { ...process.env };
+const SIGN_IN = ["OP_SERVICE_ACCOUNT_TOKEN", "KEYPIN_1PASSWORD"];
 
 const FAKE_GH = `#!/bin/sh
 if [ -n "$FAKE_GH_LOG" ]; then echo "$*" >> "$FAKE_GH_LOG"; fi
@@ -67,7 +68,7 @@ describe("ghToken", () => {
     process.env.PATH = `${bin}:/usr/bin:/bin`;
     process.env.GH_TOKEN = ENV_TOKEN;
     process.env.GITHUB_TOKEN = ENV_TOKEN;
-    expect(await ghToken("someone")).toBe(USER_TOKEN);
+    expect(await ghToken("someone", { signIn: SIGN_IN })).toBe(USER_TOKEN);
     expect(process.env.GH_TOKEN).toBe(ENV_TOKEN);
     expect(process.env.GITHUB_TOKEN).toBe(ENV_TOKEN);
   });
@@ -76,7 +77,7 @@ describe("ghToken", () => {
     process.env.PATH = `${bin}:/usr/bin:/bin`;
     process.env.OP_SERVICE_ACCOUNT_TOKEN = "ops_sentinel-sign-in";
     process.env.KEYPIN_1PASSWORD = "service-account";
-    expect(await asked(() => ghToken("someone"))).toEqual([
+    expect(await asked(() => ghToken("someone", { signIn: SIGN_IN }))).toEqual([
       "auth token --hostname github.com --user someone",
     ]);
     expect(process.env.OP_SERVICE_ACCOUNT_TOKEN).toBe("ops_sentinel-sign-in");
@@ -84,14 +85,14 @@ describe("ghToken", () => {
 
   test("with no login chosen, asks gh for the active login's token", async () => {
     process.env.PATH = `${bin}:/usr/bin:/bin`;
-    expect(await ghToken(null)).toBe(ACTIVE_TOKEN);
+    expect(await ghToken(null, { signIn: SIGN_IN })).toBe(ACTIVE_TOKEN);
   });
 
   test("a failing gh that printed a token leaves the token out of the error", async () => {
     process.env.PATH = `${bin}:/usr/bin:/bin`;
     process.env.FAKE_GH_EXIT = "1";
     process.env.GH_TOKEN = ENV_TOKEN;
-    const error = await failure(ghToken("someone"));
+    const error = await failure(ghToken("someone", { signIn: SIGN_IN }));
     expect(error).toBeInstanceOf(Error);
     const everything = [
       error instanceof Error ? error.message : "",
@@ -109,7 +110,7 @@ describe("ghToken", () => {
   test("with GITHUB_TOKEN set and no gh login, says keypin ignores it and how to save a login", async () => {
     process.env.PATH = "/nonexistent";
     process.env.GITHUB_TOKEN = ENV_TOKEN;
-    const error = await failure(ghToken("someone"));
+    const error = await failure(ghToken("someone", { signIn: SIGN_IN }));
     expect(error).toEqual(
       new Error(
         "gh has no token for someone; keypin ignores GITHUB_TOKEN: it publishes only as a login gh has saved, so a token meant for another tool can't pick the account; unset GITHUB_TOKEN, then run gh auth login --hostname github.com --with-token < token.txt with a classic token that has the repo, read:org and gist scopes (gh needs all three)",
@@ -120,32 +121,32 @@ describe("ghToken", () => {
   test("an empty answer from gh is no token", async () => {
     process.env.PATH = `${bin}:/usr/bin:/bin`;
     process.env.FAKE_GH_EMPTY = "1";
-    expect(await failure(ghToken("someone"))).toEqual(
+    expect(await failure(ghToken("someone", { signIn: SIGN_IN }))).toEqual(
       new Error("gh has no token for someone; run: gh auth login --hostname github.com"),
     );
   });
 
   test("no gh on PATH is the same clear error", async () => {
     process.env.PATH = "/nonexistent";
-    expect(await failure(ghToken("someone"))).toEqual(
+    expect(await failure(ghToken("someone", { signIn: SIGN_IN }))).toEqual(
       new Error("gh has no token for someone; run: gh auth login --hostname github.com"),
     );
   });
 
   test("refreshing is the default, so publish asks gh without --no-refresh", async () => {
     process.env.PATH = `${bin}:/usr/bin:/bin`;
-    expect(await asked(() => ghToken("someone"))).toEqual([
+    expect(await asked(() => ghToken("someone", { signIn: SIGN_IN }))).toEqual([
       "auth token --hostname github.com --user someone",
     ]);
   });
 
   test("without refresh, asks gh with --no-refresh", async () => {
     process.env.PATH = `${bin}:/usr/bin:/bin`;
-    expect(await ghToken("someone", { refresh: false })).toBe(USER_TOKEN);
-    expect(await asked(() => ghToken("someone", { refresh: false }))).toEqual([
+    expect(await ghToken("someone", { refresh: false, signIn: SIGN_IN })).toBe(USER_TOKEN);
+    expect(await asked(() => ghToken("someone", { refresh: false, signIn: SIGN_IN }))).toEqual([
       "auth token --hostname github.com --user someone --no-refresh",
     ]);
-    expect(await asked(() => ghToken(null, { refresh: false }))).toEqual([
+    expect(await asked(() => ghToken(null, { refresh: false, signIn: SIGN_IN }))).toEqual([
       "auth token --hostname github.com --no-refresh",
     ]);
   });
@@ -153,8 +154,8 @@ describe("ghToken", () => {
   test("a gh older than 2.103.0, which has no --no-refresh and never refreshes, is asked again without it", async () => {
     process.env.PATH = `${bin}:/usr/bin:/bin`;
     process.env.FAKE_GH_OLD = "1";
-    expect(await ghToken("someone", { refresh: false })).toBe(USER_TOKEN);
-    expect(await asked(() => ghToken("someone", { refresh: false }))).toEqual([
+    expect(await ghToken("someone", { refresh: false, signIn: SIGN_IN })).toBe(USER_TOKEN);
+    expect(await asked(() => ghToken("someone", { refresh: false, signIn: SIGN_IN }))).toEqual([
       "auth token --hostname github.com --user someone --no-refresh",
       "auth token --hostname github.com --user someone",
     ]);
@@ -163,10 +164,10 @@ describe("ghToken", () => {
   test("without refresh, any other failure is no token, with no second ask", async () => {
     process.env.PATH = `${bin}:/usr/bin:/bin`;
     process.env.FAKE_GH_EXIT = "1";
-    expect(await failure(ghToken("someone", { refresh: false }))).toEqual(
+    expect(await failure(ghToken("someone", { refresh: false, signIn: SIGN_IN }))).toEqual(
       new Error("gh has no token for someone; run: gh auth login --hostname github.com"),
     );
-    expect(await asked(() => ghToken("someone", { refresh: false }))).toEqual([
+    expect(await asked(() => ghToken("someone", { refresh: false, signIn: SIGN_IN }))).toEqual([
       "auth token --hostname github.com --user someone --no-refresh",
     ]);
   });

@@ -484,6 +484,48 @@ worker = "billing-worker"
     expect(leaks(...run.everything())).toBe(false);
   });
 
+  test("names in ignore get no step, no TOML and no exit 1, and one note says so", async () => {
+    const workflow = `
+on: push
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - run: review
+        env:
+          STRIPE_API_KEY: \${{ secrets.STRIPE_API_KEY }}
+          OPENAI_API_KEY: \${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: \${{ secrets.ANTHROPIC_API_KEY }}
+`;
+    const files = {
+      [`${ROOT}/.env`]: `PORT=3000\n`,
+      [`${ROOT}/.github/workflows/deploy.yml`]: workflow,
+    };
+    const ignore = `ignore = ["OPENAI_API_KEY", "anthropic_api_key", "PORT", "UNUSED"]\n`;
+    const run = setup({
+      files: { ...files, [MAP]: `${ignore}${PUBLISHED}` },
+      deps: { workerSignIn: () => fakeSignIn("oauth") },
+      github: { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+    });
+    expect(await cli(["check"], run.deps)).toBe(0);
+    const text = run.stdout.text;
+    expect(text).toContain("Everything checks out.");
+    expect(text).toContain("Note: 3 keys ignored in keypin.toml\n");
+    expect(text).not.toContain("OPENAI_API_KEY");
+    expect(text).not.toContain("PORT");
+    expect(text).not.toContain(PASTE);
+
+    const without = setup({
+      files: { ...files, [MAP]: PUBLISHED },
+      github: { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+    });
+    expect(await cli(["check"], without.deps)).toBe(1);
+    expect(without.stdout.text).toContain("OPENAI_API_KEY: .github/workflows/deploy.yml uses it");
+    expect(without.stdout.text).not.toContain("ignored in keypin.toml");
+  });
+
   test("a mapped secret the place doesn't have yet says to publish it", async () => {
     const run = setup({ files: { [MAP]: PUBLISHED, [`${ROOT}/.env`]: null } });
     expect(await cli(["check", "--json"], run.deps)).toBe(1);

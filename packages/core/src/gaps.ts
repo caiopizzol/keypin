@@ -108,8 +108,17 @@ export function findGaps(
   const environment = publishEnvironment({ environments: listed });
   const notes: string[] = [];
   const needs: Found[] = [];
+  const ignore = keys?.ignore ?? [];
+  const ignored = new Set<string>();
+  const skipped: { name: string; place: string }[] = [];
   const need = (name: string, place: Place, usedBy: string) => {
     if (!isVariableName(name)) return;
+    const skip = ignore.find((each) => place.matches(each, name));
+    if (skip !== undefined) {
+      ignored.add(skip);
+      skipped.push({ name, place: place.id });
+      return;
+    }
     const found = needs.find((n) => n.need.name === name && n.place.id === place.id);
     if (found) {
       if (!found.need.usedBy.includes(usedBy)) found.need.usedBy.push(usedBy);
@@ -225,7 +234,7 @@ export function findGaps(
         : { kind: "edit", text: `${why}. ${edit}` },
     );
   }
-  const resolved = needs.map((n) => ({ name: n.need.name, place: n.place.id }));
+  const resolved = [...needs.map((n) => ({ name: n.need.name, place: n.place.id })), ...skipped];
   for (const notesAfter of after) notes.push(...notesAfter(resolved));
 
   const environments = keys?.environments ?? DEFAULT_ENVIRONMENTS;
@@ -249,7 +258,11 @@ export function findGaps(
     const other = caveat === null ? "" : `, which ${caveat}`;
     const names = file.names.filter(isVariableName);
     const key = (name: string) => keys?.keys.find((k) => k.name === name);
-    const unmapped = names.filter((name) => !key(name));
+    const unmapped = names.filter((name) => {
+      if (!ignore.includes(name)) return !key(name);
+      ignored.add(name);
+      return false;
+    });
     const elsewhere = names.filter((name) => {
       const found = key(name);
       return found !== undefined && !found.environments[env];
@@ -293,6 +306,9 @@ export function findGaps(
       });
     }
   }
+
+  if (ignored.size)
+    notes.push(`${ignored.size} ${ignored.size === 1 ? "key" : "keys"} ignored in keypin.toml`);
 
   return {
     production: needs.map((n) => n.need),

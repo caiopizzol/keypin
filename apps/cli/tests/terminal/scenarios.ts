@@ -295,6 +295,25 @@ export const scenarios: Record<string, Scenario> = {
     about: "ready, plus a .env with a key keypin.toml doesn't map, to import",
     files: { ...ready.files, ".env": "RESEND_API_KEY=verify-resend-2f7c\nPORT=3000\n" },
   },
+  "ignored-keys": {
+    ...ready,
+    about:
+      "ready, plus a copied review workflow with two optional model keys, both in keypin.toml's ignore list",
+    files: {
+      ...ready.files,
+      "keypin.toml": `ignore = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"]\n${MAP}`,
+      ".github/workflows/review.yml": `on: pull_request
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./review.sh
+        env:
+          OPENAI_API_KEY: \${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: \${{ secrets.ANTHROPIC_API_KEY }}
+`,
+    },
+  },
   "quoted-env": {
     ...ready,
     about: "ready, plus a .env whose value is quoted and has an inline comment, for the leak check",

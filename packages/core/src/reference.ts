@@ -22,7 +22,7 @@ export function parseReference(
   text: string,
   vaults: VaultKinds,
 ): { vault: VaultKind; reference: KeyRef } | string {
-  const query = /[?#].*$/.exec(text)?.[0];
+  const query = /[?#].*$/s.exec(text)?.[0];
   if (query) return `can't have the query "${query}"; keypin reads the field's value as stored`;
   const vault = vaults.find((v) => text.startsWith(v.scheme));
   if (!vault) return `must start with ${referenceSchemes(vaults)}`;

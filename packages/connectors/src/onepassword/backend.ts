@@ -95,7 +95,9 @@ export function onePasswordBackend(
     let pending = clients.get(account);
     if (!pending) {
       pending = connect(account).catch((error: unknown) => {
-        throw signInFailed(account, error, mode, tokenIgnored);
+        throw error instanceof RateLimited
+          ? sdkError(error)
+          : signInFailed(account, error, mode, tokenIgnored);
       });
       clients.set(account, pending);
     }
@@ -184,6 +186,7 @@ export function onePasswordBackend(
       }
       const sdk = await client(ref.account);
       const id = await vaultId(sdk, ref);
+      itemsIn(sdk).delete(id);
       const found = await find(sdk, id, ref);
       if (found && options.newItem) {
         throw new Error(`${where(ref)}: the item already exists; keypin doesn't overwrite it`);

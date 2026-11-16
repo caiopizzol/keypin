@@ -361,6 +361,25 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
     }
   });
 
+  test("with a Snap or Flatpak desktop app, says to install the .deb or .rpm package, not to install the app", async () => {
+    const vault = onePasswordBackend(
+      requireDesktopApp(
+        async () => {
+          throw new Error("Native library is not available.");
+        },
+        () => null,
+        () => true,
+      ),
+    );
+    const run = setup({ deps: { vault: () => vault } });
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(run.stdout.text).toContain(`1 Sign in to 1Password
+  Install the 1Password desktop app from the .deb or .rpm package.
+  On a server or in CI, use a 1Password service account instead (docs/service-account.md).
+`);
+    expect(run.stdout.text).not.toContain("Install the 1Password desktop app.");
+  });
+
   test("a map that doesn't parse lists its errors, reads nothing, exit 1", async () => {
     const run = setup({ map: `${BILLING_MAP}\n[keys.BAD]\nrotate_every = "soon"\n` });
     expect(await cli(["check", "--json"], run.deps)).toBe(1);

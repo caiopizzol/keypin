@@ -52,7 +52,7 @@ describe("list", () => {
     expect(JSON.stringify(items)).not.toContain(VALUE);
   });
 
-  test("lists vaults and items once however many keys a run reads, and again after a write", async () => {
+  test("lists vaults and items once however many keys a run reads, and again for and after a write", async () => {
     const { client, calls } = fake([
       item("a", [field("password", "Concealed", VALUE)]),
       item("b", [field("password", "Concealed", VALUE)]),
@@ -64,7 +64,7 @@ describe("list", () => {
     expect(calls.lists).toEqual({ vaults: 1, items: 1 });
     await backend.write({ ...ref, item: "c" }, new Secret(VALUE));
     expect((await backend.read({ ...ref, item: "c" })).reveal()).toBe(VALUE);
-    expect(calls.lists).toEqual({ vaults: 1, items: 2 });
+    expect(calls.lists).toEqual({ vaults: 1, items: 3 });
   });
 
   test("signs in once per account", async () => {
@@ -318,6 +318,21 @@ describe("write", () => {
     ]);
   });
 
+  test("with newItem, refuses an item created since the vault was listed", async () => {
+    const { client, calls } = fake();
+    const { backend } = backendFor(client);
+    expect(await backend.list(scope)).toEqual([]);
+    await client.items.create({
+      category: "Password",
+      vaultId: "vault-1",
+      title: "demo dev token",
+    });
+    await expect(backend.write(ref, new Secret(VALUE), { newItem: true })).rejects.toThrow(
+      "the item already exists; keypin doesn't overwrite it",
+    );
+    expect(calls.create).toHaveLength(1);
+  });
+
   test("with newItem, refuses an item that exists, before changing it", async () => {
     const { client, calls } = fake([
       item("Demo Dev Token", [field("password", "Concealed", "keep-this")]),
@@ -526,7 +541,7 @@ describe("errors", () => {
     await expect(backend.read(ref)).rejects.toThrow(
       new SignInFailed(
         `1Password account "${ACCOUNT}": sign-in failed: the 1Password desktop app is installed as a Snap or Flatpak, and those packages don't support integrations with other apps; install it from the .deb or .rpm package instead`,
-        { kind: "no-desktop-app" },
+        { kind: "sandboxed-desktop-app" },
       ),
     );
   });
@@ -564,6 +579,16 @@ describe("errors", () => {
     await expect(service.read(ref)).rejects.toThrow(
       "1Password's rate limit was reached: Too Many Requests. A service account token gets 1,000 reads and 100 writes an hour",
     );
+  });
+
+  test("a rate limit while signing in says so, not that sign-in failed", async () => {
+    const desktop = onePasswordBackend(async () => {
+      throw new RateLimited("Too Many Requests");
+    });
+    await expect(desktop.read(ref)).rejects.toThrow(
+      /^1Password's rate limit was reached: Too Many Requests$/,
+    );
+    await expect(desktop.read(ref)).rejects.not.toBeInstanceOf(SignInFailed);
   });
 
   test("looks for the desktop app's library where the SDK does", () => {

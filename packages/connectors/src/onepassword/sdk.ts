@@ -45,16 +45,14 @@ async function sdkClient(
   auth: (sdk: Sdk) => string | InstanceType<Sdk["DesktopAuth"]>,
 ): Promise<SdkClient> {
   const sdk = await import("@1password/sdk");
-  const client = await sdk.createClient({
-    auth: auth(sdk),
-    integrationName: "keypin",
-    integrationVersion: "0.0.0",
-  });
-  const field = (f: Field): ItemField => ({ ...f, fieldType: sdk.ItemFieldType[f.fieldType] });
   const call = <T>(request: Promise<T>): Promise<T> =>
     request.catch((error: unknown) => {
       throw error instanceof sdk.RateLimitExceededError ? new RateLimited(error.message) : error;
     });
+  const client = await call(
+    sdk.createClient({ auth: auth(sdk), integrationName: "keypin", integrationVersion: "0.0.0" }),
+  );
+  const field = (f: Field): ItemField => ({ ...f, fieldType: sdk.ItemFieldType[f.fieldType] });
   return {
     vaults: { list: () => call(client.vaults.list()) },
     items: {

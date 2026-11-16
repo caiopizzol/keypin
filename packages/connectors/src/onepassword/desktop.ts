@@ -57,9 +57,9 @@ export function requireDesktopApp(
 ): Connect {
   return async (account) => {
     if (!found())
-      throw new SignInFailed(sandboxed() ? SANDBOXED_APP : DESKTOP_APP_MISSING, {
-        kind: "no-desktop-app",
-      });
+      throw sandboxed()
+        ? new SignInFailed(SANDBOXED_APP, { kind: "sandboxed-desktop-app" })
+        : new SignInFailed(DESKTOP_APP_MISSING, { kind: "no-desktop-app" });
     return connect(account);
   };
 }

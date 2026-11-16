@@ -37,7 +37,7 @@ export async function listRepoSecrets(options: {
         "X-GitHub-Api-Version": "2022-11-28",
       },
     });
-    if (options.organization && response.status === 422) {
+    if (options.organization && page === 1 && response.status === 422) {
       await response.body?.cancel();
       return { ok: true, secrets: [] };
     }

@@ -107,6 +107,22 @@ describe("listRepoSecrets", () => {
     expect(await read()).toEqual({ ok: true, secrets: [] });
   });
 
+  test("a 422 after the first page of organization secrets is a reason, not an empty list", async () => {
+    const read = await listRepoSecrets({
+      repo: "acme/billing",
+      organization: true,
+      token: async () => TOKEN,
+      fetch: fakeFetch([
+        {
+          status: 200,
+          body: { total_count: 101, secrets: Array.from({ length: 100 }, (_, i) => secret(i)) },
+        },
+        { status: 422, body: { message: "Validation Failed" } },
+      ]).fetch,
+    });
+    expect(read).toEqual({ ok: false, reason: "GitHub returned HTTP 422" });
+  });
+
   test("a token that can't list organization secrets is a reason, not an empty list", async () => {
     const read = await listRepoSecrets({
       repo: "acme/billing",

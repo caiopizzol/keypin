@@ -490,12 +490,15 @@ describe("metadata", () => {
     await expect(failure).rejects.not.toThrow(VALUE);
   });
 
-  test("refuses a rotated value that isn't a date", async () => {
-    const { client } = fake([item("demo dev token", [field("rotated", "Text", "last week")])]);
-    await expect(backendFor(client).backend.metadata(ref)).rejects.toThrow(
-      '"rotated" isn\'t a date: "last week"',
-    );
-  });
+  test.each(["last week", "2026-13-45", "2026-02-30"])(
+    "refuses a rotated value that isn't a real day: %s",
+    async (rotated) => {
+      const { client } = fake([item("demo dev token", [field("rotated", "Text", rotated)])]);
+      await expect(backendFor(client).backend.metadata(ref)).rejects.toThrow(
+        `"rotated" isn't a date: "${rotated}"`,
+      );
+    },
+  );
 });
 
 describe("errors", () => {

@@ -127,4 +127,5 @@ npx skills add caiopizzol/keypin -g    # all your projects
   `--plan`
 - [Notes](https://github.com/caiopizzol/keypin/blob/main/docs/notes.md): `wrangler dev`, signing in to Cloudflare, and
   the files keypin keeps
+- [API keys](https://keypin.dev/keys): where to get each key, how to set it and how to replace it
 - [Development](https://github.com/caiopizzol/keypin/blob/main/docs/development.md): working on keypin

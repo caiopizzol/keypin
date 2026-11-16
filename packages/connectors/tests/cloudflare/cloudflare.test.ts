@@ -290,6 +290,28 @@ describe("no value or token in any output", () => {
     expectNoSentinel(await failure.catch((e: unknown) => e), check, worker.describe());
   });
 
+  test.each([
+    ["ends in a newline, and the message echoes it", `${SENTINEL}\n`, `bad ${SENTINEL}\n`],
+    [
+      "ends in a newline, and the message echoes it without one",
+      `${SENTINEL}\n`,
+      `bad ${SENTINEL}`,
+    ],
+    ["has spaces around it, and the message echoes it", `  ${SENTINEL}  `, `bad ${SENTINEL}`],
+  ])("a value that %s isn't shown", async (_, value, message) => {
+    const routes = happyRoutes();
+    routes[`PUT ${BASE}/secrets`] = {
+      status: 500,
+      body: { success: false, errors: [{ code: 10013, message }] },
+    };
+    const { worker } = destination(routes);
+    const check = await worker.checkAccount();
+    const failure = await worker.write("API_KEY", new Secret(value)).catch((e: unknown) => e);
+    assert(failure instanceof Error);
+    expect(failure.message).not.toContain("bad");
+    expectNoSentinel(failure, check, worker.describe());
+  });
+
   test("a 500 on /accounts and on the versions list", async () => {
     const accountsDown = happyRoutes();
     accountsDown["GET /client/v4/accounts"] = {

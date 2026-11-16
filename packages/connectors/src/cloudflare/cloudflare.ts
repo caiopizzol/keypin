@@ -152,10 +152,13 @@ function failure(
 ): Error {
   const errors = Array.isArray(response.body.errors) ? response.body.errors.filter(isRecord) : [];
   const codes = errors.map((e) => e.code).filter((c) => typeof c === "number");
+  const secrets = (hidden ?? []).flatMap((h) => [h, h.trim()]).filter((h) => h);
   const said = hidden
     ? errors
-        .map((e) => (typeof e.message === "string" ? e.message.trim() : ""))
-        .filter((m) => m && !hidden.some((h) => h && m.includes(h)))
+        .map((e) => (typeof e.message === "string" ? e.message : ""))
+        .filter((m) => !secrets.some((h) => m.includes(h)))
+        .map((m) => m.trim())
+        .filter((m) => m)
     : [];
   const where = `Cloudflare ${method} ${path.split("?")[0]} returned HTTP ${response.status}`;
   const detail = [

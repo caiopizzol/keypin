@@ -1169,7 +1169,6 @@ describe("keypin publish --all", () => {
     expect(run.writes()).toEqual([
       `write ${WORKER_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
     ]);
-    expect(run.stderr.text).toContain("Not finished: STRIPE_API_KEY, OTHER_KEY.");
     expect(run.stderr.text).toContain("Finished writes keep their receipts");
     const state = await run.state();
     expect(state.receipts.map((r) => r.destinationId)).toEqual([WORKER]);
@@ -1191,7 +1190,6 @@ describe("keypin publish --all", () => {
     const run = setupAll({ terminal: "yes", failWrite: [OTHER_PLACE] });
     expect(await cli(["publish", "--all"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain("Published STRIPE_API_KEY (prod) to 2 destinations.");
-    expect(run.stderr.text).toContain("Not finished: OTHER_KEY.");
     const state = await run.state();
     expect(state.receipts.map((r) => r.destinationId)).toEqual([WORKER, GITHUB]);
   });
@@ -1252,7 +1250,6 @@ describe("keypin publish --all", () => {
     expect(generation(WORKER)).not.toBe(generation(WORKER, before));
     expect(generation(GITHUB)).toBe(generation(GITHUB, before));
     expect(state.operations).toMatchObject([{ keyId: "STRIPE_API_KEY", done: [WORKER] }]);
-    expect(run.stderr.text).toContain("Not finished: STRIPE_API_KEY.");
 
     const restored = setupAll({ disk: run.disk });
     expect(await cli(["publish", "OTHER_KEY", "--plan"], restored.deps)).toBe(3);
@@ -1273,8 +1270,7 @@ describe("keypin publish --all", () => {
       failWrite: [WORKER_PLACE],
     });
     expect(await cli(["publish", "--all"], run.deps)).toBe(1);
-    expect(run.stderr.text).toContain("Not finished: STRIPE_API_KEY");
-    expect(run.stderr.text).not.toContain("Not finished: .");
+    expect(run.stderr.text).not.toContain("Not finished");
   });
 
   test("same-named Workers in two accounts get separate writes", async () => {

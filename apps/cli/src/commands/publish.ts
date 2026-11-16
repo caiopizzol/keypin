@@ -16,10 +16,8 @@ import {
   loadState,
   planPublish,
   publishEnvironment,
-  receiptsFor,
   saveState,
   type Secret,
-  type State,
   unfinishedOperations,
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
@@ -258,17 +256,10 @@ async function publishLocked(
   if (!(await confirmed(deps, { ...request, command: "publish", needsApproval, question })))
     return NEEDS_APPROVAL;
 
-  for (const [index, job] of jobsToWrite.entries()) {
+  for (const job of jobsToWrite) {
     const written = await writeAll({ ...job, state, path, deps, out, label });
     state = written.state;
     if (!written.ok) {
-      if (many) {
-        const left = pending
-          .slice(index)
-          .filter((j) => !writtenAll(state, j))
-          .map((j) => j.key.name);
-        say(`Not finished: ${left.join(", ")}.`);
-      }
       say("Stopped. Finished writes keep their receipts; run keypin publish again to continue.");
       return 1;
     }
@@ -277,16 +268,6 @@ async function publishLocked(
     );
   }
   return 0;
-}
-
-function writtenAll(state: State, job: Planned): boolean {
-  const open = unfinishedOperations(state, job.owner);
-  if (open.length) return false;
-  return job.writes.every((w) =>
-    receiptsFor(state, job.owner).some(
-      (r) => r.destinationId === w.destinationId && r.generation === job.generation,
-    ),
-  );
 }
 
 type Read =

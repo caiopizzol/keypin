@@ -93,6 +93,10 @@ export function fakeFiles(initial: Record<string, string> = {}) {
       contents.set(to, text);
       contents.delete(from);
     },
+    async remove(path) {
+      log.push(`remove ${path}`);
+      contents.delete(path);
+    },
   };
   return {
     files,

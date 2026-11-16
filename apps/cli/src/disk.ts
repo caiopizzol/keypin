@@ -29,14 +29,28 @@ export const diskFiles: Files = {
     try {
       await handle.chmod(0o600);
       await handle.writeFile(text);
+      await handle.sync();
     } finally {
       await handle.close();
     }
   },
   async rename(from, to) {
     await rename(from, to);
+    await syncFolder(dirname(to)).catch(() => {});
+  },
+  async remove(path) {
+    await rm(path, { force: true });
   },
 };
+
+async function syncFolder(path: string): Promise<void> {
+  const folder = await open(path, constants.O_RDONLY);
+  try {
+    await folder.sync();
+  } finally {
+    await folder.close();
+  }
+}
 
 const PRIVATE_WRITE =
   constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW;

@@ -49,6 +49,9 @@ export function memoryFiles(initial: Record<string, string> = {}) {
       contents.set(to, text);
       contents.delete(from);
     },
+    async remove(path) {
+      contents.delete(path);
+    },
   };
   const links = new Set<string>();
   return { files, contents, folders, links };

@@ -50,6 +50,18 @@ describe("state", () => {
     const after = recordReceipt(before, receipt(GITHUB, "aaaaaaaaaaaaaaaa"), KINDS);
     await expect(saveState(fake.files, STATE, after)).rejects.toThrow("crashed before rename");
     expect(await loadState(fake.files, STATE, VAULT_KINDS)).toEqual(before);
+    expect([...fake.contents.keys()]).toEqual([STATE]);
+  });
+
+  test("a cleanup that also fails reports the original error", async () => {
+    const fake = fakeFiles();
+    fake.fail("rename");
+    fake.files.remove = async () => {
+      throw new Error("EACCES: can't remove");
+    };
+    await expect(saveState(fake.files, STATE, emptyState())).rejects.toThrow(
+      "crashed before rename",
+    );
   });
 
   test("a source saved before references named a field reads as the password field", async () => {

@@ -152,6 +152,21 @@ printf '%s' '${OAUTH}'
     expect(await cloudflareSignIn({ env: { PATH: onPath }, folder: bare }).token()).toBe("path");
   });
 
+  test("a wrangler found through a relative PATH entry still runs from the temporary folder", async () => {
+    const tools = await folder();
+    const seen = await fakeWrangler(join(tools, "bin"), {});
+    const before = process.cwd();
+    process.chdir(tools);
+    try {
+      const bare = await folder();
+      expect(findWrangler(bare, "bin")).toBe(join(tools, "bin", "wrangler"));
+      expect(await cloudflareSignIn({ env: { PATH: "bin" }, folder: bare }).token()).toBe(TOKEN);
+      expect(await readFile(seen, "utf8")).toContain("args=auth token --json");
+    } finally {
+      process.chdir(before);
+    }
+  });
+
   test("without wrangler, says to install it", async () => {
     const bare = await folder();
     const error = await failure(

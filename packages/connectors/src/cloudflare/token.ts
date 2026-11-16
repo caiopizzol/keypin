@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { accessSync, constants } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { devNull, tmpdir } from "node:os";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { isRecord, withoutSignIn } from "@keypin/core";
 
 export const API_TOKEN_VARIABLE = "KEYPIN_CLOUDFLARE_API_TOKEN";
@@ -122,7 +122,7 @@ export function findWrangler(folder: string, path: string): string | null {
   }
   for (const dir of path.split(delimiter)) {
     if (!dir) continue;
-    const found = join(dir, "wrangler");
+    const found = resolve(join(dir, "wrangler"));
     if (executable(found)) return found;
   }
   return null;

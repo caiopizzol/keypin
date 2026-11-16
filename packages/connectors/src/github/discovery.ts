@@ -151,6 +151,10 @@ function needsOf(github: Repo, workflows: Workflow[], view: MapView) {
   const shared = namesOf(github.organization);
   const fromOrganization = new Map<string, { paths: string[]; environments: string[] }>();
   for (const use of uses) {
+    if (view.ignores(use.name, repo)) {
+      needs.push({ name: use.name, place: repo, usedBy: use.path });
+      continue;
+    }
     const literal = literalEnvironment(use.environment);
     const environment = literal === null ? null : githubPlace(github, literal, declared, view);
     if (
@@ -210,7 +214,8 @@ function needsOf(github: Repo, workflows: Workflow[], view: MapView) {
         .filter(
           (name) =>
             !found.some((n) => n.place === repo.id && n.name === name.toUpperCase()) &&
-            !view.publishes(name.toUpperCase(), repo),
+            !view.publishes(name.toUpperCase(), repo) &&
+            !view.ignores(name, repo),
         );
       return unmapped.length
         ? [

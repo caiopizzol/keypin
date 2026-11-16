@@ -1377,6 +1377,24 @@ required = ["RESEND_API_KEY"]
     }),
   };
 
+  test("an ignored org secret gets no note, only the ignored count", async () => {
+    const run = setup({
+      files: {
+        [MAP]: `ignore = ["STRIPE_API_KEY"]\n${PUBLISHED.replace(/\[keys\.STRIPE_API_KEY\][\s\S]*$/, "")}`,
+      },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+      deps: {
+        organizationSecrets: async () => ({
+          ok: true,
+          secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }],
+        }),
+      },
+    });
+    expect(await cli(["check"], run.deps)).toBe(0);
+    expect(run.stdout.text).not.toContain("(org secret)");
+    expect(run.stdout.text).toContain("Note: 1 key ignored in keypin.toml");
+  });
+
   test("an org secret doesn't stand in for a missing secret of a job's environment", async () => {
     const reads: string[] = [];
     const run = setup({
@@ -1961,6 +1979,43 @@ jobs:
     ]);
     expect(data.notes).toContain(
       "acme/billing has STRIPE_API_KEY, RESEND_API_KEY, which no workflow names and keypin.toml doesn't publish there; a workflow that passes secrets on may use them",
+    );
+  });
+
+  test("a repo secret in ignore is left out of the note on secrets no workflow names", async () => {
+    const run = setup({
+      files: {
+        [MAP]: `ignore = ["stripe_api_key"]\n${MAPPED}`,
+        [`${ROOT}/.env`]: null,
+        [`${ROOT}/wrangler.toml`]: null,
+        [`${ROOT}/.github/workflows/deploy.yml`]: `
+on: push
+jobs:
+  deploy:
+    uses: ./.github/workflows/reusable.yml
+    secrets: inherit
+`,
+      },
+      github: {
+        ok: true,
+        secrets: [
+          { name: "STRIPE_API_KEY", updatedAt: null },
+          { name: "RESEND_API_KEY", updatedAt: null },
+        ],
+      },
+    });
+    expect(await cli(["check", "--json"], run.deps)).toBe(0);
+    expect(run.calls).toContain("github acme/billing as null");
+    const data = json(run.stdout.text);
+    expect(data.unknown).toEqual([
+      {
+        what: "every secret .github/workflows/deploy.yml uses",
+        reason:
+          "it passes secrets on (secrets: inherit or toJSON(secrets)) or names one by an expression (secrets[...]), so check can't tell which",
+      },
+    ]);
+    expect(data.notes).toContain(
+      "acme/billing has RESEND_API_KEY, which no workflow names and keypin.toml doesn't publish there; a workflow that passes secrets on may use them",
     );
   });
 

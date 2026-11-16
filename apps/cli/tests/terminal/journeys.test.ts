@@ -126,6 +126,7 @@ describe("keypin in a real terminal", () => {
       expect(result.screen).toContain("✓ 1 key, 1 destination. Everything checks out.");
       expect(result.screen).toContain("Note: 2 keys ignored in keypin.toml");
       expect(result.screen).not.toContain("OPENAI_API_KEY");
+      expect(result.screen).not.toContain("ANTHROPIC_API_KEY");
       clean(result);
     },
     SLOW,

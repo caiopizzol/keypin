@@ -156,6 +156,7 @@ export function findGaps(
       (keys?.keys ?? []).some(
         (k) => place.matches(k.name, name) && mappedIn(keys, k, place) !== null,
       ),
+    ignores: (name: string, place: Place) => ignore.some((each) => place.matches(each, name)),
   };
   const after: NonNullable<Needs["notesAfter"]>[] = [];
   const conflicts: string[] = [];

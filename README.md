@@ -31,21 +31,11 @@ Want another? Vote for it on the [roadmap](https://github.com/caiopizzol/keypin/
 
 ## Install
 
-keypin runs on macOS, and on Linux with glibc (not Alpine), on arm64 or x64. You need the
-[1Password](https://1password.com/downloads) desktop app; on a server or in CI without it, use a
-[service account](https://github.com/caiopizzol/keypin/blob/main/docs/service-account.md).
+keypin runs on macOS, and on Linux with glibc (not Alpine), on arm64 or x64.
 
 ```sh
 npm install -g keypin
 ```
-
-Don't install with `--omit=optional`: the build for your platform is an optional dependency.
-
-In 1Password, open **Settings → Developer** and, under **Integrate with the 1Password SDKs**, select **Integrate
-with other apps**. 1Password then asks you to approve each keypin command.
-
-To publish, you also need a [`gh`](https://cli.github.com) login for GitHub, or a
-[`wrangler`](https://developers.cloudflare.com/workers/wrangler/) login for Cloudflare.
 
 ## Get started
 
@@ -66,8 +56,7 @@ keypin import .env STRIPE_KEY DATABASE_URL --vault Private --account my.1passwor
 keypin run -- npm run dev
 ```
 
-`import` creates one item per variable and maps it. Variables you don't name, such as `PORT`, stay in the file.
-It never changes the file: it tells you which lines to remove. See
+`import` creates one item per variable and maps it. Variables you don't name, such as `PORT`, stay in the file. See
 [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md).
 
 ### Production keys
@@ -76,8 +65,6 @@ Put each prod value in 1Password first:
 
 - **In a file:** `keypin import .env.production STRIPE_KEY --env prod --vault Private`
 - **Only in GitHub or Cloudflare:** neither keypin nor you can read it back, so make a new key at the provider.
-
-For staging, add it to `environments` first (`check` prints the line), then import with `--env staging`.
 
 Then `keypin check` prints the TOML to add for each secret a workflow or Worker needs:
 
@@ -134,6 +121,8 @@ npx skills add caiopizzol/keypin -g    # all your projects
   `keypin.toml`
 - [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md): moving an env file's values into 1Password
 - [Infisical](https://github.com/caiopizzol/keypin/blob/main/docs/infisical.md): reading keys from Infisical instead
+- [Service account](https://github.com/caiopizzol/keypin/blob/main/docs/service-account.md): 1Password on a server or
+  in CI
 - [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md): destinations, approvals and
   `--plan`
 - [Notes](https://github.com/caiopizzol/keypin/blob/main/docs/notes.md): `wrangler dev`, the wrangler login, and the

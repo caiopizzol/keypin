@@ -493,6 +493,35 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "a key keypin issued and someone deleted at Resend has nothing to revoke, and asks one y",
+    async () => {
+      const result = await drive({
+        scenario: "resend-deleted",
+        args: ["rotate", "RESEND_API_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  = Resend                   nothing to revoke: key re-old was deleted at Resend",
+      );
+      expect(result.screen).toContain("Rotate RESEND_API_KEY? [y/N] y");
+      expect(result.screen).not.toContain("Revoke the old key");
+      expect(result.effects).toEqual([
+        "resend create re-new-1",
+        "1password update my.1password.com/Private/mailer resend key (20 chars)",
+        "destination write github-actions:acme/mailer RESEND_API_KEY (20 chars)",
+        "destination write cloudflare-worker:mailer RESEND_API_KEY (20 chars)",
+      ]);
+      const state: unknown = JSON.parse(result.files[".local/state/keypin/state.json"] ?? "{}");
+      expect(state).toMatchObject({
+        issued: [{ id: "re-new-1", old: { id: null, revoked: true } }],
+      });
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "a destination that left the map is named in the plan and again before the revoke prompt",
     async () => {
       const result = await drive({

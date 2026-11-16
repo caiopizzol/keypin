@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, parseMap, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, parseMap, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { NeonIssuer, neonIssuer } from "../../src/neon/index";
 import { type FakeNeon, memoryWorld, neonFetch } from "../../src/neon/testing";
@@ -263,6 +263,30 @@ describe("the reset operation", () => {
     expectNoSecret(error);
   });
 
+  test("a reset a read-only key may not make says to use an Editor or Admin key", async () => {
+    const { issuer, effects } = neon({ readOnly: true });
+    const each = issuer();
+    expect((await each.checkAccount(null, urlFor("app_a", LIVE_A))).ok).toBe(true);
+    const error: unknown = await each.create().catch((e: unknown) => e);
+    assert(error instanceof NothingChanged);
+    expect(error.message).toBe(
+      "Neon refused to reset role app_b's password (HTTP 404): the admin key can read project proj-1 but may not change it. Use an API key with Editor or Admin access to the project; see https://neon.com/docs/manage/user-permissions",
+    );
+    expect(effects).toEqual([]);
+    expectNoSecret(error);
+  });
+
+  test("a role deleted between the check and the reset is named, not blamed on the admin key", async () => {
+    const { issuer, effects } = neon({ failReset: "role gone" });
+    const each = issuer();
+    expect((await each.checkAccount(null, urlFor("app_a", LIVE_A))).ok).toBe(true);
+    const error: unknown = await each.create().catch((e: unknown) => e);
+    assert(error instanceof NothingChanged);
+    expect(error.message).toBe("Neon role app_b is gone from branch br-main");
+    expect(effects).toEqual([]);
+    expectNoSecret(error);
+  });
+
   test("a lost reset says the idle role's password may have changed and a rerun is safe", async () => {
     const { issuer } = neon();
     const each = issuer();
@@ -293,6 +317,23 @@ describe("checkAccount", () => {
     });
     await expect(each.create()).rejects.toThrow("checkAccount hasn't passed");
     expect(effects).toEqual([]);
+  });
+
+  test("a key with Viewer access to the project fails the check, before any reset", async () => {
+    const { issuer, effects } = neon({ permission: "VIEWER" });
+    const each = issuer();
+    expect(await each.checkAccount(null, urlFor("app_a", LIVE_A))).toEqual({
+      ok: false,
+      facts: "the admin key has Viewer access to project proj-1",
+      reason: "the admin key can read Neon project proj-1 but can't reset passwords in it",
+      fix: "use an API key with Editor or Admin access to the project; see https://neon.com/docs/manage/user-permissions",
+    });
+    await expect(each.create()).rejects.toThrow("checkAccount hasn't passed");
+    expect(effects).toEqual([]);
+    const editor = await neon({ permission: "EDITOR" })
+      .issuer()
+      .checkAccount(null, urlFor("app_a", LIVE_A));
+    expect(editor.ok).toBe(true);
   });
 
   test("a wrong database or branch is named", async () => {

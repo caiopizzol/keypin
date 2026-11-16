@@ -74,7 +74,13 @@ function world(backend: VaultBackend, map = MAP): World {
 
 function rotation(at: World, answers: string[] = []) {
   const requests: string[] = [];
-  const resend = resendFetch({ tokenPrefix: "re_new_", keys: at.keys, effect: () => undefined });
+  const resend = resendFetch({
+    admin: ADMIN,
+    known: { [OLD]: "re-old" },
+    tokenPrefix: "re_new_",
+    keys: at.keys,
+    effect: () => undefined,
+  });
   const recorded: Fetch = (url, init) => {
     requests.push(`${init.method} ${new URL(url).pathname}`);
     return resend(url, init);
@@ -174,6 +180,49 @@ describe("keypin rotate recovers without losing a key", () => {
       added.requests.filter((r) => !r.startsWith("GET")),
       "no create and no revoke",
     ).toEqual([]);
+  });
+
+  test("a resumed rotation whose key was deleted at Resend checks the vault takes writes before it creates one", async () => {
+    const infisical: FakeInfisical = {
+      organization: "acme",
+      projects: {
+        mailer: {
+          prod: {
+            RESEND_API_KEY: { value: OLD, rotated: "2026-08-01" },
+            RESEND_ADMIN_KEY: { value: ADMIN },
+          },
+        },
+      },
+    };
+    const store = memoryStore();
+    const backend = infisicalBackend(
+      { clientId: "client-id-1", clientSecret: "client-secret-4e7b" },
+      infisicalFetch(infisical, store),
+    );
+    const at = world(backend, INFISICAL_MAP);
+    expect(await rotation(at, ["y"]).run()).toBe(0);
+    expect(await rotation(at, ["y", "n"]).run(), "re-new-1 is left to revoke").toBe(0);
+
+    infisical.projects.mailer = {
+      ...infisical.projects.mailer,
+      shared: { RESEND_API_KEY: { value: NEW(2) } },
+    };
+    const saved = store.load().find((entry) => entry.name === "RESEND_API_KEY");
+    if (!saved) throw new Error("the second rotation saved no key");
+    store.save({ ...saved, secret: { value: "${shared.RESEND_API_KEY}" } });
+    at.keys.save({ ...at.keys.load(), live: ["re-old", "re-new-1"] });
+
+    const recover = rotation(at, ["y", "y"]);
+    expect(await recover.run()).toBe(1);
+    expect(recover.stderr.text).toContain(
+      "the secret references infisical://mailer/shared/RESEND_API_KEY, so a new key saved here would leave that secret, and everything that uses it, with the old key; point keypin.toml at infisical://mailer/shared/RESEND_API_KEY instead. Nothing was created.",
+    );
+    expect(recover.asked).toEqual([]);
+    expect(
+      recover.requests.filter((r) => !r.startsWith("GET")),
+      "Resend makes no key",
+    ).toEqual([]);
+    expect(recover.live()).toEqual(["re-old", "re-new-1"]);
   });
 
   test("--plan after an approved Infisical change writes nothing, and the rerun finishes", async () => {

@@ -15,6 +15,7 @@ const NAME_LIMIT = 50;
 const fitName = (name: string) =>
   name.length <= NAME_LIMIT ? name : `…${name.slice(name.length - NAME_LIMIT + 1)}`;
 const DASHBOARD = "https://resend.com/api-keys";
+const DOMAINS = "https://resend.com/domains";
 
 export interface ResendIssuerOptions {
   admin: () => Promise<Secret>;
@@ -51,22 +52,81 @@ export class ResendIssuer implements Issuer {
     return DASHBOARD;
   }
 
-  async checkAccount(currentId: string | null): Promise<IssuerCheck> {
+  async checkAccount(currentId: string | null, current: Secret): Promise<IssuerCheck> {
     this.#passed = false;
     const list = await this.#request("GET", "/api-keys");
     if (list.status !== 200) return refused(list);
     const ids = keysOf(list).map((key) => key.id);
-    const facts = `the admin key lists ${ids.length} API key${ids.length === 1 ? "" : "s"}`;
-    if (currentId !== null && !ids.includes(currentId)) {
+    let facts = `the admin key lists ${ids.length} API key${ids.length === 1 ? "" : "s"}`;
+    if (this.#domainId !== undefined) {
+      const domain = await this.#request("GET", `/domains/${encodeURIComponent(this.#domainId)}`);
+      if (domain.status === 404 || domain.status === 422)
+        return {
+          ok: false,
+          facts,
+          reason: `the admin key's team has no Resend domain ${this.#domainId}`,
+          fix: `check domain_id in keypin.toml against ${DOMAINS}`,
+        };
+      if (domain.status !== 200) throw failure("GET", "/domains/<domain_id>", domain);
+      const name = typeof domain.body.name === "string" ? domain.body.name : this.#domainId;
+      facts = `${facts} and domain ${name}`;
+    }
+    if (currentId !== null && ids.includes(currentId)) {
+      this.#passed = true;
+      return { ok: true, facts: `${facts}, with key ${currentId}` };
+    }
+    const vault = await this.#vaultKey(current);
+    if (currentId !== null) {
+      if (vault.kind === "deleted") {
+        this.#passed = true;
+        return {
+          ok: true,
+          facts: `${facts}; Resend doesn't accept the vault's key`,
+          gone: `key ${currentId} was deleted at Resend`,
+        };
+      }
       return {
         ok: false,
         facts,
-        reason: `Resend doesn't list key ${currentId}, the one keypin issued last time: the admin key belongs to another team, or that key was deleted`,
+        reason: `Resend doesn't list key ${currentId}, the one keypin issued last time, but it still knows the vault's key: the admin key belongs to another team`,
         fix: `use an admin key from the team at ${DASHBOARD} that has key ${currentId}`,
       };
     }
+    if (vault.kind === "deleted")
+      return {
+        ok: false,
+        facts: `${facts}; Resend doesn't accept the vault's key`,
+        reason:
+          "keypin didn't issue the vault's key, so it can't tell whether the key was deleted or the vault holds another value",
+        fix: `put the key your apps use in the vault, then run this again; if it was deleted, make a new one at ${DASHBOARD}`,
+      };
+    if (vault.kind === "disabled")
+      return {
+        ok: false,
+        facts,
+        reason: `the vault's key ${vault.why}, so keypin can't tell which Resend team it belongs to`,
+        fix: `check the key at ${DASHBOARD}; put an active key in the vault, then run this again`,
+      };
+    if (vault.kind === "sending") {
+      this.#passed = true;
+      return {
+        ok: true,
+        facts,
+        notes: {
+          create:
+            "the vault's key can only send emails, so keypin can't check that the admin key is from its team",
+        },
+      };
+    }
+    if (!vault.ids.some((id) => ids.includes(id)))
+      return {
+        ok: false,
+        facts,
+        reason: "the vault's key and the admin key belong to different Resend teams",
+        fix: `use an admin key from the vault key's team; create one at ${DASHBOARD}`,
+      };
     this.#passed = true;
-    return { ok: true, facts: currentId === null ? facts : `${facts}, with key ${currentId}` };
+    return { ok: true, facts: `${facts}, in the vault key's team` };
   }
 
   async create(name: string): Promise<IssuedKey> {
@@ -105,12 +165,33 @@ export class ResendIssuer implements Issuer {
     return "revoked";
   }
 
-  async #request(method: string, path: string, body?: unknown): Promise<Reply> {
+  async #vaultKey(
+    current: Secret,
+  ): Promise<
+    | { kind: "listed"; ids: string[] }
+    | { kind: "sending" }
+    | { kind: "disabled"; why: string }
+    | { kind: "deleted" }
+  > {
+    const reply = await this.#request("GET", "/api-keys", undefined, current);
+    const kind = errorName(reply);
+    if (reply.status === 200) return { kind: "listed", ids: keysOf(reply).map((key) => key.id) };
+    if (reply.status === 401 && kind === "restricted_api_key") return { kind: "sending" };
+    if (reply.status === 403 && kind === "restricted_api_key")
+      return { kind: "disabled", why: "isn't active" };
+    if (reply.status === 403 && kind === "suspended_api_key")
+      return { kind: "disabled", why: "is suspended" };
+    if (reply.status === 400 && kind === "validation_error") return { kind: "deleted" };
+    throw failure("GET", "/api-keys with the vault's key", reply);
+  }
+
+  async #request(method: string, path: string, body?: unknown, as?: Secret): Promise<Reply> {
     this.#key ??= this.#admin();
+    const key = as ?? (await this.#key);
     const response = await this.#fetch(`${API}${path}`, {
       method,
       headers: {
-        Authorization: `Bearer ${(await this.#key).reveal()}`,
+        Authorization: `Bearer ${key.reveal()}`,
         "User-Agent": "keypin",
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
       },
@@ -123,20 +204,25 @@ export class ResendIssuer implements Issuer {
 function refused(reply: Reply): IssuerCheck {
   const kind = errorName(reply);
   const facts = `Resend answered HTTP ${reply.status}${kind ? ` ${kind}` : ""}`;
-  if (kind === "restricted_api_key")
+  const fix = `put a key with full access in the admin item; create one at ${DASHBOARD}`;
+  if (reply.status === 401 && kind === "restricted_api_key")
     return {
       ok: false,
       facts,
       reason: "the admin key can only send emails, so it can't create or delete keys",
-      fix: `put a key with full access in the admin item; create one at ${DASHBOARD}`,
+      fix,
     };
+  if (reply.status === 403 && kind === "restricted_api_key")
+    return { ok: false, facts, reason: "the admin key isn't active at Resend", fix };
+  if (reply.status === 403 && kind === "suspended_api_key")
+    return { ok: false, facts, reason: "Resend suspended the admin key", fix };
   if (reply.status === 400 || reply.status === 401 || reply.status === 403)
     return {
       ok: false,
       facts,
       reason:
         "Resend doesn't accept the admin key: it was deleted, or the item holds another value",
-      fix: `put a key with full access in the admin item; create one at ${DASHBOARD}`,
+      fix,
     };
   throw failure("GET", "/api-keys", reply);
 }

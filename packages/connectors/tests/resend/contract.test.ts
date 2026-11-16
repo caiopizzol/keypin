@@ -10,6 +10,7 @@ describe("the issuer contract", () => {
     const admin = `re_admin_${sentinel}`;
     const fake: FakeResend = {
       admin,
+      known: { re_in_the_vault: "re-old" },
       tokenPrefix: `re_${sentinel}_`,
       keys: memoryKeys(["re-old"]),
       effect: (line) => void effects.push(line),
@@ -40,7 +41,7 @@ describe("the fake Resend", () => {
         effect: () => undefined,
       }),
     });
-    expect((await issuer.checkAccount("re-old")).ok).toBe(true);
+    expect((await issuer.checkAccount("re-old", new Secret("re_in_the_vault"))).ok).toBe(true);
     const first = await issuer.create("first");
     expect(await issuer.revoke("re-old")).toBe("revoked");
     const second = await issuer.create("second");

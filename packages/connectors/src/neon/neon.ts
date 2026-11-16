@@ -11,6 +11,7 @@ import {
 
 const API = "https://console.neon.tech/api/v2";
 const KEYS_DOCS = "https://neon.com/docs/manage/api-keys";
+const PERMISSIONS_DOCS = "https://neon.com/docs/manage/user-permissions";
 const FIRST_WAIT_MS = 250;
 const LONGEST_WAIT_MS = 5000;
 const POLLS = 60;
@@ -77,6 +78,16 @@ export class NeonIssuer implements Issuer {
     this.#vault = null;
     const project = await this.#request("GET", this.#inProject(""));
     if (project.status !== 200) return this.#refused(project);
+    const access = isRecord(project.body.project)
+      ? project.body.project.effective_project_permission
+      : undefined;
+    if (access === "VIEWER")
+      return {
+        ok: false,
+        facts: `the admin key has Viewer access to project ${this.#projectId}`,
+        reason: `the admin key can read Neon project ${this.#projectId} but can't reset passwords in it`,
+        fix: `use an API key with Editor or Admin access to the project; see ${PERMISSIONS_DOCS}`,
+      };
     const listed = await this.#request("GET", this.#onBranch("/roles"));
     if (listed.status === 404)
       return {
@@ -235,6 +246,13 @@ export class NeonIssuer implements Issuer {
     for (let tries = 1; reply.status === 423 && tries < LOCKED_TRIES; tries++) {
       await this.#sleep(wait(tries));
       reply = await this.#request("POST", path);
+    }
+    if (reply.status === 403 || reply.status === 404) {
+      if ((await this.#passwordTime(role)) === null)
+        throw new NothingChanged(`Neon role ${role} is gone from branch ${this.#branchId}`);
+      throw new NothingChanged(
+        `Neon refused to reset role ${role}'s password (HTTP ${reply.status}${codeOf(reply)}): the admin key can read project ${this.#projectId} but may not change it. Use an API key with Editor or Admin access to the project; see ${PERMISSIONS_DOCS}`,
+      );
     }
     if (reply.status !== 200)
       throw failure(

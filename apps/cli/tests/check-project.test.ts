@@ -484,6 +484,65 @@ worker = "billing-worker"
     expect(leaks(...run.everything())).toBe(false);
   });
 
+  test("names in ignore get no step, no TOML and no exit 1, and one note says so", async () => {
+    const workflow = `
+on: push
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - run: review
+        env:
+          STRIPE_API_KEY: \${{ secrets.STRIPE_API_KEY }}
+          OPENAI_API_KEY: \${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: \${{ secrets.ANTHROPIC_API_KEY }}
+`;
+    const files = {
+      [`${ROOT}/.env`]: `PORT=3000\n`,
+      [`${ROOT}/.github/workflows/deploy.yml`]: workflow,
+    };
+    const ignore = `ignore = ["OPENAI_API_KEY", "anthropic_api_key", "PORT", "UNUSED"]\n`;
+    const run = setup({
+      files: { ...files, [MAP]: `${ignore}${PUBLISHED}` },
+      deps: { workerSignIn: () => fakeSignIn("oauth") },
+      github: { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+    });
+    expect(await cli(["check"], run.deps)).toBe(0);
+    const text = run.stdout.text;
+    expect(text).toContain("Everything checks out.");
+    expect(text).toContain("Note: keypin.toml ignores 4 keys\n");
+    expect(text).not.toContain("OPENAI_API_KEY");
+    expect(text).not.toContain("PORT");
+    expect(text).not.toContain(PASTE);
+
+    const without = setup({
+      files: { ...files, [MAP]: PUBLISHED },
+      github: { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+    });
+    expect(await cli(["check"], without.deps)).toBe(1);
+    expect(without.stdout.text).toContain("OPENAI_API_KEY: .github/workflows/deploy.yml uses it");
+    expect(without.stdout.text).not.toContain("keypin.toml ignores");
+  });
+
+  test("ignore matches names in any case, so check never proposes a key ignore would reject", async () => {
+    const run = setup({
+      files: {
+        [MAP]: `ignore = ["extra_key", "local_key"]\n${PUBLISHED}`,
+        [`${ROOT}/.env`]: `LOCAL_KEY=${SENTINEL}\n`,
+        [`${ROOT}/wrangler.toml`]: `name = "billing-worker"\naccount_id = "${ACCOUNT}"\n\n[secrets]\nrequired = ["RESEND_API_KEY", "EXTRA_KEY"]\n`,
+      },
+      deps: { workerSignIn: () => fakeSignIn("oauth") },
+      github: { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+    });
+    expect(await cli(["check"], run.deps)).toBe(0);
+    expect(run.stdout.text).toContain("Note: keypin.toml ignores 2 keys");
+    expect(run.stdout.text).not.toContain("EXTRA_KEY");
+    expect(run.stdout.text).not.toContain("LOCAL_KEY");
+  });
+
   test("a mapped secret the place doesn't have yet says to publish it", async () => {
     const run = setup({ files: { [MAP]: PUBLISHED, [`${ROOT}/.env`]: null } });
     expect(await cli(["check", "--json"], run.deps)).toBe(1);
@@ -1335,6 +1394,24 @@ required = ["RESEND_API_KEY"]
     }),
   };
 
+  test("an ignored org secret gets no org-secret note", async () => {
+    const run = setup({
+      files: {
+        [MAP]: `ignore = ["STRIPE_API_KEY"]\n${PUBLISHED.replace(/\[keys\.STRIPE_API_KEY\][\s\S]*$/, "")}`,
+      },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+      deps: {
+        organizationSecrets: async () => ({
+          ok: true,
+          secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }],
+        }),
+      },
+    });
+    expect(await cli(["check"], run.deps)).toBe(0);
+    expect(run.stdout.text).not.toContain("(org secret)");
+    expect(run.stdout.text).toContain("Note: keypin.toml ignores 1 key");
+  });
+
   test("an org secret doesn't stand in for a missing secret of a job's environment", async () => {
     const reads: string[] = [];
     const run = setup({
@@ -1919,6 +1996,43 @@ jobs:
     ]);
     expect(data.notes).toContain(
       "acme/billing has STRIPE_API_KEY, RESEND_API_KEY, which no workflow names and keypin.toml doesn't publish there; a workflow that passes secrets on may use them",
+    );
+  });
+
+  test("a repo secret in ignore is left out of the note on secrets no workflow names", async () => {
+    const run = setup({
+      files: {
+        [MAP]: `ignore = ["stripe_api_key"]\n${MAPPED}`,
+        [`${ROOT}/.env`]: null,
+        [`${ROOT}/wrangler.toml`]: null,
+        [`${ROOT}/.github/workflows/deploy.yml`]: `
+on: push
+jobs:
+  deploy:
+    uses: ./.github/workflows/reusable.yml
+    secrets: inherit
+`,
+      },
+      github: {
+        ok: true,
+        secrets: [
+          { name: "STRIPE_API_KEY", updatedAt: null },
+          { name: "RESEND_API_KEY", updatedAt: null },
+        ],
+      },
+    });
+    expect(await cli(["check", "--json"], run.deps)).toBe(0);
+    expect(run.calls).toContain("github acme/billing as null");
+    const data = json(run.stdout.text);
+    expect(data.unknown).toEqual([
+      {
+        what: "every secret .github/workflows/deploy.yml uses",
+        reason:
+          "it passes secrets on (secrets: inherit or toJSON(secrets)) or names one by an expression (secrets[...]), so check can't tell which",
+      },
+    ]);
+    expect(data.notes).toContain(
+      "acme/billing has RESEND_API_KEY, which no workflow names and keypin.toml doesn't publish there; a workflow that passes secrets on may use them",
     );
   });
 

@@ -119,6 +119,20 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
+    "a copied workflow's optional keys in ignore leave check green, with one note",
+    async () => {
+      const result = await drive({ scenario: "ignored-keys", args: ["check"] });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain("✓ 1 key, 1 destination. Everything checks out.");
+      expect(result.screen).toContain("Note: keypin.toml ignores 2 keys");
+      expect(result.screen).not.toContain("OPENAI_API_KEY");
+      expect(result.screen).not.toContain("ANTHROPIC_API_KEY");
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "while 1Password is slow, the approval hint shows and no frame wraps at 60 columns",
     async () => {
       const result = await drive({

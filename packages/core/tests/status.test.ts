@@ -29,6 +29,7 @@ function status(rotation: Rotation | null, overrides: Partial<StatusInput> = {})
       file: `${PROJECT}/keypin.toml`,
       pins: { "1password": "my.1password.com" },
       environments: ["dev", "prod"],
+      ignore: [],
       keys: [{ ...KEY, rotateEvery }],
     },
   };
@@ -139,6 +140,7 @@ describe("status", () => {
         file: `${PROJECT}/keypin.toml`,
         pins: {},
         environments: ["prod"],
+        ignore: [],
         keys: [issued],
       },
     };
@@ -210,6 +212,7 @@ describe("status", () => {
         file: "keypin.toml",
         pins: { "1password": "my.1password.com" },
         environments: ["dev", "prod"],
+        ignore: [],
         keys: [{ ...KEY, rotateEvery: null }],
       },
     };
@@ -243,6 +246,7 @@ describe("status", () => {
         file: `${PROJECT}/keypin.toml`,
         pins: { "1password": "my.1password.com" },
         environments: ["dev", "prod", "staging"],
+        ignore: [],
         keys: [KEY],
       },
     };
@@ -328,6 +332,7 @@ describe("status", () => {
               file: "/work/c/keypin.toml",
               pins: {},
               environments: ["dev", "prod"],
+              ignore: [],
               keys: [],
             },
           },

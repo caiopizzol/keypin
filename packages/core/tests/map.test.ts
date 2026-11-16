@@ -28,6 +28,7 @@ describe("a valid map", () => {
         file: MAP_FILE,
         pins: { "1password": "my.1password.com" },
         environments: ["dev", "prod"],
+        ignore: [],
         keys: [
           {
             name: "SESSION_SECRET",
@@ -98,7 +99,7 @@ repo = "acme/billing"
   test("an empty map has no keys", () => {
     expect(parseMap("", MAP_FILE, KINDS, ISSUERS, VAULT_KINDS)).toEqual({
       ok: true,
-      map: { file: MAP_FILE, pins: {}, environments: ["dev", "prod"], keys: [] },
+      map: { file: MAP_FILE, pins: {}, environments: ["dev", "prod"], ignore: [], keys: [] },
     });
   });
 
@@ -156,6 +157,44 @@ repo = "acme/billing"
     [`environments = ["dev", "dev"]`, `environment "dev" is listed twice`],
   ])("%s is rejected", (line, message) => {
     expect(errorsOf(`${line}\n`)).toEqual([`${MAP_FILE}: ${message}`]);
+  });
+});
+
+describe("ignore", () => {
+  test("lists variable names that check leaves alone", () => {
+    const result = parseMap(
+      `ignore = ["OPENAI_API_KEY", "anthropic_api_key"]\n`,
+      MAP_FILE,
+      KINDS,
+      ISSUERS,
+      VAULT_KINDS,
+    );
+    assert(result.ok, JSON.stringify(result));
+    expect(result.map.ignore).toEqual(["OPENAI_API_KEY", "anthropic_api_key"]);
+  });
+
+  test.each([
+    [
+      `ignore = "OPENAI_API_KEY"`,
+      `"ignore" must be a list of variable names, such as ["OPENAI_API_KEY"]`,
+    ],
+    [`ignore = [1]`, `"ignore" must be a list of variable names, such as ["OPENAI_API_KEY"]`],
+    [
+      `ignore = ["1PASSWORD"]`,
+      `ignore "1PASSWORD": a variable name uses letters, digits and _, not starting with a digit`,
+    ],
+    [`ignore = ["A", "A"]`, `ignore "A" is listed twice`],
+    [`ignore = ["A", "a"]`, `ignore "a" is listed twice`],
+    [
+      `ignore = ["A"]\n${VAULTS}[keys.A]\ndev = "op://Private/a/password"`,
+      `ignore "A" is also [keys.A]; remove it from one of them`,
+    ],
+    [
+      `ignore = ["a"]\n${VAULTS}[keys.A]\ndev = "op://Private/a/password"`,
+      `ignore "a" is also [keys.A]; remove it from one of them`,
+    ],
+  ])("%s is rejected", (text, message) => {
+    expect(errorsOf(`${text}\n`)).toEqual([`${MAP_FILE}: ${message}`]);
   });
 });
 

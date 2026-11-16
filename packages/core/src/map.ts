@@ -32,6 +32,7 @@ export interface KeysMap {
   file: string;
   pins: VaultPins;
   environments: readonly Environment[];
+  ignore: readonly string[];
   keys: KeyEntry[];
 }
 
@@ -105,7 +106,7 @@ function validateMap(
   const fail = (where: string, message: string) => errors.push(`${file}: ${where}${message}`);
 
   if (!isRecord(data)) return { ok: false, errors: [`${file}: expected a table at the top level`] };
-  unknownFields(data, ["environments", ...vaults.map((v) => v.kind), "keys"], (field) =>
+  unknownFields(data, ["environments", "ignore", ...vaults.map((v) => v.kind), "keys"], (field) =>
     fail(
       "",
       field === "vaults"
@@ -132,11 +133,40 @@ function validateMap(
     });
   }
 
+  const ignore = validateIgnore(data.ignore, isRecord(rawKeys) ? Object.keys(rawKeys) : [], (m) =>
+    fail("", m),
+  );
   sharedDestinations(keys, environments, kinds, (where, message) => fail(where, message));
   sharedClaims(keys, environments, issuers, (where, message) => fail(where, message));
   return errors.length
     ? { ok: false, errors }
-    : { ok: true, map: { file, pins, environments, keys } };
+    : { ok: true, map: { file, pins, environments, ignore, keys } };
+}
+
+function validateIgnore(
+  raw: unknown,
+  mapped: readonly string[],
+  fail: (message: string) => void,
+): readonly string[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw) || !raw.every((name) => typeof name === "string")) {
+    fail(`"ignore" must be a list of variable names, such as ["OPENAI_API_KEY"]`);
+    return [];
+  }
+  const names: string[] = [];
+  for (const name of raw) {
+    const key = mapped.find((id) => id.toUpperCase() === name.toUpperCase());
+    if (!VARIABLE_NAME.test(name))
+      fail(
+        `ignore "${name}": a variable name uses letters, digits and _, not starting with a digit`,
+      );
+    else if (names.some((each) => each.toUpperCase() === name.toUpperCase()))
+      fail(`ignore "${name}" is listed twice`);
+    else if (key !== undefined)
+      fail(`ignore "${name}" is also [keys.${key}]; remove it from one of them`);
+    else names.push(name);
+  }
+  return names;
 }
 
 function validatePins(

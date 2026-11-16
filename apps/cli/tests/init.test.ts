@@ -69,7 +69,7 @@ describe("keypin init", () => {
     expect(TEMPLATE.split("\n").every((line) => line === "" || line.startsWith("#"))).toBe(true);
     expect(parseMap(TEMPLATE, "keypin.toml", destinations, issuers, vaults)).toEqual({
       ok: true,
-      map: { file: "keypin.toml", pins: {}, environments: ["dev", "prod"], keys: [] },
+      map: { file: "keypin.toml", pins: {}, environments: ["dev", "prod"], ignore: [], keys: [] },
     });
   });
 

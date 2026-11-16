@@ -108,8 +108,12 @@ export function findGaps(
   const environment = publishEnvironment({ environments: listed });
   const notes: string[] = [];
   const needs: Found[] = [];
+  const ignore = keys?.ignore ?? [];
+  const ignoring = (name: string) =>
+    ignore.find((each) => each.toUpperCase() === name.toUpperCase());
   const need = (name: string, place: Place, usedBy: string) => {
     if (!isVariableName(name)) return;
+    if (ignoring(name) !== undefined) return;
     const found = needs.find((n) => n.need.name === name && n.place.id === place.id);
     if (found) {
       if (!found.need.usedBy.includes(usedBy)) found.need.usedBy.push(usedBy);
@@ -147,6 +151,7 @@ export function findGaps(
       (keys?.keys ?? []).some(
         (k) => place.matches(k.name, name) && mappedIn(keys, k, place) !== null,
       ),
+    ignores: (name: string) => ignoring(name) !== undefined,
   };
   const after: NonNullable<Needs["notesAfter"]>[] = [];
   const conflicts: string[] = [];
@@ -249,7 +254,7 @@ export function findGaps(
     const other = caveat === null ? "" : `, which ${caveat}`;
     const names = file.names.filter(isVariableName);
     const key = (name: string) => keys?.keys.find((k) => k.name === name);
-    const unmapped = names.filter((name) => !key(name));
+    const unmapped = names.filter((name) => ignoring(name) === undefined && !key(name));
     const elsewhere = names.filter((name) => {
       const found = key(name);
       return found !== undefined && !found.environments[env];
@@ -293,6 +298,9 @@ export function findGaps(
       });
     }
   }
+
+  if (ignore.length)
+    notes.push(`keypin.toml ignores ${ignore.length} ${ignore.length === 1 ? "key" : "keys"}`);
 
   return {
     production: needs.map((n) => n.need),

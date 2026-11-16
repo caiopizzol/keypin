@@ -81,7 +81,8 @@ export class WorkerSecretDestination implements Destination {
       text: secret.reveal(),
       type: "secret_text",
     });
-    if (put.status !== 200 && put.status !== 201) throw failure("PUT", path, put);
+    if (put.status !== 200 && put.status !== 201)
+      throw failure("PUT", path, put, [secret.reveal(), await this.#tokenOrEmpty()]);
 
     const versions = await this.#request("GET", `${this.#base()}/versions?per_page=10`);
     if (versions.status !== 200) throw failure("GET", `${this.#base()}/versions`, versions);
@@ -123,6 +124,10 @@ export class WorkerSecretDestination implements Destination {
     }
   }
 
+  async #tokenOrEmpty(): Promise<string> {
+    return this.#token ? await this.#token.catch(() => "") : "";
+  }
+
   async #request(method: string, path: string, body?: unknown) {
     this.#token ??= this.#tokenSource();
     const response = await this.#fetch(`${API}${path}`, {
@@ -137,21 +142,45 @@ export class WorkerSecretDestination implements Destination {
   }
 }
 
+const NOT_DEPLOYED = [10214, 10215];
+
 function failure(
   method: string,
   path: string,
   response: { status: number; body: Record<string, unknown> },
+  hidden?: readonly string[],
 ): Error {
-  const errors = response.body.errors;
-  const codes = Array.isArray(errors)
+  const errors = Array.isArray(response.body.errors) ? response.body.errors.filter(isRecord) : [];
+  const codes = errors.map((e) => e.code).filter((c) => typeof c === "number");
+  const secrets = (hidden ?? []).flatMap((h) => [h, h.trim()]).filter((h) => h);
+  const said = hidden
     ? errors
-        .map((e: unknown) => (isRecord(e) ? e.code : undefined))
-        .filter((c): c is string | number => typeof c === "string" || typeof c === "number")
+        .map((e) => (typeof e.message === "string" ? e.message : ""))
+        .filter((m) => !secrets.some((h) => m.includes(h)))
+        .map((m) => m.trim())
+        .filter((m) => m)
     : [];
-  const detail = codes.length ? `, codes ${codes.join(", ")}` : "";
+  const where = `Cloudflare ${method} ${path.split("?")[0]} returned HTTP ${response.status}`;
+  const detail = [
+    ...(codes.length ? [`codes ${codes.join(", ")}`] : []),
+    ...(said.length ? [`"${said.join("; ")}"`] : []),
+  ];
+  const why = explain(response.status, codes);
   return new Error(
-    `Cloudflare ${method} ${path.split("?")[0]} returned HTTP ${response.status}${detail}`,
+    `${why ? `${why} (` : ""}${where}${detail.length ? `, ${detail.join(", ")}` : ""}${why ? ")" : ""}`,
   );
+}
+
+function explain(status: number, codes: readonly number[]): string | null {
+  if (codes.some((code) => NOT_DEPLOYED.includes(code)))
+    return "the Worker's latest version isn't deployed, and writing a secret would deploy it; deploy the latest version first (wrangler versions deploy), or set the secret on a new version with wrangler versions secret put";
+  if (status === 401)
+    return "Cloudflare refused the sign-in; run wrangler login again, or check KEYPIN_CLOUDFLARE_API_TOKEN";
+  if (status === 403)
+    return "the login can't edit this Worker's secrets; it needs Workers Scripts Edit on the account";
+  if (status === 429)
+    return "Cloudflare is rate-limiting the login (1,200 requests per 5 minutes); wait a few minutes and run it again";
+  return null;
 }
 
 function newestVersion(body: Record<string, unknown>) {

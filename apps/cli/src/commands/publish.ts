@@ -242,7 +242,7 @@ async function publishLocked(
     say(
       `\nPlan${many ? ` for ${out.bold(key.name)}` : ""}  ${out.dim(`generation ${generation}`)}`,
     );
-    showPlan(out, publishRows(plan.steps, label));
+    showPlan(out, publishRows(plan.steps, label, deps.destinations));
     showRemoved(out, plan.removed);
     needsApproval ||= plan.needsApproval;
     planned.push({ ...job, generation, writes });

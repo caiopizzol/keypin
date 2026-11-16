@@ -209,6 +209,69 @@ describe("write", () => {
   });
 });
 
+describe("a failed write says why", () => {
+  async function failedPut(reply: Reply) {
+    const routes = happyRoutes();
+    routes[`PUT ${BASE}/secrets`] = reply;
+    const { worker } = destination(routes);
+    await worker.checkAccount();
+    return String(await worker.write("API_KEY", new Secret(SENTINEL)).catch((e: unknown) => e));
+  }
+  const PATH = `Cloudflare PUT ${BASE.replace("/client/v4", "")}/secrets`;
+
+  test("never shows a message that holds the value or the token", async () => {
+    const message = await failedPut({
+      status: 400,
+      body: {
+        success: false,
+        errors: [
+          { code: 1, message: `bad ${SENTINEL}` },
+          { code: 2, message: `bad ${TOKEN}` },
+          { code: 3, message: "kept" },
+        ],
+      },
+    });
+    expect(message).toBe(`Error: ${PATH} returned HTTP 400, codes 1, 2, 3, "kept"`);
+  });
+
+  test("keeps Cloudflare's own message with the code", async () => {
+    const message = await failedPut({
+      status: 400,
+      body: {
+        success: false,
+        errors: [{ code: 10021, message: "Too many variables for this Worker" }],
+      },
+    });
+    expect(message).toBe(
+      `Error: ${PATH} returned HTTP 400, codes 10021, "Too many variables for this Worker"`,
+    );
+  });
+
+  test.each([10215, 10214])("code %i says to deploy the latest version first", async (code) => {
+    const message = await failedPut({
+      status: 400,
+      body: {
+        success: false,
+        errors: [{ code, message: "latest version isn't currently deployed" }],
+      },
+    });
+    expect(message).toContain(
+      "the Worker's latest version isn't deployed, and writing a secret would deploy it; deploy the latest version first (wrangler versions deploy), or set the secret on a new version with wrangler versions secret put",
+    );
+    expect(message).toContain(`(${PATH} returned HTTP 400, codes ${code}`);
+  });
+
+  test.each([
+    [401, "Cloudflare refused the sign-in"],
+    [403, "it needs Workers Scripts Edit on the account"],
+    [429, "wait a few minutes and run it again"],
+  ])("HTTP %i is explained", async (status, says) => {
+    const message = await failedPut({ status, body: { success: false, errors: [] } });
+    expect(message).toContain(says);
+    expect(message).toContain(`(${PATH} returned HTTP ${status})`);
+  });
+});
+
 describe("no value or token in any output", () => {
   test("a 500 on the PUT whose body echoes the value", async () => {
     const routes = happyRoutes();
@@ -225,6 +288,28 @@ describe("no value or token in any output", () => {
       ),
     );
     expectNoSentinel(await failure.catch((e: unknown) => e), check, worker.describe());
+  });
+
+  test.each([
+    ["ends in a newline, and the message echoes it", `${SENTINEL}\n`, `bad ${SENTINEL}\n`],
+    [
+      "ends in a newline, and the message echoes it without one",
+      `${SENTINEL}\n`,
+      `bad ${SENTINEL}`,
+    ],
+    ["has spaces around it, and the message echoes it", `  ${SENTINEL}  `, `bad ${SENTINEL}`],
+  ])("a value that %s isn't shown", async (_, value, message) => {
+    const routes = happyRoutes();
+    routes[`PUT ${BASE}/secrets`] = {
+      status: 500,
+      body: { success: false, errors: [{ code: 10013, message }] },
+    };
+    const { worker } = destination(routes);
+    const check = await worker.checkAccount();
+    const failure = await worker.write("API_KEY", new Secret(value)).catch((e: unknown) => e);
+    assert(failure instanceof Error);
+    expect(failure.message).not.toContain("bad");
+    expectNoSentinel(failure, check, worker.describe());
   });
 
   test("a 500 on /accounts and on the versions list", async () => {

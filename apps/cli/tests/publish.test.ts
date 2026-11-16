@@ -303,6 +303,9 @@ describe("keypin publish", () => {
     );
     expect(text).toContain(`Plan  generation ${generation}`);
     expect(text).toContain("  + GitHub      acme/billing    first write  needs approval");
+    expect(text).toContain(
+      "  + Cloudflare  billing-worker  first write  needs approval\n    writing a Worker secret deploys a new version of the Worker\n  + GitHub",
+    );
     expect(text).toContain("This plan needs approval in a terminal; --yes can't give it.");
     expect(text).toContain(
       "To approve, run this in a terminal:\n  cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts publish STRIPE_API_KEY\n",

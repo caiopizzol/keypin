@@ -230,7 +230,7 @@ async function rotateLocked(job: Job): Promise<number> {
       vaultName(entry.ref, deps.vaults),
       `save it to ${formatReference(entry.ref, deps.vaults)}, rotated today`,
     ),
-    ...publishRows(steps, job.label),
+    ...publishRows(steps, job.label, deps.destinations),
     revokeRow(issuer, current, "after a second y", check.notes?.revoke),
   ]);
   showRemoved(out, removed);
@@ -351,7 +351,7 @@ async function resume(
   const old = issued.old.revoked ? null : issued.old.id;
   out.line("\nPlan");
   showPlan(out, [
-    ...publishRows(steps, job.label),
+    ...publishRows(steps, job.label, deps.destinations),
     ...(old === null
       ? []
       : [revokeRow(ready.issuer, old, published ? "after a y" : "after a second y")]),

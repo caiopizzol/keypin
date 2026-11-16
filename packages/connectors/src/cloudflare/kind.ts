@@ -96,6 +96,7 @@ export const cloudflareWorker: DestinationKind<WorkerTarget, WorkerPublisher, Wo
   where: ({ worker }) => `the Worker ${worker}`,
   login: (_target, { workerSignIn }) => SIGNED_IN_AS[workerSignIn?.via ?? "oauth"],
   signInVariables: [API_TOKEN_VARIABLE],
+  writeNote: "writing a Worker secret deploys a new version of the Worker",
   publisher: async (host, folder) => ({ fields: { workerSignIn: host.workerSignIn(folder) } }),
   discovery: wranglerDiscovery,
   prerequisites: async ({ folder, targets, used }, host) =>

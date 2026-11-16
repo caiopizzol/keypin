@@ -107,13 +107,13 @@ describe("diskLock", () => {
     }
   }, 30_000);
 
-  test("a takeover guard another run holds is reported, not waited on forever", async () => {
+  test("a takeover another run is doing is reported as that run, not as the stale lock", async () => {
     const path = await leftLock(`${await deadPid()}\n`);
     await writeFile(`${path}.takeover`, `${process.pid}\n`);
-    const taken = await diskLock(path);
-    assert(!taken.held);
-    expect(taken.holder.running).toBe(false);
-    expect(await readFile(`${path}.takeover`, "utf8")).toBe(`${process.pid}\n`);
+    expect(await diskLock(path)).toEqual({
+      held: false,
+      holder: { file: `${path}.takeover`, pid: process.pid, running: true },
+    });
   }, 5_000);
 
   test("closing the terminal while holding the lock removes it", async () => {

@@ -183,7 +183,8 @@ export const diskLock: Lock = async (path) => {
     if (await take(path)) return { held: true, lock: held(path) };
     const holder = await holderAt(path);
     const found = holder.running === false ? await takeOver(path, holder) : holder;
-    if (found?.pid != null || tries === LOCK_TRIES) return { held: false, holder: found ?? holder };
+    if (found !== null && (found.pid !== null || tries === LOCK_TRIES))
+      return { held: false, holder: found };
     await Bun.sleep(LOCK_WAIT_MS);
   }
 };
@@ -195,7 +196,7 @@ async function takeOver(path: string, stale: LockHolder): Promise<LockHolder | n
   const guardPath = `${path}.takeover`;
   if (!(await take(guardPath))) {
     const guard = await holderAt(guardPath);
-    return guard.running === false ? guard : null;
+    return guard.pid === null ? null : guard;
   }
   const guard = held(guardPath);
   try {

@@ -12,17 +12,23 @@ export async function caught(promise: Promise<unknown>): Promise<Error> {
 }
 
 export function expectNoSentinel(...seen: unknown[]): void {
-  expect(sentinelPaths(seen)).toEqual([]);
+  expectNoneOf([SENTINEL], ...seen);
 }
 
-function sentinelPaths(seen: unknown[]): string[] {
+export function expectNoneOf(hidden: readonly string[], ...seen: unknown[]): void {
+  expect(pathsHolding(hidden, seen)).toEqual([]);
+}
+
+function pathsHolding(hidden: readonly string[], seen: unknown[]): string[] {
   const found = new Set<string>();
   const visited = new WeakSet<object>();
   const decoder = new TextDecoder();
 
   function visit(each: unknown, at: string): void {
     if (typeof each === "string") {
-      if (each.includes(SENTINEL)) found.add(at);
+      hidden.forEach((text, index) => {
+        if (each.includes(text)) found.add(`${at} holds hidden value ${index + 1}`);
+      });
       return;
     }
     if (typeof each !== "object" || each === null || visited.has(each)) return;

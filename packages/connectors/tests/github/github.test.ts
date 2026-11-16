@@ -2,6 +2,7 @@ import sodium from "libsodium-wrappers";
 import { assert, beforeAll, describe, expect, test } from "vite-plus/test";
 import { type Fetch, isRecord, Secret } from "@keypin/core";
 import { GitHubSecretDestination, sealedBox } from "../../src/github/index";
+import { expectNoneOf } from "@keypin/core/testing";
 
 const SENTINEL = "sentinel-value-7f3a9c";
 const TOKEN = "token-sentinel-41b2";
@@ -81,13 +82,7 @@ function destination(
   return { github, requests: fake.requests };
 }
 
-function expectNoSentinel(...seen: unknown[]) {
-  const text = JSON.stringify(
-    seen.map((s) => (s instanceof Error ? `${s.message} ${s.stack}` : s)),
-  );
-  expect(text).not.toContain(SENTINEL);
-  expect(text).not.toContain(TOKEN);
-}
+const expectNoSentinel = (...seen: unknown[]) => expectNoneOf([SENTINEL, TOKEN], ...seen);
 
 describe("sealed box", () => {
   test("round-trips with a fixed key pair", async () => {

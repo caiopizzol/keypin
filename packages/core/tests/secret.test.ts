@@ -30,6 +30,7 @@ test("no printing path shows the value", () => {
     }),
     "" + secret,
     String(secret),
+    secret.toString(),
     JSON.stringify(secret),
     JSON.stringify(nested),
     inspect(secret),

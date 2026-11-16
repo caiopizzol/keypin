@@ -23,7 +23,7 @@ import {
 
 const tokenFor = (address: string) =>
   `ops_${Buffer.from(JSON.stringify({ signInAddress: address })).toString("base64url")}`;
-const TOKEN = tokenFor("my.1password.com");
+const TOKEN = tokenFor("https://my.1password.com/");
 const SERVICE = { KEYPIN_1PASSWORD: "service-account", OP_SERVICE_ACCOUNT_TOKEN: TOKEN };
 const ID = "4Q6Z73JHSJESBM36AP3W57YOOU";
 const DEPLOY_MAP = BILLING_MAP.replaceAll("op://Private/", "op://Deploy/");

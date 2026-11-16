@@ -12,8 +12,9 @@ keypin publish --all --plan          # show the plan and write nothing
 It writes GitHub Actions secrets with your `gh` login, and Cloudflare Worker secrets with your `wrangler` login or
 `KEYPIN_CLOUDFLARE_API_TOKEN` (see [Notes](notes.md#signing-in-to-cloudflare)). The Worker, and a GitHub
 `environment` the map names, must already exist. Writing a Worker secret deploys a new version of the Worker, so
-deploy the Worker's latest version first. GitHub Enterprise Server and ghe.com aren't supported yet. Run
-`keypin check` first: it checks each login and lists what's missing.
+deploy the Worker's latest version first; `--all` writes a Worker's keys in one version. keypin doesn't publish to
+Pages projects, Workers for Platforms namespaces, GitHub Enterprise Server or ghe.com. Run `keypin check` first: it
+lists what's missing.
 
 ## Steps
 
@@ -37,7 +38,7 @@ exits 3 when the plan would write and 0 when there's nothing to write.
 
 ## Every key
 
-`--all` publishes every key that has destinations in the environment. It checks every account first, shows one plan
-and asks once. If a write fails, it stops and keeps the receipts so far; run it again to continue.
+`--all` publishes every key that has destinations in the environment, with one plan and one approval. If a write
+fails, it stops and keeps the receipts so far; run it again to continue.
 
 keypin never deletes a secret from a destination you remove from the map.

@@ -20,13 +20,13 @@ const ref = (account: string, vault = "Deploy"): KeyRef => ({
   field: "password",
 });
 
-function fakeSdk() {
+function fakeSdk(vaults = ["Deploy"]) {
   const calls: string[] = [];
   const client: SdkClient = {
     vaults: {
       list: async () => {
         calls.push("vaults.list");
-        return [{ id: "vault-deploy", title: "Deploy" }];
+        return vaults.map((title) => ({ id: `vault-${title}`, title }));
       },
     },
     items: {
@@ -163,6 +163,21 @@ describe("a service account sign-in", () => {
       await expect(backend.itemIds(ref("acme.1password.com", vault))).rejects.toThrow(
         `service accounts can't open the built-in vault "${vault}"; move the item to a vault you create, update its reference in keypin.toml, and grant the service account read access to that vault`,
       );
+  });
+
+  test("a missing Shared vault may be the default one, which service accounts can't open", async () => {
+    const { backend } = fakeSdk();
+    await expect(backend.itemIds(ref("acme.1password.com", "Shared"))).rejects.toThrow(
+      `the vault "Shared" isn't visible to this service account. If it's the default Shared vault, service accounts can't open it; move the item to a vault you create, update its reference in keypin.toml, and grant the service account read access to that vault. If you created it, the service account wasn't granted it`,
+    );
+  });
+
+  test("a granted vault you named Shared opens like any other", async () => {
+    const { backend, calls } = fakeSdk(["Shared"]);
+    await expect(
+      backend.list({ kind: "1password", account: "acme.1password.com", vault: "Shared" }),
+    ).resolves.toEqual([]);
+    expect(calls).toEqual(["vaults.list", "items.list"]);
   });
 
   test("another missing vault isn't visible to the service account, not a typo", async () => {

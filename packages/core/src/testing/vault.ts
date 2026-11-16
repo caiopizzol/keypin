@@ -64,8 +64,9 @@ export function vaultContract(make: Make): void {
     refuseWrites();
     const refused = await caught(vault.write(ref, new Secret(`${SENTINEL}-refused`)));
     expect(refused).toBeInstanceOf(WriteRefused);
+    expect(effects).toEqual([]);
     expect((await vault.read(ref)).equals(new Secret(SENTINEL))).toBe(true);
-    expectNoSentinel(refused, effects);
+    expectNoSentinel(refused);
   });
 
   test("a sign-in that fails is a SignInFailed, for reads and writes", async (context) => {

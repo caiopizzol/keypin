@@ -53,7 +53,7 @@ with a lowercase letter and uses lowercase letters, digits and dashes.
 ## Ignored keys
 
 List the keys a workflow or env file names that keypin shouldn't manage, such as the optional keys of a copied
-workflow. `keypin check` leaves them out, in any case, and says how many it ignored.
+workflow. `keypin check` leaves them out, in any case, and says how many it ignores.
 
 ```toml
 ignore = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"]

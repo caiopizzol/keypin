@@ -124,7 +124,7 @@ describe("keypin in a real terminal", () => {
       const result = await drive({ scenario: "ignored-keys", args: ["check"] });
       expect(result.exit).toBe(0);
       expect(result.screen).toContain("✓ 1 key, 1 destination. Everything checks out.");
-      expect(result.screen).toContain("Note: 2 keys ignored in keypin.toml");
+      expect(result.screen).toContain("Note: keypin.toml ignores 2 keys");
       expect(result.screen).not.toContain("OPENAI_API_KEY");
       expect(result.screen).not.toContain("ANTHROPIC_API_KEY");
       clean(result);

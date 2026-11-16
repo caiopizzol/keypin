@@ -511,7 +511,7 @@ jobs:
     expect(await cli(["check"], run.deps)).toBe(0);
     const text = run.stdout.text;
     expect(text).toContain("Everything checks out.");
-    expect(text).toContain("Note: 3 keys ignored in keypin.toml\n");
+    expect(text).toContain("Note: keypin.toml ignores 4 keys\n");
     expect(text).not.toContain("OPENAI_API_KEY");
     expect(text).not.toContain("PORT");
     expect(text).not.toContain(PASTE);
@@ -523,7 +523,7 @@ jobs:
     });
     expect(await cli(["check"], without.deps)).toBe(1);
     expect(without.stdout.text).toContain("OPENAI_API_KEY: .github/workflows/deploy.yml uses it");
-    expect(without.stdout.text).not.toContain("ignored in keypin.toml");
+    expect(without.stdout.text).not.toContain("keypin.toml ignores");
   });
 
   test("ignore matches names in any case, so check never proposes a key ignore would reject", async () => {
@@ -538,7 +538,7 @@ jobs:
       worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
     });
     expect(await cli(["check"], run.deps)).toBe(0);
-    expect(run.stdout.text).toContain("Note: 2 keys ignored in keypin.toml");
+    expect(run.stdout.text).toContain("Note: keypin.toml ignores 2 keys");
     expect(run.stdout.text).not.toContain("EXTRA_KEY");
     expect(run.stdout.text).not.toContain("LOCAL_KEY");
   });
@@ -1394,7 +1394,7 @@ required = ["RESEND_API_KEY"]
     }),
   };
 
-  test("an ignored org secret gets no note, only the ignored count", async () => {
+  test("an ignored org secret gets no org-secret note", async () => {
     const run = setup({
       files: {
         [MAP]: `ignore = ["STRIPE_API_KEY"]\n${PUBLISHED.replace(/\[keys\.STRIPE_API_KEY\][\s\S]*$/, "")}`,
@@ -1409,7 +1409,7 @@ required = ["RESEND_API_KEY"]
     });
     expect(await cli(["check"], run.deps)).toBe(0);
     expect(run.stdout.text).not.toContain("(org secret)");
-    expect(run.stdout.text).toContain("Note: 1 key ignored in keypin.toml");
+    expect(run.stdout.text).toContain("Note: keypin.toml ignores 1 key");
   });
 
   test("an org secret doesn't stand in for a missing secret of a job's environment", async () => {

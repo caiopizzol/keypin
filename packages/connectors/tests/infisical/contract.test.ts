@@ -26,6 +26,9 @@ for (const path of ["/", "/payments/stripe"]) {
         hold: () => {
           fake.heldByPolicy = [];
         },
+        failSignIn: () => {
+          fake.refuseLogin = 401;
+        },
       };
     });
   });

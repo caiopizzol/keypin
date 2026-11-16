@@ -112,6 +112,17 @@ describe("signing in", () => {
     });
   });
 
+  test("the fake refuses a request without the token from its login", async () => {
+    const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": STRIPE } });
+    const read = (headers: Record<string, string>) =>
+      fake.fetch(`${URL}/api/v4/secrets/STRIPE_KEY?projectId=${PROJECT_ID}&environment=prod`, {
+        method: "GET",
+        headers,
+      });
+    expect((await read({})).status).toBe(401);
+    expect((await read({ Authorization: "Bearer other" })).status).toBe(401);
+  });
+
   test("a project ID in the reference skips the slug lookup", async () => {
     const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": STRIPE } });
     await infisicalBackend(CREDENTIALS, fake.fetch).read({ ...REF, project: PROJECT_ID });
@@ -130,7 +141,7 @@ describe("signing in", () => {
 
   test("no credentials name the variables to set", async () => {
     await expect(infisicalBackend(null, fakeInfisical().fetch).read(REF)).rejects.toThrow(
-      "Infisical organization acme at https://app.infisical.com: sign-in failed: set INFISICAL_UNIVERSAL_AUTH_CLIENT_ID and INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET to a machine identity's Universal Auth client ID and secret, or INFISICAL_TOKEN to a machine identity's access token",
+      "Infisical organization acme at https://app.infisical.com: sign-in failed: set INFISICAL_UNIVERSAL_AUTH_CLIENT_ID and INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET to a machine identity's Universal Auth client ID and secret, or INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN or INFISICAL_TOKEN to a machine identity's access token",
     );
   });
 

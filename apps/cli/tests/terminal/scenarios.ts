@@ -490,6 +490,7 @@ export function valuesOf(scenario: Scenario): string[] {
   const tokens = [
     scenario.env?.OP_SERVICE_ACCOUNT_TOKEN,
     scenario.env?.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET,
+    scenario.env?.INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN,
     scenario.env?.INFISICAL_TOKEN,
   ].flatMap((token) => (token ? [token] : []));
   const issued = [

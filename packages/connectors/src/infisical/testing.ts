@@ -97,9 +97,12 @@ export function infisicalFetch(fake: FakeInfisical, store: Store): Fetch {
         ? reply(fake.refuseLogin, { message: "Invalid credentials" })
         : reply(200, { accessToken: INFISICAL_TOKEN, expiresIn: 7200, tokenType: "Bearer" });
     const bearer = init.headers.Authorization?.replace(/^Bearer /, "");
-    const user = fake.userToken !== undefined && bearer === fake.userToken;
-    if (bearer !== INFISICAL_TOKEN && bearer !== fake.accessToken && !user)
+    if (
+      bearer === undefined ||
+      ![INFISICAL_TOKEN, fake.accessToken, fake.userToken].includes(bearer)
+    )
       return reply(401, { message: "Unauthorized" });
+    const user = bearer === fake.userToken;
     if (parsed.pathname === "/api/v1/identities/details" && user)
       return reply(403, { message: "Forbidden access to /api/v1/identities/details" });
     if (parsed.pathname === "/api/v1/identities/details")

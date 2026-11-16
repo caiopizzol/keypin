@@ -25,7 +25,7 @@ import {
 export const CLIENT_ID = "INFISICAL_UNIVERSAL_AUTH_CLIENT_ID";
 export const CLIENT_SECRET = "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET";
 export const ACCESS_TOKENS = ["INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN", "INFISICAL_TOKEN"];
-export const NO_CREDENTIALS = `set ${CLIENT_ID} and ${CLIENT_SECRET} to a machine identity's Universal Auth client ID and secret, or INFISICAL_TOKEN to a machine identity's access token`;
+export const NO_CREDENTIALS = `set ${CLIENT_ID} and ${CLIENT_SECRET} to a machine identity's Universal Auth client ID and secret, or ${ACCESS_TOKENS.join(" or ")} to a machine identity's access token`;
 const ROTATED = "rotated";
 
 export type Credentials =

@@ -33,6 +33,19 @@ describe("the leak check", () => {
     expect(values).not.toContain("3000");
   });
 
+  test("knows either Infisical access token", () => {
+    const values = valuesOf({
+      ...ready,
+      env: {
+        INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN: "universal-access-token-sentinel",
+        INFISICAL_TOKEN: "infisical-token-sentinel",
+      },
+    });
+    expect(values).toEqual(
+      expect.arrayContaining(["universal-access-token-sentinel", "infisical-token-sentinel"]),
+    );
+  });
+
   test(
     "flags a run that prints a quoted .env value",
     async () => {

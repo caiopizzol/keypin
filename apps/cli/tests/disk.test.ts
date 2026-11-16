@@ -246,8 +246,9 @@ describe("diskFiles", () => {
     assert(typeof sync === "function");
     const synced: boolean[] = [];
     Reflect.set(handles, "sync", async function (this: FileHandle, ...args: unknown[]) {
-      synced.push((await this.stat()).isDirectory());
+      const folder = (await this.stat()).isDirectory();
       const result: unknown = await Reflect.apply(sync, this, args);
+      synced.push(folder);
       return result;
     });
     try {
@@ -256,6 +257,27 @@ describe("diskFiles", () => {
       Reflect.set(handles, "sync", sync);
     }
     expect(synced).toEqual([false, true]);
+  });
+
+  test("a save whose folder can't be synced after the rename still counts as saved", async () => {
+    const probe = await open(join(folder, "probe"), "w");
+    await probe.close();
+    const handles: unknown = Object.getPrototypeOf(probe);
+    assert(typeof handles === "object" && handles !== null);
+    const sync: unknown = Reflect.get(handles, "sync");
+    assert(typeof sync === "function");
+    Reflect.set(handles, "sync", async function (this: FileHandle, ...args: unknown[]) {
+      if ((await this.stat()).isDirectory()) throw new Error("EIO: folder sync failed");
+      const result: unknown = await Reflect.apply(sync, this, args);
+      return result;
+    });
+    const path = join(folder, "state.json");
+    try {
+      await saveState(diskFiles, path, emptyState());
+    } finally {
+      Reflect.set(handles, "sync", sync);
+    }
+    expect(JSON.parse(await readFile(path, "utf8"))).toEqual(emptyState());
   });
 
   test("a save whose rename fails leaves no temporary file", async () => {

@@ -36,17 +36,21 @@ export const diskFiles: Files = {
   },
   async rename(from, to) {
     await rename(from, to);
-    const folder = await open(dirname(to), constants.O_RDONLY);
-    try {
-      await folder.sync();
-    } finally {
-      await folder.close();
-    }
+    await syncFolder(dirname(to)).catch(() => {});
   },
   async remove(path) {
     await rm(path, { force: true });
   },
 };
+
+async function syncFolder(path: string): Promise<void> {
+  const folder = await open(path, constants.O_RDONLY);
+  try {
+    await folder.sync();
+  } finally {
+    await folder.close();
+  }
+}
 
 const PRIVATE_WRITE =
   constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW;

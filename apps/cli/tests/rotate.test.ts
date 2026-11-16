@@ -3,7 +3,7 @@ import { type Fetch, generationOf, type Issuer, loadState, Secret } from "@keypi
 import { memoryKeys, resendFetch } from "@keypin/connectors/resend/testing";
 import { cli } from "../src/cli";
 import { issuer as connect, vaults } from "../src/start";
-import { NEEDS_APPROVAL } from "../src/publishing";
+import { NEEDS_APPROVAL } from "../src/approval";
 import {
   fakeDeps,
   fakeDestinations,

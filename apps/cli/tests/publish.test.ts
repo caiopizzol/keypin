@@ -12,7 +12,7 @@ import { GitHubSecretDestination } from "@keypin/connectors/github";
 import { type FullItem, onePasswordBackend } from "@keypin/connectors/onepassword";
 import { cli } from "../src/cli";
 import type { Publisher } from "../src/deps";
-import { NEEDS_APPROVAL, rerun } from "../src/publishing";
+import { NEEDS_APPROVAL, rerun } from "../src/approval";
 import { destinations, vaults } from "../src/start";
 import {
   fakeDeps,

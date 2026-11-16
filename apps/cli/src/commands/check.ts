@@ -22,7 +22,7 @@ import {
   vaultAccounts,
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
-import { type Output, output, tilde } from "../output";
+import { count, type Output, output, tilde } from "../output";
 import { registryPath } from "../paths";
 import { locateMap, MAP_FILE } from "../project";
 import { publisherFor } from "../publisher";
@@ -613,8 +613,4 @@ function render(report: Report, read: string, steps: Step[], out: Output, home: 
   for (const note of report.notes)
     if (note !== ITEM_NOTE && !shown.has(note)) lines.push(dim(`Note: ${note}`));
   return tilde(`${lines.join("\n")}\n`, home);
-}
-
-function count(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }

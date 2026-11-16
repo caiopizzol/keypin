@@ -20,7 +20,7 @@ import {
 import { type Deps, localDay, UsageError } from "../deps";
 import { registryPath, statePath } from "../paths";
 import { MAP_FILE } from "../project";
-import { columns, type Output, output, tilde } from "../output";
+import { columns, count, type Output, output, tilde } from "../output";
 import { approval } from "../sign-in";
 import { distinctRefs, refKey } from "../vault";
 
@@ -239,8 +239,4 @@ function sameRow(problem: Problem, row: StatusRow): boolean {
 
 function daysBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
-}
-
-function count(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }

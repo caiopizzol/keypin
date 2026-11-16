@@ -237,6 +237,7 @@ export function fakeDestinations(
   kinds: DestinationKinds = destinations,
 ) {
   const log: string[] = [];
+  const received: { place: string; name: string; secret: Secret }[] = [];
   const build = (target: PublishTarget): Destination => {
     const place = placeId(target, kinds);
     const owner = target.account;
@@ -262,11 +263,14 @@ export function fakeDestinations(
           throw new Error(`HTTP 500 writing ${name}`);
         }
         log.push(`write ${place} ${name} (${secret.reveal().length} chars)`);
+        received.push({ place, name, secret });
         return { destination: place, version: `v-${log.length}` };
       },
     };
   };
-  return { build, log };
+  const delivered = (value: string) =>
+    received.filter((r) => r.secret.equals(new Secret(value))).map((r) => `${r.place} ${r.name}`);
+  return { build, log, received, delivered };
 }
 
 export interface FakeSetup {

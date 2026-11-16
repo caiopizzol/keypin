@@ -60,7 +60,16 @@ function setup(
   });
   const state = () => loadState(disk.files, STATE, vaults);
   const everything = () => [fake.stdout.text, fake.stderr.text, ...disk.contents.values()];
-  return { ...fake, disk, calls: vault.calls, log: destinations.log, asked, state, everything };
+  return {
+    ...fake,
+    disk,
+    calls: vault.calls,
+    log: destinations.log,
+    delivered: destinations.delivered,
+    asked,
+    state,
+    everything,
+  };
 }
 
 describe("keypin publish", () => {
@@ -148,6 +157,10 @@ describe("keypin publish", () => {
     expect(run.log.filter((l) => l.startsWith("write"))).toEqual([
       `write ${WORKER_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
       `write ${GITHUB_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
+    ]);
+    expect(run.delivered(SENTINEL), "every destination got the vault's value").toEqual([
+      `${WORKER_PLACE} STRIPE_API_KEY`,
+      `${GITHUB_PLACE} STRIPE_API_KEY`,
     ]);
     const state = await run.state();
     const generation = await generationOf(new Secret(SENTINEL));

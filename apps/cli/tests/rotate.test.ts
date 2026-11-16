@@ -174,6 +174,10 @@ describe("keypin rotate", () => {
       `write ${WORKER} RESEND_API_KEY (${NEW(1).length} chars)`,
       `write ${GITHUB} RESEND_API_KEY (${NEW(1).length} chars)`,
     ]);
+    expect(before.destinations.delivered(NEW(1)), "every destination got the new key").toEqual([
+      `${WORKER} RESEND_API_KEY`,
+      `${GITHUB} RESEND_API_KEY`,
+    ]);
     expect(before.stderr.text).toContain(
       "keypin doesn't know which key at Resend it replaced. Once nothing uses the old one, delete it at https://resend.com/api-keys.",
     );

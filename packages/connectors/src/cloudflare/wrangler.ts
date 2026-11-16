@@ -27,39 +27,91 @@ function jsonc(text: string): unknown {
   return errors.length ? undefined : data;
 }
 
-export function wranglerWorkers(
-  text: string,
-  config: string,
-): { ok: true; workers: WorkerDeclaration[] } | { ok: false } {
+function parseConfig(text: string, config: string): Record<string, unknown> | null {
   let data: unknown;
   try {
     data = config.endsWith(".toml") ? parseToml(text) : jsonc(text);
   } catch {
-    return { ok: false };
+    return null;
   }
-  if (!isRecord(data)) return { ok: false };
+  return isRecord(data) ? data : null;
+}
+
+export function calledAcross(configs: readonly { text: string; config: string }[]): Set<string> {
+  const names = new Set<string>();
+  for (const { text, config } of configs) {
+    const data = parseConfig(text, config);
+    if (!data) continue;
+    const envs = isRecord(data.env) ? Object.values(data.env) : [];
+    for (const name of calledWorkers([data, ...envs])) names.add(name);
+  }
+  return names;
+}
+
+export function wranglerWorkers(
+  text: string,
+  config: string,
+  calledElsewhere: ReadonlySet<string> = new Set(),
+): { ok: true; workers: WorkerDeclaration[]; skipped: string[] } | { ok: false } {
+  const data = parseConfig(text, config);
+  if (!data) return { ok: false };
   const topName = stringOf(data.name);
   const topAccount = stringOf(data.account_id);
   const workers = [declaration(config, null, data, topName, topAccount)];
+  const skipped: string[] = [];
   const envs = isRecord(data.env) ? data.env : {};
+  const called = new Set([...calledWorkers([data, ...Object.values(envs)]), ...calledElsewhere]);
   for (const [env, raw] of Object.entries(envs)) {
-    const name = isRecord(raw)
-      ? (stringOf(raw.name) ?? (topName ? `${topName}-${env}` : null))
-      : null;
-    if (!isRecord(raw) || localOnly(data, raw, name)) continue;
-    workers.push(declaration(config, env, raw, name, stringOf(raw.account_id) ?? topAccount));
+    if (!isRecord(raw)) continue;
+    const name = stringOf(raw.name) ?? (topName ? `${topName}-${env}` : null);
+    if (localOnly(data, raw, name, called)) skipped.push(env);
+    else workers.push(declaration(config, env, raw, name, stringOf(raw.account_id) ?? topAccount));
   }
-  return { ok: true, workers };
+  return { ok: true, workers, skipped };
+}
+
+function calledWorkers(tables: readonly unknown[]): Set<string> {
+  const names = new Set<string>();
+  const add = (list: unknown, field: string) => {
+    if (Array.isArray(list))
+      for (const item of list) {
+        const name = isRecord(item) ? stringOf(item[field]) : null;
+        if (name) names.add(name);
+      }
+  };
+  for (const table of tables) {
+    if (!isRecord(table)) continue;
+    add(table.services, "service");
+    add(table.tail_consumers, "service");
+    add(table.workflows, "script_name");
+    if (isRecord(table.durable_objects)) add(table.durable_objects.bindings, "script_name");
+  }
+  return names;
+}
+
+function hasItems(list: unknown): boolean {
+  return Array.isArray(list) && list.length > 0;
+}
+
+function exportsObjects(exports: unknown): boolean {
+  return (
+    isRecord(exports) &&
+    Object.values(exports).some((entry) => isRecord(entry) && entry.type === "durable-object")
+  );
 }
 
 function localOnly(
   top: Record<string, unknown>,
   env: Record<string, unknown>,
   worker: string | null,
+  called: ReadonlySet<string>,
 ): boolean {
   const inherit = (key: string) => env[key] ?? top[key];
   const listed = (table: unknown, key: string) =>
     isRecord(table) && Array.isArray(table[key]) && table[key].length > 0;
+  const hosts = (list: unknown) =>
+    Array.isArray(list) &&
+    list.some((b) => !isRecord(b) || !b.script_name || b.script_name === worker);
   return (
     Array.isArray(env.routes) &&
     env.routes.length === 0 &&
@@ -67,10 +119,12 @@ function localOnly(
     inherit("preview_urls") !== true &&
     !listed(inherit("triggers"), "crons") &&
     !listed(env.queues, "consumers") &&
-    !(
-      Array.isArray(env.workflows) &&
-      env.workflows.some((w) => !isRecord(w) || !w.script_name || w.script_name === worker)
-    )
+    !hosts(env.workflows) &&
+    !(isRecord(env.durable_objects) && hosts(env.durable_objects.bindings)) &&
+    !exportsObjects(inherit("exports")) &&
+    !hasItems(inherit("migrations")) &&
+    !hasItems(top.addresses) &&
+    !(worker !== null && called.has(worker))
   );
 }
 

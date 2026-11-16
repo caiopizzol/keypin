@@ -7,7 +7,7 @@ import {
   type Place,
   type StoreRead,
 } from "@keypin/core";
-import { WRANGLER_FILES, type WorkerDeclaration, wranglerWorkers } from "./wrangler";
+import { calledAcross, WRANGLER_FILES, type WorkerDeclaration, wranglerWorkers } from "./wrangler";
 
 export interface WranglerHost {
   workerSecrets(folder: string, account: string, worker: string): Promise<StoreRead>;
@@ -22,14 +22,23 @@ export const wranglerDiscovery: Discovery<WranglerHost> = {
   files: { key: "wrangler", noun: "wrangler config", names: WRANGLER_FILES, skip: [".wrangler"] },
   async scan(project, host) {
     const workers: Worker[] = [];
+    const skipped: string[] = [];
+    const texts: { text: string; config: string }[] = [];
     for (const config of project.found) {
       const text = await project.read(config);
-      if (text === null) continue;
-      const parsed = wranglerWorkers(text, config);
+      if (text !== null) texts.push({ text, config });
+    }
+    const called = calledAcross(texts);
+    for (const { text, config } of texts) {
+      const parsed = wranglerWorkers(text, config, called);
       if (!parsed.ok) {
         project.unknown(`the Workers in ${config}`, "it couldn't be parsed");
         continue;
       }
+      for (const env of parsed.skipped)
+        skipped.push(
+          `${config} env ${env} has no routes, workers.dev URL, trigger or binding to it, so check skips it as a Worker only wrangler dev runs`,
+        );
       for (const worker of parsed.workers) {
         const label = `the secrets of the Worker ${worker.worker ?? `in ${config}`}`;
         let read: StoreRead | null = null;
@@ -55,8 +64,10 @@ export const wranglerDiscovery: Discovery<WranglerHost> = {
       used: project.found.length > 0,
       about: null,
       report: {},
-      needs: ({ publishEnvironment }: { publishEnvironment: Environment }) =>
-        needsOf(workers, publishEnvironment),
+      needs: ({ publishEnvironment }: { publishEnvironment: Environment }) => {
+        const found = needsOf(workers, publishEnvironment);
+        return { ...found, notes: [...skipped, ...found.notes] };
+      },
     };
     return { finish: async () => discovered };
   },

@@ -111,10 +111,12 @@ function project(
   const issuer: Issuer = {
     describe: () => "Resend",
     dashboard: () => "https://resend.com/api-keys",
-    checkAccount: async (id) => ({
-      ok: id === null || keys.has(id),
-      facts: `the admin key lists ${keys.size} API keys`,
-    }),
+    checkAccount: async (id) => {
+      const facts = `the admin key lists ${keys.size} API keys`;
+      return id === null || keys.has(id)
+        ? { ok: true, facts }
+        : { ok: false, facts, reason: `Resend doesn't list key ${id}` };
+    },
     async create(name) {
       issued.push(`create ${name}`);
       const count = keys.size + 1;

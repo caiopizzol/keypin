@@ -65,14 +65,10 @@ export interface VaultBackend {
   metadata(ref: KeyRef): Promise<VaultMetadata>;
 }
 
-export interface AccountCheck {
-  publisher: string;
-  destinationAccount: string | null;
-  expected: string;
-  ok: boolean;
-  reason?: string;
-  fix?: string;
-}
+export type AccountCheck = { publisher: string; expected: string } & (
+  | { ok: true; destinationAccount: string }
+  | { ok: false; destinationAccount: string | null; reason: string; fix?: string }
+);
 
 export type Evidence = Readonly<Record<string, string | number | boolean | null>>;
 
@@ -83,15 +79,10 @@ export interface Destination {
   writeMany?(secrets: readonly { name: string; secret: Secret }[]): Promise<Evidence>;
 }
 
-export interface IssuerCheck {
-  ok: boolean;
-  facts: string;
-  reason?: string;
-  fix?: string;
-  currentId?: string;
-  gone?: string;
-  notes?: { create?: string; revoke?: string };
-}
+export type IssuerCheck = { facts: string } & (
+  | { ok: true; currentId?: string; gone?: string; notes?: { create?: string; revoke?: string } }
+  | { ok: false; reason: string; fix?: string }
+);
 
 export interface IssuedKey {
   id: string;

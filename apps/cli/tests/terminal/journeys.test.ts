@@ -142,17 +142,39 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
-    "with a service account, import stops before reading anything",
+    "with a service account, import saves the new item to 1Password",
     async () => {
       const result = await drive({
         scenario: "service-account",
-        args: ["import", ".env", "--vault", "Deploy", "--yes"],
+        args: ["import", ".env", "RESEND_API_KEY", "--vault", "Deploy", "--yes"],
       });
-      expect(result.exit).toBe(1);
-      expect(result.screen).toContain(
-        "import writes new items to 1Password, which needs the desktop app",
-      );
-      expect(result.effects).toEqual([]);
+      expect(result.exit).toBe(0);
+      expect(result.effects).toEqual([
+        "1password create my.1password.com/Deploy/billing dev resend api key (18 chars)",
+      ]);
+      expect(result.screen).not.toContain("desktop app");
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "with a service account, rotate creates the key, saves it to 1Password, publishes and revokes",
+    async () => {
+      const result = await drive({
+        scenario: "resend-service-account",
+        args: ["rotate", "RESEND_API_KEY"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.effects).toEqual([
+        "resend create re-new-1",
+        "1password update my.1password.com/Deploy/mailer resend key (20 chars)",
+        "destination write github-actions:acme/mailer RESEND_API_KEY (20 chars)",
+        "destination write cloudflare-worker:mailer RESEND_API_KEY (20 chars)",
+        "resend revoke re-old",
+      ]);
+      expect(result.raw).not.toContain("approve keypin");
       clean(result);
     },
     SLOW,

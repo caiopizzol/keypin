@@ -104,7 +104,7 @@ interface Setup extends FakeDestinationOptions, IssuerOptions {
   terminal?: boolean;
   disk?: ReturnType<typeof memoryFiles>;
   vault?: ReturnType<typeof writableVault>;
-  failSave?: boolean;
+  failSave?: boolean | "refused";
   made?: { count: number };
   serviceAccount?: boolean;
 }
@@ -449,21 +449,38 @@ describe("keypin rotate", () => {
     );
   });
 
-  test("a service account can't save a new key, so nothing is created", async () => {
-    const run = setup({ serviceAccount: true, answers: ["y"] });
-    expect(await run.run()).toBe(1);
-    expect(run.issuer.log).toEqual([]);
-    expect(run.stderr.text).toContain("needs the desktop app");
+  test("a service account creates the new key and saves it to 1Password", async () => {
+    const run = setup({ serviceAccount: true, answers: ["y", "y"] });
+    expect(await run.run()).toBe(0);
+    expect(run.issuer.log).toEqual([
+      "check none",
+      "create RESEND_API_KEY prod 2026-11-09 -> key-1",
+    ]);
+    expect(run.vault.values.get("mailer resend key")).toBe(NEW(1));
+    expect(run.vault.rotated).toEqual(["2026-11-09"]);
+    expect(run.stderr.text).not.toContain("desktop app");
   });
 
-  test("a service account can still show the plan, and says rotating needs the desktop app", async () => {
-    const run = setup({ serviceAccount: true });
-    expect(await run.run("--plan")).toBe(NEEDS_APPROVAL);
-    expect(run.issuer.log).toEqual(["check none"]);
+  test("a service account without write access revokes the key it just created", async () => {
+    const run = setup({ serviceAccount: true, failSave: "refused", answers: ["y"] });
+    expect(await run.run()).toBe(1);
+    expect(run.issuer.log).toEqual([
+      "check none",
+      "create RESEND_API_KEY prod 2026-11-09 -> key-1",
+      "revoke key-1",
+    ]);
     expect(run.writes()).toEqual([]);
     expect(run.stderr.text).toContain(
-      "Rotating needs another machine: saving a new key to 1Password needs the desktop app, and this machine signs in with a service account.",
+      "Stopped: 1Password refused to save the new key. Revoked it at Resend. Nothing changed.",
     );
+    expect((await run.state()).issued).toEqual([]);
+    expect(run.leaked()).toBe(false);
+  });
+
+  test("a service account's plan says nothing about another machine", async () => {
+    const run = setup({ serviceAccount: true });
+    expect(await run.run("--plan")).toBe(NEEDS_APPROVAL);
+    expect(run.stderr.text).not.toContain("Rotating needs another machine");
     expect(run.stderr.text).toContain("  + Resend                   create a new key");
   });
 

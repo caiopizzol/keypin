@@ -6,7 +6,7 @@ import type {
   VaultMetadata,
   VaultScope,
 } from "@keypin/core";
-import { isDay, Secret, SignInFailed, type SignInReason } from "@keypin/core";
+import { isDay, Secret, SignInFailed, type SignInReason, WriteRefused } from "@keypin/core";
 import {
   account,
   decode,
@@ -77,6 +77,18 @@ export function onePasswordBackend(
     return { vault, item: found.id };
   }
 
+  async function saving(ref: OnePasswordRef, save: () => Promise<unknown>): Promise<void> {
+    try {
+      await save();
+    } catch (error) {
+      if (mode === "service-account" && NO_PERMISSION.test(messageOf(error)))
+        throw new WriteRefused(
+          `${where(ref)}: the service account can't write to the vault "${ref.vault}". Grant write access to it: 1Password can't change a service account's access, so create a new service account with read and write access to that vault, and use its token`,
+        );
+      throw error;
+    }
+  }
+
   async function get(ref: OnePasswordRef): Promise<FullItem> {
     const sdk = await client(ref.account);
     const { vault, item } = await locate(sdk, ref);
@@ -84,7 +96,7 @@ export function onePasswordBackend(
   }
 
   return {
-    capabilities: { read: true, write: mode === "desktop", list: true, metadata: true },
+    capabilities: { read: true, write: true, list: true, metadata: true },
 
     async read(given) {
       const ref = own(given);
@@ -114,8 +126,6 @@ export function onePasswordBackend(
           `${where(ref)}: rotated must be a real day as YYYY-MM-DD, got "${rotated}"`,
         );
       }
-      if (mode === "service-account")
-        throw new Error(`${where(ref)}: writing to 1Password needs the desktop app`);
       const sdk = await client(ref.account);
       const id = await vaultId(sdk, ref);
       const found = await find(sdk, id, ref);
@@ -129,17 +139,14 @@ export function onePasswordBackend(
         }
         const fields = [passwordField(secret)];
         if (rotated) fields.push(rotatedField(rotated));
-        await sdk.items.create({
-          category: "Password",
-          vaultId: id,
-          title: ref.item,
-          fields,
-        });
+        await saving(ref, () =>
+          sdk.items.create({ category: "Password", vaultId: id, title: ref.item, fields }),
+        );
         return;
       }
 
       const item = await sdk.items.get(id, found.id);
-      await sdk.items.put(withValue(item, ref, secret, rotated));
+      await saving(ref, () => sdk.items.put(withValue(item, ref, secret, rotated)));
     },
 
     async list(given) {
@@ -276,6 +283,7 @@ function toDay(value: string, ref: OnePasswordRef): string {
 }
 
 const SDK_ERROR = /Error \{ msg: (.+?), inner: .*\}\s*$/s;
+const NO_PERMISSION = /do(?:n't| not) have the right permissions/;
 
 function signInFailed(
   account: string,

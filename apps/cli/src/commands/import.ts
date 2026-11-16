@@ -23,7 +23,7 @@ import { messageOf } from "../errors";
 import { MAP_FILE } from "../project";
 import { confirm, type Output, output } from "../output";
 import { NEEDS_APPROVAL, rerun } from "../publishing";
-import { APPROVE } from "../sign-in";
+import { approval } from "../sign-in";
 import { registerProject, TEMPLATE } from "./init";
 
 const ROTATE_EVERY = "90d";
@@ -77,10 +77,6 @@ const DOLLAR = "the value has a $, which some loaders expand to another variable
 
 export async function importEnv(args: string[], deps: Deps): Promise<number> {
   const request = parseRequest(args);
-  if (deps.signIn().mode === "service-account")
-    throw new Error(
-      "import writes new items to 1Password, which needs the desktop app; KEYPIN_1PASSWORD=service-account only reads",
-    );
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);
   const say = (text: string) => out.line(text);
   const envPath = resolve(deps.cwd, request.envFile);
@@ -185,7 +181,10 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
       `Listing vault ${request.vault}`,
       async () => new Set((await deps.vault().list(scope)).map((i) => i.title.toLowerCase())),
       () => ({ ok: true, text: `Listed the items in ${where}, not the values` }),
-      APPROVE,
+      approval(
+        deps,
+        planned.map((entry) => entry.ref),
+      ),
     );
     const found = planned.filter((entry) => titles.has(entry.ref.item.toLowerCase()));
     imports = planned.filter((entry) => !found.includes(entry));
@@ -208,7 +207,10 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
           return unread;
         },
         (unread) => ({ ok: !unread, text: `Read ${existing}` }),
-        APPROVE,
+        approval(
+          deps,
+          planned.map((entry) => entry.ref),
+        ),
       );
     for (const entry of found) {
       const problem = problems.get(entry) ?? null;
@@ -265,7 +267,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
         ok: problem === null,
         text: `${problem === null ? "Created" : "Couldn't create"} "${entry.ref.item}" in vault ${request.vault}`,
       }),
-      APPROVE,
+      approval(deps, [entry.ref]),
     );
     if (problem !== null) {
       say(`    ${problem}`);
@@ -366,7 +368,7 @@ async function compareMapped(deps: Deps, out: Output, skips: readonly Skip[]): P
       ok: !unread,
       text: `Read ${values}  ${out.dim(refs.map((ref) => formatReference(ref, deps.vaults)).join(", "))}`,
     }),
-    APPROVE,
+    approval(deps, refs),
   );
   return compared;
 }

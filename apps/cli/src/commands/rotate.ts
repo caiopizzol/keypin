@@ -5,6 +5,7 @@ import {
   formatReference,
   generationOf,
   HeldForApproval,
+  WriteRefused,
   type Issued,
   issuedFor,
   type Issuer,
@@ -32,7 +33,7 @@ import { type Deps, localDay, UsageError } from "../deps";
 import { messageOf } from "../errors";
 import { confirm, type Output, output } from "../output";
 import { findMap, pickEnvironment } from "../project";
-import { approval, signInFor } from "../sign-in";
+import { approval } from "../sign-in";
 import {
   type Checked,
   checkAccounts,
@@ -134,7 +135,6 @@ async function rotateLocked(job: Job): Promise<number> {
     receipts: state.receipts,
   };
 
-  const signIn = signInFor(deps, [entry.ref, spec.admin]);
   say(
     `${out.bold(key.name)} ${owner.environment}  ${out.dim(`from ${formatReference(entry.ref, deps.vaults)} in ${vaultAccount(entry.ref, deps.vaults)}`)}`,
   );
@@ -193,19 +193,6 @@ async function rotateLocked(job: Job): Promise<number> {
     next = { action: "resume", issued: { ...next.issued, held: false } };
     state = recordIssued(state, next.issued);
     if (!job.plan) await saveState(deps.files, job.path, state);
-  }
-  if (
-    next.action === "create" &&
-    entry.ref.kind === "1password" &&
-    signIn?.mode === "service-account"
-  ) {
-    const why =
-      "saving a new key to 1Password needs the desktop app, and this machine signs in with a service account";
-    if (!job.plan) {
-      say(`Stopped: ${why}. Nothing was created.`);
-      return 1;
-    }
-    say(out.dim(`Rotating needs another machine: ${why}.`));
   }
 
   const inVault = next.action === "resume" ? next.issued.id : next.current;
@@ -271,10 +258,23 @@ async function rotateLocked(job: Job): Promise<number> {
     const pending = mayHold ? { ...issued, held: true } : issued;
     await saveState(deps.files, job.path, recordIssued(state, pending));
   } catch (error) {
-    return undoCreate(job, issuer, created.id, messageOf(error));
+    return undoCreate(
+      job,
+      issuer,
+      created.id,
+      `couldn't record the new key in ${job.path}: ${messageOf(error)}`,
+    );
   }
 
   const saved = await saveKey(job, created.secret);
+  if (saved === "refused")
+    return undoCreate(
+      job,
+      issuer,
+      created.id,
+      `${vaultName(entry.ref, deps.vaults)} refused to save the new key`,
+      () => saveState(deps.files, job.path, state),
+    );
   state = recordIssued(state, issued);
   if (saved === "held") {
     say(
@@ -535,10 +535,16 @@ async function createKey({ key, owner, deps, out }: Job, issuer: Issuer) {
   }
 }
 
-async function undoCreate(job: Job, issuer: Issuer, id: string, why: string): Promise<number> {
+async function undoCreate(
+  job: Job,
+  issuer: Issuer,
+  id: string,
+  stopped: string,
+  forget: () => Promise<unknown> = async () => {},
+): Promise<number> {
   const { out } = job;
   const where = issuer.describe();
-  const unrecorded = `Stopped: couldn't record the new key in ${job.path}: ${why}`;
+  const unrecorded = `Stopped: ${stopped}`;
   try {
     await out.step(
       `${where}  revoking the new key ${id}`,
@@ -552,6 +558,7 @@ async function undoCreate(job: Job, issuer: Issuer, id: string, why: string): Pr
     );
     return 1;
   }
+  await forget().catch(() => {});
   out.line(`${unrecorded}. Revoked it at ${where}. Nothing changed.`);
   return 1;
 }
@@ -559,7 +566,7 @@ async function undoCreate(job: Job, issuer: Issuer, id: string, why: string): Pr
 async function saveKey(
   { entry, deps, out }: Job,
   secret: Secret,
-): Promise<"saved" | "held" | "failed"> {
+): Promise<"saved" | "held" | "refused" | "failed"> {
   const place = `${vaultName(entry.ref, deps.vaults)}  ${formatReference(entry.ref, deps.vaults)}`;
   const today = localDay(deps.now());
   try {
@@ -572,6 +579,7 @@ async function saveKey(
     return "saved";
   } catch (error) {
     out.line(`    ${messageOf(error)}`);
-    return error instanceof HeldForApproval ? "held" : "failed";
+    if (error instanceof HeldForApproval) return "held";
+    return error instanceof WriteRefused ? "refused" : "failed";
   }
 }

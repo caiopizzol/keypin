@@ -141,6 +141,7 @@ const resendReceipt = (
   pinned: string,
   generation: string,
   field = "credential",
+  vault = "Private",
 ) => ({
   keyId: "RESEND_API_KEY",
   environment: "prod",
@@ -148,12 +149,12 @@ const resendReceipt = (
   source: {
     kind: "1password",
     account: "my.1password.com",
-    vault: "Private",
+    vault,
     item: "mailer resend key",
     section: null,
     field,
   },
-  sourceIds: { vault: "Private", item: "mailer resend key" },
+  sourceIds: { vault, item: "mailer resend key" },
   destinationId,
   generation,
   account: { pinned, publisher: pinned, destinationAccount: pinned },
@@ -308,7 +309,11 @@ export const scenarios: Record<string, Scenario> = {
     ...ready,
     about:
       "ready, but signed in with a fake service account token for my.1password.com, the items in a vault named Deploy; 1Password takes 1.5s to answer",
-    files: { ...ready.files, "keypin.toml": MAP.replaceAll("op://Private/", "op://Deploy/") },
+    files: {
+      ...ready.files,
+      "keypin.toml": MAP.replaceAll("op://Private/", "op://Deploy/"),
+      ".env": "RESEND_API_KEY=verify-resend-2f7c\n",
+    },
     onePassword: {
       ...ready.onePassword,
       slowMs: 1500,
@@ -346,6 +351,39 @@ export const scenarios: Record<string, Scenario> = {
     ...neon,
     about: "neon, but the branch has only app_a: nobody created app_b",
     neon: { roles: { app_a: NEON_LIVE } },
+  },
+  "resend-service-account": {
+    ...resend,
+    about:
+      "resend, but signed in with a fake service account token for my.1password.com, the items in a vault named Deploy",
+    files: { "keypin.toml": RESEND_MAP.replaceAll("op://Private/", "op://Deploy/") },
+    onePassword: {
+      accounts: {
+        "my.1password.com": {
+          Deploy: resend.onePassword.accounts["my.1password.com"]?.Private ?? [],
+        },
+      },
+    },
+    state: {
+      ...resend.state,
+      receipts: [
+        resendReceipt(
+          "github-actions:acme/mailer:RESEND_API_KEY",
+          "acme",
+          RESEND_OLD_GENERATION,
+          "credential",
+          "Deploy",
+        ),
+        resendReceipt(
+          "cloudflare-worker:mailer:RESEND_API_KEY",
+          "11111111111111111111111111111111",
+          RESEND_OLD_GENERATION,
+          "credential",
+          "Deploy",
+        ),
+      ],
+    },
+    env: { KEYPIN_1PASSWORD: "service-account", OP_SERVICE_ACCOUNT_TOKEN: FAKE_TOKEN },
   },
   "resend-password": {
     ...resend,

@@ -1,42 +1,25 @@
-import type { KeyId } from "./contracts";
 import { type Files, readVersionedJson, writeJsonAtomic } from "./files";
-import { isRecord } from "./record";
 
 const REGISTRY_VERSION = 1;
-
-export interface SharedKey {
-  id: KeyId;
-  description?: string;
-}
 
 export interface Registry {
   version: typeof REGISTRY_VERSION;
   projects: string[];
-  shared: SharedKey[];
 }
-
-const isSharedKey = (value: unknown): value is SharedKey =>
-  isRecord(value) &&
-  typeof value.id === "string" &&
-  (value.description === undefined || typeof value.description === "string");
 
 const emptyRegistry = (): Registry => ({
   version: REGISTRY_VERSION,
   projects: [],
-  shared: [],
 });
 
 export async function loadRegistry(files: Files, path: string): Promise<Registry> {
   const data = await readVersionedJson(files, path, [REGISTRY_VERSION], "registry");
   if (!data) return emptyRegistry();
-  const { projects, shared } = data;
+  const { projects } = data;
   if (!Array.isArray(projects) || !projects.every((p) => typeof p === "string")) {
     throw new Error(`${path}: the registry's "projects" must be a list of paths`);
   }
-  if (!Array.isArray(shared) || !shared.every(isSharedKey)) {
-    throw new Error(`${path}: the registry's "shared" must be a list of { id }`);
-  }
-  return { version: REGISTRY_VERSION, projects, shared };
+  return { version: REGISTRY_VERSION, projects };
 }
 
 export async function register(files: Files, path: string, project: string): Promise<Registry> {

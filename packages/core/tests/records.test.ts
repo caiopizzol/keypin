@@ -243,7 +243,6 @@ describe("registry", () => {
     expect(await loadRegistry(fake.files, REGISTRY)).toEqual({
       version: 1,
       projects: [],
-      shared: [],
     });
 
     await register(fake.files, REGISTRY, "/work/billing/");
@@ -252,7 +251,6 @@ describe("registry", () => {
     expect(await register(fake.files, REGISTRY, "/work/billing")).toEqual({
       version: 1,
       projects: ["/work/billing", "/work/web"],
-      shared: [],
     });
     expect(fake.log.filter((l) => l.startsWith("write"))).toHaveLength(writes);
     expect(fake.log.filter((l) => l.startsWith("rename"))).toHaveLength(writes);
@@ -260,6 +258,18 @@ describe("registry", () => {
     await unregister(fake.files, REGISTRY, "/work/billing");
     expect((await loadRegistry(fake.files, REGISTRY)).projects).toEqual(["/work/web"]);
     expect([...fake.contents.keys()]).toEqual([REGISTRY]);
+  });
+
+  test("a registry from an older keypin with a shared list loads, and saving drops the list", async () => {
+    const fake = fakeFiles({
+      [REGISTRY]: JSON.stringify({ version: 1, projects: ["/work/web"], shared: [{ id: "K" }] }),
+    });
+    expect(await loadRegistry(fake.files, REGISTRY)).toEqual({
+      version: 1,
+      projects: ["/work/web"],
+    });
+    await register(fake.files, REGISTRY, "/work/billing");
+    expect(fake.contents.get(REGISTRY)).not.toContain("shared");
   });
 
   test("a relative path and another schema version are errors", async () => {

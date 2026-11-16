@@ -76,7 +76,7 @@ function setUp(name: string) {
     mkdirSync(join(home, ".config/keypin"), { recursive: true });
     writeFileSync(
       join(home, ".config/keypin/registry.json"),
-      JSON.stringify({ version: 1, projects: [project], shared: [] }),
+      JSON.stringify({ version: 1, projects: [project] }),
     );
   }
   return { scenario, sandbox, home, project, nonce };

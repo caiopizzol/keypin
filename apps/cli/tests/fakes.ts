@@ -417,8 +417,7 @@ prod = { from = "op://Private/web prod session secret/password", publish = [
 ] }
 `;
 
-export const registryWith = (...projects: string[]) =>
-  JSON.stringify({ version: 1, projects, shared: [] });
+export const registryWith = (...projects: string[]) => JSON.stringify({ version: 1, projects });
 
 export const ESC = "\x1b";
 

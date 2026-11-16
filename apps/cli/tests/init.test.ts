@@ -214,7 +214,7 @@ describe("keypin init while another keypin holds the registry", () => {
     disk.contents.set(`${REGISTRY}.lock`, "4242\n");
     expect(await cli(["init"], deps)).toBe(1);
     expect(stderr.text).toContain(
-      `keypin init: another publish (process 4242) holds ${REGISTRY}.lock and is still running. Wait for it to finish.`,
+      `keypin init: another keypin (process 4242) holds ${REGISTRY}.lock and is still running. Wait for it to finish.`,
     );
     expect(disk.contents.has(REGISTRY)).toBe(false);
   }, 10_000);

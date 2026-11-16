@@ -28,7 +28,7 @@ import {
   vaultAccounts,
 } from "@keypin/core";
 import type { Deps, LockHolder } from "./deps";
-import { statePath } from "./paths";
+import { registryPath, statePath } from "./paths";
 import { columns, count, type Output } from "./output";
 import { publisherFor } from "./publisher";
 import { approval } from "./sign-in";
@@ -44,7 +44,7 @@ export async function locked(deps: Deps, body: (path: string) => Promise<number>
   const lockFile = `${path}.lock`;
   const taken = await deps.lock(lockFile);
   if (!taken.held) {
-    deps.stderr.write(`${lockedMessage(taken.holder)}\n`);
+    deps.stderr.write(`keypin: ${lockedMessage(taken.holder)}\n`);
     return 1;
   }
   try {
@@ -54,14 +54,37 @@ export async function locked(deps: Deps, body: (path: string) => Promise<number>
   }
 }
 
+export async function registryLocked<T>(
+  deps: Deps,
+  body: (path: string) => Promise<T>,
+): Promise<T> {
+  const path = registryPath(deps);
+  for (let tries = 1; ; tries++) {
+    const taken = await deps.lock(`${path}.lock`);
+    if (taken.held) {
+      try {
+        return await body(path);
+      } finally {
+        await taken.lock.release();
+      }
+    }
+    if (taken.holder.running !== true || tries === REGISTRY_TRIES)
+      throw new Error(lockedMessage(taken.holder));
+    await Bun.sleep(REGISTRY_WAIT_MS);
+  }
+}
+
+const REGISTRY_TRIES = 100;
+const REGISTRY_WAIT_MS = 20;
+
 function lockedMessage({ file, pid, running }: LockHolder): string {
   if (pid === null) {
-    return `keypin: ${file} exists but names no process. If no publish is running, delete that file and try again.`;
+    return `${file} exists but names no process. If no keypin is running, delete that file and try again.`;
   }
   if (running === false) {
-    return `keypin: ${file} was left by process ${pid}, which isn't running any more. Delete that file and try again.`;
+    return `${file} was left by process ${pid}, which isn't running any more. Delete that file and try again.`;
   }
-  return `keypin: another publish (process ${pid}) holds ${file} and is still running. Wait for it to finish.`;
+  return `another keypin (process ${pid}) holds ${file} and is still running. Wait for it to finish.`;
 }
 
 export type Label = (target: PublishTarget) => string;

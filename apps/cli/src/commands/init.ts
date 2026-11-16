@@ -3,8 +3,8 @@ import { parseArgs } from "node:util";
 import { register } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
 import { count, output, tilde } from "../output";
-import { registryPath } from "../paths";
 import { shellWord } from "../approval";
+import { registryLocked } from "../publishing";
 import { MAP_FILE } from "../project";
 
 export const TEMPLATE = `# keypin.toml: this project's keys. It holds names and places, never values.
@@ -59,8 +59,7 @@ export async function init(args: string[], deps: Deps): Promise<number> {
 }
 
 export async function registerProject(deps: Deps, folder: string): Promise<void> {
-  const path = registryPath(deps);
-  const registry = await register(deps.files, path, folder);
+  const registry = await registryLocked(deps, (path) => register(deps.files, path, folder));
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);
   out.line(`${out.mark(true)} registered (${count(registry.projects.length, "project")})`);
 }

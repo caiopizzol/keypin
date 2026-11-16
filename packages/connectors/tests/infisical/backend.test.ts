@@ -300,6 +300,28 @@ describe("writing", () => {
     ).rejects.toThrow("Infisical holds the change for approval");
   });
 
+  test("a secret that references others is refused, and nothing is written", async () => {
+    const fake = fakeInfisical({
+      secrets: {
+        "prod:/:STRIPE_KEY": { ...STRIPE, value: "${BASE}-${dev.payments.KEY}" },
+        "prod:/:BASE": { value: "base" },
+      },
+    });
+    const vault = infisicalBackend(CREDENTIALS, fake.fetch);
+    const refused =
+      "the secret references infisical://billing/prod/BASE and infisical://billing/dev/payments/KEY, so a new key saved here would leave that secret, and everything that uses it, with the old key; point keypin.toml at the source secret instead";
+    await expect(vault.checkWrite?.(REF)).rejects.toThrow(refused);
+    await expect(vault.write(REF, new Secret("new-value-1234"))).rejects.toThrow(refused);
+    expect(
+      fake.calls.filter((c) => c.path.endsWith("/STRIPE_KEY")).map((c) => c.query),
+    ).toMatchObject([
+      { expandSecretReferences: "false", includeImports: "false" },
+      { expandSecretReferences: "false", includeImports: "false" },
+    ]);
+    expect(fake.calls.some((c) => c.method !== "GET" && c.path.startsWith("/api/v4"))).toBe(false);
+    expect(fake.effects).toEqual([]);
+  });
+
   test("a bad rotated day is refused before any request", async () => {
     const fake = fakeInfisical();
     await expect(

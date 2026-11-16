@@ -196,6 +196,14 @@ async function rotateLocked(job: Job): Promise<number> {
     state = recordIssued(state, next.issued);
     if (!job.plan) await saveState(deps.files, job.path, state);
   }
+  if (next.action === "create") {
+    try {
+      await deps.vault().checkWrite?.(entry.ref);
+    } catch (error) {
+      say(`Stopped: ${messageOf(error)}. Nothing was created.`);
+      return 1;
+    }
+  }
 
   const inVault = next.action === "resume" ? next.issued.id : next.current;
   const check = await checkIssuer(issuer, inVault, read.secret, out);

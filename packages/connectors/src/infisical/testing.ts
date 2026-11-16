@@ -22,12 +22,18 @@ export interface FakeInfisical {
   organization: string;
   projects: Projects;
   projectIds?: Record<string, string>;
-  importedForReads?: Projects;
+  imports?: FakeImport[];
   heldByPolicy?: Stored[];
   failWrites?: boolean;
   refuseLogin?: number;
   hideValues?: boolean;
   requireEncryptedMetadata?: boolean;
+}
+
+export interface FakeImport {
+  into: string;
+  environment: string;
+  path?: string;
 }
 
 export interface Stored {
@@ -46,6 +52,7 @@ export interface Store {
 
 const ROOT = "/";
 const ROTATED = "rotated";
+const REFERENCE = /\$\{([a-zA-Z0-9-_.]+)\}/g;
 const pathOf = (key: string) => {
   const slash = key.lastIndexOf("/");
   return slash <= 0 ? ROOT : key.slice(0, slash);
@@ -63,18 +70,15 @@ export function infisicalFetch(fake: FakeInfisical, store: Store): Fetch {
   const idOf = (slug: string) => fake.projectIds?.[slug] ?? slug;
   const slugOf = (id: string) =>
     Object.entries(fake.projectIds ?? {}).find(([, known]) => known === id)?.[0] ?? id;
-  const secretsOf = (
-    project: string,
-    environment: string,
-    path: string,
-    projects = fake.projects,
-  ) => {
-    const base = Object.entries(projects[project]?.[environment] ?? {})
+  const secretsOf = (project: string, environment: string, path: string) => {
+    const base = Object.entries(fake.projects[project]?.[environment] ?? {})
       .filter(([key]) => pathOf(key) === path)
       .map(([key, secret]): [string, FakeSecret] => [nameOf(key), secret]);
-    const added = (projects === fake.projects ? store.load() : []).filter(
-      (s) => s.project === project && s.environment === environment && (s.path ?? ROOT) === path,
-    );
+    const added = store
+      .load()
+      .filter(
+        (s) => s.project === project && s.environment === environment && (s.path ?? ROOT) === path,
+      );
     return {
       ...Object.fromEntries(base),
       ...Object.fromEntries(added.map((s) => [s.name, s.secret])),
@@ -109,16 +113,35 @@ export function infisicalFetch(fake: FakeInfisical, store: Store): Fetch {
     const path = query.secretPath ?? (text(body.secretPath) || ROOT);
     const secrets = secretsOf(project, environment, path);
     const imported =
-      query.includeImports === "true" && !secrets[name]
-        ? secretsOf(project, environment, path, fake.importedForReads)[name]
+      query.includeImports !== "false" && !secrets[name]
+        ? fake.imports
+            ?.flatMap((from) => {
+              if (from.into !== environment) return [];
+              const secret = secretsOf(project, from.environment, from.path ?? ROOT)[name];
+              return secret ? [{ secret, from }] : [];
+            })
+            .at(-1)
         : undefined;
     const found = secrets[name];
-    const shape = (key: string, secret: FakeSecret, value: boolean, from = "") => {
+    const shape = (key: string, secret: FakeSecret, value: boolean, at = { environment, path }) => {
       const shown = value && !fake.hideValues;
+      const raw = secret.value;
+      const expanded =
+        query.expandSecretReferences === "false"
+          ? raw
+          : raw.replace(REFERENCE, (_, inner: string) => {
+              const parts = inner.split(".");
+              const key = parts.pop() ?? "";
+              const [env = at.environment, ...folders] = parts;
+              const folder = parts.length ? `/${folders.join("/")}` : at.path;
+              return secretsOf(project, env, folder)[key]?.value ?? "";
+            });
       return {
-        id: secret.id ?? `${from}${project}/${environment}/${key}`,
+        id: secret.id ?? `${project}/${at.environment}/${key}`,
+        environment: at.environment,
+        secretPath: at.path,
         secretKey: key,
-        secretValue: shown ? secret.value : "",
+        secretValue: shown ? expanded : "",
         secretValueHidden: !shown,
         secretMetadata: [
           ...(secret.metadata ?? []),
@@ -137,7 +160,13 @@ export function infisicalFetch(fake: FakeInfisical, store: Store): Fetch {
     if (init.method === "GET") {
       const view = query.viewSecretValue === "true";
       if (found) return reply(200, { secret: shape(name, found, view) });
-      if (imported) return reply(200, { secret: shape(name, imported, view, "imported:") });
+      if (imported)
+        return reply(200, {
+          secret: shape(name, imported.secret, view, {
+            environment: imported.from.environment,
+            path: imported.from.path ?? ROOT,
+          }),
+        });
       return reply(404, { message: `Secret with name '${name}' not found` });
     }
     if (fake.failWrites) return reply(500, { message: "internal error" });

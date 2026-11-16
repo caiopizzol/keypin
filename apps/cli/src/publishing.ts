@@ -2,6 +2,7 @@ import {
   type AccountCheck,
   type Destination,
   destinationId,
+  checkId,
   type DestinationKinds,
   type EnvEntry,
   type Environment,
@@ -14,7 +15,6 @@ import {
   type KeyOwner,
   type KeyRef,
   messageOf,
-  placeId,
   type PlanStep,
   type PublishTarget,
   recordReceipt,
@@ -217,14 +217,14 @@ export function writeTogether(
   jobs: readonly { key: KeyEntry; secret: Secret; writes: Write[] }[],
   kinds: DestinationKinds,
 ): void {
-  const byPlace = new Map<string, { name: string; secret: Secret; write: Write }[]>();
+  const byDestination = new Map<string, { name: string; secret: Secret; write: Write }[]>();
   for (const { key, secret, writes } of jobs)
     for (const write of writes) {
       if (!write.found.destination.writeMany) continue;
-      const place = placeId(write.found.target, kinds);
-      byPlace.set(place, [...(byPlace.get(place) ?? []), { name: key.name, secret, write }]);
+      const id = checkId(write.found.target, kinds);
+      byDestination.set(id, [...(byDestination.get(id) ?? []), { name: key.name, secret, write }]);
     }
-  for (const group of byPlace.values())
+  for (const group of byDestination.values())
     for (let i = 0; i < group.length; i += BULK_LIMIT) {
       const chunk = group.slice(i, i + BULK_LIMIT);
       if (chunk.length < 2) continue;

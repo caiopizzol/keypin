@@ -1221,6 +1221,31 @@ describe("keypin publish --all", () => {
     expect(leaks(...run.everything())).toBe(false);
   });
 
+  test("same-named Workers in two accounts get separate writes", async () => {
+    const disk = memoryFiles({
+      "/work/billing/keypin.toml": ALL_MAP.replace(
+        '{ to = "github-actions", repo = "acme/other" },',
+        '{ to = "cloudflare-worker", account = "22222222222222222222222222222222", worker = "billing-worker" },',
+      ),
+    });
+    const run = setupAll({ terminal: "yes", disk });
+    expect(await cli(["publish", "--all"], run.deps)).toBe(0);
+    expect(run.writes()).toEqual([
+      `write ${WORKER_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
+      `write ${GITHUB_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
+      `write ${WORKER_PLACE} OTHER_KEY (${SENTINEL.length + 6} chars)`,
+    ]);
+    expect(run.stderr.text).not.toContain("in one version");
+    const workers = (await run.state()).receipts.filter((r) =>
+      r.destinationId.startsWith(WORKER_PLACE),
+    );
+    expect(workers.map((r) => [r.keyId, r.account.pinned])).toEqual([
+      ["STRIPE_API_KEY", "1".repeat(32)],
+      ["OTHER_KEY", "2".repeat(32)],
+    ]);
+    expect(workers[0]?.evidence).not.toEqual(workers[1]?.evidence);
+  });
+
   test("a variable and --all together are a usage error", async () => {
     const run = setupAll({ terminal: "yes" });
     expect(await cli(["publish", "STRIPE_API_KEY", "--all"], run.deps)).toBe(2);

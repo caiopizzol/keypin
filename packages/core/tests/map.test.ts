@@ -186,11 +186,11 @@ describe("ignore", () => {
     [`ignore = ["A", "A"]`, `ignore "A" is listed twice`],
     [
       `ignore = ["A"]\n${VAULTS}[keys.A]\ndev = "op://Private/a/password"`,
-      `ignore "A" is also mapped as [keys.A]; a key can't be both, so remove one`,
+      `ignore "A" is also [keys.A]; remove it from one of them`,
     ],
     [
       `ignore = ["a"]\n${VAULTS}[keys.A]\ndev = "op://Private/a/password"`,
-      `ignore "a" is also mapped as [keys.A]; a key can't be both, so remove one`,
+      `ignore "a" is also [keys.A]; remove it from one of them`,
     ],
   ])("%s is rejected", (text, message) => {
     expect(errorsOf(`${text}\n`)).toEqual([`${MAP_FILE}: ${message}`]);

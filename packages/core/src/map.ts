@@ -162,7 +162,7 @@ function validateIgnore(
       );
     else if (names.includes(name)) fail(`ignore "${name}" is listed twice`);
     else if (key !== undefined)
-      fail(`ignore "${name}" is also mapped as [keys.${key}]; a key can't be both, so remove one`);
+      fail(`ignore "${name}" is also [keys.${key}]; remove it from one of them`);
     else names.push(name);
   }
   return names;

@@ -50,10 +50,10 @@ environments = ["dev", "staging", "prod"]
 `keypin run` uses the first by default and `keypin publish` the last; `--env <name>` picks another. A name starts
 with a lowercase letter and uses lowercase letters, digits and dashes.
 
-## Ignored names
+## Ignored keys
 
-When a workflow or env file names a key the project doesn't use, such as the optional keys of a copied workflow,
-list it at the top of the file. `keypin check` leaves it out of its steps and notes how many it ignored.
+List the keys a workflow or env file names that keypin shouldn't manage, such as the optional keys of a copied
+workflow. `keypin check` leaves them out and says how many it ignored.
 
 ```toml
 ignore = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"]

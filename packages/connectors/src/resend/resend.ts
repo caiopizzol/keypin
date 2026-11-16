@@ -4,12 +4,16 @@ import {
   type Issuer,
   type IssuerCheck,
   isRecord,
+  NothingChanged,
   parseObject,
   Secret,
 } from "@keypin/core";
 
 const API = "https://api.resend.com";
 const NAME_LIMIT = 50;
+
+const fitName = (name: string) =>
+  name.length <= NAME_LIMIT ? name : `…${name.slice(name.length - NAME_LIMIT + 1)}`;
 const DASHBOARD = "https://resend.com/api-keys";
 
 export interface ResendIssuerOptions {
@@ -51,10 +55,7 @@ export class ResendIssuer implements Issuer {
     this.#passed = false;
     const list = await this.#request("GET", "/api-keys");
     if (list.status !== 200) return refused(list);
-    const keys = Array.isArray(list.body.data) ? list.body.data : [];
-    const ids = keys.flatMap((key: unknown) =>
-      isRecord(key) && typeof key.id === "string" ? [key.id] : [],
-    );
+    const ids = keysOf(list).map((key) => key.id);
     const facts = `the admin key lists ${ids.length} API key${ids.length === 1 ? "" : "s"}`;
     if (currentId !== null && !ids.includes(currentId)) {
       return {
@@ -70,19 +71,28 @@ export class ResendIssuer implements Issuer {
 
   async create(name: string): Promise<IssuedKey> {
     if (!this.#passed)
-      throw new Error("refusing to create a Resend key: checkAccount hasn't passed");
+      throw new NothingChanged("refusing to create a Resend key: checkAccount hasn't passed");
     const body = {
-      name: name.slice(0, NAME_LIMIT),
+      name: fitName(name),
       permission: this.#permission,
       ...(this.#domainId === undefined ? {} : { domain_id: this.#domainId }),
     };
     const created = await this.#request("POST", "/api-keys", body);
     if (created.status !== 200 && created.status !== 201)
-      throw failure("POST", "/api-keys", created);
+      throw failure(
+        "POST",
+        "/api-keys",
+        created,
+        created.status >= 400 && created.status < 500 ? NothingChanged : Error,
+      );
     const { id, token } = created.body;
     if (typeof id !== "string" || typeof token !== "string" || !token)
       throw new Error("Resend's POST /api-keys response has no id and token");
     return { id, secret: new Secret(token) };
+  }
+
+  lostCreate(name: string): string {
+    return `Resend may have made the key before the reply was lost. Only this run uses the name "${fitName(name)}": delete a key with that name at ${DASHBOARD} before you run this again, or the rerun leaves it live.`;
   }
 
   async revoke(id: string): Promise<"revoked" | "already gone"> {
@@ -131,9 +141,21 @@ function refused(reply: Reply): IssuerCheck {
   throw failure("GET", "/api-keys", reply);
 }
 
-function failure(method: string, path: string, reply: Reply): Error {
+function keysOf(reply: Reply): { id: string; name: unknown }[] {
+  const keys = Array.isArray(reply.body.data) ? reply.body.data : [];
+  return keys.flatMap((key: unknown) =>
+    isRecord(key) && typeof key.id === "string" ? [{ id: key.id, name: key.name }] : [],
+  );
+}
+
+function failure(
+  method: string,
+  path: string,
+  reply: Reply,
+  type: new (message: string) => Error = Error,
+): Error {
   const kind = errorName(reply);
-  return new Error(
+  return new type(
     `Resend ${method} ${path} returned HTTP ${reply.status}${kind ? ` ${kind}` : ""}`,
   );
 }

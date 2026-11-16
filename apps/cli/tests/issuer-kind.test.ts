@@ -75,7 +75,7 @@ describe("an issuer kind defined outside keypin", () => {
     expect(await cli(["rotate", "FORGE_TOKEN"], fake.deps)).toBe(0);
     expect(log).toEqual([
       "check none as forge-admin",
-      "create FORGE_TOKEN prod 2026-11-09 in deploy",
+      "create FORGE_TOKEN prod 2026-11-09 12:00:00 a1b2c3 in deploy",
     ]);
     expect(vault.values.get("forge token")).toBe("forge-new-value");
     const { issued } = await loadState(disk.files, STATE, vaults);

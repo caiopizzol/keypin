@@ -23,7 +23,7 @@ describe("the issuer contract", () => {
       current: new Secret("re_in_the_vault"),
       effects,
       failCreate: () => {
-        fake.failCreate = true;
+        fake.failCreate = 500;
       },
     };
   });

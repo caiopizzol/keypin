@@ -7,6 +7,7 @@ import {
   HeldForApproval,
   WriteRefused,
   type Issued,
+  type IssuedKey,
   issuedFor,
   type Issuer,
   type IssuerCheck,
@@ -16,6 +17,7 @@ import {
   type KeyOwner,
   loadState,
   messageOf,
+  NothingChanged,
   nextRotation,
   planNewValue,
   planPublish,
@@ -241,8 +243,9 @@ async function rotateLocked(job: Job): Promise<number> {
   if (!ok) return NEEDS_APPROVAL;
 
   const created = await createKey(job, issuer);
-  if (!created) {
-    say("Stopped. Nothing was created.");
+  if ("unchanged" in created) {
+    if (created.unchanged) say("Stopped. Nothing was created.");
+    else mayHaveCreated(job, issuer, created.name);
     return 1;
   }
   const issued: Issued = {
@@ -520,9 +523,16 @@ async function checkIssuer(
   }
 }
 
-async function createKey({ key, owner, deps, out }: Job, issuer: Issuer) {
+async function createKey(
+  { key, owner, deps, out }: Job,
+  issuer: Issuer,
+): Promise<IssuedKey | { unchanged: boolean; name: string }> {
   const where = issuer.describe();
-  const name = `${key.name} ${owner.environment} ${localDay(deps.now())}`;
+  const now = deps.now();
+  const time = [now.getHours(), now.getMinutes(), now.getSeconds()]
+    .map((n) => String(n).padStart(2, "0"))
+    .join(":");
+  const name = `${key.name} ${owner.environment} ${localDay(now)} ${time} ${deps.tag()}`;
   try {
     return await out.step(
       `${where}  creating ${name}`,
@@ -531,8 +541,16 @@ async function createKey({ key, owner, deps, out }: Job, issuer: Issuer) {
     );
   } catch (error) {
     out.line(`    ${messageOf(error)}`);
-    return null;
+    return { unchanged: error instanceof NothingChanged, name };
   }
+}
+
+function mayHaveCreated({ deps, out, args }: Job, issuer: Issuer, name: string) {
+  const again = commandLine(deps, "rotate", args);
+  const why =
+    issuer.lostCreate?.(name) ??
+    `${issuer.describe()} may have made the new key before this failed. Delete any key named "${name}" at ${issuer.dashboard()} before you run this again.`;
+  out.line(`Stopped: keypin didn't get the new key back. ${why}\n  ${again}`);
 }
 
 async function undoCreate(

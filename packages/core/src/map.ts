@@ -133,6 +133,7 @@ function validateMap(
   }
 
   sharedDestinations(keys, environments, kinds, (where, message) => fail(where, message));
+  sharedClaims(keys, environments, issuers, (where, message) => fail(where, message));
   return errors.length
     ? { ok: false, errors }
     : { ok: true, map: { file, pins, environments, keys } };
@@ -199,6 +200,31 @@ function sharedDestinations(
         if (owner === undefined) owners.set(secret, where);
         else fail(`${where}: `, `writes the same destination secret as ${owner}`);
       });
+    }
+  }
+}
+
+function sharedClaims(
+  keys: KeyEntry[],
+  environments: readonly Environment[],
+  issuers: IssuerKinds,
+  fail: (where: string, message: string) => void,
+) {
+  const owners = new Map<string, string>();
+  for (const key of keys) {
+    for (const environment of environments) {
+      const spec = key.environments[environment]?.issuer;
+      if (!spec) continue;
+      const where = `key "${key.name}" ${environment}`;
+      const claims = issuers.find((k) => k.kind === spec.kind)?.claims?.(spec) ?? [];
+      const id = (claim: string) => `${spec.kind}:${claim}`;
+      const shared = claims.find((claim) => owners.has(id(claim)));
+      if (shared !== undefined)
+        fail(
+          `${where} issuer: `,
+          `${owners.get(id(shared))} also rotates ${shared}, so rotating either key breaks the other. Change one issuer so they share nothing, or remove one`,
+        );
+      for (const claim of claims) if (!owners.has(id(claim))) owners.set(id(claim), where);
     }
   }
 }

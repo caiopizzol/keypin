@@ -17,7 +17,7 @@ export interface Scenario {
   about: string;
   files: Record<string, string>;
   state?: object;
-  resend?: { keys: string[]; failCreate?: boolean };
+  resend?: { keys: string[]; failCreate?: number; loseCreated?: boolean };
   neon?: { roles: Record<string, string> };
   registered: boolean;
   git: { origin?: string; account?: string };
@@ -436,6 +436,11 @@ export const scenarios: Record<string, Scenario> = {
     ...resend,
     about: "resend, but the Cloudflare Worker rejects the write",
     places: { "cloudflare-worker:mailer": { write: "Cloudflare PUT /secrets returned HTTP 500" } },
+  },
+  "resend-reply-lost": {
+    ...resend,
+    about: "resend, but the network drops Resend's reply after it creates the new key",
+    resend: { keys: ["re-old"], loseCreated: true },
   },
   fresh: {
     ...ready,

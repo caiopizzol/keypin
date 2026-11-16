@@ -173,6 +173,7 @@ export function realDeps(): Deps {
     signIn: () => signedIn().signIn,
     vault: () => vault,
     now: () => new Date(),
+    tag: () => crypto.randomUUID().slice(0, 6),
     stdout: process.stdout,
     stderr: process.stderr,
     launch,

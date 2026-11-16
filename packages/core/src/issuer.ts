@@ -16,6 +16,7 @@ export interface IssuerKind<T extends IssuerSpec = IssuerSpec> {
   readonly kind: T["kind"];
   parse(read: IssuerReader): T | undefined;
   connect(spec: T, admin: Secret, fetch?: Fetch): Issuer;
+  claims?(spec: T): readonly string[];
 }
 
 export type IssuerKinds = readonly IssuerKind[];

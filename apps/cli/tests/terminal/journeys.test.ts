@@ -399,7 +399,7 @@ describe("keypin rotate in a real terminal", () => {
         "    resets the password of role app_b, which the vault's URL doesn't use; every open connection drops",
       );
       expect(result.screen).toContain(
-        "  - Neon                      revoke the old key app_a@2026-11-15T12:00:00Z, after a second y\n    resets the password of role app_a; every open connection drops",
+        "  - Neon                      revoke the old key app_a@2026-11-15T12:00:00Z, after a second y\n    resets the password of role app_a: every connection string that uses app_a stops working, and every open connection drops",
       );
       expect(result.screen).toMatch(/^✓ Neon {2}revoked app_a@2026-11-15T12:00:00Z {2}\d+\.\ds$/m);
       expect(result.effects).toEqual([
@@ -501,6 +501,25 @@ describe("keypin rotate in a real terminal", () => {
         "To revoke it later, run this in a terminal:\n  cd <sandbox>/billing && keypin rotate RESEND_API_KEY",
       );
       expect(result.effects.some((e) => e.startsWith("resend revoke"))).toBe(false);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "a create whose reply is lost names the key to delete",
+    async () => {
+      const result = await drive({
+        scenario: "resend-reply-lost",
+        args: ["rotate", "RESEND_API_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toMatch(
+        /^Stopped: keypin didn't get the new key back\. Resend may have made the key before the reply was lost\. Only this run uses the name "RESEND_API_KEY prod \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [0-9a-f]{6}": delete a key with that name at https:\/\/resend\.com\/api-keys before you run this again, or the rerun leaves it live\.$/m,
+      );
+      expect(result.screen).not.toContain("Nothing was created");
+      expect(result.effects).toEqual(["resend create re-new-1"]);
       clean(result);
     },
     SLOW,

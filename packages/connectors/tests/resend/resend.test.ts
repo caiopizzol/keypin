@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, Secret } from "@keypin/core";
 import { ResendIssuer, type ResendIssuerOptions } from "../../src/resend/index";
 
 const ADMIN = "re_admin_sentinel_5c1f";
@@ -138,13 +138,13 @@ describe("create", () => {
     expect(resend.dashboard()).toBe("https://resend.com/api-keys");
   });
 
-  test("a name longer than Resend's 50 characters is cut", async () => {
+  test("a name longer than Resend's 50 characters keeps its end, where the time is", async () => {
     const { resend, requests } = issuer(happyRoutes(), { permission: "full_access" });
     await resend.checkAccount(null);
-    await resend.create("A".repeat(60));
+    await resend.create(`${"A".repeat(60)} 12:00:00`);
     const post = requests.find((r) => r.method === "POST");
     expect(JSON.parse(post?.body ?? "{}")).toEqual({
-      name: "A".repeat(50),
+      name: `…${"A".repeat(40)} 12:00:00`,
       permission: "full_access",
     });
   });
@@ -160,12 +160,41 @@ describe("create", () => {
     const error: unknown = await refused.create("K").catch((e: unknown) => e);
     assert(error instanceof Error);
     expect(error.message).toBe("Resend POST /api-keys returned HTTP 422 invalid_parameter");
+    expect(error).toBeInstanceOf(NothingChanged);
     expectNoSecret(error);
 
     routes["POST /api-keys"] = { status: 201, body: { id: "key-new" } };
     const empty = issuer(routes).resend;
     await empty.checkAccount(null);
     await expect(empty.create("K")).rejects.toThrow("has no id and token");
+  });
+});
+
+describe("after a failed create", () => {
+  test("a server error may have made the key, so it isn't NothingChanged", async () => {
+    const routes = happyRoutes();
+    routes["POST /api-keys"] = { status: 502, body: { name: "internal_server_error" } };
+    const { resend } = issuer(routes);
+    await resend.checkAccount(null);
+    const error: unknown = await resend.create("K").catch((e: unknown) => e);
+    assert(error instanceof Error);
+    expect(error).not.toBeInstanceOf(NothingChanged);
+  });
+
+  test("a create that answers 2xx or 3xx without a key isn't counted as nothing created", async () => {
+    const routes = happyRoutes();
+    routes["POST /api-keys"] = { status: 202, body: {} };
+    const { resend } = issuer(routes);
+    await resend.checkAccount(null);
+    const error: unknown = await resend.create("K").catch((e: unknown) => e);
+    assert(error instanceof Error);
+    expect(error).not.toBeInstanceOf(NothingChanged);
+  });
+
+  test("a lost create names the key as Resend stores it, cut to 50 characters", () => {
+    const name = `${"K".repeat(60)} prod 2026-11-09 12:00:00 a1b2c3`;
+    const { resend } = issuer(happyRoutes());
+    expect(resend.lostCreate(name)).toContain(`"…${name.slice(name.length - 49)}"`);
   });
 });
 

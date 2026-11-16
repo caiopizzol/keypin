@@ -22,7 +22,7 @@ prod = { from = "op://Private/web prod session secret/password", publish = [
 
 export const KEY: KeyEntry = {
   name: "STRIPE_API_KEY",
-  rotateEvery: "365d",
+  rotateEvery: { text: "365d", days: 365 },
   environments: {
     prod: {
       ref: {

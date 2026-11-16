@@ -1,12 +1,12 @@
 import type { Environment, KeyId, KeyRef, Receipt, VaultMetadata } from "./contracts";
 import { destinationId, type DestinationKinds, receiptSecretKey, secretKey } from "./destination";
-import { envFlag, type MapResult, publishEnvironment } from "./map";
+import { envFlag, type KeyEntry, type MapResult, publishEnvironment } from "./map";
 import { latestPerSecret } from "./plan";
 import type { VaultKinds } from "./login";
 import { sameRef } from "./reference";
 import type { Registry } from "./registry";
 import { ownedBy } from "./state";
-import { addDays, type Day, periodDays } from "./days";
+import { addDays, type Day } from "./days";
 import type { Generation } from "./secret";
 
 const DUE_SOON_DAYS = 14;
@@ -187,7 +187,7 @@ export function buildStatus(input: StatusInput): Status {
           ...where,
           ref: entry.ref,
           rotated,
-          rotateEvery,
+          rotateEvery: rotateEvery?.text ?? null,
           due,
           issuer: entry.issuer?.kind ?? null,
           destinations,
@@ -202,7 +202,7 @@ function rotationDue(input: {
   label: string;
   metadata: VaultMetadata | null;
   rotated: Day | null;
-  rotateEvery: string | null;
+  rotateEvery: KeyEntry["rotateEvery"];
   today: Day;
   add: (kind: ProblemKind, message: string) => void;
 }): Day | null {
@@ -218,21 +218,18 @@ function rotationDue(input: {
     add("no-rotation-date", `${label}: no rotated date`);
     return null;
   }
-  const days = periodDays(rotateEvery);
-  if (days === undefined) {
+  if (!rotateEvery) {
     add(
       "bad-rotation-period",
-      rotateEvery
-        ? `${label}: rotate_every is "${rotateEvery}"; use <n>d, <n>w, <n>m or never`
-        : `${label}: keypin.toml has no rotate_every for this key; add one, such as "90d", or "never"`,
+      `${label}: keypin.toml has no rotate_every for this key; add one, such as "90d", or "never"`,
     );
     return null;
   }
-  if (days === null) return null;
-  const due = addDays(rotated, days);
-  if (due < today)
-    add("overdue", `${label}: was due ${due} (rotated ${rotated}, every ${rotateEvery})`);
+  if (rotateEvery.days === null) return null;
+  const due = addDays(rotated, rotateEvery.days);
+  const every = rotateEvery.text;
+  if (due < today) add("overdue", `${label}: was due ${due} (rotated ${rotated}, every ${every})`);
   else if (due <= addDays(today, DUE_SOON_DAYS))
-    add("due-soon", `${label}: is due ${due} (rotated ${rotated}, every ${rotateEvery})`);
+    add("due-soon", `${label}: is due ${due} (rotated ${rotated}, every ${every})`);
   return due;
 }

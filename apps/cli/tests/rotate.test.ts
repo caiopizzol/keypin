@@ -301,6 +301,29 @@ describe("keypin rotate", () => {
     expect(leaked.leaked()).toBe(false);
   });
 
+  test("a vault value keypin didn't issue that Resend rejects is refused, and the issued key stays", async () => {
+    const keys = memoryKeys(["key-0"]);
+    const first = setup({ answers: ["y", "y"], resend: resend({ admin: ADMIN, keys }) });
+    expect(await first.run()).toBe(0);
+    first.vault.values.set("mailer resend key", "re_typo_not_a_key");
+
+    const typo = setup({
+      disk: first.disk,
+      vault: first.vault,
+      answers: ["y"],
+      resend: resend({ admin: ADMIN, keys }),
+    });
+    expect(await typo.run()).toBe(1);
+    expect(typo.stderr.text).toContain(
+      "keypin didn't issue the vault's key, so it can't tell whether the key was deleted or the vault holds another value",
+    );
+    expect(typo.asked).toEqual([]);
+    expect(keys.load().live, "no new key, and re-new-1 isn't revoked").toEqual([
+      "key-0",
+      "re-new-1",
+    ]);
+  });
+
   test("a rerun whose new key was deleted at Resend makes another, and names the old key it left", async () => {
     const keys = memoryKeys(["key-0"]);
     const runs = { disk: memoryFiles({ "/work/billing/keypin.toml": MAP }) };

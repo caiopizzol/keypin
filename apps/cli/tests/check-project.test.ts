@@ -2003,23 +2003,31 @@ describe("keypin check's prerequisites", () => {
     ]);
   });
 
-  test("with only GH_TOKEN or GITHUB_TOKEN set, says keypin uses gh's saved login and how to save one", async () => {
-    const run = setup({
-      files: { [MAP]: TEMPLATE },
-      git: { "config --get github.account": "alice\n" },
-      deps: {
-        ghLogin: async () => "not logged in",
-        env: { GH_TOKEN: "ghp_x", GITHUB_TOKEN: "ghp_y" },
-      },
-    });
-    await cli(["check"], run.deps);
-    expect(run.stdout.text).toContain(`1 Sign in to GitHub
-  keypin ignores GH_TOKEN and GITHUB_TOKEN: it publishes only as a login gh has saved, so a token meant for another tool can't pick the account. Unset GH_TOKEN GITHUB_TOKEN, then run:
+  test.each([
+    [{ GH_TOKEN: "ghp_x" }, "GH_TOKEN", "GH_TOKEN"],
+    [{ GITHUB_TOKEN: "ghp_y" }, "GITHUB_TOKEN", "GITHUB_TOKEN"],
+    [
+      { GH_TOKEN: "ghp_x", GITHUB_TOKEN: "ghp_y" },
+      "GH_TOKEN and GITHUB_TOKEN",
+      "GH_TOKEN GITHUB_TOKEN",
+    ],
+  ])(
+    "with only %o set, says keypin uses gh's saved login and how to save one",
+    async (env, ignored, unset) => {
+      const run = setup({
+        files: { [MAP]: TEMPLATE },
+        git: { "config --get github.account": "alice\n" },
+        deps: { ghLogin: async () => "not logged in", env },
+      });
+      await cli(["check"], run.deps);
+      expect(run.stdout.text).toContain(`1 Sign in to GitHub
+  keypin ignores ${ignored}: it publishes only as a login gh has saved, so a token meant for another tool can't pick the account. Unset ${unset}, then run:
     gh auth login --hostname github.com --with-token < token.txt
   Use a classic token with the repo scope, for alice.
 `);
-    expect(run.stdout.text).not.toContain("ghp_");
-  });
+      expect(run.stdout.text).not.toContain("ghp_");
+    },
+  );
 
   test("says to install gh when it isn't on PATH", async () => {
     const run = setup({

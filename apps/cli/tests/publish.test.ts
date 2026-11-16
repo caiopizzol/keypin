@@ -173,7 +173,6 @@ describe("keypin publish", () => {
       },
       evidence: { destination: WORKER_PLACE, version: "v-3" },
     });
-    expect(state.operations).toEqual([]);
     expect(leaks(...run.everything())).toBe(false);
   });
 
@@ -227,19 +226,16 @@ describe("keypin publish", () => {
     expect(await cli(["publish", "STRIPE_API_KEY"], first.deps)).toBe(1);
     const state = await first.state();
     expect(state.receipts.map((r) => r.destinationId)).toEqual([WORKER]);
-    expect(state.operations).toMatchObject([{ done: [WORKER], planned: [WORKER, GITHUB] }]);
     expect(leaks(...first.everything())).toBe(false);
 
     const again = setup({ terminal: "yes", disk: first.disk });
     expect(await cli(["publish", "STRIPE_API_KEY"], again.deps)).toBe(0);
-    expect(again.stderr.text).toContain("didn't finish: wrote 1 of 2");
     expect(again.stderr.text).toContain("= Cloudflare  billing-worker  already has this value");
     expect(again.log.filter((l) => l.startsWith("write"))).toEqual([
       `write ${GITHUB_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
     ]);
     const after = await again.state();
     expect(after.receipts).toHaveLength(2);
-    expect(after.operations).toEqual([]);
     expect(leaks(...again.everything())).toBe(false);
   });
 
@@ -966,25 +962,18 @@ describe("two projects that map the same variable and environment", () => {
     return { ...fake, log: destinations.log };
   }
 
-  test("keep their own unfinished operations and removed destinations apart", async () => {
+  test("keep their own receipts and removed destinations apart", async () => {
     const disk = memoryFiles({
       "/work/billing/keypin.toml": projectMap("billing"),
       "/work/web/keypin.toml": projectMap("web"),
     });
     const billing = publisher(disk, "billing", { failWrite: ["github-actions:acme/billing-ops"] });
     expect(await cli(["publish", "API_TOKEN"], billing.deps)).toBe(1);
-    const [left] = (await loadState(disk.files, STATE, vaults)).operations;
-    expect(left).toMatchObject({
-      mapFile: "/work/billing/keypin.toml",
-      done: ["github-actions:acme/billing:API_TOKEN"],
-    });
 
     const web = publisher(disk, "web");
     expect(await cli(["publish", "API_TOKEN"], web.deps)).toBe(0);
-    expect(web.stderr.text).not.toContain("didn't finish");
     expect(web.stderr.text).not.toContain("not in the map any more");
     const state = await loadState(disk.files, STATE, vaults);
-    expect(state.operations.map((o) => o.id)).toEqual([left?.id]);
     expect(state.receipts.map((r) => [r.destinationId, r.mapFile])).toEqual([
       ["github-actions:acme/billing:API_TOKEN", "/work/billing/keypin.toml"],
       ["github-actions:acme/web:API_TOKEN", "/work/web/keypin.toml"],
@@ -993,10 +982,10 @@ describe("two projects that map the same variable and environment", () => {
 
     const again = publisher(disk, "billing");
     expect(await cli(["publish", "API_TOKEN"], again.deps)).toBe(0);
-    expect(again.stderr.text).toContain("An earlier publish");
-    expect(again.stderr.text).toContain("wrote 1 of 2 (github-actions:acme/billing:API_TOKEN)");
+    expect(again.log.filter((l) => l.startsWith("write"))).toEqual([
+      expect.stringContaining("acme/billing-ops"),
+    ]);
     expect(again.stderr.text).not.toContain("not in the map any more");
-    expect((await loadState(disk.files, STATE, vaults)).operations).toEqual([]);
   });
 });
 
@@ -1083,7 +1072,6 @@ describe("keypin publish --all", () => {
       ["STRIPE_API_KEY", GITHUB],
       ["OTHER_KEY", OTHER],
     ]);
-    expect(state.operations).toEqual([]);
     expect(leaks(...run.everything())).toBe(false);
   });
 
@@ -1172,7 +1160,6 @@ describe("keypin publish --all", () => {
     expect(run.stderr.text).toContain("Finished writes keep their receipts");
     const state = await run.state();
     expect(state.receipts.map((r) => r.destinationId)).toEqual([WORKER]);
-    expect(state.operations).toMatchObject([{ keyId: "STRIPE_API_KEY", done: [WORKER] }]);
 
     const again = setupAll({ terminal: "yes", disk: run.disk });
     expect(await cli(["publish", "--all"], again.deps)).toBe(0);
@@ -1182,7 +1169,6 @@ describe("keypin publish --all", () => {
     ]);
     const after = await again.state();
     expect(after.receipts.map((r) => r.destinationId)).toEqual([WORKER, GITHUB, OTHER]);
-    expect(after.operations).toEqual([]);
     expect(leaks(...again.everything())).toBe(false);
   });
 
@@ -1218,7 +1204,6 @@ describe("keypin publish --all", () => {
       GITHUB,
       OTHER,
     ]);
-    expect(state.operations).toEqual([]);
     expect(leaks(...run.everything())).toBe(false);
   });
 
@@ -1249,7 +1234,6 @@ describe("keypin publish --all", () => {
     expect(generation(other)).not.toBe(generation(other, before));
     expect(generation(WORKER)).not.toBe(generation(WORKER, before));
     expect(generation(GITHUB)).toBe(generation(GITHUB, before));
-    expect(state.operations).toMatchObject([{ keyId: "STRIPE_API_KEY", done: [WORKER] }]);
 
     const restored = setupAll({ disk: run.disk });
     expect(await cli(["publish", "OTHER_KEY", "--plan"], restored.deps)).toBe(3);

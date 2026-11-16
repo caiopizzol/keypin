@@ -1258,6 +1258,25 @@ describe("keypin publish --all", () => {
     expect(await cli(["publish", "OTHER_KEY", "--plan"], restored.deps)).toBe(3);
   });
 
+  test("a rewrite to a new account with the same value stays unfinished when it fails", async () => {
+    const first = setupAll({ terminal: "yes" });
+    expect(await cli(["publish", "--all"], first.deps)).toBe(0);
+    const moved = (await first.disk.files.read("/work/billing/keypin.toml"))?.replaceAll(
+      "11111111111111111111111111111111",
+      "22222222222222222222222222222222",
+    );
+    assert(moved !== undefined && moved !== null);
+    await first.disk.files.write("/work/billing/keypin.toml", moved);
+    const run = setupAll({
+      terminal: "yes",
+      disk: first.disk,
+      failWrite: [WORKER_PLACE],
+    });
+    expect(await cli(["publish", "--all"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain("Not finished: STRIPE_API_KEY");
+    expect(run.stderr.text).not.toContain("Not finished: .");
+  });
+
   test("same-named Workers in two accounts get separate writes", async () => {
     const disk = memoryFiles({
       "/work/billing/keypin.toml": ALL_MAP.replace(

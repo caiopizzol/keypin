@@ -265,7 +265,7 @@ async function publishLocked(
       if (many) {
         const left = pending
           .slice(index)
-          .filter((j) => j.writes.some((w) => !delivered(state, j, w.destinationId)))
+          .filter((j) => !writtenAll(state, j))
           .map((j) => j.key.name);
         say(`Not finished: ${left.join(", ")}.`);
       }
@@ -279,9 +279,13 @@ async function publishLocked(
   return 0;
 }
 
-function delivered(state: State, job: Planned, destinationId: string): boolean {
-  return receiptsFor(state, job.owner).some(
-    (r) => r.destinationId === destinationId && r.generation === job.generation,
+function writtenAll(state: State, job: Planned): boolean {
+  const open = unfinishedOperations(state, job.owner);
+  if (open.length) return false;
+  return job.writes.every((w) =>
+    receiptsFor(state, job.owner).some(
+      (r) => r.destinationId === w.destinationId && r.generation === job.generation,
+    ),
   );
 }
 

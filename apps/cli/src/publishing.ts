@@ -174,6 +174,7 @@ export async function writeAll(
 ): Promise<{ ok: boolean; state: State }> {
   const { key, secret, writes, path, deps, out } = job;
   let state = job.state;
+  await saveState(deps.files, path, state);
 
   for (const write of writes) {
     const { found, together } = write;

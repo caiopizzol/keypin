@@ -73,6 +73,23 @@ function setup(
 }
 
 describe("keypin publish", () => {
+  test("a state file keypin can't save stops publish before any destination changes", async () => {
+    const run = setup({ terminal: "yes" });
+    const { files } = run.disk;
+    const write = files.write.bind(files);
+    files.write = async (path, text) => {
+      if (path.startsWith(STATE)) throw new Error("ENOSPC: no space left on device");
+      return write(path, text);
+    };
+    expect(await cli(["publish", "STRIPE_API_KEY"], run.deps)).toBe(1);
+    expect(
+      run.log.filter((l) => l.startsWith("write")),
+      "no destination was written",
+    ).toEqual([]);
+    expect(run.delivered(SENTINEL)).toEqual([]);
+    expect(run.stderr.text).toContain("keypin publish: ENOSPC: no space left on device");
+  });
+
   test("a first publish without a terminal stops before reading the value, exit 3", async () => {
     const run = setup();
     expect(await cli(["publish", "STRIPE_API_KEY"], run.deps)).toBe(NEEDS_APPROVAL);

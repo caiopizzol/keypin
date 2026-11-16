@@ -114,7 +114,11 @@ describe("checkAccount", () => {
       expected: "acme",
       ok: true,
     });
-    expect(requests.map((r) => r.method)).toEqual(["GET", "GET"]);
+    expect(requests.map((r) => `${r.method} ${r.path}`)).toEqual([
+      "GET /user",
+      `GET /repos/${REPO}`,
+      `GET /repos/${REPO}/actions/secrets/public-key`,
+    ]);
     expect(requests[0]?.headers.Authorization).toBe(`Bearer ${TOKEN}`);
   });
 
@@ -407,13 +411,19 @@ describe("no value or token in any output", () => {
 
   test("a 500 on /user, a 500 on the public key, and a missing secret after the write", async () => {
     const userDown = happyRoutes();
-    userDown["GET /user"] = { status: 500, body: { message: SENTINEL } };
+    userDown["GET /user"] = { status: 500, body: { message: "Server Error" } };
     const e1 = await destination(userDown)
       .github.checkAccount()
       .catch((e: unknown) => e);
+    expect(e1).toEqual(new Error("GitHub GET /user returned HTTP 500: Server Error"));
 
     const keyDown = happyRoutes();
-    keyDown[`GET /repos/${REPO}/actions/secrets/public-key`] = { status: 500 };
+    const key = keyDown[`GET /repos/${REPO}/actions/secrets/public-key`];
+    let keyAsked = 0;
+    keyDown[`GET /repos/${REPO}/actions/secrets/public-key`] = () =>
+      keyAsked++ === 0 && key && typeof key !== "function"
+        ? key
+        : { status: 500, body: { message: `boom ${SENTINEL}` } };
     const d2 = destination(keyDown).github;
     await d2.checkAccount();
     const e2 = await d2.write("API_KEY", new Secret(SENTINEL)).catch((e: unknown) => e);
@@ -431,5 +441,159 @@ describe("no value or token in any output", () => {
   test("the secret prints as [secret]", () => {
     const secret = new Secret(SENTINEL);
     expectNoSentinel(String(secret), JSON.stringify({ secret }));
+  });
+});
+
+describe("refusals that say what to do", () => {
+  const KEY = `GET /repos/${REPO}/actions/secrets/public-key`;
+  const SSO_URL = "https://github.com/orgs/acme/sso?authorization_request=abc123";
+
+  test("an archived repository fails the check before any write", async () => {
+    const routes = happyRoutes();
+    routes[`GET /repos/${REPO}`] = {
+      status: 200,
+      body: { owner: { login: "acme" }, archived: true, permissions: { push: false } },
+    };
+    const { github, requests } = destination(routes);
+    const check = await github.checkAccount();
+    expect(check).toMatchObject({ ok: false, destinationAccount: "acme" });
+    expect(check.reason).toBe(
+      "acme/billing is archived, so it's read-only and GitHub won't let anyone set its secrets",
+    );
+    expect(check.fix).toBe(
+      "unarchive it in the repository's Settings, or remove it from keypin.toml",
+    );
+    expect(requests.some((r) => r.method === "PUT")).toBe(false);
+  });
+
+  test.each([403, 404])(
+    "a token not authorized for SAML SSO (HTTP %i) gets GitHub's link",
+    async (status) => {
+      const routes = happyRoutes();
+      routes[`GET /repos/${REPO}`] = {
+        status,
+        body: { message: "Resource protected by organization SAML enforcement." },
+        headers: { "x-github-sso": `required; url=${SSO_URL}` },
+      };
+      const check = await destination(routes).github.checkAccount();
+      expect(check).toMatchObject({ ok: false, destinationAccount: null });
+      expect(check.reason).toBe("the gh token isn't authorized for SAML SSO in acme");
+      expect(check.fix).toBe(
+        `authorize the gh token for SSO in acme: ${SSO_URL} (the link expires in an hour)`,
+      );
+    },
+  );
+
+  test("an SSO refusal on the secrets, after the repository, also says to authorize", async () => {
+    const routes = happyRoutes();
+    routes[KEY] = {
+      status: 403,
+      body: { message: "SAML" },
+      headers: { "x-github-sso": "required" },
+    };
+    const check = await destination(routes).github.checkAccount();
+    expect(check.reason).toBe("the gh token isn't authorized for SAML SSO in acme");
+    expect(check.fix).toBe("authorize the gh token for SSO in acme on github.com");
+  });
+
+  test("a fine-grained token without the Secrets permission fails the check, before the y", async () => {
+    const routes = happyRoutes();
+    routes["GET /user"] = { status: 200, body: { login: "acme" } };
+    routes[KEY] = {
+      status: 403,
+      body: { message: "Resource not accessible by personal access token" },
+      headers: { "x-accepted-github-permissions": "secrets=read" },
+    };
+    const { github, requests } = destination(routes);
+    const check = await github.checkAccount();
+    expect(check).toMatchObject({ ok: false, destinationAccount: "acme" });
+    expect(check.reason).toBe(
+      "the token can't use acme/billing's Actions secrets (HTTP 403: Resource not accessible by personal access token)",
+    );
+    expect(check.fix).toBe(
+      "give the token the repository permission Secrets: Read and write, or sign gh in with the browser: gh auth login --hostname github.com",
+    );
+    await expect(github.write("API_KEY", new Secret(SENTINEL))).rejects.toThrow(/checkAccount/);
+    expect(requests.some((r) => r.method === "PUT")).toBe(false);
+  });
+
+  test("a refused PUT says what GitHub said, and leaves the value out", async () => {
+    const routes = happyRoutes();
+    routes[`PUT /repos/${REPO}/actions/secrets/API_KEY`] = {
+      status: 403,
+      body: { message: "Resource not accessible by integration" },
+      headers: { "x-accepted-github-permissions": "secrets=write" },
+    };
+    const { github } = destination(routes);
+    await github.checkAccount();
+    const error = await github.write("API_KEY", new Secret(SENTINEL)).catch((e: unknown) => e);
+    expect(error).toEqual(
+      new Error(
+        `GitHub PUT /repos/${REPO}/actions/secrets/API_KEY returned HTTP 403: Resource not accessible by integration; the token needs the permission secrets=write`,
+      ),
+    );
+  });
+
+  test("a value over 48 KB that GitHub refuses says so", async () => {
+    const routes = happyRoutes();
+    routes[`PUT /repos/${REPO}/actions/secrets/API_KEY`] = {
+      status: 422,
+      body: { message: "Invalid request." },
+    };
+    const { github } = destination(routes);
+    await github.checkAccount();
+    const big = `${SENTINEL}${"x".repeat(50 * 1024 - SENTINEL.length)}`;
+    const error = await github.write("API_KEY", new Secret(big)).catch((e: unknown) => e);
+    expect(error).toEqual(
+      new Error(
+        `API_KEY is 50 KB, and GitHub allows at most 48 KB in a secret (GitHub PUT /repos/${REPO}/actions/secrets/API_KEY returned HTTP 422)`,
+      ),
+    );
+    expectNoSentinel(error);
+  });
+
+  test("a new secret GitHub refuses when the repository has 100 says so", async () => {
+    const routes = happyRoutes();
+    routes[`PUT /repos/${REPO}/actions/secrets/API_KEY`] = {
+      status: 422,
+      body: { message: "Invalid request." },
+    };
+    delete routes[`GET /repos/${REPO}/actions/secrets/API_KEY`];
+    routes[`GET /repos/${REPO}/actions/secrets`] = {
+      status: 200,
+      body: { total_count: 100, secrets: [] },
+    };
+    const { github } = destination(routes);
+    await github.checkAccount();
+    await expect(github.write("API_KEY", new Secret(SENTINEL))).rejects.toThrow(
+      `github ${REPO} (repo secret) already has 100 secrets, and GitHub allows 100; delete one it no longer uses, then publish again (GitHub PUT /repos/${REPO}/actions/secrets/API_KEY returned HTTP 422)`,
+    );
+  });
+
+  test("a refused PUT under both limits keeps GitHub's own message", async () => {
+    const routes = happyRoutes();
+    routes[`PUT /repos/${REPO}/actions/secrets/API_KEY`] = {
+      status: 422,
+      body: { message: "Invalid request." },
+    };
+    delete routes[`GET /repos/${REPO}/actions/secrets/API_KEY`];
+    routes[`GET /repos/${REPO}/actions/secrets`] = {
+      status: 200,
+      body: { total_count: 3, secrets: [] },
+    };
+    const { github } = destination(routes);
+    await github.checkAccount();
+    await expect(github.write("API_KEY", new Secret(SENTINEL))).rejects.toThrow(
+      `GitHub PUT /repos/${REPO}/actions/secrets/API_KEY returned HTTP 422: Invalid request.`,
+    );
+  });
+
+  test("an invisible repository mentions that GitHub Enterprise isn't supported", async () => {
+    const routes = happyRoutes();
+    delete routes[`GET /repos/${REPO}`];
+    const check = await destination(routes).github.checkAccount();
+    expect(check.fix).toBe(
+      "check repo in keypin.toml, or publish as a login that can see it: git config github.account <login> (keypin publishes only to github.com; GitHub Enterprise Server and ghe.com aren't supported yet)",
+    );
   });
 });

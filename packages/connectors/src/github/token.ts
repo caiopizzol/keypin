@@ -27,9 +27,25 @@ function tokenFrom(stdout: string, login: string | null): string {
   return token;
 }
 
+const SIGN_IN = "gh auth login --hostname github.com";
+const ENV_TOKENS = ["GH_TOKEN", "GITHUB_TOKEN"];
+
+export function envTokens(env: Readonly<Record<string, string | undefined>>): string[] {
+  return ENV_TOKENS.filter((name) => env[name]);
+}
+
+export function tokenOnly(names: readonly string[]): { why: string; command: string } {
+  const unset = names.join(" and ");
+  return {
+    why: `keypin ignores ${unset}: it publishes only as a login gh has saved, so a token meant for another tool can't pick the account`,
+    command: `unset ${names.join(" ")}, then run ${SIGN_IN} --with-token < token.txt with a classic token that has the repo scope`,
+  };
+}
+
 function noToken(login: string | null): Error {
+  const names = envTokens(process.env);
   return new Error(
-    `gh has no token for ${login ?? "an active login"}; run: gh auth login --hostname github.com`,
+    `gh has no token for ${login ?? "an active login"}; ${names.length ? Object.values(tokenOnly(names)).join("; ") : `run: ${SIGN_IN}`}`,
   );
 }
 

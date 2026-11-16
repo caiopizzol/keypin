@@ -1,5 +1,6 @@
 import { type Fetch, isRecord, type StoreRead } from "@keypin/core";
 import { secretsPath } from "./github";
+import { ssoFix } from "./refusal";
 
 const API = "https://api.github.com";
 const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
@@ -43,6 +44,14 @@ export async function listRepoSecrets(options: {
     }
     if (response.status !== 200) {
       await response.body?.cancel();
+      const [owner = ""] = options.repo.split("/");
+      const sso =
+        response.status === 403 || response.status === 404 ? ssoFix(response.headers, owner) : null;
+      if (sso !== null)
+        return {
+          ok: false,
+          reason: `HTTP ${response.status}: the gh token isn't authorized for SAML SSO in ${owner}; ${sso}`,
+        };
       return {
         ok: false,
         reason: options.organization

@@ -4,13 +4,16 @@ import { listRepoSecrets } from "../../src/github/index";
 
 const TOKEN = "token-sentinel-41b2";
 
-function fakeFetch(replies: { status: number; body?: unknown }[]) {
+function fakeFetch(
+  replies: { status: number; body?: unknown; headers?: Record<string, string> }[],
+) {
   const requests: { method: string; url: string }[] = [];
   const fetch: Fetch = async (url, init) => {
     requests.push({ method: init.method, url });
     const reply = replies.shift() ?? { status: 500 };
     return new Response(reply.body === undefined ? null : JSON.stringify(reply.body), {
       status: reply.status,
+      headers: "headers" in reply ? reply.headers : undefined,
     });
   };
   return { fetch, requests };
@@ -148,5 +151,25 @@ describe("listRepoSecrets", () => {
     expect(noLogin).toEqual({ ok: false, reason: "gh has no token for acme" });
     const badRepo = await listRepoSecrets({ repo: "nope", token: async () => TOKEN });
     expect(badRepo.ok).toBe(false);
+  });
+
+  test("a token not authorized for SAML SSO says to authorize it, with GitHub's link", async () => {
+    const url = "https://github.com/orgs/acme/sso?authorization_request=abc123";
+    const fake = fakeFetch([
+      {
+        status: 403,
+        body: { message: "SAML" },
+        headers: { "x-github-sso": `required; url=${url}` },
+      },
+    ]);
+    const read = await listRepoSecrets({
+      repo: "acme/billing",
+      token: async () => TOKEN,
+      fetch: fake.fetch,
+    });
+    expect(read).toEqual({
+      ok: false,
+      reason: `HTTP 403: the gh token isn't authorized for SAML SSO in acme; authorize the gh token for SSO in acme: ${url} (the link expires in an hour)`,
+    });
   });
 });

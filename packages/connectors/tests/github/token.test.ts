@@ -95,10 +95,21 @@ describe("ghToken", () => {
       inspect(error, { depth: 5, showHidden: true }),
       String(error),
     ].join("\n");
-    expect(everything).toContain("gh has no token for someone; run: gh auth login");
+    expect(everything).toContain("gh has no token for someone; keypin ignores GH_TOKEN");
     expect(everything).not.toContain(USER_TOKEN);
     expect(everything).not.toContain(ENV_TOKEN);
     expect(everything).not.toContain("fake gh failing on purpose");
+  });
+
+  test("with GITHUB_TOKEN set and no gh login, says keypin ignores it and how to save a login", async () => {
+    process.env.PATH = "/nonexistent";
+    process.env.GITHUB_TOKEN = ENV_TOKEN;
+    const error = await failure(ghToken("someone"));
+    expect(error).toEqual(
+      new Error(
+        "gh has no token for someone; keypin ignores GITHUB_TOKEN: it publishes only as a login gh has saved, so a token meant for another tool can't pick the account; unset GITHUB_TOKEN, then run gh auth login --hostname github.com --with-token < token.txt with a classic token that has the repo scope",
+      ),
+    );
   });
 
   test("an empty answer from gh is no token", async () => {

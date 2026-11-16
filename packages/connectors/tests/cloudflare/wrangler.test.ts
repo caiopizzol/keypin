@@ -188,6 +188,15 @@ routes = []
     });
   });
 
+  test("reads Windows paths the same way", () => {
+    expect(
+      configsWranglerUses(["wrangler.toml", "wrangler.jsonc", "apps\\api\\wrangler.toml"]),
+    ).toEqual({
+      used: ["wrangler.jsonc", "apps\\api\\wrangler.toml"],
+      ignored: [{ config: "wrangler.toml", used: "wrangler.jsonc" }],
+    });
+  });
+
   test("a Pages config declares no Worker", () => {
     for (const [text, config] of [
       [

@@ -12,8 +12,9 @@ export function configsWranglerUses(found: readonly string[]): {
   used: string[];
   ignored: { config: string; used: string }[];
 } {
-  const rank = (path: string) => WRANGLER_FILES.indexOf(path.split("/").at(-1) ?? "");
-  const folder = (path: string) => path.slice(0, path.lastIndexOf("/") + 1);
+  const cut = (path: string) => Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1;
+  const rank = (path: string) => WRANGLER_FILES.indexOf(path.slice(cut(path)));
+  const folder = (path: string) => path.slice(0, cut(path));
   const used = found.filter(
     (config) =>
       !found.some((other) => folder(other) === folder(config) && rank(other) < rank(config)),

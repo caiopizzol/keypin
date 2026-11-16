@@ -1,7 +1,6 @@
 import { assert, describe, expect, test } from "vite-plus/test";
 import {
   emptyState,
-  finishOperation,
   type Issued,
   issuedFor,
   loadRegistry,
@@ -12,8 +11,6 @@ import {
   recordReceipt,
   register,
   saveState,
-  startOperation,
-  unfinishedOperations,
   unregister,
   type Receipt,
 } from "../src/index";
@@ -118,7 +115,6 @@ describe("state", () => {
     expect(state).toEqual({
       version: 5,
       receipts: [{ ...old, mapFile: null, source: null, sourceIds: null }],
-      operations: [],
       issued: [],
     });
     await saveState(fake.files, STATE, state);
@@ -126,7 +122,7 @@ describe("state", () => {
     expect(fake.contents.get(STATE)).toContain('"version": 5');
   });
 
-  test("a version 2 file loads with no project on its receipts and operations, so none is any project's own", async () => {
+  test("a version 2 file loads with no project on its receipts, so none is any project's own, and its operations are ignored", async () => {
     const { mapFile: _mapFile, ...old } = receipt(WORKER, "aaaaaaaaaaaaaaaa");
     const operation = {
       id: "op-1",
@@ -141,14 +137,21 @@ describe("state", () => {
       [STATE]: JSON.stringify({ version: 2, receipts: [old], operations: [operation] }),
     });
     const state = await loadState(fake.files, STATE, VAULT_KINDS);
-    expect(state).toEqual({
-      version: 5,
-      receipts: [{ ...old, mapFile: null }],
-      operations: [{ ...operation, mapFile: null }],
-      issued: [],
-    });
+    expect(state).toEqual({ version: 5, receipts: [{ ...old, mapFile: null }], issued: [] });
     expect(receiptsFor(state, OWNER)).toEqual([]);
-    expect(unfinishedOperations(state, OWNER)).toEqual([]);
+    await saveState(fake.files, STATE, state);
+    expect(JSON.parse(fake.contents.get(STATE) ?? "{}")).toMatchObject({ operations: [] });
+  });
+
+  test("a saved state file keeps an empty operations list, so keypin 0.22 and older can still read it", async () => {
+    const fake = fakeFiles();
+    await saveState(fake.files, STATE, emptyState());
+    expect(JSON.parse(fake.contents.get(STATE) ?? "{}")).toEqual({
+      version: 5,
+      receipts: [],
+      issued: [],
+      operations: [],
+    });
   });
 
   test("a version 3 file's receipts record no item IDs, and a version 4 file keeps them", async () => {
@@ -216,42 +219,21 @@ describe("state", () => {
     ).rejects.toThrow('"receipts" must be a list');
   });
 
-  test("an operation tracks done destinations, and a newer receipt replaces the older one", () => {
-    let state = startOperation(emptyState(), {
-      id: "op-1",
-      keyId: KEY.name,
-      environment: "prod",
-      mapFile: KEY_MAP,
-      generation: "aaaaaaaaaaaaaaaa",
-      startedAt: "2026-11-09T15:30:00Z",
-      planned: [WORKER, GITHUB],
-    });
-    state = recordReceipt(state, receipt(WORKER, "bbbbbbbbbbbbbbbb"), KINDS);
-    state = recordReceipt(state, receipt(WORKER, "aaaaaaaaaaaaaaaa"), KINDS, "op-1");
+  test("a newer receipt replaces the older one", () => {
+    let state = recordReceipt(emptyState(), receipt(WORKER, "bbbbbbbbbbbbbbbb"), KINDS);
+    state = recordReceipt(state, receipt(WORKER, "aaaaaaaaaaaaaaaa"), KINDS);
     expect(receiptsFor(state, OWNER)).toEqual([receipt(WORKER, "aaaaaaaaaaaaaaaa")]);
-    expect(unfinishedOperations(state, OWNER)).toEqual([
-      expect.objectContaining({ id: "op-1", planned: [WORKER, GITHUB], done: [WORKER] }),
-    ]);
-    const [operation] = unfinishedOperations(state, OWNER);
-    assert(operation);
-    expect(() => startOperation(state, operation)).toThrow("operation op-1 already exists");
-    expect(unfinishedOperations(finishOperation(state, "op-1"), OWNER)).toEqual([]);
   });
 
-  test("another project's receipts and operations for the same variable and environment aren't this one's", () => {
+  test("another project's receipts for the same variable and environment aren't this one's", () => {
     const web = { ...OWNER, mapFile: WEB_MAP };
-    let state = startOperation(emptyState(), {
-      id: "op-web",
-      ...web,
-      generation: "aaaaaaaaaaaaaaaa",
-      startedAt: "2026-11-09T15:30:00Z",
-      planned: [WORKER],
-    });
-    state = recordReceipt(state, receipt(GITHUB, "aaaaaaaaaaaaaaaa", { mapFile: WEB_MAP }), KINDS);
+    const state = recordReceipt(
+      emptyState(),
+      receipt(GITHUB, "aaaaaaaaaaaaaaaa", { mapFile: WEB_MAP }),
+      KINDS,
+    );
     expect(receiptsFor(state, OWNER)).toEqual([]);
-    expect(unfinishedOperations(state, OWNER)).toEqual([]);
     expect(receiptsFor(state, web)).toHaveLength(1);
-    expect(unfinishedOperations(state, web).map((o) => o.id)).toEqual(["op-web"]);
   });
 });
 

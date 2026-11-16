@@ -16,9 +16,7 @@ import {
   loadState,
   planPublish,
   publishEnvironment,
-  saveState,
   type Secret,
-  unfinishedOperations,
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
 import { findMap, pickEnvironment } from "../project";
@@ -28,7 +26,6 @@ import { count, type Output, output } from "../output";
 import {
   type Checked,
   checkAccounts,
-  finishAll,
   labels,
   locked,
   publishRows,
@@ -36,8 +33,8 @@ import {
   showRemoved,
   type Write,
   writeAll,
-  writeJobs,
   writesFor,
+  writeTogether,
 } from "../publishing";
 
 interface Request {
@@ -150,13 +147,6 @@ async function publishLocked(
   );
 
   let state = await loadState(deps.files, path, deps.vaults);
-  for (const { owner } of jobs) {
-    for (const op of unfinishedOperations(state, owner)) {
-      say(
-        `An earlier publish (started ${op.startedAt}, generation ${op.generation}) didn't finish: wrote ${op.done.length} of ${op.planned.length} (${op.done.join(", ") || "none"}). This run plans again from the receipts.`,
-      );
-    }
-  }
 
   const checks: Checks[] = [];
   for (const job of jobs) {
@@ -229,14 +219,6 @@ async function publishLocked(
     planned.push({ ...job, generation, writes });
   }
 
-  const finished = planned
-    .filter((job) => !job.writes.length && unfinishedOperations(state, job.owner).length)
-    .reduce((s, job) => finishAll(s, job.owner), state);
-  if (finished !== state && !request.plan) {
-    state = finished;
-    await saveState(deps.files, path, state);
-  }
-
   const pending = planned.filter((job) => job.writes.length);
   if (!pending.length) {
     say(
@@ -246,10 +228,8 @@ async function publishLocked(
   }
   if (request.plan) return planOnly(deps, "publish", request.args, needsApproval);
 
-  const jobsToWrite = writeJobs(
-    pending.map((job) => ({ ...job, environment, mapFile: job.owner.mapFile })),
-    deps.destinations,
-  );
+  const jobsToWrite = pending.map((job) => ({ ...job, environment, mapFile: job.owner.mapFile }));
+  writeTogether(jobsToWrite, deps.destinations);
   const total = pending.reduce((sum, job) => sum + job.writes.length, 0);
   say("");
   const question = `Write ${count(total, "secret")}?`;

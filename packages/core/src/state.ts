@@ -8,17 +8,6 @@ import type { Generation } from "./secret";
 
 const STATE_VERSION = 5;
 
-export interface Operation {
-  id: string;
-  keyId: KeyId;
-  environment: Environment;
-  mapFile: string | null;
-  generation: Generation;
-  startedAt: string;
-  planned: string[];
-  done: string[];
-}
-
 export interface Issued {
   keyId: KeyId;
   environment: Environment;
@@ -34,14 +23,12 @@ export interface Issued {
 export interface State {
   version: typeof STATE_VERSION;
   receipts: Receipt[];
-  operations: Operation[];
   issued: Issued[];
 }
 
 export const emptyState = (): State => ({
   version: STATE_VERSION,
   receipts: [],
-  operations: [],
   issued: [],
 });
 
@@ -62,24 +49,18 @@ export async function loadState(files: Files, path: string, vaults: VaultKinds):
           : r,
       )
     : data.receipts;
-  const operations = Array.isArray(data.operations)
-    ? data.operations.map((o: unknown) => (isRecord(o) ? { ...o, mapFile: mapFile(o) } : o))
-    : data.operations;
   if (!Array.isArray(receipts) || !receipts.every((r) => isReceipt(r, vaults))) {
     throw new Error(`${path}: the state file's "receipts" must be a list of receipts`);
-  }
-  if (!Array.isArray(operations) || !operations.every(isOperation)) {
-    throw new Error(`${path}: the state file's "operations" must be a list of operations`);
   }
   const issued = version >= 5 ? data.issued : [];
   if (!Array.isArray(issued) || !issued.every(isIssued)) {
     throw new Error(`${path}: the state file's "issued" must be a list of issued keys`);
   }
-  return { version: STATE_VERSION, receipts, operations, issued };
+  return { version: STATE_VERSION, receipts, issued };
 }
 
 export async function saveState(files: Files, path: string, state: State): Promise<void> {
-  await writeJsonAtomic(files, path, state);
+  await writeJsonAtomic(files, path, { ...state, operations: [] });
 }
 
 export interface KeyOwner {
@@ -103,34 +84,10 @@ export function receiptsFor(state: State, owner: KeyOwner): Receipt[] {
   return state.receipts.filter((r) => ownedBy(r, owner));
 }
 
-export function startOperation(state: State, operation: Omit<Operation, "done">): State {
-  if (state.operations.some((o) => o.id === operation.id))
-    throw new Error(`operation ${operation.id} already exists`);
-  return { ...state, operations: [...state.operations, { ...operation, done: [] }] };
-}
-
-export function recordReceipt(
-  state: State,
-  receipt: Receipt,
-  kinds: DestinationKinds,
-  operationId?: string,
-): State {
+export function recordReceipt(state: State, receipt: Receipt, kinds: DestinationKinds): State {
   const key = receiptSecretKey(receipt, kinds);
   const same = (r: Receipt) => receiptSecretKey(r, kinds) === key;
-  const operations = state.operations.map((o) =>
-    o.id === operationId && !o.done.includes(receipt.destinationId)
-      ? { ...o, done: [...o.done, receipt.destinationId] }
-      : o,
-  );
-  return { ...state, receipts: [...state.receipts.filter((r) => !same(r)), receipt], operations };
-}
-
-export function finishOperation(state: State, operationId: string): State {
-  return { ...state, operations: state.operations.filter((o) => o.id !== operationId) };
-}
-
-export function unfinishedOperations(state: State, owner: KeyOwner): Operation[] {
-  return state.operations.filter((o) => ownedBy(o, owner));
+  return { ...state, receipts: [...state.receipts.filter((r) => !same(r)), receipt] };
 }
 
 export function issuedFor(state: State, owner: KeyOwner): Issued | undefined {
@@ -200,17 +157,5 @@ function isIssued(i: unknown): i is Issued {
     isText(i.old.generation) &&
     typeof i.old.revoked === "boolean" &&
     (i.held === undefined || typeof i.held === "boolean")
-  );
-}
-
-function isOperation(o: unknown): o is Operation {
-  return (
-    isRecord(o) &&
-    [o.id, o.keyId, o.environment, o.generation, o.startedAt].every(isText) &&
-    isTextOrNull(o.mapFile) &&
-    Array.isArray(o.planned) &&
-    o.planned.every(isText) &&
-    Array.isArray(o.done) &&
-    o.done.every(isText)
   );
 }

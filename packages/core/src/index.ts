@@ -63,7 +63,6 @@ export { isRecord, objectField, parseObject } from "./record";
 export { loadRegistry, register, unregister, type Registry } from "./registry";
 export {
   emptyState,
-  finishOperation,
   type Issued,
   issuedFor,
   type KeyOwner,
@@ -74,8 +73,6 @@ export {
   recordIssued,
   recordReceipt,
   saveState,
-  startOperation,
-  unfinishedOperations,
   type State,
 } from "./state";
 export {

@@ -167,7 +167,7 @@ export class GitHubSecretDestination implements Destination {
     if (key.status === 403 || key.status === 404)
       return {
         reason: `the token can't use ${this.#repo}'s Actions secrets (HTTP ${key.status}${gitHubSaid(key.body)})`,
-        fix: `give the token the repository permission Secrets: Read and write, or sign gh in with the browser: gh auth login --hostname github.com`,
+        fix: `give the token the repository permission ${this.#environment === null ? "Secrets" : "Environments"}: Read and write, or sign gh in with the browser: gh auth login --hostname github.com`,
       };
     throw this.#failure(`GitHub GET ${path}`, key);
   }

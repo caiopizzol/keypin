@@ -386,6 +386,19 @@ describe("an environment secret", () => {
     expect(requests.some((r) => r.method !== "GET")).toBe(false);
   });
 
+  test("a fine-grained token refused the environment's secrets is told to add Environments", async () => {
+    const routes = environmentRoutes();
+    routes[`GET ${ENV}/secrets/public-key`] = {
+      status: 403,
+      body: { message: "Resource not accessible by personal access token" },
+    };
+    const check = await destination(routes, { environment: "prod/eu" }).github.checkAccount();
+    expect(check.ok).toBe(false);
+    expect(check.fix).toBe(
+      "give the token the repository permission Environments: Read and write, or sign gh in with the browser: gh auth login --hostname github.com",
+    );
+  });
+
   test("needs only the environment's secrets, not its settings", async () => {
     const routes = environmentRoutes();
     routes[`GET ${ENV}`] = { status: 403, body: { message: "Resource not accessible" } };

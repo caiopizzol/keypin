@@ -158,6 +158,7 @@ function client(account: string, scenario: Scenario): SdkClient {
       put: async (item) => {
         const chars = keep(item.vaultId, item.title, item.fields);
         effect(`1password update ${account}/${item.vaultId}/${item.title} (${chars} chars)`);
+        if (scenario.onePassword.saveTimesOut) throw new Error("the request timed out");
         return item;
       },
     },

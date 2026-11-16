@@ -26,6 +26,7 @@ export interface Scenario {
     slowMs?: number;
     signIn?: string;
     noDesktopApp?: boolean;
+    saveTimesOut?: boolean;
   };
   gh: "ok" | "not installed" | "not logged in";
   wrangler: boolean;
@@ -454,6 +455,11 @@ export const scenarios: Record<string, Scenario> = {
     ...resend,
     about: "resend, but the network drops Resend's reply after it creates the new key",
     resend: { keys: ["re-old"], loseCreated: true },
+  },
+  "resend-save-timeout": {
+    ...resend,
+    about: "resend, but 1Password saves the new key and then its reply times out",
+    onePassword: { ...resend.onePassword, saveTimesOut: true },
   },
   fresh: {
     ...ready,

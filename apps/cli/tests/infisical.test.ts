@@ -555,7 +555,7 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
       ]);
     });
 
-    test("a failed save whose state write also fails says to delete the key, then creates a new one", async () => {
+    test("a failed save whose state write also fails says the next run's wait is wrong, then creates a new one", async () => {
       const infisical = policy();
       const first = project({ map: ISSUER_MAP, infisical });
       expect(await cli(["rotate", "STRIPE_API_KEY"], first.deps)).toBe(0);
@@ -564,7 +564,10 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
       const failed = project({ map: ISSUER_MAP, infisical, after: first });
       expect(await cli(["rotate", "STRIPE_API_KEY"], failed.deps)).toBe(1);
       expect(failed.stderr.text).toContain(
-        "Stopped: the new key key-2 exists at Resend but isn't in Infisical, and keypin can't show it again. Delete it at https://resend.com/api-keys, then run this again:",
+        "Stopped: keypin can't tell whether Infisical saved the new key key-2. Run this again, and keypin picks up from what Infisical holds:",
+      );
+      expect(failed.stderr.text).toContain(
+        `keypin couldn't update ${STATE}: ENOSPC: no space left on device. If the next run waits for an approval and Infisical has no change pending, delete key key-2 at https://resend.com/api-keys, then run this again.`,
       );
       restore();
       infisical.failWrites = false;

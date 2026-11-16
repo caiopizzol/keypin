@@ -558,6 +558,28 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "a vault save that times out says to run again, not to delete the key",
+    async () => {
+      const result = await drive({
+        scenario: "resend-save-timeout",
+        args: ["rotate", "RESEND_API_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        "Stopped: keypin can't tell whether 1Password saved the new key re-new-1. Run this again, and keypin picks up from what 1Password holds:",
+      );
+      expect(result.screen).not.toContain("Delete it");
+      expect(result.effects).toEqual([
+        "resend create re-new-1",
+        "1password update my.1password.com/Private/mailer resend key (20 chars)",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "a destination that fails stops before the revoke, with the new key saved",
     async () => {
       const result = await drive({

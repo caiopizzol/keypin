@@ -16,8 +16,10 @@ import {
   loadState,
   planPublish,
   publishEnvironment,
+  receiptsFor,
   saveState,
   type Secret,
+  type State,
   unfinishedOperations,
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
@@ -261,7 +263,10 @@ async function publishLocked(
     state = written.state;
     if (!written.ok) {
       if (many) {
-        const left = pending.slice(index).map((j) => j.key.name);
+        const left = pending
+          .slice(index)
+          .filter((j) => j.writes.some((w) => !delivered(state, j, w.destinationId)))
+          .map((j) => j.key.name);
         say(`Not finished: ${left.join(", ")}.`);
       }
       say("Stopped. Finished writes keep their receipts; run keypin publish again to continue.");
@@ -272,6 +277,12 @@ async function publishLocked(
     );
   }
   return 0;
+}
+
+function delivered(state: State, job: Planned, destinationId: string): boolean {
+  return receiptsFor(state, job.owner).some(
+    (r) => r.destinationId === destinationId && r.generation === job.generation,
+  );
 }
 
 type Read =

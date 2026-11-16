@@ -1054,6 +1054,7 @@ function setupAll(
     state,
     everything,
     writes,
+    delivered: destinations.delivered,
   };
 }
 
@@ -1210,6 +1211,8 @@ describe("keypin publish --all", () => {
       `write ${OTHER_PLACE} OTHER_KEY (${SENTINEL.length + 6} chars)`,
     ]);
     expect(run.stderr.text).toContain("wrote STRIPE_API_KEY, OTHER_KEY in one version");
+    expect(run.delivered(SENTINEL)).toContain(`${WORKER_PLACE} STRIPE_API_KEY`);
+    expect(run.delivered(`${SENTINEL}-other`)).toContain(`${WORKER_PLACE} OTHER_KEY`);
     const state = await run.state();
     expect(state.receipts.map((r) => r.destinationId)).toEqual([
       WORKER,
@@ -1249,6 +1252,7 @@ describe("keypin publish --all", () => {
     expect(generation(WORKER)).not.toBe(generation(WORKER, before));
     expect(generation(GITHUB)).toBe(generation(GITHUB, before));
     expect(state.operations).toMatchObject([{ keyId: "STRIPE_API_KEY", done: [WORKER] }]);
+    expect(run.stderr.text).toContain("Not finished: STRIPE_API_KEY.");
 
     const restored = setupAll({ disk: run.disk });
     expect(await cli(["publish", "OTHER_KEY", "--plan"], restored.deps)).toBe(3);

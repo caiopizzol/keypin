@@ -276,6 +276,7 @@ export function fakeDestinations(
               }
               const names = secrets.map((s) => s.name).join(" ");
               log.push(`write ${place} ${names} in one request`);
+              for (const { name, secret } of secrets) received.push({ place, name, secret });
               return { destination: place, version: `v-${log.length}` };
             },
           }

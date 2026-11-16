@@ -1213,12 +1213,45 @@ describe("keypin publish --all", () => {
     const state = await run.state();
     expect(state.receipts.map((r) => r.destinationId)).toEqual([
       WORKER,
+      `${WORKER_PLACE}:OTHER_KEY`,
       GITHUB,
       OTHER,
-      `${WORKER_PLACE}:OTHER_KEY`,
     ]);
     expect(state.operations).toEqual([]);
     expect(leaks(...run.everything())).toBe(false);
+  });
+
+  test("a later key's part of a Worker write keeps its receipt when an earlier write fails", async () => {
+    const map = ALL_MAP.replace(
+      '{ to = "github-actions", repo = "acme/other" },',
+      '{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },',
+    );
+    const first = setupAll({
+      terminal: "yes",
+      disk: memoryFiles({ "/work/billing/keypin.toml": map }),
+    });
+    expect(await cli(["publish", "--all"], first.deps)).toBe(0);
+    const before = await first.state();
+
+    const run = setupAll({
+      terminal: "yes",
+      disk: first.disk,
+      suffix: "-new",
+      failWrite: [GITHUB_PLACE],
+    });
+    expect(await cli(["publish", "--all"], run.deps)).toBe(1);
+    expect(run.writes()).toEqual([`write ${WORKER_PLACE} STRIPE_API_KEY OTHER_KEY in one request`]);
+    const state = await run.state();
+    const generation = (id: string, s = state) =>
+      s.receipts.find((r) => r.destinationId === id)?.generation;
+    const other = `${WORKER_PLACE}:OTHER_KEY`;
+    expect(generation(other)).not.toBe(generation(other, before));
+    expect(generation(WORKER)).not.toBe(generation(WORKER, before));
+    expect(generation(GITHUB)).toBe(generation(GITHUB, before));
+    expect(state.operations).toMatchObject([{ keyId: "STRIPE_API_KEY", done: [WORKER] }]);
+
+    const restored = setupAll({ disk: run.disk });
+    expect(await cli(["publish", "OTHER_KEY", "--plan"], restored.deps)).toBe(3);
   });
 
   test("same-named Workers in two accounts get separate writes", async () => {

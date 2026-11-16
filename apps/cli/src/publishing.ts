@@ -17,6 +17,7 @@ import {
   messageOf,
   type PlanStep,
   type PublishTarget,
+  type Receipt,
   recordReceipt,
   type RemovedDestination,
   saveState,
@@ -118,9 +119,21 @@ export interface Write {
   together?: Together;
 }
 
-export interface Together {
-  secrets: { name: string; secret: Secret }[];
-  written?: Promise<Evidence>;
+export interface WriteJob {
+  key: KeyEntry;
+  environment: Environment;
+  mapFile: string;
+  entry: EnvEntry;
+  secret: Secret;
+  ids: ItemIds;
+  generation: Generation;
+  writes: Write[];
+  operation: string;
+}
+
+interface Together {
+  members: { job: WriteJob; write: Write }[];
+  sent: boolean;
 }
 
 export function writesFor(steps: readonly PlanStep[], checked: Map<string, Checked>): Write[] {
@@ -132,73 +145,67 @@ export function writesFor(steps: readonly PlanStep[], checked: Map<string, Check
   });
 }
 
-export async function writeAll(input: {
-  key: KeyEntry;
-  environment: Environment;
-  mapFile: string;
-  entry: EnvEntry;
-  secret: Secret;
-  ids: ItemIds;
-  generation: Generation;
-  writes: Write[];
-  state: State;
-  path: string;
-  deps: Deps;
-  out: Output;
-  label: Label;
-}): Promise<{ ok: boolean; state: State }> {
-  const { key, environment, mapFile, entry, secret, ids, generation, writes, path, deps, out } =
-    input;
-  const id = crypto.randomUUID();
-  let state = startOperation(input.state, {
-    id,
-    keyId: key.name,
-    environment,
-    mapFile,
-    generation,
-    startedAt: deps.now().toISOString(),
-    planned: writes.map((w) => w.destinationId),
+function started(state: State, job: WriteJob, now: Date): State {
+  if (state.operations.some((o) => o.id === job.operation)) return state;
+  return startOperation(state, {
+    id: job.operation,
+    keyId: job.key.name,
+    environment: job.environment,
+    mapFile: job.mapFile,
+    generation: job.generation,
+    startedAt: now.toISOString(),
+    planned: job.writes.map((w) => w.destinationId),
   });
+}
+
+export async function writeAll(
+  job: Omit<WriteJob, "operation"> & {
+    operation?: string;
+    state: State;
+    path: string;
+    deps: Deps;
+    out: Output;
+    label: Label;
+  },
+): Promise<{ ok: boolean; state: State }> {
+  const input = { ...job, operation: job.operation ?? crypto.randomUUID() };
+  const { key, environment, mapFile, secret, writes, path, deps, out } = input;
+  let state = started(input.state, input, deps.now());
   await saveState(deps.files, path, state);
 
-  for (const { destinationId: written, found, together } of writes) {
+  for (const write of writes) {
+    const { found, together } = write;
+    if (together?.sent) continue;
     const place = input.label(found.target);
-    const names = together?.secrets.map((s) => s.name).join(", ") ?? key.name;
+    const members = together?.members ?? [{ job: input, write }];
+    const names = members.map((m) => m.job.key.name).join(", ");
     const writeMany = found.destination.writeMany?.bind(found.destination);
-    const first = together?.written === undefined;
     try {
+      if (together) {
+        state = members.reduce((s, m) => started(s, m.job, deps.now()), state);
+        await saveState(deps.files, path, state);
+      }
       const evidence = await out.step(
-        `${place}  writing ${first ? names : key.name}`,
+        `${place}  writing ${names}`,
         () =>
           together && writeMany
-            ? (together.written ??= writeMany(together.secrets))
+            ? writeMany(members.map((m) => ({ name: m.job.key.name, secret: m.job.secret })))
             : found.destination.write(key.name, secret),
         () => ({
           ok: true,
-          text: `${place}  wrote ${first && together ? `${names} in one version` : key.name}`,
+          text: `${place}  wrote ${together ? `${names} in one version` : names}`,
         }),
       );
-      state = recordReceipt(
-        state,
-        {
-          keyId: key.name,
-          environment,
-          mapFile,
-          source: entry.ref,
-          sourceIds: ids,
-          destinationId: written,
-          generation,
-          account: {
-            pinned: found.target.account,
-            publisher: found.check.publisher,
-            destinationAccount: found.check.destinationAccount ?? found.target.account,
-          },
-          at: deps.now().toISOString(),
-          evidence,
-        },
-        deps.destinations,
-        id,
-      );
+      if (together) together.sent = true;
+      const at = deps.now().toISOString();
+      for (const m of members)
+        state = recordReceipt(
+          state,
+          receiptOf(m.job, m.write, at, evidence),
+          deps.destinations,
+          m.job.operation,
+        );
+      state = { ...state, operations: state.operations.filter((o) => !allDone(o)) };
       await saveState(deps.files, path, state);
     } catch (error) {
       out.line(`    ${messageOf(error)}`);
@@ -211,25 +218,54 @@ export async function writeAll(input: {
   return { ok: true, state };
 }
 
+const allDone = (op: { planned: string[]; done: string[] }) =>
+  op.planned.every((id) => op.done.includes(id));
+
+function receiptOf(job: WriteJob, write: Write, at: string, evidence: Evidence): Receipt {
+  const { check, target } = write.found;
+  return {
+    keyId: job.key.name,
+    environment: job.environment,
+    mapFile: job.mapFile,
+    source: job.entry.ref,
+    sourceIds: job.ids,
+    destinationId: write.destinationId,
+    generation: job.generation,
+    account: {
+      pinned: target.account,
+      publisher: check.publisher,
+      destinationAccount: check.destinationAccount ?? target.account,
+    },
+    at,
+    evidence,
+  };
+}
+
 const BULK_LIMIT = 100;
 
-export function writeTogether(
-  jobs: readonly { key: KeyEntry; secret: Secret; writes: Write[] }[],
+export function writeJobs<J extends Omit<WriteJob, "operation">>(
+  jobs: readonly J[],
   kinds: DestinationKinds,
-): void {
-  const byDestination = new Map<string, { name: string; secret: Secret; write: Write }[]>();
-  for (const { key, secret, writes } of jobs)
-    for (const write of writes) {
+): (J & { operation: string })[] {
+  const withIds = jobs.map((job) => ({ ...job, operation: crypto.randomUUID() }));
+  writeTogether(withIds, kinds);
+  return withIds;
+}
+
+function writeTogether(jobs: readonly WriteJob[], kinds: DestinationKinds): void {
+  const byDestination = new Map<string, Together["members"]>();
+  for (const job of jobs)
+    for (const write of job.writes) {
       if (!write.found.destination.writeMany) continue;
       const id = checkId(write.found.target, kinds);
-      byDestination.set(id, [...(byDestination.get(id) ?? []), { name: key.name, secret, write }]);
+      byDestination.set(id, [...(byDestination.get(id) ?? []), { job, write }]);
     }
   for (const group of byDestination.values())
     for (let i = 0; i < group.length; i += BULK_LIMIT) {
-      const chunk = group.slice(i, i + BULK_LIMIT);
-      if (chunk.length < 2) continue;
-      const together = { secrets: chunk.map(({ name, secret }) => ({ name, secret })) };
-      for (const { write } of chunk) write.together = together;
+      const members = group.slice(i, i + BULK_LIMIT);
+      if (members.length < 2) continue;
+      const together = { members, sent: false };
+      for (const { write } of members) write.together = together;
     }
 }
 

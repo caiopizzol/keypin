@@ -365,7 +365,7 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
     const map = ISSUER_MAP;
     const run = project({ map, env: { KEYPIN_1PASSWORD: "service-account" } });
     expect(await cli(["rotate", "STRIPE_API_KEY"], run.deps)).toBe(0);
-    expect(run.issued).toEqual(["create STRIPE_API_KEY prod 2026-11-09 12:00:00"]);
+    expect(run.issued).toEqual(["create STRIPE_API_KEY prod 2026-11-09 12:00:00 a1b2c3"]);
     expect(run.store.effects).toEqual(["infisical update billing/prod/STRIPE_API_KEY"]);
     expect(run.store.load()[0]?.secret).toEqual({ value: ISSUED, rotated: "2026-11-09" });
     expect(run.destinations.log).toEqual([
@@ -405,7 +405,7 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
     test("keeps the new key, doesn't say to delete it, and exits 3", async () => {
       const { infisical, held, code } = await heldRotation();
       expect(code).toBe(3);
-      expect(held.issued).toEqual(["create STRIPE_API_KEY prod 2026-11-09 12:00:00"]);
+      expect(held.issued).toEqual(["create STRIPE_API_KEY prod 2026-11-09 12:00:00 a1b2c3"]);
       expect(held.store.effects.at(-1)).toBe("infisical hold update billing/prod/STRIPE_API_KEY");
       expect(infisical.heldByPolicy?.[0]?.secret.value).toBe(SECOND);
       expect(held.stderr.text).toContain("Infisical holds the change for approval");
@@ -482,7 +482,7 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
         "Key key-2 is gone from Resend, so keypin creates a new one.",
       );
       expect(again.issued).toEqual([
-        "create STRIPE_API_KEY prod 2026-11-09 12:00:00",
+        "create STRIPE_API_KEY prod 2026-11-09 12:00:00 a1b2c3",
         "revoke key-1",
       ]);
     });
@@ -497,7 +497,7 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
       const next = project({ map: ISSUER_MAP, infisical, after: first });
       expect(await cli(["rotate", "STRIPE_API_KEY"], next.deps)).toBe(0);
       expect(next.issued).toEqual([
-        "create STRIPE_API_KEY prod 2026-11-09 12:00:00",
+        "create STRIPE_API_KEY prod 2026-11-09 12:00:00 a1b2c3",
         "revoke key-1",
       ]);
       expect(next.stderr.text).not.toContain("If nothing uses it, delete it");
@@ -535,7 +535,7 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
         "Key key-2 is gone from Resend, so keypin creates a new one.",
       );
       expect(again.issued).toEqual([
-        "create STRIPE_API_KEY prod 2026-11-09 12:00:00",
+        "create STRIPE_API_KEY prod 2026-11-09 12:00:00 a1b2c3",
         "revoke key-1",
       ]);
     });
@@ -586,7 +586,7 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
       const again = project({ map: ISSUER_MAP, infisical, after: run, isTerminal: false });
       await cli(["rotate", "STRIPE_API_KEY", "--yes"], again.deps);
       expect(again.stderr.text).not.toContain("Needs approval");
-      expect(again.issued).toEqual(["create STRIPE_API_KEY prod 2026-11-09 12:00:00"]);
+      expect(again.issued).toEqual(["create STRIPE_API_KEY prod 2026-11-09 12:00:00 a1b2c3"]);
     });
 
     test("a resumed partial publish writes only the destination that failed", async () => {

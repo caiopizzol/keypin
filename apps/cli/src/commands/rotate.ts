@@ -532,7 +532,7 @@ async function createKey(
   const time = [now.getHours(), now.getMinutes(), now.getSeconds()]
     .map((n) => String(n).padStart(2, "0"))
     .join(":");
-  const name = `${key.name} ${owner.environment} ${localDay(now)} ${time}`;
+  const name = `${key.name} ${owner.environment} ${localDay(now)} ${time} ${deps.tag()}`;
   try {
     return await out.step(
       `${where}  creating ${name}`,

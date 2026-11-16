@@ -70,6 +70,7 @@ export interface Deps {
   signIn(): SignIn;
   vault(): VaultBackend;
   now(): Date;
+  tag(): string;
   stdout: Writer;
   stderr: Writer;
   launch: Launch;

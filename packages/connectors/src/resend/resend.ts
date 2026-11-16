@@ -92,7 +92,7 @@ export class ResendIssuer implements Issuer {
   }
 
   lostCreate(name: string): string {
-    return `Resend may have made the key before the reply was lost. Delete any key named "${fitName(name)}" at ${DASHBOARD} before you run this again, or the rerun leaves it live.`;
+    return `Resend may have made the key before the reply was lost. Only this run uses the name "${fitName(name)}": delete a key with that name at ${DASHBOARD} before you run this again, or the rerun leaves it live.`;
   }
 
   async revoke(id: string): Promise<"revoked" | "already gone"> {

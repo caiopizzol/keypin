@@ -316,6 +316,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
     signIn: () => ({ mode: "desktop", tokenIgnored: false }),
     vault: () => backend,
     now: () => new Date(2026, 10, 9, 12, 0, 0),
+    tag: () => "a1b2c3",
     stdout: stdout.writer,
     stderr: stderr.writer,
     launch: () => {

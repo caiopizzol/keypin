@@ -192,7 +192,7 @@ describe("after a failed create", () => {
   });
 
   test("a lost create names the key as Resend stores it, cut to 50 characters", () => {
-    const name = `${"K".repeat(60)} prod 2026-11-09 12:00:00`;
+    const name = `${"K".repeat(60)} prod 2026-11-09 12:00:00 a1b2c3`;
     const { resend } = issuer(happyRoutes());
     expect(resend.lostCreate(name)).toContain(`"…${name.slice(name.length - 49)}"`);
   });

@@ -2,7 +2,6 @@ import { basename, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import {
   DEFAULT_ENVIRONMENTS,
-  draftItemName,
   type Environment,
   envFileKind,
   envFlag,
@@ -21,12 +20,17 @@ import {
 } from "@keypin/core";
 import { type Deps, localDay, UsageError } from "../deps";
 import { MAP_FILE } from "../project";
-import { confirm, type Output, output } from "../output";
-import { NEEDS_APPROVAL, rerun } from "../publishing";
+import { count, type Output, output } from "../output";
+import { confirmed, NEEDS_APPROVAL } from "../approval";
 import { approval } from "../sign-in";
 import { registerProject, TEMPLATE } from "./init";
 
 const ROTATE_EVERY = "90d";
+
+function draftItemName(project: string, environment: Environment, name: string): string {
+  const folder = project.replace(/[^A-Za-z0-9 ._-]/g, "-");
+  return `${folder} ${environment} ${name.toLowerCase().replaceAll("_", " ").trim()}`;
+}
 
 type OnePasswordRef = {
   kind: "1password";
@@ -248,7 +252,11 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
       : `Map: write ${target.file} and register ${deps.cwd}`,
   );
 
-  if (imports.length && !(await confirmed(deps, request, imports.length))) return NEEDS_APPROVAL;
+  const question = `Create ${count(imports.length, "item")} in 1Password?`;
+  const confirm = { ...request, command: "import", needsApproval: false, question };
+  const hint = "Confirm in a terminal, or add --yes.";
+  if (imports.length && !(await confirmed(deps, confirm, "Nothing was created.", hint)))
+    return NEEDS_APPROVAL;
 
   const created: Import[] = [];
   if (imports.length) say("");
@@ -575,25 +583,6 @@ async function writeMap(
     throw new Error(`${target.file} is a symbolic link; keypin import doesn't follow one`);
   if (result === "exists" || result === "changed")
     throw new Error(`${target.file} changed while import ran, so it wasn't written`);
-}
-
-async function confirmed(deps: Deps, request: Request, items: number): Promise<boolean> {
-  const say = (text: string) => deps.stderr.write(`${text}\n`);
-  if (request.yes) return true;
-  if (deps.isTerminal) {
-    if (await confirm(deps, `Create ${count(items, "item")} in 1Password?`)) return true;
-    say("Not confirmed. Nothing was created.");
-    return false;
-  }
-  say(
-    "Stopped: no terminal to confirm on. Nothing was created. Confirm in a terminal, or add --yes.",
-  );
-  say(rerun(deps, "import", request.args));
-  return false;
-}
-
-function count(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }
 
 function str(value: string): string {

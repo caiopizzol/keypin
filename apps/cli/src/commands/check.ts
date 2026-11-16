@@ -22,7 +22,7 @@ import {
   vaultAccounts,
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
-import { type Output, output, tilde } from "../output";
+import { count, type Output, output, tilde } from "../output";
 import { registryPath } from "../paths";
 import { locateMap, MAP_FILE } from "../project";
 import { publisherFor } from "../publisher";
@@ -143,9 +143,6 @@ async function build(
     report.problems.push(text);
     steps.push({ order, title, body, covers: [text], signIn });
   };
-  let fixes: Fix[] = [];
-  let addsPin = false;
-  let empty: string | null = null;
   const found = await locateMap(deps.files, folder);
   const parsed = found
     ? parseMap(found.text, found.file, deps.destinations, deps.issuers, deps.vaults)
@@ -189,7 +186,16 @@ async function build(
   const targets = new Map<string, PublishTarget>();
   const items = new Map<string, CheckedItem>();
   const kinds = new Map<string, KeyRef["kind"]>();
-  const done = async () => {
+  const gapsOf = (map: KeysMap | null) =>
+    findGaps(scanned.scan, map && found ? { map, text: found.text } : null, deps.vaults);
+  const done = async (gaps: Gaps | null, empty: string | null = null) => {
+    if (gaps) {
+      report.production = gaps.production;
+      report.local = gaps.local;
+      report.add = gaps.add;
+      report.problems.push(...gaps.problems);
+      report.notes.push(...gaps.notes);
+    }
     const setup = await prerequisites(
       root,
       scanned,
@@ -200,22 +206,12 @@ async function build(
       deps,
     );
     report.prerequisites = setup.map(({ name, status, fix }) => ({ name, status, fix }));
-    finish(report);
+    report.ok = !report.problems.length;
     const all = [...setup.map((p) => p.step), ...steps];
     const counts = scanned.read.map(({ noun, count: n }) => count(n, noun)).join(", ");
     const read = [`read ${counts}`, ...scanned.about].join("; ");
-    return { report, steps: plan(report, all, fixes, addsPin, empty), read };
-  };
-  const gaps = (map: KeysMap | null) => {
-    const text = map && found ? { map, text: found.text } : null;
-    const result = findGaps(scanned.scan, text, deps.vaults);
-    report.production = result.production;
-    report.local = result.local;
-    report.add = result.add;
-    addsPin = result.addsPin;
-    report.problems.push(...result.problems);
-    report.notes.push(...result.notes);
-    fixes = result.fixes;
+    const fixes = gaps?.fixes ?? [];
+    return { report, steps: plan(report, all, fixes, gaps?.addsPin ?? false, empty), read };
   };
   if (!found || !parsed) {
     problem(
@@ -224,8 +220,7 @@ async function build(
       [`There's no ${MAP_FILE} in ${folder} or any folder above it.`, "  keypin init"],
       `no ${MAP_FILE} in ${folder} or any folder above it; run keypin init, then keypin check again`,
     );
-    gaps(null);
-    return done();
+    return done(gapsOf(null));
   }
   const registry = await loadRegistry(deps.files, registryPath(deps));
   report.registered = registry.projects.includes(root);
@@ -242,14 +237,13 @@ async function build(
       body: parsed.errors,
       covers: parsed.errors,
     });
-    return done();
+    return done(null);
   }
   const map = parsed.map;
   if (!map.keys.length) {
-    empty = `${found.file} maps no keys yet; run keypin import for an env file, and add the TOML below for production`;
+    const empty = `${found.file} maps no keys yet; run keypin import for an env file, and add the TOML below for production`;
     report.problems.push(empty);
-    gaps(map);
-    return done();
+    return done(gapsOf(map), empty);
   }
 
   const entries = map.keys.flatMap((key) =>
@@ -361,8 +355,7 @@ async function build(
       to: result.to,
     });
   }
-  gaps(map);
-  return done();
+  return done(gapsOf(map));
 }
 
 async function prerequisites(
@@ -420,11 +413,6 @@ function loginLine(result: DestinationResult): string {
       ? ""
       : `, and it reaches ${result.reached}`;
   return `${MAP_FILE} pins ${result.pinned}; the login is ${result.login}${signedIn}${reaches}.`;
-}
-
-function finish(report: Report): Report {
-  report.ok = !report.problems.length;
-  return report;
 }
 
 async function checkItem(ref: KeyRef, deps: Deps): Promise<CheckedItem> {
@@ -613,8 +601,4 @@ function render(report: Report, read: string, steps: Step[], out: Output, home: 
   for (const note of report.notes)
     if (note !== ITEM_NOTE && !shown.has(note)) lines.push(dim(`Note: ${note}`));
   return tilde(`${lines.join("\n")}\n`, home);
-}
-
-function count(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }

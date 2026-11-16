@@ -2,7 +2,8 @@ import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { loadRegistry, unregister as remove } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
-import { projectCount, registryPath } from "../paths";
+import { count } from "../output";
+import { registryPath } from "../paths";
 
 export async function unregister(args: string[], deps: Deps): Promise<number> {
   const { positionals } = parseArgs({ args, options: {}, allowPositionals: true });
@@ -11,15 +12,12 @@ export async function unregister(args: string[], deps: Deps): Promise<number> {
   const path = registryPath(deps);
   const before = await loadRegistry(deps.files, path);
   const registry = await remove(deps.files, path, folder);
+  const projects = `${count(registry.projects.length, "project")} in ${path}`;
   if (before.projects.length === registry.projects.length) {
     const listed = registry.projects.map((project) => `\n  ${project}`).join("");
-    deps.stderr.write(
-      `keypin: ${folder} wasn't registered (${projectCount(registry, path)})${listed}\n`,
-    );
+    deps.stderr.write(`keypin: ${folder} wasn't registered (${projects})${listed}\n`);
     return 1;
   }
-  deps.stderr.write(
-    `keypin: ${folder} is no longer registered (${projectCount(registry, path)})\n`,
-  );
+  deps.stderr.write(`keypin: ${folder} is no longer registered (${projects})\n`);
   return 0;
 }

@@ -15,7 +15,7 @@ import {
 } from "./map";
 import { isRecord } from "./record";
 import { formatReference } from "./reference";
-import { type EnvFileKind, envFileSuffix } from "./scan";
+import { type EnvFileKind, envFileSuffix } from "./dotenv";
 
 export interface ProjectScan {
   envFiles: { path: string; kind: EnvFileKind; names: string[]; tracked: boolean | null }[];

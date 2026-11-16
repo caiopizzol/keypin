@@ -10,6 +10,10 @@ export type FolderListing =
   | { readonly ok: true; readonly entries: readonly ProjectEntry[] }
   | { readonly ok: false; readonly missing: boolean; readonly reason: string };
 
+export type StoreRead =
+  | { ok: true; secrets: { name: string; updatedAt: string | null }[] }
+  | { ok: false; reason: string };
+
 export interface ProjectReader {
   readonly root: string;
   readonly found: readonly string[];

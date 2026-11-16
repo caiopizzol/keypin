@@ -37,22 +37,23 @@ import { confirm, type Output, output } from "../output";
 import { findMap, pickEnvironment } from "../project";
 import { approval } from "../sign-in";
 import {
-  type Checked,
-  checkAccounts,
   commandLine,
   confirmed,
+  NEEDS_APPROVAL,
+  planOnly,
+  unattendedApproval,
+  withoutPlan,
+} from "../approval";
+import {
+  type Checked,
+  checkAccounts,
   type Label,
   labels,
   locked,
-  lookUpIds,
-  NEEDS_APPROVAL,
   type PlanRow,
-  planOnly,
   publishRows,
-  rerun,
   showPlan,
   showRemoved,
-  withoutPlan,
   writeAll,
   writesFor,
 } from "../publishing";
@@ -140,26 +141,17 @@ async function rotateLocked(job: Job): Promise<number> {
   say(
     `${out.bold(key.name)} ${owner.environment}  ${out.dim(`from ${formatReference(entry.ref, deps.vaults)} in ${vaultAccount(entry.ref, deps.vaults)}`)}`,
   );
-  const unattended = !deps.isTerminal && !job.plan;
-  let approvals = approvalsFor(input);
-  if (unattended && !approvals.length) {
-    try {
-      const [ids = null] = await lookUpIds([entry.ref], deps, out);
-      approvals = approvalsFor(input, ids);
-    } catch (error) {
-      say(`Stopped: couldn't find the item: ${messageOf(error)}. Nothing was created.`);
-      return 1;
-    }
-  }
-  if (unattended && approvals.length) {
-    say("Needs approval:");
-    for (const needed of approvals) say(`  ${needed.approval}`);
-    say(
+  const stopped = await unattendedApproval(deps, out, {
+    plan: job.plan,
+    command: "rotate",
+    args: job.args,
+    refs: [entry.ref],
+    approvals: ([ids = null]) => approvalsFor(input, ids),
+    nothing: "Nothing was created.",
+    stopped:
       "Stopped before reading the key: this rotation needs approval, and --yes can't give it. Nothing was read and nothing was created.",
-    );
-    say(rerun(deps, "rotate", job.args));
-    return NEEDS_APPROVAL;
-  }
+  });
+  if (stopped !== null) return stopped;
 
   const read = await readKeys(job);
   if (!read.ok) {

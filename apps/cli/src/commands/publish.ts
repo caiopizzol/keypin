@@ -23,20 +23,15 @@ import {
 import { type Deps, UsageError } from "../deps";
 import { findMap, pickEnvironment } from "../project";
 import { approval, signInFor } from "../sign-in";
-import { type Output, output } from "../output";
+import { confirmed, NEEDS_APPROVAL, planOnly, unattendedApproval } from "../approval";
+import { count, type Output, output } from "../output";
 import {
   type Checked,
   checkAccounts,
-  confirmed,
   finishAll,
   labels,
   locked,
-  lookUpIds,
-  NEEDS_APPROVAL,
-  planOnly,
   publishRows,
-  rerun,
-  type Say,
   showPlan,
   showRemoved,
   type Write,
@@ -99,7 +94,7 @@ function parseRequest(args: string[]) {
   return { keyId, env: values.env, yes: values.yes, plan: values.plan };
 }
 
-function jobsFor(request: Request, map: KeysMap, say: Say): Job[] {
+function jobsFor(request: Request, map: KeysMap, say: (text: string) => void): Job[] {
   const { keyId, environment } = request;
   const job = (key: KeyEntry, entry: EnvEntry): Job => ({
     key,
@@ -176,7 +171,7 @@ async function publishLocked(
     return 1;
   }
 
-  const approvalsOf = (ids: (ItemIds | null)[]) =>
+  const approvalsOf = (ids: readonly (ItemIds | null)[]) =>
     jobs.flatMap(({ key, owner }, index) =>
       approvalsFor(
         {
@@ -191,31 +186,16 @@ async function publishLocked(
       ),
     );
   say("");
-  const unattended = !deps.isTerminal && !request.plan;
-  let approvals = approvalsOf([]);
-  if (unattended && !approvals.length) {
-    try {
-      approvals = approvalsOf(
-        await lookUpIds(
-          jobs.map((job) => job.entry.ref),
-          deps,
-          out,
-        ),
-      );
-    } catch (error) {
-      say(`Stopped: couldn't find the item: ${messageOf(error)}. Nothing was written.`);
-      return 1;
-    }
-  }
-  if (approvals.length && unattended) {
-    say("Needs approval:");
-    for (const approval of approvals) say(`  ${approval.approval}`);
-    say(
-      `Stopped before reading ${many ? "any value" : "the value"}: this publish needs approval, and --yes can't give it. Nothing was read and nothing was written.`,
-    );
-    say(rerun(deps, "publish", request.args));
-    return NEEDS_APPROVAL;
-  }
+  const stopped = await unattendedApproval(deps, out, {
+    plan: request.plan,
+    command: "publish",
+    args: request.args,
+    refs: jobs.map((job) => job.entry.ref),
+    approvals: approvalsOf,
+    nothing: "Nothing was written.",
+    stopped: `Stopped before reading ${many ? "any value" : "the value"}: this publish needs approval, and --yes can't give it. Nothing was read and nothing was written.`,
+  });
+  if (stopped !== null) return stopped;
 
   const read = await readValues(checks, deps, out);
   if (!read.ok) {
@@ -338,8 +318,4 @@ function readValues(checks: Checks[], deps: Deps, out: Output): Promise<Read> {
       checks.map((job) => job.entry.ref),
     ),
   );
-}
-
-function count(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }

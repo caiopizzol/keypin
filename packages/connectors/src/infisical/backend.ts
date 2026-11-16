@@ -65,7 +65,13 @@ export function infisicalBackend(
     place: Place,
     method: string,
     path: string,
-    options: { token?: string; body?: Json; query?: Record<string, string>; signIn?: boolean } = {},
+    options: {
+      token?: string;
+      body?: Json;
+      query?: Record<string, string>;
+      signIn?: boolean;
+      always?: boolean;
+    } = {},
   ): Promise<{ status: number; body: Json }> {
     const fail = (why: string) =>
       options.signIn
@@ -92,7 +98,9 @@ export function infisicalBackend(
     const body = parseObject(await response.text());
     if (response.status === 404 && body.error === "Not Found")
       throw fail(
-        `the server has no ${method} ${path}, so it may be older than keypin supports; keypin needs Infisical from September 2025 or later`,
+        options.always
+          ? `the server has no ${method} ${path}; check that url in keypin.toml points to the Infisical server itself, with no path`
+          : `the server has no ${method} ${path}, so it may be older than keypin supports; keypin needs Infisical from September 2025 or later`,
       );
     if (response.status === 429)
       throw fail(
@@ -140,6 +148,7 @@ export function infisicalBackend(
     const login = await request(place, "POST", "/api/v1/auth/universal-auth/login", {
       body: { clientId: given.clientId, clientSecret: given.clientSecret },
       signIn: true,
+      always: true,
     });
     const token = login.body.accessToken;
     if (login.status !== 200 || typeof token !== "string")

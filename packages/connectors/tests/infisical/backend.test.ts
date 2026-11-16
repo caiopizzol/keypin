@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vite-plus/test";
+import { assert, describe, expect, test } from "vite-plus/test";
 import { type Fetch, isRecord, Secret, SignInFailed } from "@keypin/core";
 import { credentialsFrom, infisicalBackend, type InfisicalRef } from "../../src/infisical/index";
 import {
@@ -323,6 +323,21 @@ describe("reading", () => {
         "it may be older than keypin supports; keypin needs Infisical from September 2025 or later",
       );
     }
+  });
+
+  test("a server without the login route has the wrong url, not an old version", async () => {
+    const fake = fakeInfisical({
+      missingRoutes: ["/api/v1/auth/universal-auth/login"],
+      secrets: { "prod:/:STRIPE_KEY": STRIPE },
+    });
+    const error = await infisicalBackend(CREDENTIALS, fake.fetch)
+      .read(REF)
+      .catch((e: unknown) => e);
+    assert(error instanceof Error);
+    expect(error.message).toContain(
+      "sign-in failed: the server has no POST /api/v1/auth/universal-auth/login; check that url in keypin.toml points to the Infisical server itself, with no path",
+    );
+    expect(error.message).not.toContain("older than keypin supports");
   });
 
   test("a rate limit with Retry-After waits that long and asks once more", async () => {

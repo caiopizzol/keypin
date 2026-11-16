@@ -315,7 +315,7 @@ describe("keypin with Infisical", () => {
     expect(await cli(["check"], other.deps)).toBe(1);
     expect(other.stdout.text.split("Sign in to Infisical")).toHaveLength(2);
     expect(other.stdout.text).toContain(
-      "Use a machine identity from the organization keypin.toml pins under [infisical].",
+      "Use a machine identity from the organization keypin.toml pins under [infisical]; keypin can't read from a sub-organization.",
     );
     expect(other.stdout.text).not.toContain("1Password");
   });

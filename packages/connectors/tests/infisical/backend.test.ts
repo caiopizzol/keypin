@@ -42,6 +42,8 @@ function fakeInfisical(
     userToken?: string;
     hidden?: boolean;
     approval?: boolean;
+    missingRoutes?: string[];
+    rateLimited?: FakeInfisical["rateLimited"];
     encryptedMetadata?: boolean;
     imports?: FakeInfisical["imports"];
   } = {},
@@ -55,6 +57,8 @@ function fakeInfisical(
     ...(options.accessToken ? { accessToken: options.accessToken } : {}),
     ...(options.userToken ? { userToken: options.userToken } : {}),
     ...(options.hidden ? { hideValues: true } : {}),
+    ...(options.missingRoutes ? { missingRoutes: options.missingRoutes } : {}),
+    ...(options.rateLimited ? { rateLimited: options.rateLimited } : {}),
     ...(options.approval ? { heldByPolicy: [] } : {}),
     ...(options.encryptedMetadata ? { requireEncryptedMetadata: true } : {}),
     ...(options.imports ? { imports: options.imports } : {}),
@@ -159,9 +163,22 @@ describe("signing in", () => {
   test("an identity from another organization is refused before any secret is read", async () => {
     const fake = fakeInfisical({ organization: "other", secrets: { "prod:/:STRIPE_KEY": STRIPE } });
     await expect(infisicalBackend(CREDENTIALS, fake.fetch).read(REF)).rejects.toThrow(
-      "sign-in failed: the machine identity belongs to the organization other, but keypin.toml pins acme",
+      "sign-in failed: the machine identity belongs to the organization other, but keypin.toml pins acme; keypin reads only from top-level organizations, not sub-organizations",
     );
     expect(fake.calls.some((c) => c.path.startsWith("/api/v4"))).toBe(false);
+  });
+
+  test("an identity whose organization Infisical can't name is told to use a top-level one", async () => {
+    const fake = fakeInfisical();
+    const fetch: Fetch = (url, init) =>
+      url.endsWith("/api/v1/identities/details")
+        ? Promise.resolve(
+            new Response(JSON.stringify({ message: "internal error" }), { status: 500 }),
+          )
+        : fake.fetch(url, init);
+    await expect(infisicalBackend(CREDENTIALS, fetch).read(REF)).rejects.toThrow(
+      "couldn't read the machine identity's organization (Infisical returned HTTP 500: internal error); a machine identity created in a sub-organization has none keypin can check, so use one from the top-level organization",
+    );
   });
 
   test("an unknown project names the slug", async () => {
@@ -262,7 +279,7 @@ describe("reading", () => {
   test("a missing secret, a hidden value, and a bad rotated date are clear errors", async () => {
     const missing = infisicalBackend(CREDENTIALS, fakeInfisical().fetch);
     await expect(missing.read(REF)).rejects.toThrow(
-      "infisical://billing/prod/STRIPE_KEY (Infisical organization acme at https://app.infisical.com): no such secret",
+      "infisical://billing/prod/STRIPE_KEY (Infisical organization acme at https://app.infisical.com): Infisical returned HTTP 404: Secret with name 'STRIPE_KEY' not found",
     );
     const hidden = fakeInfisical({ hidden: true, secrets: { "prod:/:STRIPE_KEY": STRIPE } });
     await expect(infisicalBackend(CREDENTIALS, hidden.fetch).read(REF)).rejects.toThrow(
@@ -276,6 +293,58 @@ describe("reading", () => {
     await expect(infisicalBackend(CREDENTIALS, bad.fetch).metadata(REF)).rejects.toThrow(
       `the metadata "rotated" isn't a YYYY-MM-DD date: "soon"`,
     );
+  });
+
+  test("a wrong folder or environment names what Infisical couldn't find", async () => {
+    const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": STRIPE } });
+    const vault = infisicalBackend(CREDENTIALS, fake.fetch);
+    await expect(vault.read({ ...REF, path: "/payments" })).rejects.toThrow(
+      "Infisical returned HTTP 404: Folder with path '/payments' in environment with slug 'prod' not found",
+    );
+    await expect(vault.read({ ...REF, environment: "production" })).rejects.toThrow(
+      "Infisical returned HTTP 404: Folder with path '/' in environment with slug 'production' not found",
+    );
+  });
+
+  test("a server without keypin's endpoints may be too old", async () => {
+    for (const route of ["/api/v1/identities/details", "/api/v4/secrets"]) {
+      const fake = fakeInfisical({
+        missingRoutes: [route],
+        secrets: { "prod:/:STRIPE_KEY": STRIPE },
+      });
+      await expect(infisicalBackend(CREDENTIALS, fake.fetch).read(REF)).rejects.toThrow(
+        `Infisical organization acme at https://app.infisical.com: the server has no GET ${route}`,
+      );
+      await expect(infisicalBackend(CREDENTIALS, fake.fetch).read(REF)).rejects.toThrow(
+        "it may be older than keypin supports; keypin needs Infisical from September 2025 or later",
+      );
+    }
+  });
+
+  test("a rate limit with Retry-After waits that long and asks once more", async () => {
+    const fake = fakeInfisical({
+      rateLimited: { times: 1, retryAfter: 3 },
+      secrets: { "prod:/:STRIPE_KEY": STRIPE },
+    });
+    const waits: number[] = [];
+    const vault = infisicalBackend(CREDENTIALS, fake.fetch, async (ms) => void waits.push(ms));
+    expect((await vault.read(REF)).equals(new Secret(SENTINEL))).toBe(true);
+    expect(waits).toEqual([3000]);
+  });
+
+  test("a rate limit that persists, or names no wait, says to wait and rerun", async () => {
+    for (const rateLimited of [{ times: 2, retryAfter: 3 }, { times: 1 }]) {
+      const waits: number[] = [];
+      const fake = fakeInfisical({ rateLimited, secrets: { "prod:/:STRIPE_KEY": STRIPE } });
+      const vault = infisicalBackend(CREDENTIALS, fake.fetch, async (ms) => void waits.push(ms));
+      await expect(vault.read(REF)).rejects.toThrow(
+        "Infisical is limiting how often keypin can ask (Infisical returned HTTP 429: Rate limit exceeded. Please try again in 3 seconds); wait, then run the command again".replace(
+          "3",
+          String(rateLimited.retryAfter ?? 42),
+        ),
+      );
+      expect(waits).toEqual(rateLimited.retryAfter ? [3000] : []);
+    }
   });
 
   test("no rotated metadata is no rotated date", async () => {

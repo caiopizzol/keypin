@@ -63,6 +63,8 @@ export interface Deps {
   listFolder(path: string): Promise<FolderEntry[]>;
   git(folder: string, args: readonly string[]): Promise<string | null>;
   githubSecrets(repo: string, login: string | null, environment?: string): Promise<StoreRead>;
+  organizationSecrets(repo: string, login: string | null): Promise<StoreRead>;
+  sshHostname(destination: string): Promise<string | null>;
   workerSecrets(account: string, worker: string): Promise<StoreRead>;
   createFile: CreateFile;
   replaceFile: ReplaceFile;

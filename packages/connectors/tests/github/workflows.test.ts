@@ -54,10 +54,10 @@ jobs:
 `);
     assert(refs);
     expect(refs.uses).toEqual([
-      { environment: null, secrets: ["TOP_LEVEL"] },
-      { environment: null, secrets: ["TEST_TOKEN"] },
-      { environment: "production", secrets: ["API_TOKEN"] },
-      { environment: "${{ github.ref_name }}", secrets: ["PREVIEW_TOKEN"] },
+      { environment: null, secrets: ["TOP_LEVEL"], fromCaller: false },
+      { environment: null, secrets: ["TEST_TOKEN"], fromCaller: false },
+      { environment: "production", secrets: ["API_TOKEN"], fromCaller: false },
+      { environment: "${{ github.ref_name }}", secrets: ["PREVIEW_TOKEN"], fromCaller: false },
     ]);
     expect(refs.secrets.toSorted()).toEqual([
       "API_TOKEN",
@@ -80,6 +80,72 @@ jobs:
       workflowRefs("jobs:\n  a:\n    steps:\n      - run: echo '${{ toJSON(secrets) }}'\n")
         ?.hidesUses,
     ).toBe(true);
+  });
+
+  test("a workflow only other workflows call reads its caller's secrets, declared or inherited", () => {
+    for (const on of [
+      "on: workflow_call",
+      "on: [workflow_call]",
+      "on:\n  workflow_call:\n    secrets:\n      deploy_key:\n        required: true",
+    ]) {
+      const refs = workflowRefs(`
+${on}
+env:
+  TOP: \${{ secrets.TOP_TOKEN }}
+jobs:
+  deploy:
+    steps:
+      - run: echo \${{ secrets.DEPLOY_KEY }} \${{ secrets.SENTRY_TOKEN }}
+`);
+      expect(refs).toMatchObject({ secrets: [], uses: [], hidesUses: false });
+    }
+  });
+
+  test("a called workflow's job with an environment keeps its secrets, marked as passed by the caller", () => {
+    const refs = workflowRefs(`
+on:
+  workflow_call:
+    secrets:
+      DEPLOY_KEY:
+        required: true
+jobs:
+  test:
+    steps:
+      - run: echo \${{ secrets.DEPLOY_KEY }}
+  deploy:
+    environment: production
+    steps:
+      - run: echo \${{ secrets.DEPLOY_KEY }}
+`);
+    expect(refs?.uses).toEqual([
+      { environment: "production", secrets: ["DEPLOY_KEY"], fromCaller: true },
+    ]);
+  });
+
+  test("a workflow also run by other events still needs its declared secrets from the repo", () => {
+    const refs = workflowRefs(`
+on:
+  workflow_dispatch:
+  workflow_call:
+    secrets:
+      DEPLOY_KEY: {}
+jobs:
+  deploy:
+    steps:
+      - run: echo \${{ secrets.DEPLOY_KEY }}
+`);
+    expect(refs).toMatchObject({ secrets: ["DEPLOY_KEY"] });
+  });
+
+  test("a secret picked by an expression hides which one is used", () => {
+    for (const index of ["matrix.name", "format('{0}_KEY', matrix.env)", "'A' && 'B'", "env.NAME"])
+      expect(
+        workflowRefs(`jobs:\n  a:\n    steps:\n      - run: echo '\${{ secrets[${index}] }}'\n`)
+          ?.hidesUses,
+      ).toBe(true);
+    expect(
+      workflowRefs("jobs:\n  a:\n    steps:\n      - run: echo ${{ secrets[ 'KEY' ] }}\n"),
+    ).toMatchObject({ secrets: ["KEY"], hidesUses: false });
   });
 
   test("matches toJSON(secrets) and context names in any case, as GitHub does", () => {

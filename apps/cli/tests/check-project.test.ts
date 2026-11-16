@@ -1145,18 +1145,231 @@ required = ["RESEND_API_KEY"]
     expect(run.calls.some((c) => c.startsWith("github") || c.startsWith("worker"))).toBe(false);
   });
 
-  test.each(["git@github-work:acme/billing.git", "github-work:acme/billing"])(
+  const sshConfig = (hosts: Record<string, string>, asked: string[] = []) => ({
+    sshHostname: async (destination: string) => {
+      asked.push(destination);
+      return hosts[destination.replace(/^.*@/, "")] ?? destination.replace(/^.*@/, "");
+    },
+  });
+
+  test.each([
+    "git@github-work:acme/billing.git",
+    "github-work:acme/billing",
+    "ssh://git@github-work/acme/billing.git",
+  ])(
     "an origin behind an SSH host alias (%s) is read as that GitHub repository",
     async (remote) => {
       const run = setup({
         files: { [MAP]: MAPPED },
         git: { "remote get-url origin": `${remote}\n` },
+        deps: sshConfig({ "github-work": "github.com" }),
       });
       await cli(["check", "--json"], run.deps);
       expect(json(run.stdout.text).github).toMatchObject({ repo: "acme/billing" });
       expect(run.calls).toContainEqual(expect.stringMatching(/^github acme\/billing/));
     },
   );
+
+  test.each([
+    "git@gitlab.com:acme/billing.git",
+    "git@bitbucket.org:acme/billing.git",
+    "git@github.acme.corp:acme/billing.git",
+    "ssh://git@gitlab.com/acme/billing.git",
+    "git@work-gitlab:acme/billing.git",
+  ])("an SSH origin on another server (%s) isn't read as github.com", async (remote) => {
+    const run = setup({
+      files: { [MAP]: MAPPED },
+      git: { "remote get-url origin": `${remote}\n` },
+      deps: sshConfig({ "work-gitlab": "gitlab.com" }),
+    });
+    await cli(["check", "--json"], run.deps);
+    const data = json(run.stdout.text);
+    expect(data.github).toMatchObject({ repo: null });
+    expect(data.unknown).toContainEqual({
+      what: "the GitHub repository's Actions secrets",
+      reason: "the origin remote isn't on github.com",
+    });
+    expect(run.calls.some((c) => c.startsWith("github"))).toBe(false);
+  });
+
+  test("the remote's SSH user reaches ssh -G, since Match user may pick the server", async () => {
+    const asked: string[] = [];
+    const run = setup({
+      files: { [MAP]: MAPPED },
+      git: { "remote get-url origin": "ssh://git@github-work/acme/billing.git\n" },
+      deps: sshConfig({ "github-work": "github.com" }, asked),
+    });
+    await cli(["check", "--json"], run.deps);
+    expect(asked).toEqual(["git@github-work"]);
+  });
+
+  test.each([
+    "git@a$(touch pwned):acme/billing.git",
+    "git@a;id:acme/billing.git",
+    "ssh://git@a`id`/acme/billing.git",
+    "x$(id)@github-work:acme/billing.git",
+    "-oProxyCommand=id:acme/billing",
+  ])("an SSH origin with shell characters (%s) never reaches ssh -G", async (remote) => {
+    const asked: string[] = [];
+    const run = setup({
+      files: { [MAP]: MAPPED },
+      git: { "remote get-url origin": `${remote}\n` },
+      deps: sshConfig({}, asked),
+    });
+    await cli(["check", "--json"], run.deps);
+    expect(asked).toEqual([]);
+    const data = json(run.stdout.text);
+    expect(data.github).toMatchObject({ repo: null });
+    expect(data.unknown).toContainEqual({
+      what: "the GitHub repository's Actions secrets",
+      reason:
+        "the origin remote's SSH host or user isn't a plain name, so check didn't ask ssh which server it is",
+    });
+    expect(run.calls.some((c) => c.startsWith("github"))).toBe(false);
+  });
+
+  test("an SSH origin whose host ssh -G can't resolve is unknown, not guessed", async () => {
+    const run = setup({
+      files: { [MAP]: MAPPED },
+      git: { "remote get-url origin": "git@github-work:acme/billing.git\n" },
+      deps: { sshHostname: async () => null },
+    });
+    await cli(["check", "--json"], run.deps);
+    const data = json(run.stdout.text);
+    expect(data.github).toMatchObject({ repo: null });
+    expect(data.unknown).toContainEqual({
+      what: "the GitHub repository's Actions secrets",
+      reason:
+        "ssh -G couldn't tell which server the origin remote's host github-work is, so check can't tell whether it's on github.com",
+    });
+    expect(run.calls.some((c) => c.startsWith("github"))).toBe(false);
+  });
+
+  test("an organization secret shared with the repo counts as held, labelled as such", async () => {
+    const run = setup({
+      files: { [MAP]: PUBLISHED.replace(/\[keys\.STRIPE_API_KEY\][\s\S]*$/, "") },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+      deps: {
+        organizationSecrets: async (repo, login) => {
+          run.calls.push(`organization ${repo} as ${login}`);
+          return { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] };
+        },
+      },
+    });
+    expect(await cli(["check"], run.deps)).toBe(0);
+    expect(run.calls).toContain("organization acme/billing as null");
+    expect(run.stdout.text).not.toContain("doesn't have it");
+    expect(run.stdout.text).toContain(
+      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing has it (org secret), which keypin.toml doesn't publish",
+    );
+    expect(run.stdout.text).not.toContain("[keys.STRIPE_API_KEY");
+  });
+
+  const ORG_SECRET = {
+    organizationSecrets: async () => ({
+      ok: true as const,
+      secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }],
+    }),
+  };
+
+  test("an org secret doesn't stand in for a missing secret of a job's environment", async () => {
+    const reads: string[] = [];
+    const run = setup({
+      files: {
+        [MAP]: PRODUCTION_ONLY,
+        [`${ROOT}/.github/workflows/deploy.yml`]: ENV_WORKFLOW("production"),
+      },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+      deps: { ...readsBy({}, reads), ...ORG_SECRET },
+    });
+    expect(await cli(["check", "--json"], run.deps)).toBe(1);
+    expect(json(run.stdout.text).production).toContainEqual(
+      expect.objectContaining({
+        name: "STRIPE_API_KEY",
+        place: "acme/billing (environment production)",
+        holds: false,
+        ok: false,
+      }),
+    );
+  });
+
+  test("a job's environment that can't be read leaves an org secret unknown, not held", async () => {
+    const run = setup({
+      files: {
+        [MAP]: MAPPED,
+        [`${ROOT}/.github/workflows/deploy.yml`]: ENV_WORKFLOW("production"),
+      },
+      deps: {
+        githubSecrets: async (_repo, _login, environment) =>
+          environment ? { ok: false, reason: "HTTP 403" } : { ok: true, secrets: [] },
+        ...ORG_SECRET,
+      },
+    });
+    expect(await cli(["check", "--json"], run.deps)).toBe(1);
+    const data = json(run.stdout.text);
+    expect(data.notes).not.toContainEqual(expect.stringContaining("(org secret)"));
+    expect(data.production).toContainEqual(
+      expect.objectContaining({
+        name: "STRIPE_API_KEY",
+        place: "acme/billing (environment production)",
+        holds: null,
+      }),
+    );
+  });
+
+  test("an org secret used by a job with an environment says the environment wasn't read", async () => {
+    const run = setup({
+      files: {
+        [MAP]: MAPPED,
+        [`${ROOT}/.github/workflows/deploy.yml`]: ENV_WORKFLOW("${{ inputs.target }}"),
+      },
+      deps: ORG_SECRET,
+    });
+    await cli(["check", "--json"], run.deps);
+    expect(json(run.stdout.text).notes).toContain(
+      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing has it (org secret), which keypin.toml doesn't publish (a secret of the environment ${{ inputs.target }}, which check doesn't read, would take its place)",
+    );
+  });
+
+  test("a secret keypin.toml publishes to the repo is missing there even if the org list can't be read", async () => {
+    const run = setup({
+      files: { [MAP]: PUBLISHED },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+      deps: { organizationSecrets: async () => ({ ok: false, reason: "HTTP 403" }) },
+    });
+    expect(await cli(["check", "--json"], run.deps)).toBe(1);
+    const data = json(run.stdout.text);
+    expect(data.production).toContainEqual(
+      expect.objectContaining({ name: "STRIPE_API_KEY", mapped: "prod", holds: false, ok: false }),
+    );
+    expect(data.problems).toContainEqual(expect.stringContaining("keypin publish STRIPE_API_KEY"));
+  });
+
+  test("organization secrets the login can't list are not checked, and check still runs", async () => {
+    const run = setup({
+      files: { [MAP]: MAPPED },
+      deps: {
+        organizationSecrets: async () => ({
+          ok: false,
+          reason:
+            "HTTP 403: the login isn't allowed to list the organization secrets shared with acme/billing",
+        }),
+      },
+    });
+    expect(await cli(["check", "--json"], run.deps)).toBe(1);
+    const data = json(run.stdout.text);
+    expect(data.unknown).toContainEqual({
+      what: "the organization secrets shared with acme/billing",
+      reason:
+        "as the active gh login: HTTP 403: the login isn't allowed to list the organization secrets shared with acme/billing",
+    });
+    expect(data.production).toContainEqual(
+      expect.objectContaining({ name: "STRIPE_API_KEY", holds: null }),
+    );
+    expect(data.problems).toContain(
+      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; keypin.toml doesn't publish it to acme/billing. Add the TOML below",
+    );
+  });
 
   test.each(["../acme/billing", "/srv/git/acme/billing.git"])(
     "a local path origin (%s) is not a GitHub repository",
@@ -1266,7 +1479,7 @@ environment = "production"
         [MAP]: MAPPED,
         [`${ROOT}/.github/workflows/deploy.yml`]: ENV_WORKFLOW("production"),
       },
-      github: { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] },
+      deps: readsBy({ repo: ["STRIPE_API_KEY"] }, []),
     });
     expect(await cli(["check"], run.deps)).toBe(1);
     expect(run.stdout.text).toContain(
@@ -1318,6 +1531,164 @@ environment = "production"
     expect(data.production).toContainEqual(
       expect.objectContaining({ name: "STRIPE_API_KEY", place: "acme/billing", ok: false }),
     );
+  });
+
+  const NO_STRIPE = PUBLISHED.replace(/\[keys\.STRIPE_API_KEY\][\s\S]*$/, "");
+  const CALLER = `
+on: push
+jobs:
+  call:
+    uses: ./.github/workflows/release.yml
+    secrets:
+      API_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+`;
+  const CALLED = `
+on:
+  workflow_call:
+    secrets:
+      API_TOKEN:
+        required: true
+jobs:
+  release:
+    environment: production
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo \${{ secrets.API_TOKEN }}
+`;
+  const calledBy = (map: string, held: Record<string, string[]>, called = CALLED) =>
+    setup({
+      files: {
+        [MAP]: map,
+        [`${ROOT}/.github/workflows/deploy.yml`]: CALLER,
+        [`${ROOT}/.github/workflows/release.yml`]: called,
+      },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+      deps: readsBy(held, []),
+    });
+
+  test.each(["production", "${{ inputs.target }}"])(
+    "a secret the caller passes to a job with an environment (%s) isn't required there",
+    async (environment) => {
+      const run = calledBy(NO_STRIPE, {}, CALLED.replace("production", environment));
+      expect(await cli(["check", "--json"], run.deps)).toBe(0);
+      const data = json(run.stdout.text);
+      expect(data.problems).toEqual([]);
+      expect(data.production).not.toContainEqual(expect.objectContaining({ name: "API_TOKEN" }));
+    },
+  );
+
+  test("an environment secret that overrides what the caller passes is noticed", async () => {
+    const run = calledBy(NO_STRIPE, { production: ["API_TOKEN"] });
+    await cli(["check", "--json"], run.deps);
+    expect(json(run.stdout.text).production).toContainEqual(
+      expect.objectContaining({
+        name: "API_TOKEN",
+        place: "acme/billing (environment production)",
+        holds: true,
+      }),
+    );
+  });
+
+  test("a caller-passed secret keypin.toml publishes to the environment is still checked", async () => {
+    const map = `${NO_STRIPE}
+[keys.API_TOKEN]
+rotate_every = "90d"
+
+[keys.API_TOKEN.prod]
+from = "op://Private/billing prod item/password"
+
+[[keys.API_TOKEN.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+environment = "production"
+`;
+    const run = calledBy(map, {});
+    expect(await cli(["check", "--json"], run.deps)).toBe(1);
+    expect(json(run.stdout.text).production).toContainEqual(
+      expect.objectContaining({ name: "API_TOKEN", mapped: "prod", holds: false, ok: false }),
+    );
+  });
+
+  test("an org secret used with and without an environment that overrides it adds no repo gap", async () => {
+    const run = setup({
+      files: {
+        [MAP]: NO_STRIPE,
+        [`${ROOT}/.github/workflows/deploy.yml`]: JOBS(
+          ["test", null, "STRIPE_API_KEY"],
+          ["deploy", "production", "STRIPE_API_KEY"],
+        ),
+      },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+      deps: { ...readsBy({ production: ["STRIPE_API_KEY"] }, []), ...ORG_SECRET },
+    });
+    expect(await cli(["check", "--json"], run.deps)).toBe(1);
+    const data = json(run.stdout.text);
+    expect(data.notes).toContain(
+      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing has it (org secret), which keypin.toml doesn't publish",
+    );
+    expect(data.problems).toEqual([
+      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing (environment production) has it, but keypin.toml doesn't publish it there. Add the TOML below",
+    ]);
+    expect(data.production).not.toContainEqual(
+      expect.objectContaining({ name: "STRIPE_API_KEY", place: "acme/billing" }),
+    );
+  });
+
+  test("an org secret used with and without an environment check can't read adds no repo gap", async () => {
+    const run = setup({
+      files: {
+        [MAP]: NO_STRIPE,
+        [`${ROOT}/.github/workflows/deploy.yml`]: JOBS(
+          ["test", null, "STRIPE_API_KEY"],
+          ["deploy", "production", "STRIPE_API_KEY"],
+        ),
+      },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+      deps: {
+        githubSecrets: async (_repo, _login, environment) =>
+          environment ? { ok: false, reason: "HTTP 403" } : { ok: true, secrets: [] },
+        ...ORG_SECRET,
+      },
+    });
+    await cli(["check", "--json"], run.deps);
+    const data = json(run.stdout.text);
+    expect(data.production).not.toContainEqual(
+      expect.objectContaining({ name: "STRIPE_API_KEY", place: "acme/billing" }),
+    );
+    expect(data.production).toContainEqual(
+      expect.objectContaining({
+        name: "STRIPE_API_KEY",
+        place: "acme/billing (environment production)",
+        holds: null,
+      }),
+    );
+  });
+
+  test("a secret each job's environment holds adds no repo gap", async () => {
+    const run = setup({
+      files: {
+        [MAP]: NO_STRIPE,
+        [`${ROOT}/.github/workflows/deploy.yml`]: JOBS(
+          ["deploy", "production", "STRIPE_API_KEY"],
+          ["preview", "staging", "STRIPE_API_KEY"],
+        ),
+      },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+      deps: readsBy({ production: ["STRIPE_API_KEY"], staging: ["STRIPE_API_KEY"] }, []),
+    });
+    await cli(["check", "--json"], run.deps);
+    const data = json(run.stdout.text);
+    expect(data.production).not.toContainEqual(
+      expect.objectContaining({ name: "STRIPE_API_KEY", place: "acme/billing" }),
+    );
+    for (const environment of ["production", "staging"])
+      expect(data.production).toContainEqual(
+        expect.objectContaining({
+          name: "STRIPE_API_KEY",
+          place: `acme/billing (environment ${environment})`,
+          holds: true,
+        }),
+      );
   });
 
   test("case variants of one environment are one place", async () => {
@@ -1480,7 +1851,7 @@ jobs:
       {
         what: "every secret .github/workflows/deploy.yml uses",
         reason:
-          "it passes secrets on (secrets: inherit or toJSON(secrets)), so check can't tell which",
+          "it passes secrets on (secrets: inherit or toJSON(secrets)) or names one by an expression (secrets[...]), so check can't tell which",
       },
     ]);
     expect(data.notes).toContain(

@@ -279,6 +279,8 @@ process.exitCode = await cli(process.argv.slice(2), {
           ok: false,
           reason: "gh has no token for an active login; run: gh auth login --hostname github.com",
         },
+  organizationSecrets: async () => ({ ok: true, secrets: [] }),
+  sshHostname: async () => null,
   workerSecrets: async () => ({ ok: false, reason: "this scenario has no Cloudflare account" }),
   issuer: (spec, admin) => issuer(spec, admin, spec.kind === "neon" ? neon : resend),
   destination: (target) => {

@@ -294,6 +294,8 @@ export function fakeDeps(setup: FakeSetup = {}) {
     githubSecrets: async () => {
       throw new Error("this test reads no GitHub secrets");
     },
+    organizationSecrets: async () => ({ ok: true, secrets: [] }),
+    sshHostname: async () => null,
     workerSecrets: async () => {
       throw new Error("this test reads no Worker secrets");
     },

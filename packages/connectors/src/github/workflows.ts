@@ -5,7 +5,7 @@ export interface WorkflowRefs {
   secrets: string[];
   vars: string[];
   environments: string[];
-  uses: { environment: string | null; secrets: string[] }[];
+  uses: { environment: string | null; secrets: string[]; fromCaller: boolean }[];
   hidesUses: boolean;
 }
 
@@ -14,6 +14,8 @@ export function usesSecrets(workflows: readonly { refs: WorkflowRefs }[]): boole
     (w) => w.refs.hidesUses || w.refs.secrets.some((name) => !name.startsWith("GITHUB_")),
   );
 }
+
+const COMPUTED_SECRET = /(?<![\w.])secrets\s*\[(?!\s*'[A-Za-z_][A-Za-z0-9_]*'\s*\])/i;
 
 const CONTEXT_REF =
   /(?<![\w.])(secrets|vars)\s*(?:\.\s*([A-Za-z_][A-Za-z0-9_]*)|\[\s*'([A-Za-z_][A-Za-z0-9_]*)'\s*\])/gi;
@@ -31,10 +33,11 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     environments: new Set<string>(),
     hidesUses: false,
   };
-  const secretsIn = (root: unknown, skip: unknown): Set<string> => {
+  const secretsIn = (root: unknown, skip: unknown, callerOwned = false): Set<string> => {
     const secrets = new Set<string>();
     const scan = (expression: string) => {
-      if (/toJSON\(\s*secrets\s*\)/i.test(expression)) refs.hidesUses = true;
+      if (/toJSON\(\s*secrets\s*\)/i.test(expression) || COMPUTED_SECRET.test(expression))
+        refs.hidesUses = true;
       for (const match of expression.matchAll(CONTEXT_REF)) {
         const name = (match[2] ?? match[3])?.toUpperCase();
         if (!name) continue;
@@ -58,17 +61,29 @@ export function workflowRefs(text: string): WorkflowRefs | null {
       }
     };
     visit(root, null);
+    if (callerOwned) secrets.clear();
     for (const name of secrets) refs.secrets.add(name);
     return secrets;
   };
+  const passedByCaller = onlyWorkflowCall(isRecord(data) ? data.on : undefined);
   const jobs = isRecord(data) && isRecord(data.jobs) ? data.jobs : null;
-  const uses: WorkflowRefs["uses"] = [{ environment: null, secrets: [...secretsIn(data, jobs)] }];
+  const uses: WorkflowRefs["uses"] = [
+    {
+      environment: null,
+      secrets: [...secretsIn(data, jobs, passedByCaller)],
+      fromCaller: passedByCaller,
+    },
+  ];
   for (const job of Object.values(jobs ?? {})) {
     const environment = isRecord(job) ? job.environment : undefined;
     const name = isRecord(environment) ? environment.name : environment;
     const named = typeof name === "string" && name.trim() ? name : null;
     if (named !== null) refs.environments.add(named);
-    uses.push({ environment: named?.trim() ?? null, secrets: [...secretsIn(job, null)] });
+    uses.push({
+      environment: named?.trim() ?? null,
+      secrets: [...secretsIn(job, null, passedByCaller && named === null)],
+      fromCaller: passedByCaller,
+    });
   }
   return {
     secrets: [...refs.secrets],
@@ -77,6 +92,12 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     uses: uses.filter((use) => use.secrets.length),
     hidesUses: refs.hidesUses,
   };
+}
+
+function onlyWorkflowCall(on: unknown): boolean {
+  const events =
+    typeof on === "string" ? [on] : Array.isArray(on) ? on : isRecord(on) ? Object.keys(on) : [];
+  return events.length === 1 && events[0] === "workflow_call";
 }
 
 function expressions(text: string): string[] {

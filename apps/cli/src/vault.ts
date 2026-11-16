@@ -26,6 +26,7 @@ export function routedVault(vaults: Vaults): VaultBackend {
     readItem: (ref) => of(ref).readItem(ref),
     itemIds: (ref) => of(ref).itemIds(ref),
     write: (ref, secret, options) => of(ref).write(ref, secret, options),
+    checkWrite: async (ref) => of(ref).checkWrite?.(ref),
     list: (scope) => of(scope).list(scope),
     metadata: (ref) => of(ref).metadata(ref),
   };

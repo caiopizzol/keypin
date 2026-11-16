@@ -62,6 +62,7 @@ export interface VaultBackend {
     secret: Secret,
     options?: { rotated?: string; newItem?: boolean },
   ): Promise<void>;
+  checkWrite?(ref: KeyRef): Promise<void>;
   list(scope: VaultScope): Promise<VaultItem[]>;
   metadata(ref: KeyRef): Promise<VaultMetadata>;
 }

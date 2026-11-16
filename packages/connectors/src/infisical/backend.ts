@@ -16,6 +16,7 @@ import {
   decode,
   decodeScope,
   describe as describeRef,
+  format,
   type InfisicalPin as Place,
   type InfisicalRef,
   type InfisicalScope as Scope,
@@ -133,8 +134,7 @@ export function infisicalBackend(
 
   async function secretOf(
     ref: InfisicalRef,
-    value: boolean,
-    imports = true,
+    view: { value: boolean; imports: boolean; expand: boolean },
   ): Promise<{ secret: Json; project: string } | null> {
     const current = await session(ref);
     const project = await projectId(ref, current, ref.project);
@@ -144,9 +144,9 @@ export function infisicalBackend(
         projectId: project,
         environment: ref.environment,
         secretPath: ref.path,
-        viewSecretValue: String(value),
-        expandSecretReferences: "true",
-        includeImports: String(imports),
+        viewSecretValue: String(view.value),
+        expandSecretReferences: String(view.expand),
+        includeImports: String(view.imports),
       },
     });
     if (found.status === 404) return null;
@@ -156,9 +156,29 @@ export function infisicalBackend(
   }
 
   async function existing(ref: InfisicalRef, value: boolean) {
-    const found = await secretOf(ref, value);
+    const found = await secretOf(ref, { value, imports: true, expand: true });
     if (!found) throw new Error(`${describeRef(ref)}: no such secret`);
     return found;
+  }
+
+  async function ownSecret(ref: InfisicalRef) {
+    const local = await secretOf(ref, { value: true, imports: false, expand: false });
+    if (!local) {
+      const imported = await secretOf(ref, { value: false, imports: true, expand: false });
+      if (imported)
+        throw new Error(
+          fromElsewhere(ref, "is imported from", [importSource(ref, imported.secret)]),
+        );
+      return null;
+    }
+    const raw = local.secret.secretValueHidden === true ? null : local.secret.secretValue;
+    if (typeof raw !== "string")
+      throw new Error(
+        `${describeRef(ref)}: the machine identity can see this secret but not its value, so keypin can't tell whether it references another secret`,
+      );
+    const sources = referencedBy(ref, raw);
+    if (sources.length) throw new Error(fromElsewhere(ref, "references", sources));
+    return local;
   }
 
   async function valueOf(ref: InfisicalRef) {
@@ -191,7 +211,7 @@ export function infisicalBackend(
         throw new Error(
           `${describeRef(ref)}: rotated must be a real day as YYYY-MM-DD, got "${rotated}"`,
         );
-      const found = await secretOf(ref, false, false);
+      const found = await ownSecret(ref);
       if (found && options.newItem)
         throw new Error(
           `${describeRef(ref)}: the secret already exists; keypin doesn't overwrite it`,
@@ -220,6 +240,10 @@ export function infisicalBackend(
         );
       if (written.status !== 200 || !isRecord(written.body.secret))
         throw new Error(`${describeRef(ref)}: ${problem(written)}`);
+    },
+
+    async checkWrite(given) {
+      await ownSecret(own(given));
     },
 
     async list(given) {
@@ -276,6 +300,37 @@ function ownScope(scope: VaultScope): Scope {
   const mine = decodeScope(scope);
   if (!mine) throw new Error(`keypin's Infisical vault can't list ${scope.kind} items`);
   return mine;
+}
+
+function fromElsewhere(ref: InfisicalRef, how: string, sources: readonly string[]): string {
+  const [only] = sources;
+  const source = sources.length === 1 && only ? only : "the source secret";
+  return `${describeRef(ref)}: the secret ${how} ${sources.join(" and ")}, so a new key saved here would leave that secret, and everything that uses it, with the old key; point keypin.toml at ${source} instead`;
+}
+
+function importSource(ref: InfisicalRef, secret: Json): string {
+  const { environment, secretPath } = secret;
+  if (typeof environment !== "string" || typeof secretPath !== "string")
+    return "another environment or folder";
+  return format({ ...ref, environment, path: secretPath });
+}
+
+const REFERENCE = /\$\{([a-zA-Z0-9-_.@]+(?: +[a-zA-Z0-9-_@]+)*)\}/g;
+
+function referencedBy(ref: InfisicalRef, raw: string): string[] {
+  return [
+    ...new Set([...raw.matchAll(REFERENCE)].map(([, inner = ""]) => referenceTo(ref, inner))),
+  ];
+}
+
+function referenceTo(ref: InfisicalRef, inner: string): string {
+  const parts = inner.split(".");
+  const project = parts[0]?.startsWith("@") ? parts.shift()?.slice(1) : undefined;
+  const name = parts.pop() ?? "";
+  const [environment, ...folders] = parts;
+  const place = project === undefined ? ref : { ...ref, project };
+  if (environment === undefined) return format({ ...place, name });
+  return format({ ...place, environment, path: `/${folders.join("/")}`, name });
 }
 
 function idsOf(secret: Json, project: string) {

@@ -556,57 +556,76 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
     });
   });
 
-  describe("a source Infisical imports from another environment", () => {
-    const IMPORTED_MAP = ISSUER_MAP.replace(
-      '{ to = "github-actions", repo = "acme/billing" },]',
-      '{ to = "github-actions", repo = "acme/billing" }, { to = "github-actions", repo = "acme/web" }]',
-    );
-    const imported = (): FakeInfisical => {
+  describe("a source that comes from another Infisical secret", () => {
+    const shared = (): FakeInfisical => {
       const { STRIPE_API_KEY, ...prod } = structuredClone(INFISICAL.projects.billing?.prod ?? {});
       return {
         organization: "acme",
-        projects: { billing: { prod } },
-        importedForReads: {
-          billing: { prod: { STRIPE_API_KEY: STRIPE_API_KEY ?? { value: "" } } },
+        projects: {
+          billing: { prod, shared: { STRIPE_API_KEY: STRIPE_API_KEY ?? { value: "" } } },
         },
+        imports: [{ into: "prod", environment: "shared" }],
       };
     };
-    const LOCAL = { vault: "billing", item: "billing/prod/STRIPE_API_KEY" };
+    const referenced = (): FakeInfisical => {
+      const infisical = structuredClone(INFISICAL);
+      const prod = infisical.projects.billing?.prod ?? {};
+      infisical.projects.billing = {
+        ...infisical.projects.billing,
+        shared: { "/stripe/STRIPE_API_KEY": { value: `${SENTINEL}-shared` } },
+        prod: { ...prod, STRIPE_API_KEY: { value: "${shared.stripe.STRIPE_API_KEY}" } },
+      };
+      return infisical;
+    };
 
-    test("receipts carry the local secret rotate saves, so the next plan sees no item change", async () => {
-      const infisical = imported();
+    test.each([
+      [
+        "imported from another environment",
+        shared,
+        `${SENTINEL}-prod`,
+        "the secret is imported from infisical://billing/shared/STRIPE_API_KEY",
+        "point keypin.toml at infisical://billing/shared/STRIPE_API_KEY instead",
+      ],
+      [
+        "that references another",
+        referenced,
+        `${SENTINEL}-shared`,
+        "the secret references infisical://billing/shared/stripe/STRIPE_API_KEY",
+        "point keypin.toml at infisical://billing/shared/stripe/STRIPE_API_KEY instead",
+      ],
+    ])("rotate refuses a secret %s, before creating anything", async (_, make, value, how, fix) => {
+      const infisical = make();
       const run = project({ map: ISSUER_MAP, infisical });
-      expect(await cli(["rotate", "STRIPE_API_KEY"], run.deps)).toBe(0);
-      expect(run.store.effects).toEqual(["infisical create billing/prod/STRIPE_API_KEY"]);
-      const state = await loadState(run.disk.files, STATE, vaults);
-      expect(state.receipts.map((r) => r.sourceIds)).toEqual([LOCAL]);
-      const plan = project({ map: ISSUER_MAP, infisical, after: run, isTerminal: false });
-      expect(await cli(["publish", "STRIPE_API_KEY", "--plan"], plan.deps)).toBe(0);
-      expect(plan.stderr.text).not.toContain("was last published from");
-      const again = project({ map: ISSUER_MAP, infisical, after: run, isTerminal: false });
-      await cli(["rotate", "STRIPE_API_KEY", "--yes"], again.deps);
-      expect(again.stderr.text).not.toContain("Needs approval");
-      expect(again.issued).toEqual(["create STRIPE_API_KEY prod 2026-11-09 12:00:00 a1b2c3"]);
+      expect(await cli(["rotate", "STRIPE_API_KEY"], run.deps)).toBe(1);
+      expect(run.stderr.text).toContain(how);
+      expect(run.stderr.text).toContain(fix);
+      expect(run.stderr.text).toContain("Nothing was created.");
+      expect(run.stderr.text).not.toContain("Rotate STRIPE_API_KEY?");
+      expect(run.issued).toEqual([]);
+      expect(run.keys.size).toBe(0);
+      expect(run.store.effects).toEqual([]);
+      expect(run.destinations.log).toEqual([]);
+      expect((await loadState(run.disk.files, STATE, vaults)).issued).toEqual([]);
+
+      const read = project({ map: ISSUER_MAP, infisical, after: run, env: {} });
+      expect(await cli(["publish", "STRIPE_API_KEY"], read.deps)).toBe(0);
+      expect(read.destinations.log).toEqual([
+        "check github-actions:acme/billing",
+        `write github-actions:acme/billing STRIPE_API_KEY (${value.length} chars)`,
+      ]);
     });
 
-    test("a resumed partial publish writes only the destination that failed", async () => {
-      const infisical = imported();
-      const failed = project({
-        map: IMPORTED_MAP,
-        infisical,
-        failWrite: ["github-actions:acme/web"],
-      });
-      expect(await cli(["rotate", "STRIPE_API_KEY"], failed.deps)).toBe(1);
-      const resumed = project({ map: IMPORTED_MAP, infisical, after: failed });
-      expect(await cli(["rotate", "STRIPE_API_KEY"], resumed.deps)).toBe(0);
-      expect(resumed.issued).toEqual([]);
-      expect(resumed.destinations.log).toEqual([
-        "check github-actions:acme/billing",
-        "check github-actions:acme/web",
-        `write github-actions:acme/web STRIPE_API_KEY (${ISSUED.length} chars)`,
-      ]);
-      const state = await loadState(resumed.disk.files, STATE, vaults);
-      expect(state.receipts.map((r) => r.sourceIds)).toEqual([LOCAL, LOCAL]);
+    test.each([
+      ["imported from another environment", shared, `${SENTINEL}-prod`],
+      ["that references another", referenced, `${SENTINEL}-shared`],
+    ])("run still reads a secret %s", async (_, make, value) => {
+      const map = ISSUER_MAP.replace(
+        'dev = "infisical://billing/dev/STRIPE_API_KEY"',
+        'dev = "infisical://billing/prod/STRIPE_API_KEY"',
+      );
+      const run = project({ map, infisical: make() });
+      expect(await cli(["run", "--", "env"], run.deps)).toBe(0);
+      expect(run.launcher.launches[0]?.env.STRIPE_API_KEY).toBe(value);
     });
   });
 });

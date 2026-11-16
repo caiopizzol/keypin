@@ -1,4 +1,11 @@
 import { type Fetch, isRecord } from "@keypin/core";
+import {
+  API_TOKEN_VARIABLE,
+  type CloudflareSignIn,
+  CloudflareSignInFailed,
+  FIRST_AUTH_TOKEN,
+  type SignInProblem,
+} from "./token";
 
 export interface FakeCloudflare {
   email: string | null;
@@ -63,5 +70,25 @@ export function cloudflareFetch(fake: FakeCloudflare) {
     effects,
     value: (account: string, worker: string, name: string) =>
       stored.get(`${account}/${worker} ${name}`),
+  };
+}
+
+export function fakeSignIn(
+  state: CloudflareSignIn["via"] | SignInProblem,
+  token = "fake-worker-token",
+): CloudflareSignIn {
+  if (state === "oauth" || state === "api-token") return { via: state, token: async () => token };
+  const messages: Record<SignInProblem, string> = {
+    "no-wrangler": `keypin can't find wrangler in the project's node_modules or on PATH; install it and run wrangler login, or set ${API_TOKEN_VARIABLE}`,
+    "old-wrangler": `wrangler 4.20.0 can't give keypin its login; upgrade wrangler to ${FIRST_AUTH_TOKEN} or later`,
+    "not-logged-in": `wrangler isn't signed in; run wrangler login, or set ${API_TOKEN_VARIABLE}`,
+    failed:
+      "wrangler couldn't give keypin its login; run wrangler auth token to see why, or wrangler login to sign in again",
+  };
+  return {
+    via: "oauth",
+    token: async () => {
+      throw new CloudflareSignInFailed(messages[state], state);
+    },
   };
 }

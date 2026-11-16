@@ -55,7 +55,7 @@ describe("CloudflareReader", () => {
     const { reader: cf, requests } = reader(ACCOUNTS);
     expect(await cf.listWorkerSecrets(OTHER, "billing")).toEqual({
       ok: false,
-      reason: `the wrangler login reaches ${ACCOUNT}, not ${OTHER}`,
+      reason: `the Cloudflare login reaches ${ACCOUNT}, not ${OTHER}`,
     });
     expect(requests).toEqual(["GET /client/v4/accounts?per_page=50&page=1"]);
   });
@@ -106,13 +106,31 @@ describe("CloudflareReader", () => {
     expect(JSON.stringify(read)).not.toContain(TOKEN);
   });
 
+  test("a token scoped to the account, which /accounts refuses, reads the Worker directly", async () => {
+    const secrets = `/client/v4/accounts/${ACCOUNT}/workers/scripts/billing/secrets`;
+    const { reader: cf, requests } = reader({
+      "/client/v4/accounts": { status: 403, body: { success: false } },
+      [secrets]: { status: 200, body: { result: [{ name: "STRIPE_KEY" }] } },
+    });
+    expect(await cf.listWorkerSecrets(ACCOUNT, "billing")).toEqual({
+      ok: true,
+      secrets: [{ name: "STRIPE_KEY", updatedAt: null }],
+    });
+    expect(requests).toEqual(["GET /client/v4/accounts?per_page=50&page=1", `GET ${secrets}`]);
+    const denied = reader({ "/client/v4/accounts": { status: 401 }, [secrets]: { status: 403 } });
+    expect(await denied.reader.listWorkerSecrets(ACCOUNT, "billing")).toEqual({
+      ok: false,
+      reason: `the Cloudflare login can't list its accounts or read the Worker billing in account ${ACCOUNT}`,
+    });
+  });
+
   test("a missing Worker, a refusal and no login are reasons, without the token", async () => {
     const missing = await reader(ACCOUNTS).reader.listWorkerSecrets(ACCOUNT, "gone");
     expect(missing).toEqual({ ok: false, reason: `account ${ACCOUNT} has no Worker named gone` });
     const refused = await reader({
-      "/client/v4/accounts": { status: 403, body: { errors: [{ message: TOKEN }] } },
+      "/client/v4/accounts": { status: 500, body: { errors: [{ message: TOKEN }] } },
     }).reader.listWorkerSecrets(ACCOUNT, "billing");
-    expect(refused).toEqual({ ok: false, reason: "Cloudflare GET /accounts returned HTTP 403" });
+    expect(refused).toEqual({ ok: false, reason: "Cloudflare GET /accounts returned HTTP 500" });
     const noLogin = await reader({}, async () => {
       throw new Error("no wrangler login");
     }).reader.listWorkerSecrets(ACCOUNT, "billing");

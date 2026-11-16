@@ -201,7 +201,7 @@ describe("keypin with Infisical", () => {
     const run = project({ map });
     expect(await cli(["run", "--", "env"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
-      "keypin.toml maps INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET, which keypin uses to sign in to your vault",
+      "keypin.toml maps INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET, which keypin uses to sign in",
     );
   });
 

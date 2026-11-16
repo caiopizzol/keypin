@@ -9,6 +9,7 @@ import {
   type SdkClient,
   signInAddress,
 } from "@keypin/connectors/onepassword";
+import { fakeSignIn } from "@keypin/connectors/cloudflare/testing";
 import { neonFetch, type NeonWorld } from "@keypin/connectors/neon/testing";
 import { resendFetch } from "@keypin/connectors/resend/testing";
 import { credentialsFrom, infisicalBackend } from "@keypin/connectors/infisical";
@@ -270,8 +271,7 @@ process.exitCode = await cli(process.argv.slice(2), {
   signIn: () => signedIn().signIn,
   vault: () => vault,
   ghLogin: async () => run.gh,
-  wranglerLoginFile: async () =>
-    run.wrangler ? join(homedir(), ".wrangler/config/default.toml") : null,
+  workerSignIn: () => fakeSignIn(run.wrangler ? "oauth" : "not-logged-in"),
   githubSecrets: async () =>
     run.githubSecrets
       ? { ok: true, secrets: run.githubSecrets.map((name) => ({ name, updatedAt: null })) }

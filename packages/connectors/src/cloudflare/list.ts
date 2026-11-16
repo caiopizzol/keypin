@@ -3,12 +3,13 @@ import { type Fetch, isRecord, type StoreRead } from "@keypin/core";
 const API = "https://api.cloudflare.com/client/v4";
 const ACCOUNT_ID = /^[0-9a-f]{32}$/;
 const WORKER = /^[A-Za-z0-9_-]+$/;
+const DENIED = [401, 403];
 
 export class CloudflareReader {
   readonly #tokenSource: () => Promise<string>;
   readonly #fetch: Fetch;
   #token: Promise<string> | undefined;
-  #accounts: Promise<string[] | { reason: string }> | undefined;
+  #accounts: Promise<string[] | null | { reason: string }> | undefined;
 
   constructor(options: { token: () => Promise<string>; fetch?: Fetch }) {
     this.#tokenSource = options.token;
@@ -20,17 +21,23 @@ export class CloudflareReader {
       return { ok: false, reason: `"${account}" isn't a Cloudflare account ID` };
     if (!WORKER.test(worker)) return { ok: false, reason: `"${worker}" isn't a Worker name` };
     const accounts = await (this.#accounts ??= this.#accountIds());
-    if (!Array.isArray(accounts)) return { ok: false, reason: accounts.reason };
-    if (!accounts.includes(account)) {
+    if (accounts !== null && !Array.isArray(accounts))
+      return { ok: false, reason: accounts.reason };
+    if (accounts !== null && !accounts.includes(account)) {
       return {
         ok: false,
-        reason: `the wrangler login reaches ${accounts.join(", ") || "no account"}, not ${account}`,
+        reason: `the Cloudflare login reaches ${accounts.join(", ") || "no account"}, not ${account}`,
       };
     }
     const response = await this.#get(`/accounts/${account}/workers/scripts/${worker}/secrets`);
     if ("reason" in response) return { ok: false, reason: response.reason };
     if (response.status === 404)
       return { ok: false, reason: `account ${account} has no Worker named ${worker}` };
+    if (accounts === null && DENIED.includes(response.status))
+      return {
+        ok: false,
+        reason: `the Cloudflare login can't list its accounts or read the Worker ${worker} in account ${account}`,
+      };
     if (response.status !== 200)
       return { ok: false, reason: `Cloudflare returned HTTP ${response.status}` };
     const result = response.body.result;
@@ -44,11 +51,12 @@ export class CloudflareReader {
     };
   }
 
-  async #accountIds(): Promise<string[] | { reason: string }> {
+  async #accountIds(): Promise<string[] | null | { reason: string }> {
     const ids: string[] = [];
     for (let page = 1; ; page++) {
       const response = await this.#get(`/accounts?per_page=50&page=${page}`);
       if ("reason" in response) return response;
+      if (DENIED.includes(response.status)) return null;
       if (response.status !== 200)
         return { reason: `Cloudflare GET /accounts returned HTTP ${response.status}` };
       const result = response.body.result;

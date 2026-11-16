@@ -1,14 +1,6 @@
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { assert, describe, expect, test } from "vite-plus/test";
 import { type Fetch, Secret } from "@keypin/core";
-import {
-  currentWranglerToken,
-  WorkerSecretDestination,
-  wranglerConfigFile,
-  wranglerToken,
-} from "../../src/cloudflare/index";
+import { WorkerSecretDestination } from "../../src/cloudflare/index";
 
 const SENTINEL = "sentinel-value-7f3a9c";
 const TOKEN = "token-sentinel-41b2";
@@ -144,6 +136,35 @@ describe("checkAccount", () => {
     expect(page).toBe(2);
   });
 
+  test("a token scoped to the account, which /accounts refuses, passes on the Worker's settings", async () => {
+    for (const status of [401, 403]) {
+      const routes = happyRoutes();
+      routes["GET /client/v4/accounts"] = {
+        status,
+        body: { success: false, errors: [{ code: 9109, message: "Unauthorized" }] },
+      };
+      const { worker, requests } = destination(routes);
+      expect(await worker.checkAccount()).toMatchObject({ destinationAccount: ACCOUNT, ok: true });
+      expect(requests.map((r) => r.path)).toContain(`${BASE}/settings`);
+      await worker.write("API_KEY", new Secret(SENTINEL));
+      expect(requests.some((r) => r.method === "PUT")).toBe(true);
+    }
+  });
+
+  test("a token that can list no accounts and can't read the Worker fails, without writing", async () => {
+    const routes = happyRoutes();
+    routes["GET /client/v4/accounts"] = { status: 403, body: { success: false } };
+    routes[`GET ${BASE}/settings`] = { status: 403, body: { success: false } };
+    const { worker, requests } = destination(routes);
+    const check = await worker.checkAccount();
+    expect(check).toMatchObject({ destinationAccount: null, ok: false });
+    expect(check.reason).toBe(
+      `the login can't list its accounts or read the Worker ${WORKER} in account ${ACCOUNT}`,
+    );
+    await expect(worker.write("API_KEY", new Secret(SENTINEL))).rejects.toThrow(/checkAccount/);
+    expect(requests.some((r) => r.method === "PUT")).toBe(false);
+  });
+
   test("a token that can't read /user still checks, with a label as publisher", async () => {
     const routes = happyRoutes();
     routes["GET /client/v4/user"] = {
@@ -225,142 +246,4 @@ describe("no value or token in any output", () => {
     for (const e of [e1, e2]) expect(e).toBeInstanceOf(Error);
     expectNoSentinel(e1, e2);
   });
-});
-
-describe("wranglerToken", () => {
-  test("reads a valid login, and never puts the token in an error", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "keypin-wrangler-"));
-    try {
-      const path = join(dir, "default.toml");
-      const future = new Date(Date.now() + 3_600_000).toISOString();
-      await writeFile(
-        path,
-        `oauth_token = "${TOKEN}"\nexpiration_time = "${future}"\nrefresh_token = "r"\n`,
-      );
-      expect(await wranglerToken(path)).toBe(TOKEN);
-
-      await writeFile(path, `refresh_token = "r"\n`);
-      const failure = wranglerToken(path);
-      await expect(failure).rejects.toThrow(/no oauth_token/);
-      expectNoSentinel(await failure.catch((e: unknown) => e));
-    } finally {
-      await rm(dir, { recursive: true });
-    }
-  });
-});
-
-describe("wrangler whoami", () => {
-  test("never sees OP_SERVICE_ACCOUNT_TOKEN or KEYPIN_1PASSWORD", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "keypin-wrangler-"));
-    const saved = { ...process.env };
-    try {
-      const seen = join(dir, "seen.txt");
-      await writeFile(
-        join(dir, "wrangler"),
-        `#!/bin/sh\necho "token=$OP_SERVICE_ACCOUNT_TOKEN mode=$KEYPIN_1PASSWORD" > "${seen}"\nexit 1\n`,
-      );
-      await chmod(join(dir, "wrangler"), 0o755);
-      const path = join(dir, "default.toml");
-      await writeFile(path, `oauth_token = "${TOKEN}"\nexpiration_time = "2000-01-01T00:00:00Z"\n`);
-      process.env.PATH = `${dir}:/usr/bin:/bin`;
-      process.env.OP_SERVICE_ACCOUNT_TOKEN = "ops_sentinel-sign-in";
-      process.env.KEYPIN_1PASSWORD = "service-account";
-      await expect(wranglerToken(path)).rejects.toThrow("couldn't refresh it");
-      expect(await readFile(seen, "utf8")).toBe("token= mode=\n");
-    } finally {
-      for (const name of Object.keys(process.env)) if (!(name in saved)) delete process.env[name];
-      Object.assign(process.env, saved);
-      await rm(dir, { recursive: true });
-    }
-  });
-});
-
-describe("currentWranglerToken", () => {
-  test("refuses an expired login instead of refreshing it, without the token", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "keypin-wrangler-"));
-    try {
-      const path = join(dir, "default.toml");
-      const past = new Date(Date.now() - 3_600_000).toISOString();
-      await writeFile(path, `oauth_token = "${TOKEN}"\nexpiration_time = "${past}"\n`);
-      const failure = currentWranglerToken(path);
-      await expect(failure).rejects.toThrow(
-        "the wrangler login has expired; run `wrangler whoami`",
-      );
-      expectNoSentinel(await failure.catch((e: unknown) => e));
-      const future = new Date(Date.now() + 3_600_000).toISOString();
-      await writeFile(path, `oauth_token = "${TOKEN}"\nexpiration_time = "${future}"\n`);
-      expect(await currentWranglerToken(path)).toBe(TOKEN);
-    } finally {
-      await rm(dir, { recursive: true });
-    }
-  });
-});
-
-describe("wranglerConfigFile", () => {
-  async function withHome(run: (home: string) => Promise<void>): Promise<void> {
-    const home = await mkdtemp(join(tmpdir(), "keypin-home-"));
-    try {
-      await run(home);
-    } finally {
-      await rm(home, { recursive: true });
-    }
-  }
-
-  test("on macOS, uses ~/Library/Preferences/.wrangler, or XDG_CONFIG_HOME when set", () =>
-    withHome(async (home) => {
-      expect(wranglerConfigFile({}, "darwin", home)).toBe(
-        join(home, "Library/Preferences/.wrangler/config/default.toml"),
-      );
-      expect(wranglerConfigFile({ XDG_CONFIG_HOME: "" }, "darwin", home)).toBe(
-        join(home, "Library/Preferences/.wrangler/config/default.toml"),
-      );
-      const xdg = join(home, "xdg");
-      expect(wranglerConfigFile({ XDG_CONFIG_HOME: xdg }, "darwin", home)).toBe(
-        join(xdg, ".wrangler/config/default.toml"),
-      );
-    }));
-
-  test("on Linux, uses ~/.config/.wrangler, or XDG_CONFIG_HOME when set", () =>
-    withHome(async (home) => {
-      expect(wranglerConfigFile({}, "linux", home)).toBe(
-        join(home, ".config/.wrangler/config/default.toml"),
-      );
-      const xdg = join(home, "xdg");
-      expect(wranglerConfigFile({ XDG_CONFIG_HOME: xdg }, "linux", home)).toBe(
-        join(xdg, ".wrangler/config/default.toml"),
-      );
-    }));
-
-  test("a ~/.wrangler folder wins over the XDG path, as in wrangler; a file there doesn't", () =>
-    withHome(async (home) => {
-      const xdg = { XDG_CONFIG_HOME: join(home, "xdg") };
-      await writeFile(join(home, ".wrangler"), "");
-      expect(wranglerConfigFile(xdg, "linux", home)).toBe(
-        join(home, "xdg/.wrangler/config/default.toml"),
-      );
-      await rm(join(home, ".wrangler"));
-      await mkdir(join(home, ".wrangler"));
-      for (const platform of ["darwin", "linux"])
-        for (const env of [{}, xdg])
-          expect(wranglerConfigFile(env, platform, home)).toBe(
-            join(home, ".wrangler/config/default.toml"),
-          );
-    }));
-
-  test("on Windows, says it isn't supported", () =>
-    withHome(async (home) => {
-      expect(() => wranglerConfigFile({}, "win32", home)).toThrow(
-        "keypin doesn't find the wrangler login on Windows yet",
-      );
-    }));
-
-  test("the token reads from the resolved Linux path under a throwaway HOME", () =>
-    withHome(async (home) => {
-      const env = { XDG_CONFIG_HOME: join(home, ".config") };
-      const path = wranglerConfigFile(env, "linux", home);
-      await mkdir(join(home, ".config/.wrangler/config"), { recursive: true });
-      const future = new Date(Date.now() + 3_600_000).toISOString();
-      await writeFile(path, `oauth_token = "${TOKEN}"\nexpiration_time = "${future}"\n`);
-      expect(await currentWranglerToken(path)).toBe(TOKEN);
-    }));
 });

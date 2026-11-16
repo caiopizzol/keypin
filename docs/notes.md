@@ -10,16 +10,17 @@ and only when there's no `.dev.vars` file. To use keypin's keys:
    NAME:value`, never a secret: the value would show in the process list and shell history.
 3. Run `keypin run -- wrangler dev`.
 
-## The wrangler login
+## Signing in to Cloudflare
 
-keypin reads the login that `wrangler login` saves, from the same file wrangler uses:
+keypin signs in to Cloudflare one of two ways:
 
-- macOS: `~/Library/Preferences/.wrangler/config/default.toml`
-- Linux: `~/.config/.wrangler/config/default.toml`
+- **`wrangler login`:** keypin asks `wrangler auth token` (wrangler 4.57.0 or later) for the login, so a login in the
+  system keyring works, and wrangler refreshes an expired one, even for `keypin check`. It runs the project's wrangler, else the one on
+  `PATH`. Not on Windows yet.
+- **API token:** set `KEYPIN_CLOUDFLARE_API_TOKEN` to a token that can edit the Worker's scripts. keypin then doesn't
+  run wrangler, and `keypin run` doesn't pass the variable to a command.
 
-On both, `$XDG_CONFIG_HOME/.wrangler/config/default.toml` replaces these when `XDG_CONFIG_HOME` is set, and an older
-`~/.wrangler` folder wins over all of them. keypin doesn't read a login kept in the system keyring, or find
-one on Windows.
+keypin never signs in with `CLOUDFLARE_API_TOKEN`: that stays a key your map can hold.
 
 ## Files keypin keeps
 

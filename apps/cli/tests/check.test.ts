@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, assert, describe, expect, test, vi } from "vite-plus/test";
 import { isRecord, type PublishTarget } from "@keypin/core";
+import { fakeSignIn } from "@keypin/connectors/cloudflare/testing";
 import { GitHubSecretDestination } from "@keypin/connectors/github";
 import {
   type FullItem,
@@ -28,8 +29,6 @@ import {
 
 const ACCOUNT = "11111111111111111111111111111111";
 const MAP_FILE = "/work/billing/keypin.toml";
-const WRANGLER = "/home/me/Library/Preferences/.wrangler/config/default.toml";
-const TILDE_WRANGLER = "~/Library/Preferences/.wrangler/config/default.toml";
 
 function setup(
   options: {
@@ -51,7 +50,7 @@ function setup(
     backend: vault.vault,
     deps: {
       destination: destinations.build,
-      wranglerLoginFile: async () => WRANGLER,
+      workerSignIn: () => fakeSignIn("oauth"),
       ...options.deps,
     },
   });
@@ -84,7 +83,6 @@ describe("keypin check", () => {
     expect(run.stdout.text)
       .toBe(`billing /work/billing · read 0 env files, 0 wrangler configs, 0 workflows
 ok     1 key, 2 destinations. Everything checks out.
-Note: the wrangler login is an OAuth token stored in plain text in ${TILDE_WRANGLER}; wrangler logout removes it
 `);
     run.unchanged();
     expect(run.disk.contents.has(STATE)).toBe(false);
@@ -266,11 +264,22 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
     expect(run.stdout.text).toContain(`1 thing to do:
 1 Fix the login for the Worker billing-worker
   The login can't reach ${ACCOUNT}.
-  keypin.toml pins ${ACCOUNT}; the login is the wrangler login in ${TILDE_WRANGLER}, signed in as me@example.com.
+  keypin.toml pins ${ACCOUNT}; the login is the wrangler login (OAuth), signed in as me@example.com.
   Used by STRIPE_API_KEY (prod).
 `);
     expect(run.log.filter((l) => l.startsWith("check"))).toHaveLength(2);
     run.unchanged();
+  });
+
+  test("names the Cloudflare sign-in it used: KEYPIN_CLOUDFLARE_API_TOKEN", async () => {
+    const run = setup({
+      badAccount: ["cloudflare-worker:billing-worker"],
+      deps: { workerSignIn: () => fakeSignIn("api-token") },
+    });
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(run.stdout.text).toContain(
+      `the login is the API token in KEYPIN_CLOUDFLARE_API_TOKEN, signed in as me@example.com.`,
+    );
   });
 
   test("a step that fails says so, instead of saying it finished", async () => {
@@ -416,7 +425,7 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
         {
           destination: `cloudflare-worker:${ACCOUNT}:billing-worker:STRIPE_API_KEY`,
           to: "cloudflare-worker",
-          login: `the wrangler login in ${WRANGLER}`,
+          login: "the wrangler login (OAuth)",
           publisher: "me@example.com",
           pinned: ACCOUNT,
           reached: ACCOUNT,
@@ -494,6 +503,7 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
       const target: PublishTarget = { to: "github-actions", repo: "acme/billing", account: "acme" };
       const check = await realDestination(target, {
         githubLogin: "alice",
+        workerSignIn: null,
         refreshLogins: true,
       }).checkAccount();
       expect(check.ok).toBe(true);

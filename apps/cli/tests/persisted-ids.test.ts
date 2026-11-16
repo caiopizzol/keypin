@@ -1,5 +1,6 @@
 import { assert, describe, expect, test } from "vite-plus/test";
 import { generationOf, isRecord, loadState, type Receipt, Secret } from "@keypin/core";
+import { fakeSignIn } from "@keypin/connectors/cloudflare/testing";
 import { cli } from "../src/cli";
 import { vaults } from "../src/start";
 import {
@@ -63,7 +64,7 @@ function setup(options: FakeDestinationOptions & { state?: string } = {}) {
     backend: fakeVault({ values: { "billing stripe api key": SENTINEL } }).vault,
     deps: {
       destination: destinations.build,
-      wranglerLoginFile: async () => "/home/me/.wrangler/config/default.toml",
+      workerSignIn: () => fakeSignIn("oauth"),
       isTerminal: true,
       ask: async () => "yes",
     },

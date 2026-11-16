@@ -5,7 +5,7 @@ export interface WorkflowRefs {
   secrets: string[];
   vars: string[];
   environments: string[];
-  uses: { environment: string | null; secrets: string[] }[];
+  uses: { environment: string | null; secrets: string[]; fromCaller: boolean }[];
   hidesUses: boolean;
 }
 
@@ -68,7 +68,11 @@ export function workflowRefs(text: string): WorkflowRefs | null {
   const passedByCaller = onlyWorkflowCall(isRecord(data) ? data.on : undefined);
   const jobs = isRecord(data) && isRecord(data.jobs) ? data.jobs : null;
   const uses: WorkflowRefs["uses"] = [
-    { environment: null, secrets: [...secretsIn(data, jobs, passedByCaller)] },
+    {
+      environment: null,
+      secrets: [...secretsIn(data, jobs, passedByCaller)],
+      fromCaller: passedByCaller,
+    },
   ];
   for (const job of Object.values(jobs ?? {})) {
     const environment = isRecord(job) ? job.environment : undefined;
@@ -78,6 +82,7 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     uses.push({
       environment: named?.trim() ?? null,
       secrets: [...secretsIn(job, null, passedByCaller && named === null)],
+      fromCaller: passedByCaller,
     });
   }
   return {

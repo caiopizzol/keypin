@@ -54,10 +54,10 @@ jobs:
 `);
     assert(refs);
     expect(refs.uses).toEqual([
-      { environment: null, secrets: ["TOP_LEVEL"] },
-      { environment: null, secrets: ["TEST_TOKEN"] },
-      { environment: "production", secrets: ["API_TOKEN"] },
-      { environment: "${{ github.ref_name }}", secrets: ["PREVIEW_TOKEN"] },
+      { environment: null, secrets: ["TOP_LEVEL"], fromCaller: false },
+      { environment: null, secrets: ["TEST_TOKEN"], fromCaller: false },
+      { environment: "production", secrets: ["API_TOKEN"], fromCaller: false },
+      { environment: "${{ github.ref_name }}", secrets: ["PREVIEW_TOKEN"], fromCaller: false },
     ]);
     expect(refs.secrets.toSorted()).toEqual([
       "API_TOKEN",
@@ -101,7 +101,7 @@ jobs:
     }
   });
 
-  test("a called workflow's job with an environment still reads that environment's secrets", () => {
+  test("a called workflow's job with an environment keeps its secrets, marked as passed by the caller", () => {
     const refs = workflowRefs(`
 on:
   workflow_call:
@@ -117,7 +117,9 @@ jobs:
     steps:
       - run: echo \${{ secrets.DEPLOY_KEY }}
 `);
-    expect(refs?.uses).toEqual([{ environment: "production", secrets: ["DEPLOY_KEY"] }]);
+    expect(refs?.uses).toEqual([
+      { environment: "production", secrets: ["DEPLOY_KEY"], fromCaller: true },
+    ]);
   });
 
   test("a workflow also run by other events still needs its declared secrets from the repo", () => {

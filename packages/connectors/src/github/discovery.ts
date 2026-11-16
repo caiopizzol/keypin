@@ -138,12 +138,13 @@ function needsOf(github: Repo, workflows: Workflow[], view: MapView) {
   const declared = new Map<string, Set<string>>();
   const repo = githubPlace(github, null, declared, view);
   const uses = workflows.flatMap((workflow) =>
-    workflow.refs.uses.flatMap(({ environment, secrets }) =>
+    workflow.refs.uses.flatMap(({ environment, secrets, fromCaller }) =>
       secrets
         .filter((name) => !name.startsWith("GITHUB_"))
-        .map((name) => ({ name, path: workflow.path, environment })),
+        .map((name) => ({ name, path: workflow.path, environment, fromCaller })),
     ),
   );
+  const required = uses.filter((use) => !use.fromCaller);
   const needs: FoundNeed[] = [];
   const shared = namesOf(github.organization);
   const fromOrganization = new Map<string, { paths: string[]; environments: string[] }>();
@@ -151,11 +152,18 @@ function needsOf(github: Repo, workflows: Workflow[], view: MapView) {
     const literal = literalEnvironment(use.environment);
     const environment = literal === null ? null : githubPlace(github, literal, declared, view);
     if (
+      environment !== null &&
+      (environment.holds(use.name) === true || view.publishes(use.name, environment))
+    ) {
+      needs.push({ name: use.name, place: environment, usedBy: use.path });
+      continue;
+    }
+    if (use.fromCaller) continue;
+    if (
       shared?.has(use.name) &&
       repo.holds(use.name) === false &&
       (environment === null || environment.holds(use.name) === false) &&
-      !view.publishes(use.name, repo) &&
-      !(environment !== null && view.publishes(use.name, environment))
+      !view.publishes(use.name, repo)
     ) {
       const org = fromOrganization.get(use.name) ?? { paths: [], environments: [] };
       if (!org.paths.includes(use.path)) org.paths.push(use.path);
@@ -168,16 +176,17 @@ function needsOf(github: Repo, workflows: Workflow[], view: MapView) {
       fromOrganization.set(use.name, org);
       continue;
     }
-    const alone = uses
+    const alone = required
       .filter((u) => u.name === use.name)
       .every((u) => literalEnvironment(u.environment)?.toLowerCase() === literal?.toLowerCase());
     const place =
       environment !== null &&
-      (view.publishes(use.name, environment) ||
-        (alone && !view.publishes(use.name, repo) && repo.holds(use.name) === false))
+      repo.holds(use.name) === false &&
+      !view.publishes(use.name, repo) &&
+      (alone || environment.holds(use.name) === null)
         ? environment
         : repo;
-    if (place === repo && use.environment !== null)
+    if (place === repo && environment === null && use.environment !== null)
       declared.set(use.name, (declared.get(use.name) ?? new Set()).add(use.environment));
     needs.push({ name: use.name, place, usedBy: use.path });
   }

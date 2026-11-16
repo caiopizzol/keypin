@@ -82,20 +82,42 @@ jobs:
     ).toBe(true);
   });
 
-  test("a reusable workflow's declared secrets come from its caller, not the repo", () => {
-    const refs = workflowRefs(`
-on:
-  workflow_call:
-    secrets:
-      deploy_key:
-        required: true
+  test("a workflow only other workflows call reads its caller's secrets, declared or inherited", () => {
+    for (const on of [
+      "on: workflow_call",
+      "on: [workflow_call]",
+      "on:\n  workflow_call:\n    secrets:\n      deploy_key:\n        required: true",
+    ]) {
+      const refs = workflowRefs(`
+${on}
+env:
+  TOP: \${{ secrets.TOP_TOKEN }}
 jobs:
   deploy:
     steps:
       - run: echo \${{ secrets.DEPLOY_KEY }} \${{ secrets.SENTRY_TOKEN }}
 `);
-    expect(refs).toMatchObject({ secrets: ["SENTRY_TOKEN"], hidesUses: false });
-    expect(refs?.uses).toEqual([{ environment: null, secrets: ["SENTRY_TOKEN"] }]);
+      expect(refs).toMatchObject({ secrets: [], uses: [], hidesUses: false });
+    }
+  });
+
+  test("a called workflow's job with an environment still reads that environment's secrets", () => {
+    const refs = workflowRefs(`
+on:
+  workflow_call:
+    secrets:
+      DEPLOY_KEY:
+        required: true
+jobs:
+  test:
+    steps:
+      - run: echo \${{ secrets.DEPLOY_KEY }}
+  deploy:
+    environment: production
+    steps:
+      - run: echo \${{ secrets.DEPLOY_KEY }}
+`);
+    expect(refs?.uses).toEqual([{ environment: "production", secrets: ["DEPLOY_KEY"] }]);
   });
 
   test("a workflow also run by other events still needs its declared secrets from the repo", () => {
@@ -104,7 +126,7 @@ on:
   workflow_dispatch:
   workflow_call:
     secrets:
-      DEPLOY_KEY:
+      DEPLOY_KEY: {}
 jobs:
   deploy:
     steps:

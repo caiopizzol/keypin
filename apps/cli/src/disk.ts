@@ -179,18 +179,25 @@ export function git(
 
 export const diskLock: Lock = async (path) => {
   await privateFolder(dirname(path));
-  for (;;) {
+  for (let tries = 1; ; tries++) {
     if (await take(path)) return { held: true, lock: held(path) };
     const holder = await holderAt(path);
-    if (holder.running !== false) return { held: false, holder };
-    const guard = await takeOver(path, holder);
-    if (guard !== null) return { held: false, holder: guard };
+    const found = holder.running === false ? await takeOver(path, holder) : holder;
+    if (found !== null && (found.pid !== null || tries === LOCK_TRIES))
+      return { held: false, holder: found };
+    await Bun.sleep(LOCK_WAIT_MS);
   }
 };
 
+const LOCK_TRIES = 50;
+const LOCK_WAIT_MS = 2;
+
 async function takeOver(path: string, stale: LockHolder): Promise<LockHolder | null> {
   const guardPath = `${path}.takeover`;
-  if (!(await take(guardPath))) return holderAt(guardPath);
+  if (!(await take(guardPath))) {
+    const guard = await holderAt(guardPath);
+    return guard.running === false ? guard : null;
+  }
   const guard = held(guardPath);
   try {
     const now = await holderAt(path);

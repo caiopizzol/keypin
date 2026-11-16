@@ -20,6 +20,7 @@ import { createFile, diskFiles, diskLock, git, replaceFile, replaceFileWith } fr
 import { signInNames } from "../src/start";
 
 const HOLDER = fileURLToPath(new URL("lock-holder.ts", import.meta.url));
+const GRAB = fileURLToPath(new URL("lock-grab.ts", import.meta.url));
 
 let folder = "";
 beforeEach(async () => {
@@ -94,6 +95,17 @@ describe("diskLock", () => {
       expect(await readdir(join(folder, "state"))).toEqual([]);
     }
   });
+
+  test("processes racing for a free lock never see one that names no process", async () => {
+    const path = join(folder, "state", "state.json.lock");
+    for (let round = 0; round < 10; round++) {
+      const runs = Array.from({ length: 8 }, () =>
+        Bun.spawn([process.execPath, GRAB, path], { stdout: "pipe" }),
+      );
+      const said = await Promise.all(runs.map((run) => new Response(run.stdout).text()));
+      expect(said.filter((text) => text !== "held\n" && text !== "busy\n")).toEqual([]);
+    }
+  }, 30_000);
 
   test("closing the terminal while holding the lock removes it", async () => {
     const path = join(folder, "state", "state.json.lock");

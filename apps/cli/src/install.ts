@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
-import { errorCode, messageOf } from "./errors";
+import { messageOf } from "@keypin/core";
+import { errorCode } from "./errors";
 
 export const INSTALL = "bunx --package vite-plus@1.5.1 vp install";
 export const REINSTALL = "npm install -g keypin";

@@ -1,12 +1,13 @@
 import { join, relative } from "node:path";
-import type {
-  Discovered,
-  Discovery,
-  FoundNeed,
-  MapView,
-  Place,
-  ProjectReader,
-  StoreRead,
+import {
+  type Discovered,
+  type Discovery,
+  type FoundNeed,
+  type MapView,
+  messageOf,
+  type Place,
+  type ProjectReader,
+  type StoreRead,
 } from "@keypin/core";
 import { usesSecrets, type WorkflowRefs, workflowRefs } from "./workflows";
 
@@ -215,10 +216,6 @@ function literalEnvironment(environment: string | null): string | null {
 
 function describeLogin(login: string | null): string {
   return login === null ? "the active gh login" : `${login} (git config github.account)`;
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function jobEnvironments(workflows: readonly Workflow[]): string[] {

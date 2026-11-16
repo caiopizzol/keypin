@@ -11,6 +11,7 @@ import {
   type KeyRef,
   type KeysMap,
   loadRegistry,
+  messageOf,
   parseMap,
   type Prerequisite,
   type PublishTarget,
@@ -21,7 +22,6 @@ import {
   vaultAccounts,
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
-import { messageOf } from "../errors";
 import { type Output, output, tilde } from "../output";
 import { registryPath } from "../paths";
 import { locateMap, MAP_FILE } from "../project";

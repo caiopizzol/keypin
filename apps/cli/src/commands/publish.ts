@@ -4,6 +4,7 @@ import {
   type EnvEntry,
   type Environment,
   formatReference,
+  messageOf,
   vaultAccount,
   vaultAccounts,
   type Generation,
@@ -20,7 +21,6 @@ import {
   unfinishedOperations,
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
-import { messageOf } from "../errors";
 import { findMap, pickEnvironment } from "../project";
 import { approval, signInFor } from "../sign-in";
 import { type Output, output } from "../output";

@@ -12,6 +12,7 @@ import {
   isVariableName,
   type KeyRef,
   type KeysMap,
+  messageOf,
   parseMap,
   runEnvironment,
   type Secret,
@@ -19,7 +20,6 @@ import {
   vaultAccounts,
 } from "@keypin/core";
 import { type Deps, localDay, UsageError } from "../deps";
-import { messageOf } from "../errors";
 import { MAP_FILE } from "../project";
 import { confirm, type Output, output } from "../output";
 import { NEEDS_APPROVAL, rerun } from "../publishing";

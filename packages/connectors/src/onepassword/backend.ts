@@ -6,7 +6,14 @@ import type {
   VaultMetadata,
   VaultScope,
 } from "@keypin/core";
-import { isDay, Secret, SignInFailed, type SignInReason, WriteRefused } from "@keypin/core";
+import {
+  isDay,
+  messageOf,
+  Secret,
+  SignInFailed,
+  type SignInReason,
+  WriteRefused,
+} from "@keypin/core";
 import {
   account,
   decode,
@@ -301,8 +308,4 @@ function signInFailed(
     ? "; OP_SERVICE_ACCOUNT_TOKEN is set, so set KEYPIN_1PASSWORD=service-account to use the service account"
     : "";
   return new SignInFailed(`1Password account "${account}": sign-in failed: ${why}${hint}`, reason);
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

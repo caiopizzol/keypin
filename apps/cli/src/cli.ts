@@ -1,3 +1,4 @@
+import { messageOf } from "@keypin/core";
 import { check } from "./commands/check";
 import { importEnv } from "./commands/import";
 import { init } from "./commands/init";
@@ -7,7 +8,7 @@ import { run } from "./commands/run";
 import { status } from "./commands/status";
 import { unregister } from "./commands/unregister";
 import { type Deps, UsageError } from "./deps";
-import { errorCode, messageOf } from "./errors";
+import { errorCode } from "./errors";
 import { version } from "../../../package.json";
 
 const COMMAND_USAGE: [string, string][] = [

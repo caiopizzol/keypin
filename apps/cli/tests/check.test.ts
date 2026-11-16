@@ -159,28 +159,35 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
     };
     const sdk: string[] = [];
     const titles = ["billing stripe api key"];
-    const backend = onePasswordBackend(async () => ({
-      vaults: { list: async () => [{ id: "vault-1", title: "Private" }] },
-      items: {
-        list: async () => {
-          sdk.push("list");
-          return titles.map((title) => ({ id: stored.id, title, tags: [], updatedAt: new Date() }));
+    const backend = () =>
+      onePasswordBackend(async () => ({
+        vaults: { list: async () => [{ id: "vault-1", title: "Private" }] },
+        items: {
+          list: async () => {
+            sdk.push("list");
+            return titles.map((title) => ({
+              id: stored.id,
+              title,
+              tags: [],
+              updatedAt: new Date(),
+            }));
+          },
+          get: async () => {
+            sdk.push("get");
+            return stored;
+          },
+          create: async () => {
+            sdk.push("create");
+            return stored;
+          },
+          put: async () => {
+            sdk.push("put");
+            return stored;
+          },
         },
-        get: async () => {
-          sdk.push("get");
-          return stored;
-        },
-        create: async () => {
-          sdk.push("create");
-          return stored;
-        },
-        put: async () => {
-          sdk.push("put");
-          return stored;
-        },
-      },
-    }));
-    const run = setup({ deps: { vault: () => backend } });
+      }));
+    const first = backend();
+    const run = setup({ deps: { vault: () => first } });
     expect(await cli(["check", "--json"], run.deps)).toBe(0);
     expect(sdk).toEqual(["list"]);
     expect(parseJson(run.stdout.text)).toHaveProperty(
@@ -193,7 +200,8 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
     );
 
     titles.pop();
-    const missing = setup({ deps: { vault: () => backend } });
+    const second = backend();
+    const missing = setup({ deps: { vault: () => second } });
     expect(await cli(["check"], missing.deps)).toBe(1);
     expect(missing.stdout.text).toContain(
       "  op://Private/billing stripe api key/password (1Password account my.1password.com): no such item.\n  Used by STRIPE_API_KEY (dev), STRIPE_API_KEY (prod).\n",
@@ -351,6 +359,25 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
       expect(text).not.toContain("critical error");
       expect(text).not.toContain("find1PasswordLibPath");
     }
+  });
+
+  test("with a Snap or Flatpak desktop app, says to install the .deb or .rpm package, not to install the app", async () => {
+    const vault = onePasswordBackend(
+      requireDesktopApp(
+        async () => {
+          throw new Error("Native library is not available.");
+        },
+        () => null,
+        () => true,
+      ),
+    );
+    const run = setup({ deps: { vault: () => vault } });
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(run.stdout.text).toContain(`1 Sign in to 1Password
+  Install the 1Password desktop app from the .deb or .rpm package.
+  On a server or in CI, use a 1Password service account instead (docs/service-account.md).
+`);
+    expect(run.stdout.text).not.toContain("Install the 1Password desktop app.");
   });
 
   test("a map that doesn't parse lists its errors, reads nothing, exit 1", async () => {

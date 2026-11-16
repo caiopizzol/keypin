@@ -1,5 +1,7 @@
 import { assert, describe, expect, test, vi } from "vite-plus/test";
 import { formatReference, loadRegistry, parseMap } from "@keypin/core";
+import { onePasswordBackend } from "@keypin/connectors/onepassword";
+import { fakeOnePassword } from "@keypin/connectors/onepassword/testing";
 import { cli } from "../src/cli";
 import { destinations, issuers, vaults } from "../src/start";
 import { TEMPLATE } from "../src/commands/init";
@@ -395,6 +397,34 @@ describe("keypin import", () => {
       expect(await cli(NEW, yes.deps)).toBe(0);
       expect(yes.fake.created).toHaveLength(2);
     }
+  });
+
+  test("an item created in 1Password while the prompt is open is refused, and isn't mapped", async () => {
+    const onePassword = fakeOnePassword([], ["App Secrets"]);
+    const vault = onePasswordBackend(async () => onePassword.client);
+    const title = "billing dev stripe key";
+    const disk = memoryFiles({ [ENV]: `STRIPE_KEY=${SENTINEL}\n` });
+    const run = fakeDeps({
+      disk,
+      backend: vault,
+      deps: {
+        isTerminal: true,
+        ask: async () => {
+          await onePassword.client.items.create({
+            category: "Password",
+            vaultId: "vault-1",
+            title,
+          });
+          return "y";
+        },
+      },
+    });
+    expect(await cli(NEW, run.deps)).toBe(1);
+    expect(onePassword.calls.create.map((created) => created.title)).toEqual([title]);
+    expect(run.stdout.text + run.stderr.text).toContain(
+      "the item already exists; keypin doesn't overwrite it",
+    );
+    expect(disk.contents.has(MAP)).toBe(false);
   });
 
   test("a failure midway stops, and maps only the items it created; a rerun finishes", async () => {

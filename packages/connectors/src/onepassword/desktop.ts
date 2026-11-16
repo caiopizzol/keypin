@@ -5,6 +5,16 @@ import { join } from "node:path";
 import { type Connect, desktopConnect as sdkConnect } from "./sdk";
 
 const DESKTOP_APP_MISSING = "the 1Password desktop app isn't installed";
+const SANDBOXED_APP =
+  "the 1Password desktop app is installed as a Snap or Flatpak, and those packages don't support integrations with other apps; install it from the .deb or .rpm package instead";
+
+const SANDBOXED: Record<string, (home: string) => string[]> = {
+  linux: (home) => [
+    "/snap/1password",
+    "/var/lib/flatpak/app/com.onepassword.OnePassword",
+    join(home, ".local/share/flatpak/app/com.onepassword.OnePassword"),
+  ],
+};
 
 const LIBRARIES: Record<string, (home: string) => string[]> = {
   darwin: (home) => [
@@ -32,12 +42,24 @@ export function desktopLibrary(
   return (LIBRARIES[os]?.(home) ?? []).find(exists) ?? null;
 }
 
+export function sandboxedApp(
+  os: string = platform(),
+  home: string = homedir(),
+  exists: (path: string) => boolean = existsSync,
+): boolean {
+  return (SANDBOXED[os]?.(home) ?? []).some(exists);
+}
+
 export function requireDesktopApp(
   connect: Connect,
   found: () => string | null = desktopLibrary,
+  sandboxed: () => boolean = found === desktopLibrary ? sandboxedApp : () => false,
 ): Connect {
   return async (account) => {
-    if (!found()) throw new SignInFailed(DESKTOP_APP_MISSING, { kind: "no-desktop-app" });
+    if (!found())
+      throw sandboxed()
+        ? new SignInFailed(SANDBOXED_APP, { kind: "sandboxed-desktop-app" })
+        : new SignInFailed(DESKTOP_APP_MISSING, { kind: "no-desktop-app" });
     return connect(account);
   };
 }

@@ -10,7 +10,7 @@ import {
   SCHEME,
   sameName,
 } from "./reference";
-import { isAccountId, isSharedAddress } from "./service-account";
+import { isSharedAddress, pinKind, pinnedAddress } from "./service-account";
 
 export type SignIn =
   | { mode: "desktop"; tokenIgnored: boolean }
@@ -24,6 +24,7 @@ const MAP_FILE = "keypin.toml";
 const INTEGRATION =
   "the 1Password desktop app, with Settings → Developer → Integrate with other apps selected";
 const INSTALL_FIX = "install the 1Password desktop app";
+const PACKAGE_FIX = "install the 1Password desktop app from the .deb or .rpm package";
 const SERVICE_ACCOUNT_FIX =
   "on a server or in CI, use a 1Password service account instead (docs/service-account.md)";
 const ACCOUNT_FIX = `set account under [1password] in ${MAP_FILE} to a sign-in address or account ID the 1Password app lists, under Settings → Accounts`;
@@ -93,11 +94,12 @@ export const onePasswordVault: VaultKind<
     const limit = "the vaults granted to the service account are what limit it";
     const accounts = refs.flatMap((ref) => decode(ref)?.account ?? []);
     return [...new Set(accounts)].flatMap((account) => {
-      if (isAccountId(account))
+      const pinned = pinKind(account);
+      if (pinned !== "address")
         return [
-          `${MAP_FILE} pins the account ID ${account}, which a service account token can't be checked against, so ${limit}`,
+          `${MAP_FILE} pins the ${pinned} ${account}, which a service account token can't be checked against, so ${limit}`,
         ];
-      if (isSharedAddress(account) && isSharedAddress(signIn.address))
+      if (isSharedAddress(pinnedAddress(account)) && isSharedAddress(signIn.address))
         return [
           `individual 1Password accounts share the sign-in address ${signIn.address}, so keypin can't prove the service account belongs to the account ${MAP_FILE} pins; ${limit}`,
         ];
@@ -123,6 +125,8 @@ export const onePasswordVault: VaultKind<
       ];
     if (failures.some((reason) => reason.kind === "unknown-account"))
       return [failed(SIGN_IN, [ACCOUNT_FIX])];
+    if (failures.some((reason) => reason.kind === "sandboxed-desktop-app"))
+      return [failed(SIGN_IN, [PACKAGE_FIX, SERVICE_ACCOUNT_FIX])];
     if (failures.some((reason) => reason.kind === "no-desktop-app"))
       return [failed(SIGN_IN, [INSTALL_FIX, SERVICE_ACCOUNT_FIX])];
     if (failures.length)

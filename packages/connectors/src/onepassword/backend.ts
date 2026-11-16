@@ -21,15 +21,20 @@ import {
   format,
   type OnePasswordRef,
   type OnePasswordScope,
+  sameName,
 } from "./reference";
-import type { Connect, Field, FullItem, SdkClient } from "./sdk";
+import { type Connect, type Field, type FullItem, RateLimited, type SdkClient } from "./sdk";
 import { desktopConnect } from "./desktop";
 
 const VALUE_FIELD = "password";
 const ROTATED = "rotated";
+const NOTES = "notesPlain";
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const UNIX_SECONDS = /^\d+$/;
+
+type Listed = { id: string; title: string };
+type ItemOverview = Awaited<ReturnType<SdkClient["items"]["list"]>>[number];
 
 const BUILT_IN = ["private", "personal", "employee"];
 const DEFAULT_SHARED = "shared";
@@ -42,12 +47,57 @@ export function onePasswordBackend(
   { tokenIgnored = false } = {},
 ): VaultBackend {
   const clients = new Map<string, Promise<SdkClient>>();
+  const vaultLists = new WeakMap<SdkClient, Promise<Listed[]>>();
+  const itemLists = new WeakMap<SdkClient, Map<string, Promise<ItemOverview[]>>>();
+
+  function sdkError(error: unknown): unknown {
+    if (!(error instanceof RateLimited)) return error;
+    const inner = SDK_ERROR.exec(error.message)?.[1] ?? error.message;
+    const limits = mode === "service-account" ? `. ${SERVICE_ACCOUNT_LIMITS}` : "";
+    return new Error(`1Password's rate limit was reached: ${inner}${limits}`);
+  }
+
+  function vaults(sdk: SdkClient): Promise<Listed[]> {
+    let pending = vaultLists.get(sdk);
+    if (!pending) {
+      pending = sdk.vaults.list().catch((error: unknown) => {
+        vaultLists.delete(sdk);
+        throw sdkError(error);
+      });
+      vaultLists.set(sdk, pending);
+    }
+    return pending;
+  }
+
+  function itemsIn(sdk: SdkClient): Map<string, Promise<ItemOverview[]>> {
+    let lists = itemLists.get(sdk);
+    if (!lists) {
+      lists = new Map<string, Promise<ItemOverview[]>>();
+      itemLists.set(sdk, lists);
+    }
+    return lists;
+  }
+
+  function items(sdk: SdkClient, vault: string): Promise<ItemOverview[]> {
+    const lists = itemsIn(sdk);
+    let pending = lists.get(vault);
+    if (!pending) {
+      pending = sdk.items.list(vault).catch((error: unknown) => {
+        lists.delete(vault);
+        throw sdkError(error);
+      });
+      lists.set(vault, pending);
+    }
+    return pending;
+  }
 
   function client(account: string): Promise<SdkClient> {
     let pending = clients.get(account);
     if (!pending) {
       pending = connect(account).catch((error: unknown) => {
-        throw signInFailed(account, error, mode, tokenIgnored);
+        throw error instanceof RateLimited
+          ? sdkError(error)
+          : signInFailed(account, error, mode, tokenIgnored);
       });
       clients.set(account, pending);
     }
@@ -55,7 +105,7 @@ export function onePasswordBackend(
   }
 
   async function vaultId(sdk: SdkClient, scope: OnePasswordScope): Promise<string> {
-    const matches = named(await sdk.vaults.list(), scope.vault);
+    const matches = named(await vaults(sdk), scope.vault);
     const [match] = matches;
     if (!match) throw new Error(noVault(scope, mode));
     if (matches.length > 1) {
@@ -71,7 +121,7 @@ export function onePasswordBackend(
     id: string,
     ref: OnePasswordRef,
   ): Promise<{ id: string } | null> {
-    const matches = named(await sdk.items.list(id), ref.item);
+    const matches = named(await items(sdk, id), ref.item);
     if (matches.length > 1)
       throw new Error(`${where(ref)}: ${matches.length} items have this name`);
     return matches[0] ?? null;
@@ -88,6 +138,7 @@ export function onePasswordBackend(
     try {
       await save();
     } catch (error) {
+      if (error instanceof RateLimited) throw sdkError(error);
       if (mode === "service-account" && NO_PERMISSION.test(messageOf(error)))
         throw new WriteRefused(
           `${where(ref)}: the service account can't write to the vault "${ref.vault}". Grant write access to it: 1Password can't change a service account's access, so create a new service account with read and write access to that vault, and use its token`,
@@ -99,23 +150,25 @@ export function onePasswordBackend(
   async function get(ref: OnePasswordRef): Promise<FullItem> {
     const sdk = await client(ref.account);
     const { vault, item } = await locate(sdk, ref);
-    return sdk.items.get(vault, item);
+    return byId(sdk, vault, item);
+  }
+
+  function byId(sdk: SdkClient, vault: string, item: string): Promise<FullItem> {
+    return sdk.items.get(vault, item).catch((error: unknown) => {
+      throw sdkError(error);
+    });
   }
 
   return {
     async read(given) {
       const ref = own(given);
-      const item = await get(ref);
-      return new Secret(valueField(item, ref).value);
+      return valueOf(await get(ref), ref);
     },
 
     async readItem(given) {
       const ref = own(given);
       const item = await get(ref);
-      return {
-        secret: new Secret(valueField(item, ref).value),
-        ids: { vault: item.vaultId, item: item.id },
-      };
+      return { secret: valueOf(item, ref), ids: { vault: item.vaultId, item: item.id } };
     },
 
     async itemIds(given) {
@@ -125,6 +178,8 @@ export function onePasswordBackend(
 
     async write(given, secret, options = {}) {
       const ref = own(given);
+      if (secret.reveal() === "")
+        throw new Error(`${where(ref)}: keypin won't save an empty value`);
       const rotated = options.rotated;
       if (rotated !== undefined && !isDay(rotated)) {
         throw new Error(
@@ -133,6 +188,7 @@ export function onePasswordBackend(
       }
       const sdk = await client(ref.account);
       const id = await vaultId(sdk, ref);
+      itemsIn(sdk).delete(id);
       const found = await find(sdk, id, ref);
       if (found && options.newItem) {
         throw new Error(`${where(ref)}: the item already exists; keypin doesn't overwrite it`);
@@ -147,18 +203,20 @@ export function onePasswordBackend(
         await saving(ref, () =>
           sdk.items.create({ category: "Password", vaultId: id, title: ref.item, fields }),
         );
+        itemsIn(sdk).delete(id);
         return;
       }
 
-      const item = await sdk.items.get(id, found.id);
+      const item = await byId(sdk, id, found.id);
       await saving(ref, () => sdk.items.put(withValue(item, ref, secret, rotated)));
+      itemsIn(sdk).delete(id);
     },
 
     async list(given) {
       const scope = ownScope(given);
       const sdk = await client(scope.account);
-      const items = await sdk.items.list(await vaultId(sdk, scope));
-      return items.map((item): VaultItem => ({
+      const found = await items(sdk, await vaultId(sdk, scope));
+      return found.map((item): VaultItem => ({
         id: item.id,
         title: item.title,
         tags: [...item.tags],
@@ -212,6 +270,17 @@ function named<T extends { id: string; title: string }>(candidates: T[], name: s
   );
 }
 
+function isNotes(item: FullItem, ref: OnePasswordRef): boolean {
+  return ref.section === null && sameName(ref.field, NOTES) && !named(item.fields, NOTES).length;
+}
+
+function valueOf(item: FullItem, ref: OnePasswordRef): Secret {
+  const notes = isNotes(item, ref);
+  const value = notes ? item.notes : valueField(item, ref).value;
+  if (value === "") throw new Error(`${where(ref)}: the value is empty`);
+  return new Secret(value);
+}
+
 function valueField(item: FullItem, ref: OnePasswordRef): Field {
   const sections = ref.section === null ? [] : named(item.sections, ref.section);
   if (ref.section !== null && !sections.length) {
@@ -223,10 +292,15 @@ function valueField(item: FullItem, ref: OnePasswordRef): Field {
     ),
     ref.field,
   );
-  if (!field) throw new Error(`${where(ref)}: the item has no field "${ref.field}"`);
+  if (!field) throw new Error(`${where(ref)}: ${missingField(item, ref)}`);
   if (more.length) {
     throw new Error(
       `${where(ref)}: ${more.length + 1} fields are named "${ref.field}"; name a section`,
+    );
+  }
+  if (field.fieldType === "Totp") {
+    throw new Error(
+      `${where(ref)}: "${ref.field}" is a one-time password, which changes every 30 seconds; keypin reads only values that stay the same`,
     );
   }
   if (field.title === ROTATED) {
@@ -237,6 +311,14 @@ function valueField(item: FullItem, ref: OnePasswordRef): Field {
   return field;
 }
 
+function missingField(item: FullItem, ref: OnePasswordRef): string {
+  const files = "keypin reads text fields and notes, not files";
+  if (item.files.some((file) => sameName(file.attributes.name, ref.field)))
+    return `"${ref.field}" is a file attached to the item; ${files}`;
+  if (item.category === "Document") return `the item is a Document; ${files}`;
+  return `the item has no field "${ref.field}"`;
+}
+
 function withValue(
   item: FullItem,
   ref: OnePasswordRef,
@@ -244,15 +326,18 @@ function withValue(
   rotated: string | undefined,
 ): FullItem {
   const fields = [...item.fields];
-  const value = valueField(item, ref);
-  fields[fields.indexOf(value)] = { ...value, value: secret.reveal() };
+  const notes = isNotes(item, ref);
+  if (!notes) {
+    const value = valueField(item, ref);
+    fields[fields.indexOf(value)] = { ...value, value: secret.reveal() };
+  }
   if (rotated) {
     const existing = fields.find((field) => field.title === ROTATED);
     if (existing)
       fields[fields.indexOf(existing)] = { ...existing, ...rotatedField(rotated), id: existing.id };
     else fields.push(rotatedField(rotated));
   }
-  return { ...item, fields };
+  return notes ? { ...item, notes: secret.reveal(), fields } : { ...item, fields };
 }
 
 function passwordField(secret: Secret): Field {
@@ -287,6 +372,8 @@ function toDay(value: string, ref: OnePasswordRef): string {
   throw new Error(`${where(ref)}: "${ROTATED}" isn't a date: "${value}"`);
 }
 
+const SERVICE_ACCOUNT_LIMITS =
+  "A service account token gets 1,000 reads and 100 writes an hour (10,000 and 1,000 on Business), and an account's service accounts together 1,000 requests a day (5,000 on Teams, 50,000 on Business)";
 const SDK_ERROR = /Error \{ msg: (.+?), inner: .*\}\s*$/s;
 const NO_PERMISSION = /do(?:n't| not) have the right permissions/;
 

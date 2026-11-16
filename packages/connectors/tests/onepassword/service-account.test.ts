@@ -1,7 +1,9 @@
 import { describe, expect, test } from "vite-plus/test";
-import { type KeyRef, Secret } from "@keypin/core";
+import { type KeyRef, Secret, SignInFailed } from "@keypin/core";
 import {
   onePasswordBackend,
+  pinKind,
+  RateLimited,
   type SdkClient,
   serviceAccountConnect,
   signInAddress,
@@ -90,6 +92,39 @@ describe("a service account sign-in", () => {
     expect(opened).toEqual([]);
   });
 
+  test("a pinned address in any form is compared by its host, and refused for another account", async () => {
+    const other = [
+      "https://other.1password.com/",
+      "https://other.1password.com/signin",
+      "other.1password.com/",
+      "OTHER.1password.com",
+      " other.1password.com ",
+      "other.1password.com:443",
+      "other.1password.com /",
+      "Other.1password.com Team",
+      "ftp://x",
+      "x.",
+    ];
+    for (const account of other) {
+      const { backend, calls, opened } = fakeSdk();
+      expect(pinKind(account), account).toBe("address");
+      await expect(backend.itemIds(ref(account)), account).rejects.toThrow(
+        `the service account signs in to acme.1password.com, but keypin.toml pins ${account}`,
+      );
+      expect(calls).toEqual([]);
+      expect(opened).toEqual([]);
+    }
+    for (const account of [
+      "https://acme.1password.com/",
+      "acme.1password.com/",
+      "HTTPS://Acme.1Password.com/signin",
+    ]) {
+      const { backend, opened } = fakeSdk();
+      await backend.list({ kind: "1password", account, vault: "Deploy" });
+      expect(opened, account).toEqual(["the token"]);
+    }
+  });
+
   test("a map pinning an account ID is accepted: a token has no ID to check it against", async () => {
     const { backend, calls, opened } = fakeSdk();
     await backend.list({
@@ -101,12 +136,22 @@ describe("a service account sign-in", () => {
     expect(calls).toEqual(["vaults.list", "items.list"]);
   });
 
-  test("the pinned address matches in any case, and the client opens once", async () => {
+  test("a map pinning an account name is accepted like an ID, not taken for an address", async () => {
+    const { backend, calls } = fakeSdk();
+    await backend.list({ kind: "1password", account: "Acme Corp", vault: "Deploy" });
+    expect(calls).toEqual(["vaults.list", "items.list"]);
+    expect(pinKind("Acme Corp")).toBe("account name");
+    expect(pinKind("Acme Inc.")).toBe("account name");
+    expect(pinKind("4Q6Z73JHSJESBM36AP3W57YOOU")).toBe("account ID");
+    expect(pinKind("acme.1password.com")).toBe("address");
+  });
+
+  test("the pinned address matches in any case, and the client and its lists are shared", async () => {
     const { backend, calls, opened } = fakeSdk();
     await backend.list({ kind: "1password", account: "ACME.1password.com", vault: "Deploy" });
     await backend.list({ kind: "1password", account: "acme.1password.com", vault: "Deploy" });
     expect(opened).toEqual(["the token"]);
-    expect(calls).toEqual(["vaults.list", "items.list", "vaults.list", "items.list"]);
+    expect(calls).toEqual(["vaults.list", "items.list"]);
   });
 
   test("a sign-in error never shows the token", async () => {
@@ -119,6 +164,21 @@ describe("a service account sign-in", () => {
     const failure = backend.itemIds(ref("acme.1password.com"));
     await expect(failure).rejects.toThrow("sign-in failed: invalid token [the token]");
     await expect(failure).rejects.not.toThrow(TOKEN);
+  });
+
+  test("a rate limit while signing in with the token gives the limits, never the token", async () => {
+    const backend = onePasswordBackend(
+      serviceAccountConnect(TOKEN, async (token) => {
+        throw new RateLimited(`Too Many Requests for ${token}`);
+      }),
+      "service-account",
+    );
+    const failure = backend.itemIds(ref("acme.1password.com"));
+    await expect(failure).rejects.toThrow(
+      "1Password's rate limit was reached: Too Many Requests for [the token]. A service account token gets 1,000 reads",
+    );
+    await expect(failure).rejects.not.toThrow(TOKEN);
+    await expect(failure).rejects.not.toBeInstanceOf(SignInFailed);
   });
 
   test("a sign-in error is unwrapped from the SDK's Error { msg } text", async () => {

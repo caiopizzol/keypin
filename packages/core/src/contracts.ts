@@ -40,6 +40,7 @@ export class NothingChanged extends Error {}
 export type SignInReason =
   | { kind: "no-credentials" }
   | { kind: "no-desktop-app" }
+  | { kind: "sandboxed-desktop-app" }
   | { kind: "unknown-account" }
   | { kind: "wrong-account"; pinned: string; actual: string }
   | { kind: "other" };

@@ -399,7 +399,26 @@ describe("wrong kinds and values", () => {
       "op://Private//password",
       "must be op://<vault>/<item>/<field> or op://<vault>/<item>/<section>/<field>",
     ],
-    ["op://Private/i/password?attribute=otp", "can't have a query such as ?attribute="],
+    [
+      "op://Private/i/one-time password?attribute=otp",
+      `can't have the query "?attribute=otp"; keypin reads the field's value as stored`,
+    ],
+    [
+      "op://Private/ssh/private key?ssh-format=openssh",
+      `can't have the query "?ssh-format=openssh"; keypin reads the field's value as stored`,
+    ],
+    [
+      "op://Private/i/password?attribute=otp\\n",
+      `can't have the query "?attribute=otp\\n"; keypin reads the field's value as stored`,
+    ],
+    [
+      "op://Private/i/password#\\nx",
+      `can't have the query "#\\nx"; keypin reads the field's value as stored`,
+    ],
+    [
+      "op://Private/i/password?\\u001b[31mred",
+      `can't have the query "?\\u001b[31mred"; keypin reads the field's value as stored`,
+    ],
   ])("the reference %s is refused", (reference, message) => {
     expect(errorsOf(`${VAULTS}[keys.A]\ndev = "${reference}"\n`)).toEqual([
       `${MAP_FILE}: key "A" dev: field "from" ${message}`,

@@ -23,28 +23,36 @@ export function item(title: string, fields: Field[], id = `id-${title}`): FullIt
 }
 
 export function fakeOnePassword(items: FullItem[] = [], vaults = ["Private", "Shared"]) {
-  const calls: { create: CreateParams[]; put: FullItem[]; get: number } = {
-    create: [],
-    put: [],
-    get: 0,
-  };
+  const calls: {
+    create: CreateParams[];
+    put: FullItem[];
+    get: number;
+    lists: { vaults: number; items: number };
+  } = { create: [], put: [], get: 0, lists: { vaults: 0, items: 0 } };
   const effects: string[] = [];
   const held = [...items];
   let created = 0;
   const client: SdkClient = {
     vaults: {
-      list: async () =>
-        vaults.map((title, index) => ({ id: index === 0 ? "vault-1" : `vault-${title}`, title })),
+      list: async () => {
+        calls.lists.vaults += 1;
+        return vaults.map((title, index) => ({
+          id: index === 0 ? "vault-1" : `vault-${title}`,
+          title,
+        }));
+      },
     },
     items: {
-      list: async (vaultId) =>
-        held
+      list: async (vaultId) => {
+        calls.lists.items += 1;
+        return held
           .filter((candidate) => candidate.vaultId === vaultId)
           .map((candidate) => ({
             ...candidate,
             state: "active",
             password: candidate.fields.find((each) => each.title === "password")?.value ?? "",
-          })),
+          }));
+      },
       get: async (vaultId, itemId) => {
         calls.get += 1;
         const found = held.find(

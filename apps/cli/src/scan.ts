@@ -8,10 +8,35 @@ import {
   type ProjectFiles,
   type ProjectReader,
   type ProjectScan,
-  SKIPPED_FOLDERS,
 } from "@keypin/core";
 import type { Deps } from "./deps";
 import { errorCode } from "./errors";
+
+const SKIPPED_FOLDERS: ReadonlySet<string> = new Set([
+  ".git",
+  "node_modules",
+  "dist",
+  "build",
+  "out",
+  ".output",
+  ".next",
+  ".nuxt",
+  ".svelte-kit",
+  ".astro",
+  ".turbo",
+  ".vercel",
+  ".netlify",
+  ".cache",
+  ".parcel-cache",
+  "coverage",
+  ".venv",
+  "venv",
+  "__pycache__",
+  "target",
+  "vendor",
+  "Pods",
+  "DerivedData",
+]);
 
 export interface Unknown {
   what: string;

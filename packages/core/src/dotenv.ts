@@ -1,33 +1,6 @@
-import type { Environment } from "./contracts";
 import { Secret } from "./secret";
 
 export type EnvFileKind = "set" | "expected";
-
-export const SKIPPED_FOLDERS: ReadonlySet<string> = new Set([
-  ".git",
-  "node_modules",
-  "dist",
-  "build",
-  "out",
-  ".output",
-  ".next",
-  ".nuxt",
-  ".svelte-kit",
-  ".astro",
-  ".turbo",
-  ".vercel",
-  ".netlify",
-  ".cache",
-  ".parcel-cache",
-  "coverage",
-  ".venv",
-  "venv",
-  "__pycache__",
-  "target",
-  "vendor",
-  "Pods",
-  "DerivedData",
-]);
 
 const ENV_FILE = /^(\.env|\.dev\.vars)(\..+)?$/;
 const EXPECTED_FILE = /\.(example|sample|template)$/;
@@ -61,12 +34,3 @@ function dotenvValue(raw: string): string {
   const unquoted = value.replace(/^(['"`])([\s\S]*)\1$/, "$2");
   return value.startsWith('"') ? unquoted.replace(/\\n/g, "\n").replace(/\\r/g, "\r") : unquoted;
 }
-
-export function draftItemName(project: string, environment: Environment, name: string): string {
-  const folder = project.replace(/[^A-Za-z0-9 ._-]/g, "-");
-  return `${folder} ${environment} ${name.toLowerCase().replaceAll("_", " ").trim()}`;
-}
-
-export type StoreRead =
-  | { ok: true; secrets: { name: string; updatedAt: string | null }[] }
-  | { ok: false; reason: string };

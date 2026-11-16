@@ -2,7 +2,6 @@ import { basename, join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import {
   DEFAULT_ENVIRONMENTS,
-  draftItemName,
   type Environment,
   envFileKind,
   envFlag,
@@ -27,6 +26,11 @@ import { approval } from "../sign-in";
 import { registerProject, TEMPLATE } from "./init";
 
 const ROTATE_EVERY = "90d";
+
+function draftItemName(project: string, environment: Environment, name: string): string {
+  const folder = project.replace(/[^A-Za-z0-9 ._-]/g, "-");
+  return `${folder} ${environment} ${name.toLowerCase().replaceAll("_", " ").trim()}`;
+}
 
 type OnePasswordRef = {
   kind: "1password";

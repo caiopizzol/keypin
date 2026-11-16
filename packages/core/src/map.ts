@@ -12,7 +12,7 @@ import type { IssuerKinds, IssuerReader, IssuerSpec } from "./issuer";
 import type { VaultKinds } from "./login";
 import { isRecord } from "./record";
 import { byKind, parseReference, referenceSchemes, sameItem } from "./reference";
-import { periodDays } from "./rotation";
+import { periodDays } from "./days";
 
 export interface EnvEntry {
   ref: KeyRef;

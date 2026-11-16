@@ -6,7 +6,7 @@ const TICK_MS = 80;
 const SLOW_MS = 1000;
 const MIN_LABEL = 12;
 
-export interface Done {
+interface Done {
   ok: boolean;
   text: string;
 }

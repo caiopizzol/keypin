@@ -237,7 +237,7 @@ export function shellWord(word: string): string {
   return /^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`;
 }
 
-export function accountFacts(check: AccountCheck): string {
+function accountFacts(check: AccountCheck): string {
   return check.ok
     ? `as ${check.publisher}, account ${check.destinationAccount ?? check.expected}`
     : `as ${check.publisher}, pinned ${check.expected}, reaches ${check.destinationAccount ?? "unknown"}`;

@@ -37,7 +37,7 @@ export interface Scenario {
 
 export const FAKE_TOKEN = `ops_${Buffer.from(JSON.stringify({ signInAddress: "my.1password.com" })).toString("base64url")}`;
 
-export function day(offset: number): string {
+function day(offset: number): string {
   const date = new Date();
   date.setDate(date.getDate() + offset);
   return localDay(date);
@@ -448,7 +448,7 @@ export const scenarios: Record<string, Scenario> = {
   },
 };
 
-export const SHORTEST_VALUE = 8;
+const SHORTEST_VALUE = 8;
 export const SANDBOX_MARKER = ".keypin-verify-sandbox";
 
 export function valuesOf(scenario: Scenario): string[] {

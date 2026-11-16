@@ -26,7 +26,9 @@ function pathsHolding(hidden: readonly string[], seen: unknown[]): string[] {
 
   function visit(each: unknown, at: string): void {
     if (typeof each === "string") {
-      for (const text of hidden) if (each.includes(text)) found.add(`${at} holds ${text}`);
+      hidden.forEach((text, index) => {
+        if (each.includes(text)) found.add(`${at} holds hidden value ${index + 1}`);
+      });
       return;
     }
     if (typeof each !== "object" || each === null || visited.has(each)) return;

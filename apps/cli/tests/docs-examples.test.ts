@@ -12,7 +12,7 @@ const FILES = [
     .map((name) => `docs/${name}`),
 ];
 const FENCE = /^( *)```toml\n([\s\S]*?)^\1```/gm;
-const ENVIRONMENT_TABLE = /^\[keys\.[^.\]\s]+\.[^.\]\s]+\]$/m;
+const KEY_TABLE = /^\[keys\.[^.\]\s]+(\.[^.\]\s]+)?\]$/m;
 const VAULT_PIN = /^\[(1password|infisical)\]$/m;
 const DOCS_PIN = '[1password]\naccount = "my.1password.com"\n\n';
 
@@ -20,7 +20,7 @@ const examples = FILES.flatMap((file) =>
   [...readFileSync(join(ROOT, file), "utf8").matchAll(FENCE)].flatMap(
     ([, indent = "", body = ""], index) => {
       const toml = body.replace(new RegExp(`^${indent}`, "gm"), "");
-      if (!ENVIRONMENT_TABLE.test(toml)) return [];
+      if (!KEY_TABLE.test(toml)) return [];
       const map = VAULT_PIN.test(toml) ? toml : `${DOCS_PIN}${toml}`;
       return [{ name: `${file} toml block ${index + 1}`, map }];
     },

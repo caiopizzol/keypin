@@ -94,6 +94,7 @@ function resend(options: {
   failCreate?: number;
   loseCreated?: boolean;
   keys?: ReturnType<typeof memoryKeys>;
+  admin?: string;
 }) {
   return resendFetch({
     tokenPrefix: "re_new_",
@@ -273,6 +274,58 @@ describe("keypin rotate", () => {
     expect(await run.run()).toBe(1);
     expect(run.stderr.text).toContain("Resend POST /api-keys returned HTTP 422");
     expect(run.stderr.text).toContain("Stopped. Nothing was created.");
+  });
+
+  test("a key deleted at Resend leaves nothing to revoke, and asks one y", async () => {
+    const keys = memoryKeys(["key-0"]);
+    const first = setup({ answers: ["y"], resend: resend({ admin: ADMIN, keys }) });
+    expect(await first.run()).toBe(0);
+    keys.save({ ...keys.load(), live: ["key-0"] });
+
+    const leaked = setup({
+      disk: first.disk,
+      vault: first.vault,
+      answers: ["y"],
+      resend: resend({ admin: ADMIN, keys }),
+    });
+    expect(await leaked.run()).toBe(0);
+    expect(leaked.asked).toEqual(["Rotate RESEND_API_KEY? [y/N] "]);
+    expect(leaked.stderr.text).toContain(
+      "  = Resend                   nothing to revoke: key re-new-1 was deleted at Resend",
+    );
+    expect(keys.load().live).toEqual(["key-0", "re-new-2"]);
+    const [issued] = (await leaked.state()).issued;
+    expect(issued?.id).toBe("re-new-2");
+    expect(issued?.old).toMatchObject({ id: null, revoked: true });
+    expect(leaked.leaked()).toBe(false);
+  });
+
+  test("a rerun whose new key was deleted at Resend makes another, and names the old key it left", async () => {
+    const keys = memoryKeys([]);
+    const runs = { disk: memoryFiles({ "/work/billing/keypin.toml": MAP }) };
+    const first = setup({ ...runs, answers: ["y"], resend: resend({ admin: ADMIN, keys }) });
+    await first.run();
+    const vault = first.vault;
+    await setup({
+      ...runs,
+      vault,
+      answers: ["y", "n"],
+      resend: resend({ admin: ADMIN, keys }),
+    }).run();
+    keys.save({ ...keys.load(), live: ["re-new-1"] });
+
+    const leaked = setup({
+      ...runs,
+      vault,
+      answers: ["y"],
+      resend: resend({ admin: ADMIN, keys }),
+    });
+    expect(await leaked.run()).toBe(0);
+    expect(leaked.stderr.text).toContain(
+      "keypin didn't revoke key re-new-1, the one key re-new-2 replaced. If nothing uses it, delete it at https://resend.com/api-keys.",
+    );
+    expect(keys.load().live).toEqual(["re-new-1", "re-new-3"]);
+    expect(vault.values.get("mailer resend key")).toBe("re_new_3_7d1b");
   });
 
   test("a create whose reply is lost names the key to delete, and doesn't say nothing was created", async () => {

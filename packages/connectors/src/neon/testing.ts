@@ -22,6 +22,8 @@ export interface FakeNeon {
   pollsToFinish?: number;
   failReset?: "refuse" | "operation";
   locked?: number;
+  permission?: "VIEWER" | "EDITOR" | "ADMIN";
+  readOnly?: boolean;
   world: {
     load(): NeonWorld;
     save(world: NeonWorld): void;
@@ -51,7 +53,12 @@ export function neonFetch(fake: FakeNeon): Fetch {
     });
 
     if (init.method === "GET" && rest === "")
-      return reply(200, { project: { id: fake.projectId } });
+      return reply(200, {
+        project: {
+          id: fake.projectId,
+          ...(fake.permission ? { effective_project_permission: fake.permission } : {}),
+        },
+      });
     if (init.method === "GET" && rest.startsWith("/operations/")) {
       const id = decodeURIComponent(rest.slice("/operations/".length));
       const operation = world.operations[id];
@@ -86,6 +93,7 @@ export function neonFetch(fake: FakeNeon): Fetch {
     if (!match || !role) return missing();
     if (init.method === "GET" && !match[2]) return reply(200, { role: described(name, role) });
     if (init.method !== "POST" || !match[2]) return missing();
+    if (fake.readOnly) return reply(404, { code: "", message: "not found" });
     if (locked > 0) {
       locked--;
       return reply(423, { code: "LOCKED", message: "project already has running operations" });

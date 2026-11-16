@@ -2,6 +2,8 @@ import { type Fetch, isRecord } from "@keypin/core";
 
 export interface FakeResend {
   admin?: string;
+  known?: Record<string, string>;
+  domains?: Record<string, string>;
   tokenPrefix: string;
   failCreate?: number;
   loseCreated?: boolean;
@@ -24,8 +26,22 @@ export function resendFetch(fake: FakeResend): Fetch {
     const path = new URL(url).pathname;
     const reply = (status: number, body: object) => new Response(JSON.stringify(body), { status });
     const auth = init.headers.Authorization ?? "";
-    if (fake.admin !== undefined && auth !== `Bearer ${fake.admin}`)
-      return reply(401, { name: "validation_error", message: "API key is invalid" });
+    const token = auth.replace(/^Bearer /, "");
+    if (fake.admin !== undefined && token !== fake.admin) {
+      const id = fake.known?.[token] ?? issuedId(fake.tokenPrefix, token);
+      if (id === null || !keys.includes(id))
+        return reply(400, { name: "validation_error", message: "API key is invalid" });
+      return reply(401, {
+        name: "restricted_api_key",
+        message: "This API key is restricted to only send emails",
+      });
+    }
+    if (init.method === "GET" && path.startsWith("/domains/")) {
+      const id = decodeURIComponent(path.slice("/domains/".length));
+      const name = fake.domains?.[id];
+      if (name === undefined) return reply(404, { name: "not_found", message: "Domain not found" });
+      return reply(200, { object: "domain", id, name, status: "verified" });
+    }
     if (init.method === "GET" && path === "/api-keys")
       return reply(200, {
         object: "list",
@@ -57,7 +73,7 @@ export function resendFetch(fake: FakeResend): Fetch {
       return reply(201, {
         id,
         object: "api_key",
-        token: `${fake.tokenPrefix}${created + 1}_7d1b`,
+        token: `${fake.tokenPrefix}${created + 1}${TOKEN_END}`,
       });
     }
     const id = decodeURIComponent(path.replace(/^\/api-keys\//, ""));
@@ -68,6 +84,13 @@ export function resendFetch(fake: FakeResend): Fetch {
     }
     return reply(404, { name: "not_found" });
   };
+}
+
+const TOKEN_END = "_7d1b";
+
+function issuedId(prefix: string, token: string): string | null {
+  if (!token.startsWith(prefix) || !token.endsWith(TOKEN_END)) return null;
+  return `re-new-${token.slice(prefix.length, -TOKEN_END.length)}`;
 }
 
 export function memoryKeys(initial: string[] = []) {

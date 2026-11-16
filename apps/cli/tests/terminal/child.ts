@@ -21,6 +21,8 @@ import { routedVault } from "../../src/vault";
 import {
   type FakeItem,
   ISSUED_PREFIX,
+  RESEND_ADMIN,
+  RESEND_KNOWN,
   NEON_HOST,
   NEON_PREFIX,
   SANDBOX_MARKER,
@@ -204,6 +206,9 @@ const infisical = infisicalBackend(
 const vault = routedVault({ "1password": () => signedIn().vault, infisical: () => infisical });
 
 const resend = resendFetch({
+  admin: RESEND_ADMIN,
+  known: RESEND_KNOWN,
+  ...(run.resend?.domains === undefined ? {} : { domains: run.resend.domains }),
   tokenPrefix: ISSUED_PREFIX,
   ...(run.resend?.failCreate === undefined ? {} : { failCreate: run.resend.failCreate }),
   loseCreated: run.resend?.loseCreated ?? false,

@@ -205,6 +205,16 @@ async function rotateLocked(job: Job): Promise<number> {
     return 1;
   }
   const ready = { ids: read.ids, issuer, checked, removed };
+  if (next.action === "resume" && check.gone !== undefined) {
+    const { old } = next.issued;
+    if (old.id !== null && !old.revoked)
+      say(
+        out.dim(
+          `\nkeypin didn't revoke key ${old.id}, the one key ${next.issued.id} replaced. If nothing uses it, delete it at ${issuer.dashboard()}.`,
+        ),
+      );
+    next = { action: "create", current: null, abandoned: null };
+  }
   if (next.action === "resume")
     return resume(job, ready, next.issued, read.secret, unpublished, state);
 
@@ -212,7 +222,7 @@ async function rotateLocked(job: Job): Promise<number> {
     say(
       `\n${out.dim(abandonedNote(next.abandoned, issuer, spec, vaultName(entry.ref, deps.vaults)))}`,
     );
-  const current = next.current ?? check.currentId ?? null;
+  const current = check.gone === undefined ? (next.current ?? check.currentId ?? null) : null;
   const steps = planNewValue(input, read.ids);
   say("\nPlan");
   showPlan(out, [
@@ -223,7 +233,9 @@ async function rotateLocked(job: Job): Promise<number> {
       `save it to ${formatReference(entry.ref, deps.vaults)}, rotated today`,
     ),
     ...publishRows(steps, job.label, deps.destinations),
-    revokeRow(issuer, current, "after a second y", check.notes?.revoke),
+    check.gone === undefined
+      ? revokeRow(issuer, current, "after a second y", check.notes?.revoke)
+      : row("=", issuer.describe(), `nothing to revoke: ${check.gone}`),
   ]);
   showRemoved(out, removed);
   const needsApproval = steps.some((step) => step.approval !== null);
@@ -254,7 +266,7 @@ async function rotateLocked(job: Job): Promise<number> {
     id: created.id,
     generation: await generationOf(created.secret),
     at: deps.now().toISOString(),
-    old: { id: current, generation, revoked: false },
+    old: { id: current, generation, revoked: check.gone !== undefined },
   };
   const mayHold = entry.ref.kind === "infisical";
   try {
@@ -317,7 +329,8 @@ async function issuerLists(
   out: Output,
 ): Promise<boolean | null> {
   try {
-    return (await issuer.checkAccount(id, current)).ok;
+    const check = await issuer.checkAccount(id, current);
+    return check.ok && check.gone === undefined;
   } catch (error) {
     out.line(
       `Stopped: couldn't check key ${id} at ${issuer.describe()}: ${messageOf(error)}. Nothing was created.`,
@@ -413,13 +426,13 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
     showRemoved(out, behind);
   }
   const old = issued.old.id;
+  if (issued.old.revoked) return 0;
   if (old === null) {
     out.line(
       `keypin doesn't know which key at ${where} it replaced. Once nothing uses the old one, delete it at ${issuer.dashboard()}.`,
     );
     return 0;
   }
-  if (issued.old.revoked) return 0;
   const asked = job.args.filter((arg) => arg !== "--yes");
   const later = `To revoke it later, run this in a terminal:\n  ${commandLine(deps, "rotate", asked)}`;
   if (!deps.isTerminal) {

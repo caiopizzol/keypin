@@ -92,6 +92,7 @@ export interface IssuerCheck {
   reason?: string;
   fix?: string;
   currentId?: string;
+  gone?: string;
   notes?: { create?: string; revoke?: string };
 }
 

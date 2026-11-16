@@ -17,7 +17,12 @@ export interface Scenario {
   about: string;
   files: Record<string, string>;
   state?: object;
-  resend?: { keys: string[]; failCreate?: number; loseCreated?: boolean };
+  resend?: {
+    keys: string[];
+    failCreate?: number;
+    loseCreated?: boolean;
+    domains?: Record<string, string>;
+  };
   neon?: { roles: Record<string, string> };
   registered: boolean;
   git: { origin?: string; account?: string };
@@ -134,6 +139,8 @@ worker = "mailer"
 `;
 
 const RESEND_OLD = "re_verify_old_key_3c7e";
+export const RESEND_ADMIN = "re_verify_admin_key_51ad";
+export const RESEND_KNOWN = { [RESEND_OLD]: "re-old" };
 export const ISSUED_PREFIX = "re_verify_new_";
 
 const resendReceipt = (
@@ -174,7 +181,7 @@ const resend: Scenario = {
       "my.1password.com": {
         Private: [
           { title: "mailer resend key", value: RESEND_OLD, rotated: day(-95) },
-          { title: "resend admin key", value: "re_verify_admin_key_51ad" },
+          { title: "resend admin key", value: RESEND_ADMIN },
         ],
       },
     },
@@ -444,6 +451,12 @@ export const scenarios: Record<string, Scenario> = {
         'permission = "sending_access"\ndomain_id = "dom-verify"\n',
       ),
     },
+    resend: { keys: ["re-old"], domains: { "dom-verify": "mail.acme.dev" } },
+  },
+  "resend-deleted": {
+    ...resend,
+    about: "resend, but someone deleted key re-old at Resend after a leak",
+    resend: { keys: [] },
   },
   "resend-worker-down": {
     ...resend,

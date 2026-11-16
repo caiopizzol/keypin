@@ -4,12 +4,18 @@ export interface Files {
   read(path: string): Promise<string | null>;
   write(path: string, text: string): Promise<void>;
   rename(from: string, to: string): Promise<void>;
+  remove(path: string): Promise<void>;
 }
 
 export async function writeJsonAtomic(files: Files, path: string, data: unknown): Promise<void> {
   const temporary = `${path}.${crypto.randomUUID()}.tmp`;
-  await files.write(temporary, `${JSON.stringify(data, null, 2)}\n`);
-  await files.rename(temporary, path);
+  try {
+    await files.write(temporary, `${JSON.stringify(data, null, 2)}\n`);
+    await files.rename(temporary, path);
+  } catch (error) {
+    await files.remove(temporary);
+    throw error;
+  }
 }
 
 export async function readVersionedJson(

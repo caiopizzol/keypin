@@ -29,12 +29,16 @@ export const diskFiles: Files = {
     try {
       await handle.chmod(0o600);
       await handle.writeFile(text);
+      await handle.sync();
     } finally {
       await handle.close();
     }
   },
   async rename(from, to) {
     await rename(from, to);
+  },
+  async remove(path) {
+    await rm(path, { force: true });
   },
 };
 

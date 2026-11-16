@@ -44,7 +44,12 @@ describe("help", () => {
     const { deps } = fakeDeps({
       deps: {
         cwd: "/work/billing",
-        files: { read: async () => "", write: async () => {}, rename: async () => {} },
+        files: {
+          read: async () => "",
+          write: async () => {},
+          rename: async () => {},
+          remove: async () => {},
+        },
         launch: (command) => {
           launched.push(command);
           return { exited: Promise.resolve(0), kill: () => {} };

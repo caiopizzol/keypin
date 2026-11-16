@@ -35,7 +35,7 @@ function status(rotation: Rotation | null, overrides: Partial<StatusInput> = {})
   return buildStatus({
     kinds: KINDS,
     vaults: VAULT_KINDS,
-    registry: { version: 1, projects: [PROJECT], shared: [] },
+    registry: { version: 1, projects: [PROJECT] },
     maps: new Map([[PROJECT, map]]),
     receipts: [receipt(WORKER, "aaaaaaaaaaaaaaaa"), receipt(GITHUB, "aaaaaaaaaaaaaaaa")],
     metadata: () => metadata,
@@ -322,7 +322,7 @@ describe("status", () => {
     const result = buildStatus({
       kinds: KINDS,
       vaults: VAULT_KINDS,
-      registry: { version: 1, projects: ["/work/a", "/work/b", "/work/c"], shared: [] },
+      registry: { version: 1, projects: ["/work/a", "/work/b", "/work/c"] },
       maps: new Map<string, MapResult>([
         ["/work/b", { ok: false, errors: ["/work/b/keypin.toml: missing field"] }],
         [

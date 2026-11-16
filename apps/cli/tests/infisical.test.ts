@@ -555,22 +555,31 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
       ]);
     });
 
-    test("a failed save whose state write also fails says to delete the key, then creates a new one", async () => {
+    test("a save with an unknown outcome keeps the pending mark, so the rerun waits instead of making another key", async () => {
       const infisical = policy();
       const first = project({ map: ISSUER_MAP, infisical });
       expect(await cli(["rotate", "STRIPE_API_KEY"], first.deps)).toBe(0);
       infisical.failWrites = true;
-      const restore = stateWritesFail(first.disk, 1);
       const failed = project({ map: ISSUER_MAP, infisical, after: first });
       expect(await cli(["rotate", "STRIPE_API_KEY"], failed.deps)).toBe(1);
       expect(failed.stderr.text).toContain(
-        "Stopped: the new key key-2 exists at Resend but isn't in Infisical, and keypin can't show it again. Delete it at https://resend.com/api-keys, then run this again:",
+        "Stopped: keypin can't tell whether Infisical saved the new key key-2. Run this again, and keypin picks up from what Infisical holds:",
       );
-      restore();
+      expect((await loadState(failed.disk.files, STATE, vaults)).issued).toMatchObject([
+        { id: "key-2", held: true },
+      ]);
       infisical.failWrites = false;
-      failed.keys.delete("key-2");
 
-      const again = project({ map: ISSUER_MAP, infisical, after: failed });
+      const waiting = project({ map: ISSUER_MAP, infisical, after: failed });
+      expect(await cli(["rotate", "STRIPE_API_KEY"], waiting.deps)).toBe(3);
+      expect(waiting.issued).toEqual([]);
+      expect(waiting.stderr.text).toContain(
+        "If the change is rejected or cancelled, delete key key-2 at https://resend.com/api-keys, then run this again.",
+      );
+      expect(waiting.stderr.text).not.toContain("If nothing uses it, delete it");
+
+      waiting.keys.delete("key-2");
+      const again = project({ map: ISSUER_MAP, infisical, after: waiting });
       expect(await cli(["rotate", "STRIPE_API_KEY"], again.deps)).toBe(0);
       expect(again.stderr.text).toContain(
         "Key key-2 is gone from Resend, so keypin creates a new one.",

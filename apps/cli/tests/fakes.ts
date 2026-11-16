@@ -146,7 +146,7 @@ const itemOf = (ref: KeyRef) => onePasswordRef(ref)?.item ?? infisicalRef(ref)?.
 
 export function writableVault(
   initial: Record<string, string>,
-  failSave: boolean | "refused" = false,
+  failSave: boolean | "refused" | "after saving" = false,
 ) {
   const values = new Map(Object.entries(initial));
   const rotated: string[] = [];
@@ -169,6 +169,10 @@ export function writableVault(
       return idsOf(itemOf(ref));
     },
     async write(ref, secret, options = {}) {
+      if (failSave === "after saving") {
+        values.set(itemOf(ref), secret.reveal());
+        throw new Error("1Password: the request timed out");
+      }
       if (failSave) {
         log.push(`save ${itemOf(ref)} failed`);
         if (failSave === "refused")

@@ -188,7 +188,7 @@ describe("a vault kind defined outside keypin", () => {
     );
     expect(await cli(["rotate", "TOY_KEY"], run.deps)).toBe(1);
     expect(run.stderr.text).toMatch(/~ Toy +save it to toy:\/\/top\/right, rotated today/);
-    expect(run.stderr.text).toContain("exists at Resend but isn't in Toy");
+    expect(run.stderr.text).toContain("keypin can't tell whether Toy saved the new key");
   });
 
   test("its reference round-trips through state.json and still matches the map", async () => {

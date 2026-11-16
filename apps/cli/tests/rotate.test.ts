@@ -120,7 +120,7 @@ interface Setup extends FakeDestinationOptions, IssuerOptions {
   terminal?: boolean;
   disk?: ReturnType<typeof memoryFiles>;
   vault?: ReturnType<typeof writableVault>;
-  failSave?: boolean | "refused";
+  failSave?: boolean | "refused" | "after saving";
   made?: { count: number };
   serviceAccount?: boolean;
   tag?: string;
@@ -391,14 +391,15 @@ describe("keypin rotate", () => {
     );
   });
 
-  test("a failed vault save says to delete the new key, and the rerun creates a fresh one", async () => {
+  test("a failed vault save says to run again, and the rerun creates a fresh one", async () => {
     const vault = writableVault(VALUES, true);
     const first = setup({ vault, answers: ["y"] });
     expect(await first.run()).toBe(1);
     expect(first.writes()).toEqual([]);
     expect(first.stderr.text).toContain(
-      "Stopped: the new key key-1 exists at Resend but isn't in 1Password, and keypin can't show it again. Delete it at https://resend.com/api-keys, then run this again:",
+      "Stopped: keypin can't tell whether 1Password saved the new key key-1. Run this again, and keypin picks up from what 1Password holds:",
     );
+    expect(first.stderr.text).not.toContain("Delete it");
     expect((await first.state()).issued).toEqual([expect.objectContaining({ id: "key-1" })]);
     expect(first.leaked()).toBe(false);
 
@@ -414,6 +415,47 @@ describe("keypin rotate", () => {
     ]);
     expect(fixed.values.get("mailer resend key")).toBe(NEW(2));
     expect((await again.state()).issued).toEqual([expect.objectContaining({ id: "key-2" })]);
+  });
+
+  test("a save that lands but reports an error doesn't say to delete the key, and the rerun publishes it", async () => {
+    const vault = writableVault(VALUES, "after saving");
+    const first = setup({ vault, answers: ["y"] });
+    expect(await first.run()).toBe(1);
+    expect(first.stderr.text).toContain(
+      "Stopped: keypin can't tell whether 1Password saved the new key key-1. Run this again, and keypin picks up from what 1Password holds:",
+    );
+    expect(first.stderr.text).not.toContain("Delete it");
+    expect(vault.values.get("mailer resend key")).toBe(NEW(1));
+
+    const again = setup({
+      disk: first.disk,
+      vault: writableVault({ ...VALUES, "mailer resend key": NEW(1) }),
+      made: vault.made,
+      answers: ["y", "n"],
+    });
+    expect(await again.run()).toBe(0);
+    expect(again.issuer.log).toEqual(["check key-1"]);
+    expect(again.writes()).toEqual([
+      `write ${WORKER} RESEND_API_KEY (${NEW(1).length} chars)`,
+      `write ${GITHUB} RESEND_API_KEY (${NEW(1).length} chars)`,
+    ]);
+  });
+
+  test("a refused save whose state write fails says the revoked key needs no deleting", async () => {
+    const disk = memoryFiles({ "/work/billing/keypin.toml": MAP });
+    const files = { ...disk.files };
+    let stateWrites = 0;
+    disk.files.write = async (path, text) => {
+      if (path.startsWith(STATE) && stateWrites++ > 0)
+        throw new Error("ENOSPC: no space left on device");
+      return files.write(path, text);
+    };
+    const run = setup({ disk, serviceAccount: true, failSave: "refused", answers: ["y"] });
+    expect(await run.run()).toBe(1);
+    expect(run.issuer.log).toContain("revoke key-1");
+    expect(run.stderr.text).toContain(
+      `keypin couldn't update ${STATE}: ENOSPC: no space left on device. If the next run says to delete key key-1, it's already revoked.`,
+    );
   });
 
   test("a state file that can't be written revokes the new key and saves nothing", async () => {

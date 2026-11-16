@@ -292,10 +292,10 @@ async function rotateLocked(job: Job): Promise<number> {
     say(heldSteps(job, issuer, created.id));
     return NEEDS_APPROVAL;
   }
-  if (saved === "failed") {
-    if (mayHold) await saveState(deps.files, job.path, state).catch(() => {});
+  if (saved === "unknown") {
+    const vault = vaultName(entry.ref, deps.vaults);
     say(
-      `Stopped: the new key ${created.id} exists at ${issuer.describe()} but isn't in ${vaultName(entry.ref, deps.vaults)}, and keypin can't show it again. Delete it at ${issuer.dashboard()}, then run this again:\n  ${commandLine(deps, "rotate", job.args)}`,
+      `Stopped: keypin can't tell whether ${vault} saved the new key ${created.id}. Run this again, and keypin picks up from what ${vault} holds:\n  ${commandLine(deps, "rotate", job.args)}`,
     );
     return 1;
   }
@@ -593,15 +593,19 @@ async function undoCreate(
     );
     return 1;
   }
-  await forget().catch(() => {});
   out.line(`${unrecorded}. Revoked it at ${where}. Nothing changed.`);
+  await forget().catch((error: unknown) =>
+    out.line(
+      `keypin couldn't update ${job.path}: ${messageOf(error)}. If the next run says to delete key ${id}, it's already revoked.`,
+    ),
+  );
   return 1;
 }
 
 async function saveKey(
   { entry, deps, out }: Job,
   secret: Secret,
-): Promise<"saved" | "held" | "refused" | "failed"> {
+): Promise<"saved" | "held" | "refused" | "unknown"> {
   const place = `${vaultName(entry.ref, deps.vaults)}  ${formatReference(entry.ref, deps.vaults)}`;
   const today = localDay(deps.now());
   try {
@@ -615,6 +619,6 @@ async function saveKey(
   } catch (error) {
     out.line(`    ${messageOf(error)}`);
     if (error instanceof HeldForApproval) return "held";
-    return error instanceof WriteRefused ? "refused" : "failed";
+    return error instanceof WriteRefused ? "refused" : "unknown";
   }
 }

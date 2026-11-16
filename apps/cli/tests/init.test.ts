@@ -89,7 +89,7 @@ describe("keypin init", () => {
     expect(parsed.map.keys).toEqual([
       {
         name: "EXAMPLE_API_KEY",
-        rotateEvery: "180d",
+        rotateEvery: { text: "180d", days: 180 },
         environments: {
           dev: {
             ref: {

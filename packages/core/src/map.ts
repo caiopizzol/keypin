@@ -22,7 +22,7 @@ export interface EnvEntry {
 
 export interface KeyEntry {
   name: KeyId;
-  rotateEvery: string | null;
+  rotateEvery: { text: string; days: number | null } | null;
   environments: Partial<Record<Environment, EnvEntry>>;
 }
 
@@ -268,10 +268,10 @@ function validateKey(
           : `unknown field "${field}"; environments are ${environmentNames.map((n) => `"${n}"`).join(", ")}`,
     ),
   );
-  const rotateEvery = optionalString(raw, "rotate_every", (m) => err("", m));
-  if (rotateEvery !== undefined && periodDays(rotateEvery) === undefined) {
-    err("", `field "rotate_every" must be <n>d, <n>w, <n>m or never`);
-  }
+  const rotateEvery = rotation(
+    optionalString(raw, "rotate_every", (m) => err("", m)),
+    (m) => err("", m),
+  );
 
   const environments: Record<Environment, EnvEntry> = {};
   Reflect.setPrototypeOf(environments, null);
@@ -294,7 +294,18 @@ function validateKey(
   }
 
   if (failures) return undefined;
-  return { name: id, rotateEvery: rotateEvery ?? null, environments };
+  return { name: id, rotateEvery, environments };
+}
+
+function rotation(
+  text: string | undefined,
+  fail: (message: string) => void,
+): KeyEntry["rotateEvery"] {
+  if (text === undefined) return null;
+  const days = periodDays(text);
+  if (days !== undefined) return { text, days };
+  fail(`field "rotate_every" must be <n>d, <n>w, <n>m or never`);
+  return null;
 }
 
 function validateEnv(

@@ -28,6 +28,7 @@ export interface HeldLock {
 }
 
 export interface LockHolder {
+  file: string;
   pid: number | null;
   running: boolean | null;
 }

@@ -437,7 +437,7 @@ function memoryLock(disk: ReturnType<typeof memoryFiles>): Lock {
       const pid = text.match(/^(\d+)\n$/)?.[1];
       return {
         held: false,
-        holder: { pid: pid === undefined ? null : Number(pid), running: true },
+        holder: { file: path, pid: pid === undefined ? null : Number(pid), running: true },
       };
     }
     disk.contents.set(path, `${process.pid}\n`);

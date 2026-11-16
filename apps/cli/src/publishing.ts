@@ -44,7 +44,7 @@ export async function locked(deps: Deps, body: (path: string) => Promise<number>
   const lockFile = `${path}.lock`;
   const taken = await deps.lock(lockFile);
   if (!taken.held) {
-    deps.stderr.write(`${lockedMessage(lockFile, taken.holder)}\n`);
+    deps.stderr.write(`${lockedMessage(taken.holder)}\n`);
     return 1;
   }
   try {
@@ -54,14 +54,14 @@ export async function locked(deps: Deps, body: (path: string) => Promise<number>
   }
 }
 
-function lockedMessage(file: string, holder: LockHolder): string {
-  if (holder.pid === null) {
+function lockedMessage({ file, pid, running }: LockHolder): string {
+  if (pid === null) {
     return `keypin: ${file} exists but names no process. If no publish is running, delete that file and try again.`;
   }
-  if (holder.running === false) {
-    return `keypin: ${file} was left by process ${holder.pid}, which isn't running any more. Delete that file and try again.`;
+  if (running === false) {
+    return `keypin: ${file} was left by process ${pid}, which isn't running any more. Delete that file and try again.`;
   }
-  return `keypin: another publish (process ${holder.pid}) holds ${file} and is still running. Wait for it to finish.`;
+  return `keypin: another publish (process ${pid}) holds ${file} and is still running. Wait for it to finish.`;
 }
 
 export type Label = (target: PublishTarget) => string;

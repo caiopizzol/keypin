@@ -6,7 +6,7 @@ export const launch: Launch = (command, env) => {
 };
 
 export const onSignals: OnSignals = (handler) => {
-  const signals = ["SIGINT", "SIGTERM"] as const;
+  const signals = ["SIGINT", "SIGTERM", "SIGHUP"] as const;
   for (const signal of signals) process.on(signal, handler);
   return () => {
     for (const signal of signals) process.off(signal, handler);

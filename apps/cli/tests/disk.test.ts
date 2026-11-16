@@ -50,7 +50,7 @@ describe("diskLock", () => {
     expect(await readFile(path, "utf8")).toBe(`${process.pid}\n`);
     expect(await diskLock(path)).toEqual({
       held: false,
-      holder: { pid: process.pid, running: true },
+      holder: { file: path, pid: process.pid, running: true },
     });
     await first.lock.release();
     expect(await readdir(join(folder, "state"))).toEqual([]);
@@ -108,7 +108,7 @@ describe("diskLock", () => {
     const path = await leftLock("locked\n");
     expect(await diskLock(path)).toEqual({
       held: false,
-      holder: { pid: null, running: null },
+      holder: { file: path, pid: null, running: null },
     });
   });
 

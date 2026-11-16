@@ -7,12 +7,10 @@ import {
   type EnvEntry,
   type Environment,
   type Evidence,
-  finishOperation,
   type Generation,
   kindOf,
   type ItemIds,
   type KeyEntry,
-  type KeyOwner,
   type KeyRef,
   messageOf,
   type PlanStep,
@@ -22,9 +20,7 @@ import {
   type RemovedDestination,
   saveState,
   type Secret,
-  startOperation,
   type State,
-  unfinishedOperations,
   vaultAccounts,
 } from "@keypin/core";
 import type { Deps, LockHolder } from "./deps";
@@ -36,7 +32,7 @@ import { approval } from "./sign-in";
 export interface Checked {
   target: PublishTarget;
   destination: Destination;
-  check: AccountCheck;
+  check: Extract<AccountCheck, { ok: true }>;
 }
 
 export async function locked(deps: Deps, body: (path: string) => Promise<number>): Promise<number> {
@@ -118,14 +114,15 @@ export async function checkAccounts(
         () => destination.checkAccount(),
         (result) => ({ ok: result.ok, text: `${place}  ${out.dim(accountFacts(result))}` }),
       );
-      checked.set(destinationId(target, key.name, deps.destinations), {
-        target,
-        destination,
-        check,
-      });
-      if (!check.ok) {
+      if (check.ok) {
+        checked.set(destinationId(target, key.name, deps.destinations), {
+          target,
+          destination,
+          check,
+        });
+      } else {
         failed = true;
-        out.line(`    ${check.reason ?? "the account check failed"}`);
+        out.line(`    ${check.reason}`);
         if (check.fix) out.line(`    fix: ${check.fix}`);
       }
     } catch (error) {
@@ -151,7 +148,6 @@ export interface WriteJob {
   ids: ItemIds;
   generation: Generation;
   writes: Write[];
-  operation: string;
 }
 
 interface Together {
@@ -168,22 +164,8 @@ export function writesFor(steps: readonly PlanStep[], checked: Map<string, Check
   });
 }
 
-function started(state: State, job: WriteJob, now: Date): State {
-  if (state.operations.some((o) => o.id === job.operation)) return state;
-  return startOperation(state, {
-    id: job.operation,
-    keyId: job.key.name,
-    environment: job.environment,
-    mapFile: job.mapFile,
-    generation: job.generation,
-    startedAt: now.toISOString(),
-    planned: job.writes.map((w) => w.destinationId),
-  });
-}
-
 export async function writeAll(
-  job: Omit<WriteJob, "operation"> & {
-    operation?: string;
+  job: WriteJob & {
     state: State;
     path: string;
     deps: Deps;
@@ -191,23 +173,18 @@ export async function writeAll(
     label: Label;
   },
 ): Promise<{ ok: boolean; state: State }> {
-  const input = { ...job, operation: job.operation ?? crypto.randomUUID() };
-  const { key, environment, mapFile, secret, writes, path, deps, out } = input;
-  let state = started(input.state, input, deps.now());
+  const { key, secret, writes, path, deps, out } = job;
+  let state = job.state;
   await saveState(deps.files, path, state);
 
   for (const write of writes) {
     const { found, together } = write;
     if (together?.sent) continue;
-    const place = input.label(found.target);
-    const members = together?.members ?? [{ job: input, write }];
+    const place = job.label(found.target);
+    const members = together?.members ?? [{ job, write }];
     const names = members.map((m) => m.job.key.name).join(", ");
     const writeMany = found.destination.writeMany?.bind(found.destination);
     try {
-      if (together) {
-        state = members.reduce((s, m) => started(s, m.job, deps.now()), state);
-        await saveState(deps.files, path, state);
-      }
       const evidence = await out.step(
         `${place}  writing ${names}`,
         () =>
@@ -222,13 +199,7 @@ export async function writeAll(
       if (together) together.sent = true;
       const at = deps.now().toISOString();
       for (const m of members)
-        state = recordReceipt(
-          state,
-          receiptOf(m.job, m.write, at, evidence),
-          deps.destinations,
-          m.job.operation,
-        );
-      state = { ...state, operations: state.operations.filter((o) => !allDone(o)) };
+        state = recordReceipt(state, receiptOf(m.job, m.write, at, evidence), deps.destinations);
       await saveState(deps.files, path, state);
     } catch (error) {
       out.line(`    ${messageOf(error)}`);
@@ -236,13 +207,8 @@ export async function writeAll(
     }
   }
 
-  state = finishAll(state, { keyId: key.name, environment, mapFile });
-  await saveState(deps.files, path, state);
   return { ok: true, state };
 }
-
-const allDone = (op: { planned: string[]; done: string[] }) =>
-  op.planned.every((id) => op.done.includes(id));
 
 function receiptOf(job: WriteJob, write: Write, at: string, evidence: Evidence): Receipt {
   const { check, target } = write.found;
@@ -257,7 +223,7 @@ function receiptOf(job: WriteJob, write: Write, at: string, evidence: Evidence):
     account: {
       pinned: target.account,
       publisher: check.publisher,
-      destinationAccount: check.destinationAccount ?? target.account,
+      destinationAccount: check.destinationAccount,
     },
     at,
     evidence,
@@ -266,16 +232,7 @@ function receiptOf(job: WriteJob, write: Write, at: string, evidence: Evidence):
 
 const BULK_LIMIT = 100;
 
-export function writeJobs<J extends Omit<WriteJob, "operation">>(
-  jobs: readonly J[],
-  kinds: DestinationKinds,
-): (J & { operation: string })[] {
-  const withIds = jobs.map((job) => ({ ...job, operation: crypto.randomUUID() }));
-  writeTogether(withIds, kinds);
-  return withIds;
-}
-
-function writeTogether(jobs: readonly WriteJob[], kinds: DestinationKinds): void {
+export function writeTogether(jobs: readonly WriteJob[], kinds: DestinationKinds): void {
   const byDestination = new Map<string, Together["members"]>();
   for (const job of jobs)
     for (const write of job.writes) {
@@ -292,13 +249,9 @@ function writeTogether(jobs: readonly WriteJob[], kinds: DestinationKinds): void
     }
 }
 
-export function finishAll(state: State, owner: KeyOwner): State {
-  return unfinishedOperations(state, owner).reduce((s, op) => finishOperation(s, op.id), state);
-}
-
 function accountFacts(check: AccountCheck): string {
   return check.ok
-    ? `as ${check.publisher}, account ${check.destinationAccount ?? check.expected}`
+    ? `as ${check.publisher}, account ${check.destinationAccount}`
     : `as ${check.publisher}, pinned ${check.expected}, reaches ${check.destinationAccount ?? "unknown"}`;
 }
 

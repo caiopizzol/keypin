@@ -254,15 +254,19 @@ export function fakeDestinations(
       describe: () => place,
       async checkAccount(): Promise<AccountCheck> {
         log.push(`check ${place}`);
-        const ok = !options.badAccount?.includes(place);
-        checked = ok;
-        return {
+        checked = !options.badAccount?.includes(place);
+        const facts = {
           publisher: target.to === "cloudflare-worker" ? "me@example.com" : target.account,
-          destinationAccount: ok ? owner : null,
           expected: target.account,
-          ok,
-          ...(ok ? {} : { reason: `the login can't reach ${target.account}` }),
         };
+        return checked
+          ? { ...facts, destinationAccount: owner, ok: true }
+          : {
+              ...facts,
+              destinationAccount: null,
+              ok: false,
+              reason: `the login can't reach ${target.account}`,
+            };
       },
       async write(name, secret) {
         if (!checked) throw new Error("checkAccount hasn't passed");
@@ -417,8 +421,7 @@ prod = { from = "op://Private/web prod session secret/password", publish = [
 ] }
 `;
 
-export const registryWith = (...projects: string[]) =>
-  JSON.stringify({ version: 1, projects, shared: [] });
+export const registryWith = (...projects: string[]) => JSON.stringify({ version: 1, projects });
 
 export const ESC = "\x1b";
 

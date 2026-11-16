@@ -17,11 +17,12 @@ const PROJECT = "/work/billing";
 
 interface Rotation {
   rotated: ReturnType<typeof day> | null;
-  rotateEvery: string | null;
+  rotateEvery: string;
 }
 
 function status(rotation: Rotation | null, overrides: Partial<StatusInput> = {}) {
-  const rotateEvery = rotation?.rotateEvery ?? "365d";
+  const text = rotation?.rotateEvery ?? "365d";
+  const rotateEvery = { text, days: periodDays(text) ?? null };
   const map: MapResult = {
     ok: true,
     map: {
@@ -35,7 +36,7 @@ function status(rotation: Rotation | null, overrides: Partial<StatusInput> = {})
   return buildStatus({
     kinds: KINDS,
     vaults: VAULT_KINDS,
-    registry: { version: 1, projects: [PROJECT], shared: [] },
+    registry: { version: 1, projects: [PROJECT] },
     maps: new Map([[PROJECT, map]]),
     receipts: [receipt(WORKER, "aaaaaaaaaaaaaaaa"), receipt(GITHUB, "aaaaaaaaaaaaaaaa")],
     metadata: () => metadata,
@@ -188,12 +189,6 @@ describe("status", () => {
       "no-rotation-date",
       "no rotated date",
     ],
-    [
-      "a bad period",
-      { rotated: day("2026-11-09"), rotateEvery: "soon" },
-      "bad-rotation-period",
-      `rotate_every is "soon"`,
-    ],
     ["unreadable fields", null, "rotation-unreadable", "couldn't be read"],
   ])("%s", (_, rotation, kind, message) => {
     const problem = status(rotation).problems.find((p) => p.kind === kind);
@@ -219,7 +214,7 @@ describe("status", () => {
       },
     };
     const result = status(
-      { rotated: day("2026-11-09"), rotateEvery: null },
+      { rotated: day("2026-11-09"), rotateEvery: "365d" },
       { maps: new Map([[PROJECT, map]]) },
     );
     expect(result.problems.find((p) => p.kind === "bad-rotation-period")).toMatchObject({
@@ -322,7 +317,7 @@ describe("status", () => {
     const result = buildStatus({
       kinds: KINDS,
       vaults: VAULT_KINDS,
-      registry: { version: 1, projects: ["/work/a", "/work/b", "/work/c"], shared: [] },
+      registry: { version: 1, projects: ["/work/a", "/work/b", "/work/c"] },
       maps: new Map<string, MapResult>([
         ["/work/b", { ok: false, errors: ["/work/b/keypin.toml: missing field"] }],
         [

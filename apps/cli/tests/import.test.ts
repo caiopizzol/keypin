@@ -97,7 +97,7 @@ describe("keypin import", () => {
     expect(
       parsed.map.keys.map((k) => [
         k.name,
-        k.rotateEvery,
+        k.rotateEvery?.text,
         k.environments.dev ? formatReference(k.environments.dev.ref, vaults) : null,
       ]),
     ).toEqual([
@@ -248,7 +248,7 @@ describe("keypin import", () => {
     );
     const parsed = parseMap(written, MAP, destinations, issuers, vaults);
     assert(parsed.ok);
-    expect(parsed.map.keys.find((k) => k.name === "STRIPE_KEY")?.rotateEvery).toBe("30d");
+    expect(parsed.map.keys.find((k) => k.name === "STRIPE_KEY")?.rotateEvery?.text).toBe("30d");
     expect(squash(text())).toContain(
       `- STRIPE_KEY  skipped: already mapped in ${MAP}; left as it is, and it matches the vault`,
     );
@@ -570,7 +570,7 @@ describe("keypin import", () => {
     const parsed = parseMap(written, MAP, destinations, issuers, vaults);
     assert(parsed.ok, JSON.stringify(parsed));
     const stripe = parsed.map.keys.find((k) => k.name === "STRIPE_KEY");
-    expect(stripe?.rotateEvery).toBe("30d");
+    expect(stripe?.rotateEvery?.text).toBe("30d");
     expect(Object.keys(stripe?.environments ?? {}).sort()).toEqual(["dev", "prod"]);
     expect(text()).toContain("Map: add 1 key, and dev for STRIPE_KEY at the end of");
     expect(text()).not.toContain("by hand");
@@ -626,7 +626,7 @@ describe("keypin import", () => {
       const parsed = parseMap(written, MAP, destinations, issuers, vaults);
       assert(parsed.ok, JSON.stringify(parsed));
       const stripe = parsed.map.keys.find((k) => k.name === "STRIPE_KEY");
-      expect(stripe?.rotateEvery).toBe("30d");
+      expect(stripe?.rotateEvery?.text).toBe("30d");
       expect(stripe?.environments.dev && formatReference(stripe.environments.dev.ref, vaults)).toBe(
         "op://App Secrets/billing dev stripe/password",
       );

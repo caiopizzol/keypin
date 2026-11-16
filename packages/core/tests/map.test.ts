@@ -31,7 +31,7 @@ describe("a valid map", () => {
         keys: [
           {
             name: "SESSION_SECRET",
-            rotateEvery: "180d",
+            rotateEvery: { text: "180d", days: 180 },
             environments: {
               dev: {
                 ref: {
@@ -635,7 +635,10 @@ admin = "op://Private/shared cloudflare token admin/password"
       VAULT_KINDS,
     );
     assert(result.ok, JSON.stringify(result));
-    expect(result.map.keys[0]).toMatchObject({ name: "CLOUDFLARE_API_TOKEN", rotateEvery: "90d" });
+    expect(result.map.keys[0]).toMatchObject({
+      name: "CLOUDFLARE_API_TOKEN",
+      rotateEvery: { text: "90d", days: 90 },
+    });
     const ref: unknown = expect.objectContaining({ item: "site deploy token" });
     expect(result.map.keys[0]?.environments.prod).toEqual({ ref, publish: [] });
   });

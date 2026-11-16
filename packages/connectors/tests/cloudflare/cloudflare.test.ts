@@ -91,6 +91,7 @@ describe("checkAccount", () => {
     const { worker, requests } = destination(happyRoutes(), OTHER);
     const check = await worker.checkAccount();
     expect(check).toMatchObject({ expected: OTHER, destinationAccount: null, ok: false });
+    assert(!check.ok);
     expect(check.reason).toContain(ACCOUNT);
     await expect(worker.write("API_KEY", new Secret(SENTINEL))).rejects.toThrow(
       /checkAccount hasn't passed/,
@@ -104,6 +105,7 @@ describe("checkAccount", () => {
     const { worker, requests } = destination(routes);
     const check = await worker.checkAccount();
     expect(check).toMatchObject({ destinationAccount: null, ok: false });
+    assert(!check.ok);
     expect(check.reason).toContain(`no Worker ${WORKER}`);
     expect(check.fix).toContain("dispatch namespace");
     await expect(worker.write("API_KEY", new Secret(SENTINEL))).rejects.toThrow(/checkAccount/);
@@ -154,6 +156,7 @@ describe("checkAccount", () => {
     const { worker, requests } = destination(routes);
     const check = await worker.checkAccount();
     expect(check).toMatchObject({ destinationAccount: null, ok: false });
+    assert(!check.ok);
     expect(check.reason).toBe(
       `the login can't list its accounts or read the Worker ${WORKER} in account ${ACCOUNT}`,
     );

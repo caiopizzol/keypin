@@ -277,7 +277,7 @@ describe("diskFiles", () => {
     } finally {
       Reflect.set(handles, "sync", sync);
     }
-    expect(JSON.parse(await readFile(path, "utf8"))).toEqual(emptyState());
+    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ ...emptyState(), operations: [] });
   });
 
   test("a save whose rename fails leaves no temporary file", async () => {

@@ -442,7 +442,7 @@ async function checkDestination(
       publisher: result.publisher,
       reached: result.destinationAccount,
       ok: result.ok,
-      problem: result.ok ? null : (result.reason ?? "the account check failed"),
+      problem: result.ok ? null : result.reason,
       fix: result.ok ? null : (result.fix ?? null),
     };
   } catch (error) {

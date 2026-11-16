@@ -522,7 +522,7 @@ async function checkIssuer(
   inVault: string | null,
   current: Secret,
   out: Output,
-): Promise<IssuerCheck | null> {
+): Promise<Extract<IssuerCheck, { ok: true }> | null> {
   const where = issuer.describe();
   try {
     const check = await out.step(
@@ -530,11 +530,10 @@ async function checkIssuer(
       () => issuer.checkAccount(inVault, current),
       (result) => ({ ok: result.ok, text: `${where}  ${out.dim(result.facts)}` }),
     );
-    if (!check.ok) {
-      out.line(`    ${check.reason ?? "the check failed"}`);
-      if (check.fix) out.line(`    fix: ${check.fix}`);
-    }
-    return check.ok ? check : null;
+    if (check.ok) return check;
+    out.line(`    ${check.reason}`);
+    if (check.fix) out.line(`    fix: ${check.fix}`);
+    return null;
   } catch (error) {
     out.line(`    ${messageOf(error)}`);
     return null;

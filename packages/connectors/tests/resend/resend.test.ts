@@ -93,6 +93,7 @@ describe("checkAccount", () => {
     const { resend, requests } = issuer(happyRoutes());
     const check = await resend.checkAccount("key-elsewhere", VAULT);
     expect(check).toMatchObject({ ok: false });
+    assert(!check.ok);
     expect(check.reason).toContain("doesn't list key key-elsewhere");
     expect(check.reason).toContain("the admin key belongs to another team");
     await expect(resend.create("RESEND_API_KEY")).rejects.toThrow(/checkAccount hasn't passed/);
@@ -141,6 +142,7 @@ describe("checkAccount", () => {
     const { resend, requests } = issuer(routes);
     const check = await resend.checkAccount("key-old", VAULT);
     expect(check).toEqual({ ok: true, facts: "the admin key lists 1 API key, with key key-old" });
+    assert(check.ok);
     expect(check.gone).toBeUndefined();
     expect(requests.map((r) => r.headers.Authorization)).not.toContain(`Bearer ${VAULT.reveal()}`);
   });
@@ -170,8 +172,7 @@ describe("checkAccount", () => {
     const { resend } = issuer(routes);
     for (const currentId of [null, "key-elsewhere"]) {
       const check = await resend.checkAccount(currentId, VAULT);
-      expect(check.ok).toBe(false);
-      expect(check.gone).toBeUndefined();
+      assert(!check.ok);
       if (currentId === null)
         expect(check.reason).toBe(
           `the vault's key ${why}, so keypin can't tell which Resend team it belongs to`,
@@ -225,6 +226,7 @@ describe("checkAccount", () => {
     };
     const check = await issuer(routes).resend.checkAccount(null, VAULT);
     expect(check).toMatchObject({ ok: false, facts: "Resend answered HTTP 400 validation_error" });
+    assert(!check.ok);
     expect(check.reason).toContain("doesn't accept the admin key");
   });
 

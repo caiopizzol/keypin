@@ -26,19 +26,15 @@ import {
 } from "@keypin/core";
 import type { Deps, LockHolder } from "./deps";
 import { statePath } from "./paths";
-import { columns, confirm, type Output } from "./output";
+import { columns, count, type Output } from "./output";
 import { publisherFor } from "./publisher";
 import { approval } from "./sign-in";
-
-export const NEEDS_APPROVAL = 3;
 
 export interface Checked {
   target: PublishTarget;
   destination: Destination;
   check: AccountCheck;
 }
-
-export type Say = (text: string) => void;
 
 export async function locked(deps: Deps, body: (path: string) => Promise<number>): Promise<number> {
   const path = statePath(deps);
@@ -202,41 +198,6 @@ export function finishAll(state: State, owner: KeyOwner): State {
   return unfinishedOperations(state, owner).reduce((s, op) => finishOperation(s, op.id), state);
 }
 
-export function withoutPlan(args: readonly string[]): string[] {
-  const end = args.includes("--") ? args.indexOf("--") : args.length;
-  return [...args.slice(0, end).filter((arg) => arg !== "--plan"), ...args.slice(end)];
-}
-
-export function rerun(deps: Deps, command: string, args: readonly string[]): string {
-  return `To approve, run this in a terminal:\n  ${commandLine(deps, command, withoutPlan(args))}`;
-}
-
-export function commandLine(deps: Deps, command: string, args: readonly string[]): string {
-  const words = [...deps.self.command, command, ...args].map(shellWord).join(" ");
-  return `cd ${shellWord(deps.self.folder)} && ${words}`;
-}
-
-export function planOnly(
-  deps: Deps,
-  command: string,
-  args: readonly string[],
-  needsApproval: boolean,
-): number {
-  const say = (text: string) => deps.stderr.write(`${text}\n`);
-  say(
-    needsApproval
-      ? "\nThis plan needs approval in a terminal; --yes can't give it."
-      : "\nThis plan is routine: --yes can approve it.",
-  );
-  say("Nothing was written: --plan only shows the plan.");
-  say(rerun(deps, command, args));
-  return NEEDS_APPROVAL;
-}
-
-export function shellWord(word: string): string {
-  return /^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`;
-}
-
 function accountFacts(check: AccountCheck): string {
   return check.ok
     ? `as ${check.publisher}, account ${check.destinationAccount ?? check.expected}`
@@ -288,7 +249,7 @@ export function showRemoved(out: Output, removed: readonly RemovedDestination[])
 }
 
 export async function lookUpIds(refs: readonly KeyRef[], deps: Deps, out: Output) {
-  const items = `${refs.length} item ID${refs.length === 1 ? "" : "s"}`;
+  const items = count(refs.length, "item ID");
   const where = vaultAccounts(refs, deps.vaults);
   return out.step(
     `Looking up ${items} in ${where}, not the values`,
@@ -311,31 +272,4 @@ export function showPlan(out: Output, rows: readonly PlanRow[]): void {
     out.line(`  ${row.sign === "=" ? out.dim(text.trimEnd()) : `${text}${approval}`}`);
     if (row.detail !== null) out.line(`    ${out.dim(row.detail)}`);
   });
-}
-
-export async function confirmed(
-  deps: Deps,
-  request: {
-    yes: boolean;
-    args: string[];
-    command: string;
-    needsApproval: boolean;
-    question: string;
-  },
-  nothing = "Nothing was written.",
-): Promise<boolean> {
-  const say = (text: string) => deps.stderr.write(`${text}\n`);
-  if (request.yes && !request.needsApproval) return true;
-  if (deps.isTerminal) {
-    if (await confirm(deps, request.question)) return true;
-    say(`Not confirmed. ${nothing}`);
-    return false;
-  }
-  say(
-    request.needsApproval
-      ? `Stopped: this plan needs approval, and --yes can't give it. ${nothing}`
-      : `Stopped: no terminal to confirm on. ${nothing} Add --yes, or confirm in a terminal.`,
-  );
-  say(rerun(deps, request.command, request.args));
-  return false;
 }

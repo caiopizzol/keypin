@@ -36,23 +36,18 @@ import { type Deps, localDay, UsageError } from "../deps";
 import { confirm, type Output, output } from "../output";
 import { findMap, pickEnvironment } from "../project";
 import { approval } from "../sign-in";
+import { commandLine, confirmed, NEEDS_APPROVAL, planOnly, rerun, withoutPlan } from "../approval";
 import {
   type Checked,
   checkAccounts,
-  commandLine,
-  confirmed,
   type Label,
   labels,
   locked,
   lookUpIds,
-  NEEDS_APPROVAL,
   type PlanRow,
-  planOnly,
   publishRows,
-  rerun,
   showPlan,
   showRemoved,
-  withoutPlan,
   writeAll,
   writesFor,
 } from "../publishing";

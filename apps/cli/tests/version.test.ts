@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import root from "../../../package.json";
 import { cli, USAGE } from "../src/cli";
-import { NEEDS_APPROVAL } from "../src/publishing";
+import { NEEDS_APPROVAL } from "../src/approval";
 import { fakeDeps } from "./fakes";
 
 describe("keypin --version", () => {

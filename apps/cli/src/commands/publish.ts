@@ -23,20 +23,16 @@ import {
 import { type Deps, UsageError } from "../deps";
 import { findMap, pickEnvironment } from "../project";
 import { approval, signInFor } from "../sign-in";
-import { type Output, output } from "../output";
+import { confirmed, NEEDS_APPROVAL, planOnly, rerun } from "../approval";
+import { count, type Output, output } from "../output";
 import {
   type Checked,
   checkAccounts,
-  confirmed,
   finishAll,
   labels,
   locked,
   lookUpIds,
-  NEEDS_APPROVAL,
-  planOnly,
   publishRows,
-  rerun,
-  type Say,
   showPlan,
   showRemoved,
   type Write,
@@ -99,7 +95,7 @@ function parseRequest(args: string[]) {
   return { keyId, env: values.env, yes: values.yes, plan: values.plan };
 }
 
-function jobsFor(request: Request, map: KeysMap, say: Say): Job[] {
+function jobsFor(request: Request, map: KeysMap, say: (text: string) => void): Job[] {
   const { keyId, environment } = request;
   const job = (key: KeyEntry, entry: EnvEntry): Job => ({
     key,
@@ -338,8 +334,4 @@ function readValues(checks: Checks[], deps: Deps, out: Output): Promise<Read> {
       checks.map((job) => job.entry.ref),
     ),
   );
-}
-
-function count(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? "" : "s"}`;
 }

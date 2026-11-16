@@ -536,7 +536,7 @@ describe("keypin rotate", () => {
     expect(await run.run()).toBe(0);
     expect(run.issuer.log).toEqual([
       "check none",
-      "create RESEND_API_KEY prod 2026-11-09 -> key-1",
+      "create RESEND_API_KEY prod 2026-11-09 12:00:00 -> key-1",
     ]);
     expect(run.vault.values.get("mailer resend key")).toBe(NEW(1));
     expect(run.vault.rotated).toEqual(["2026-11-09"]);
@@ -548,7 +548,7 @@ describe("keypin rotate", () => {
     expect(await run.run()).toBe(1);
     expect(run.issuer.log).toEqual([
       "check none",
-      "create RESEND_API_KEY prod 2026-11-09 -> key-1",
+      "create RESEND_API_KEY prod 2026-11-09 12:00:00 -> key-1",
       "revoke key-1",
     ]);
     expect(run.writes()).toEqual([]);

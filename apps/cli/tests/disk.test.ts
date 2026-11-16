@@ -237,25 +237,25 @@ describe("diskFiles", () => {
     expect(await diskFiles.read(join(folder, "missing.toml"))).toBeNull();
   });
 
-  test("a write reaches the disk before it returns", async () => {
+  test("a save reaches the disk, both the file and its folder, before it returns", async () => {
     const probe = await open(join(folder, "probe"), "w");
     await probe.close();
     const handles: unknown = Object.getPrototypeOf(probe);
     assert(typeof handles === "object" && handles !== null);
     const sync: unknown = Reflect.get(handles, "sync");
     assert(typeof sync === "function");
-    let synced = 0;
-    Reflect.set(handles, "sync", function (this: FileHandle, ...args: unknown[]): unknown {
-      synced++;
-      const result: unknown = Reflect.apply(sync, this, args);
+    const synced: boolean[] = [];
+    Reflect.set(handles, "sync", async function (this: FileHandle, ...args: unknown[]) {
+      synced.push((await this.stat()).isDirectory());
+      const result: unknown = await Reflect.apply(sync, this, args);
       return result;
     });
     try {
-      await diskFiles.write(join(folder, "state.json"), "{}");
+      await saveState(diskFiles, join(folder, "state.json"), emptyState());
     } finally {
       Reflect.set(handles, "sync", sync);
     }
-    expect(synced).toBe(1);
+    expect(synced).toEqual([false, true]);
   });
 
   test("a save whose rename fails leaves no temporary file", async () => {

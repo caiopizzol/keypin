@@ -36,6 +36,12 @@ export const diskFiles: Files = {
   },
   async rename(from, to) {
     await rename(from, to);
+    const folder = await open(dirname(to), constants.O_RDONLY);
+    try {
+      await folder.sync();
+    } finally {
+      await folder.close();
+    }
   },
   async remove(path) {
     await rm(path, { force: true });

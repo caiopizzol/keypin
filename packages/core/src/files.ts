@@ -13,7 +13,9 @@ export async function writeJsonAtomic(files: Files, path: string, data: unknown)
     await files.write(temporary, `${JSON.stringify(data, null, 2)}\n`);
     await files.rename(temporary, path);
   } catch (error) {
-    await files.remove(temporary);
+    await files.remove(temporary).catch(() => {
+      throw error;
+    });
     throw error;
   }
 }

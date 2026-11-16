@@ -2,7 +2,7 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inspect } from "node:util";
-import { afterAll, afterEach, beforeAll, describe, expect, test } from "vite-plus/test";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "vite-plus/test";
 import { ghToken } from "../../src/github/index";
 
 const USER_TOKEN = "sentinel-user-token-5d1e";
@@ -37,6 +37,11 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await rm(bin, { recursive: true, force: true });
+});
+
+beforeEach(() => {
+  delete process.env.GH_TOKEN;
+  delete process.env.GITHUB_TOKEN;
 });
 
 afterEach(() => {

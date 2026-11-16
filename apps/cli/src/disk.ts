@@ -194,10 +194,7 @@ const LOCK_WAIT_MS = 2;
 
 async function takeOver(path: string, stale: LockHolder): Promise<LockHolder | null> {
   const guardPath = `${path}.takeover`;
-  if (!(await take(guardPath))) {
-    const guard = await holderAt(guardPath);
-    return guard.pid === null ? null : guard;
-  }
+  if (!(await take(guardPath))) return holderAt(guardPath);
   const guard = held(guardPath);
   try {
     const now = await holderAt(path);

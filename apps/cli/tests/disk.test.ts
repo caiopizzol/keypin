@@ -116,6 +116,15 @@ describe("diskLock", () => {
     });
   }, 5_000);
 
+  test("a takeover guard that names no process is reported once the retries run out", async () => {
+    const path = await leftLock(`${await deadPid()}\n`);
+    await writeFile(`${path}.takeover`, "");
+    expect(await diskLock(path)).toEqual({
+      held: false,
+      holder: { file: `${path}.takeover`, pid: null, running: null },
+    });
+  }, 5_000);
+
   test("closing the terminal while holding the lock removes it", async () => {
     const path = join(folder, "state", "state.json.lock");
     const child = Bun.spawn([process.execPath, HOLDER, path], { stdout: "pipe" });

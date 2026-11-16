@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { cli } from "../src/cli";
 import { diskFiles, listFolder } from "../src/disk";
@@ -17,6 +18,8 @@ import {
   unstyled,
   WEB_MAP,
 } from "./fakes";
+
+const HANGUP = fileURLToPath(new URL("run-hangup.ts", import.meta.url));
 
 const PROD_VALUE = "prod-value-that-run-never-reads";
 
@@ -278,6 +281,15 @@ prod = "op://Private/ci cloudflare token/credential"
     expect(launcher.kills).toEqual(["SIGINT"]);
     expect(launcher.listening).toBe(false);
   });
+
+  test("closing the terminal ends run even when the command ignores it", async () => {
+    const run = Bun.spawn([process.execPath, HANGUP], { stdout: "pipe", stderr: "pipe" });
+    await run.stdout.getReader().read();
+    const started = Date.now();
+    run.kill("SIGHUP");
+    expect(await run.exited).toBe(129);
+    expect(Date.now() - started).toBeLessThan(5_000);
+  }, 15_000);
 
   test("the vault's value wins over an existing variable, and keypin says so by name", async () => {
     const { deps, launcher, stderr } = setup({ env: { SESSION_SECRET: "old" } });

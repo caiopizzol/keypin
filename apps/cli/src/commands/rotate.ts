@@ -291,12 +291,6 @@ async function rotateLocked(job: Job): Promise<number> {
     say(
       `Stopped: keypin can't tell whether ${vault} saved the new key ${created.id}. Run this again, and keypin picks up from what ${vault} holds:\n  ${commandLine(deps, "rotate", job.args)}`,
     );
-    if (mayHold)
-      await saveState(deps.files, job.path, state).catch((error: unknown) =>
-        say(
-          `keypin couldn't update ${job.path}: ${messageOf(error)}. If the next run waits for an approval and ${vault} has no change pending, delete key ${created.id} at ${issuer.dashboard()}, then run this again.`,
-        ),
-      );
     return 1;
   }
   let ids: ItemIds;

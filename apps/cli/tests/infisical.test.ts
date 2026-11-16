@@ -205,6 +205,63 @@ describe("keypin with Infisical", () => {
     );
   });
 
+  describe("signed in with an access token", () => {
+    const TOKEN = "access-token-sentinel-6f2a";
+    const NO_CLIENT = {
+      INFISICAL_UNIVERSAL_AUTH_CLIENT_ID: "",
+      INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET: "",
+    };
+
+    test("run reads with it, and the command never sees any Infisical token", async () => {
+      const run = project({
+        env: { ...NO_CLIENT, INFISICAL_TOKEN: TOKEN, INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN: "" },
+        infisical: { ...INFISICAL, accessToken: TOKEN },
+      });
+      expect(await cli(["run", "--", "env"], run.deps)).toBe(0);
+      expect(run.launcher.launches[0]?.env).toEqual({ PATH: "/usr/bin", STRIPE_API_KEY: SENTINEL });
+    });
+
+    test("check says which sign-in it used", async () => {
+      const token = project({
+        env: { ...NO_CLIENT, INFISICAL_TOKEN: TOKEN },
+        infisical: { ...INFISICAL, accessToken: TOKEN },
+      });
+      expect(await cli(["check"], token.deps)).toBe(0);
+      expect(token.stdout.text).toContain(
+        "Note: keypin signs in to Infisical with the access token in INFISICAL_TOKEN\n",
+      );
+      const both = project({ env: { INFISICAL_TOKEN: TOKEN } });
+      expect(await cli(["check"], both.deps)).toBe(0);
+      expect(both.stdout.text).toContain(
+        "Note: keypin signs in to Infisical with the Universal Auth client ID and secret, not INFISICAL_TOKEN\n",
+      );
+      expect(token.stdout.text + both.stdout.text).not.toContain(TOKEN);
+    });
+
+    test("a user's token is one sign-in step asking for a machine identity's", async () => {
+      const run = project({
+        env: { ...NO_CLIENT, INFISICAL_TOKEN: TOKEN },
+        infisical: { ...INFISICAL, userToken: TOKEN },
+      });
+      expect(await cli(["check"], run.deps)).toBe(1);
+      expect(run.stdout.text).toContain(
+        "the access token in INFISICAL_TOKEN isn't a machine identity's; use a machine identity's access token",
+      );
+      expect(run.stdout.text.split("Sign in to Infisical")).toHaveLength(2);
+      expect(run.stdout.text).toContain("Check INFISICAL_TOKEN and the url under [infisical]");
+    });
+
+    test.each(["INFISICAL_TOKEN", "INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN"])(
+      "a key named %s is refused",
+      async (name) => {
+        const map = `${MAP}\n[keys.${name}]\nrotate_every = "never"\ndev = "infisical://billing/dev/STRIPE_API_KEY"\n`;
+        const run = project({ map });
+        expect(await cli(["run", "--", "env"], run.deps)).toBe(1);
+        expect(run.stderr.text).toContain(`keypin.toml maps ${name}, which keypin uses to sign in`);
+      },
+    );
+  });
+
   test("status reads the rotated date from the secret's metadata", async () => {
     const run = project();
     expect(await cli(["status", "--json"], run.deps)).toBe(1);

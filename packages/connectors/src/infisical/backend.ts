@@ -24,12 +24,13 @@ import {
 
 export const CLIENT_ID = "INFISICAL_UNIVERSAL_AUTH_CLIENT_ID";
 export const CLIENT_SECRET = "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET";
+export const ACCESS_TOKENS = ["INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN", "INFISICAL_TOKEN"];
+export const NO_CREDENTIALS = `set ${CLIENT_ID} and ${CLIENT_SECRET} to a machine identity's Universal Auth client ID and secret, or ${ACCESS_TOKENS.join(" or ")} to a machine identity's access token`;
 const ROTATED = "rotated";
 
-export interface Credentials {
-  clientId: string;
-  clientSecret: string;
-}
+export type Credentials =
+  | { clientId: string; clientSecret: string }
+  | { token: string; variable: string };
 
 type Json = Record<string, unknown>;
 
@@ -45,7 +46,10 @@ export function credentialsFrom(
 ): Credentials | null {
   const clientId = env[CLIENT_ID] ?? "";
   const clientSecret = env[CLIENT_SECRET] ?? "";
-  return clientId && clientSecret ? { clientId, clientSecret } : null;
+  if (clientId && clientSecret) return { clientId, clientSecret };
+  const variable = ACCESS_TOKENS.find((name) => env[name]);
+  const token = variable === undefined ? undefined : env[variable];
+  return variable && token ? { token, variable } : null;
 }
 
 export function infisicalBackend(
@@ -76,17 +80,18 @@ export function infisicalBackend(
   async function signIn(place: Place): Promise<Session> {
     const where = account(place);
     if (!credentials)
-      throw new SignInFailed(
-        `${where}: sign-in failed: set ${CLIENT_ID} and ${CLIENT_SECRET} to a machine identity's Universal Auth client ID and secret`,
-        { kind: "no-credentials" },
-      );
-    const login = await request(place, "POST", "/api/v1/auth/universal-auth/login", {
-      body: { clientId: credentials.clientId, clientSecret: credentials.clientSecret },
-    });
-    const token = login.body.accessToken;
-    if (login.status !== 200 || typeof token !== "string")
-      throw new SignInFailed(`${where}: sign-in failed: ${problem(login)}`, { kind: "other" });
+      throw new SignInFailed(`${where}: sign-in failed: ${NO_CREDENTIALS}`, {
+        kind: "no-credentials",
+      });
+    const token = await accessToken(place, credentials);
     const details = await request(place, "GET", "/api/v1/identities/details", { token });
+    if ("variable" in credentials && (details.status === 401 || details.status === 403))
+      throw new SignInFailed(
+        details.status === 401
+          ? `${where}: sign-in failed: Infisical refused the access token in ${credentials.variable} (HTTP 401); it may have expired, so get a new one`
+          : `${where}: sign-in failed: the access token in ${credentials.variable} isn't a machine identity's; use a machine identity's access token`,
+        { kind: "other" },
+      );
     const identity = details.body.identityDetails;
     const organization =
       isRecord(identity) && isRecord(identity.organization) ? identity.organization.slug : null;
@@ -101,6 +106,19 @@ export function infisicalBackend(
         { kind: "wrong-account", pinned: place.organization, actual: organization },
       );
     return { token, projects: new Map() };
+  }
+
+  async function accessToken(place: Place, given: Credentials): Promise<string> {
+    if ("token" in given) return given.token;
+    const login = await request(place, "POST", "/api/v1/auth/universal-auth/login", {
+      body: { clientId: given.clientId, clientSecret: given.clientSecret },
+    });
+    const token = login.body.accessToken;
+    if (login.status !== 200 || typeof token !== "string")
+      throw new SignInFailed(`${account(place)}: sign-in failed: ${problem(login)}`, {
+        kind: "other",
+      });
+    return token;
   }
 
   function session(place: Place): Promise<Session> {

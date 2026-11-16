@@ -33,6 +33,19 @@ describe("the leak check", () => {
     expect(values).not.toContain("3000");
   });
 
+  test("knows either Infisical access token", () => {
+    const values = valuesOf({
+      ...ready,
+      env: {
+        INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN: "universal-access-token-sentinel",
+        INFISICAL_TOKEN: "infisical-token-sentinel",
+      },
+    });
+    expect(values).toEqual(
+      expect.arrayContaining(["universal-access-token-sentinel", "infisical-token-sentinel"]),
+    );
+  });
+
   test(
     "flags a run that prints a quoted .env value",
     async () => {
@@ -296,6 +309,25 @@ describe("keypin in a real terminal", () => {
         expect(result.screen).not.toContain("1Password");
         clean(result);
       }
+    },
+    SLOW,
+  );
+
+  test(
+    "with an Infisical access token, check names it and run's command never sees it",
+    async () => {
+      const check = await drive({ scenario: "infisical-token", args: ["check"] });
+      expect(check.exit).toBe(0);
+      expect(check.screen).toContain(
+        "Note: keypin signs in to Infisical with the access token in INFISICAL_TOKEN",
+      );
+      const run = await drive({
+        scenario: "infisical-token",
+        args: ["run", "--", "sh", "-c", "env | grep -c INFISICAL || true"],
+      });
+      expect(run.exit).toBe(0);
+      expect(run.screen).toMatch(/^0$/m);
+      for (const result of [check, run]) clean(result);
     },
     SLOW,
   );

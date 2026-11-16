@@ -182,7 +182,8 @@ async function build(
       `a destination's discovery reports ${taken.join(", ")}, which keypin check owns`,
     );
   const report: Report = { ...head, ...scanned.report, ...tail };
-  for (const vault of deps.vaults) report.notes.push(...(vault.signInNotes?.({ signIn }) ?? []));
+  for (const vault of deps.vaults)
+    report.notes.push(...(vault.signInNotes?.({ signIn, env: deps.env }) ?? []));
   const targets = new Map<string, PublishTarget>();
   const items = new Map<string, CheckedItem>();
   const kinds = new Map<string, KeyRef["kind"]>();
@@ -257,7 +258,7 @@ async function build(
 
   const refs = distinctRefs(entries.map(({ entry }) => entry.ref));
   for (const vault of deps.vaults)
-    report.notes.push(...(vault.itemNotes?.(refs, { signIn }) ?? []));
+    report.notes.push(...(vault.itemNotes?.(refs, { signIn, env: deps.env }) ?? []));
   report.notes.push(ITEM_NOTE);
   const lookup = `${count(refs.length, "item")} in ${vaultAccounts(refs, deps.vaults)}, not the values`;
   await out.step(
@@ -401,7 +402,7 @@ async function prerequisites(
     const own = [...items].filter(([key]) => kinds.get(key) === vault.kind);
     const failures = own.flatMap(([, item]) => (item.signIn ? [item.signIn] : []));
     const use = { items: own.length, allItems: items.size, failures };
-    if (vault.prerequisites) add(vault.kind, vault.prerequisites(use, { signIn }));
+    if (vault.prerequisites) add(vault.kind, vault.prerequisites(use, { signIn, env: deps.env }));
   }
   return list;
 }

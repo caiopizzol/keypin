@@ -78,7 +78,7 @@ export interface Deps {
   launch: Launch;
   onSignals: OnSignals;
   destinations: readonly DestinationKind<PublishTarget, Publisher, Deps>[];
-  vaults: readonly VaultKind<{ readonly signIn: SignIn | null }>[];
+  vaults: readonly VaultKind<VaultHost>[];
   destination(target: PublishTarget, publisher: Publisher): Destination;
   issuers: IssuerKinds;
   issuer(spec: IssuerSpec, admin: Secret): Issuer;
@@ -89,6 +89,11 @@ export interface Deps {
   styled: { stdout: boolean; stderr: boolean };
   columns: () => number;
   ask(question: string): Promise<string>;
+}
+
+export interface VaultHost {
+  readonly signIn: SignIn | null;
+  readonly env: Readonly<Record<string, string | undefined>>;
 }
 
 export interface Publisher {

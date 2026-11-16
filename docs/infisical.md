@@ -30,7 +30,14 @@ keypin can read keys from [Infisical](https://infisical.com) instead of 1Passwor
    export INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET=...
    ```
 
-keypin never passes either variable to the command `keypin run` starts. Before it reads, keypin checks that the
+   For another auth method, such as Kubernetes or AWS, set an access token from `infisical login` instead. keypin
+   uses the client ID and secret when both are set:
+
+   ```sh
+   export INFISICAL_TOKEN=$(infisical login --method=<method> ... --silent --plain)
+   ```
+
+keypin never passes these variables to the command `keypin run` starts. Before it reads, keypin checks that the
 identity belongs to the pinned organization and refuses another.
 
 For `keypin status`, add a `rotated` entry to each secret's metadata with the day the value last changed, as

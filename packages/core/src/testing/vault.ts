@@ -1,5 +1,12 @@
 import { expect, test } from "vite-plus/test";
-import { HeldForApproval, type KeyRef, type VaultBackend, type VaultScope } from "../contracts";
+import {
+  HeldForApproval,
+  type KeyRef,
+  SignInFailed,
+  type VaultBackend,
+  type VaultScope,
+  WriteRefused,
+} from "../contracts";
 import { Secret } from "../secret";
 import { caught, expectNoSentinel, SENTINEL } from "./leaks";
 
@@ -9,6 +16,8 @@ export interface VaultSubject {
   scope: VaultScope;
   effects: readonly string[];
   hold?: () => void;
+  refuseWrites?: () => void;
+  failSignIn?: () => void;
 }
 
 type Make = (sentinel: string) => VaultSubject | Promise<VaultSubject>;
@@ -47,5 +56,28 @@ export function vaultContract(make: Make): void {
     expect(held).toBeInstanceOf(HeldForApproval);
     expect((await vault.read(ref)).equals(new Secret(SENTINEL))).toBe(true);
     expectNoSentinel(held, effects);
+  });
+
+  test("a write the vault refuses is a WriteRefused, and the value stays", async (context) => {
+    const { vault, ref, effects, refuseWrites } = await make(SENTINEL);
+    if (!refuseWrites) return context.skip();
+    refuseWrites();
+    const refused = await caught(vault.write(ref, new Secret(`${SENTINEL}-refused`)));
+    expect(refused).toBeInstanceOf(WriteRefused);
+    expect(effects).toEqual([]);
+    expect((await vault.read(ref)).equals(new Secret(SENTINEL))).toBe(true);
+    expectNoSentinel(refused);
+  });
+
+  test("a sign-in that fails is a SignInFailed, for reads and writes", async (context) => {
+    const { vault, ref, effects, failSignIn } = await make(SENTINEL);
+    if (!failSignIn) return context.skip();
+    failSignIn();
+    const read = await caught(vault.read(ref));
+    const write = await caught(vault.write(ref, new Secret(`${SENTINEL}-2`)));
+    expect(read).toBeInstanceOf(SignInFailed);
+    expect(write).toBeInstanceOf(SignInFailed);
+    expect(effects).toEqual([]);
+    expectNoSentinel(read, write);
   });
 }

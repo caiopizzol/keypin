@@ -14,15 +14,31 @@ export function periodDays(period: string | null | undefined): number | null | u
   return count * unit;
 }
 
-export function isDay(value: string): boolean {
+export type Day = string & { readonly day: unique symbol };
+
+function isDay(value: string): value is Day {
   const match = DAY.exec(value);
   if (!match) return false;
   const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
   return date.toISOString().slice(0, 10) === value;
 }
 
-export function addDays(day: string, days: number): string {
+export function parseDay(value: string): Day | null {
+  return isDay(value) ? value : null;
+}
+
+export function localDay(date: Date): Day {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return dayOf(`${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`);
+}
+
+export function addDays(day: Day, days: number): Day {
   const date = new Date(`${day}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
+  return dayOf(date.toISOString().slice(0, 10));
+}
+
+function dayOf(value: string): Day {
+  if (!isDay(value)) throw new Error(`"${value}" isn't a day`);
+  return value;
 }

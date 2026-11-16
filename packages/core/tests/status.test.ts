@@ -9,13 +9,14 @@ import {
   type StatusInput,
   type VaultMetadata,
 } from "../src/index";
+import { day } from "../src/testing/day";
 import { GITHUB, KEY, KINDS, receipt, VAULT_KINDS, WORKER } from "./fixtures";
 
-const TODAY = "2026-11-09";
+const TODAY = day("2026-11-09");
 const PROJECT = "/work/billing";
 
 interface Rotation {
-  rotated: string | null;
+  rotated: ReturnType<typeof day> | null;
   rotateEvery: string | null;
 }
 
@@ -52,7 +53,7 @@ const RESEND = (admin: KeyRef) => ({
 const kinds = (result: ReturnType<typeof buildStatus>) => result.problems.map((p) => p.kind);
 
 describe("receipts in status follow the destination, like publish", () => {
-  const rotation = { rotated: "2026-11-01", rotateEvery: "365d" };
+  const rotation = { rotated: day("2026-11-01"), rotateEvery: "365d" };
 
   test("another key's receipt from the same item counts, so no receipt goes missing for good", () => {
     const fromTwin = (id: string) => receipt(id, "bbbbbbbbbbbbbbbb", { keyId: "billing-twin" });
@@ -120,8 +121,8 @@ describe("rotation periods and dates", () => {
   });
 
   test("addDays crosses months and years", () => {
-    expect(addDays("2026-11-09", 180)).toBe("2027-05-08");
-    expect(addDays("2024-02-28", 1)).toBe("2024-02-29");
+    expect(addDays(day("2026-11-09"), 180)).toBe("2027-05-08");
+    expect(addDays(day("2024-02-28"), 1)).toBe("2024-02-29");
   });
 });
 
@@ -144,14 +145,14 @@ describe("status", () => {
   });
 
   test("nothing due and every destination published: nothing to report", () => {
-    const result = status({ rotated: "2026-11-09", rotateEvery: "365d" });
+    const result = status({ rotated: day("2026-11-09"), rotateEvery: "365d" });
     expect(result.problems).toEqual([]);
     expect(result.rows).toEqual([
       expect.objectContaining({
         project: PROJECT,
         keyId: KEY.name,
         environment: "prod",
-        rotated: "2026-11-09",
+        rotated: day("2026-11-09"),
         due: "2027-11-09",
         issuer: null,
         destinations: [
@@ -165,19 +166,19 @@ describe("status", () => {
   test.each<[string, Rotation | null, ProblemKind, string]>([
     [
       "overdue",
-      { rotated: "2025-01-01", rotateEvery: "90d" },
+      { rotated: day("2025-01-01"), rotateEvery: "90d" },
       "overdue",
       "was due 2025-04-01 (rotated 2025-01-01, every 90d)",
     ],
     [
       "due within 14 days",
-      { rotated: "2026-08-14", rotateEvery: "90d" },
+      { rotated: day("2026-08-14"), rotateEvery: "90d" },
       "due-soon",
       "is due 2026-11-12",
     ],
     [
       "due in exactly 14 days",
-      { rotated: "2026-08-25", rotateEvery: "90d" },
+      { rotated: day("2026-08-25"), rotateEvery: "90d" },
       "due-soon",
       "is due 2026-11-23",
     ],
@@ -188,14 +189,8 @@ describe("status", () => {
       "no rotated date",
     ],
     [
-      "a rotation date that isn't a day",
-      { rotated: "2026-02-30", rotateEvery: "90d" },
-      "no-rotation-date",
-      `rotated "2026-02-30" isn't YYYY-MM-DD`,
-    ],
-    [
       "a bad period",
-      { rotated: "2026-11-09", rotateEvery: "soon" },
+      { rotated: day("2026-11-09"), rotateEvery: "soon" },
       "bad-rotation-period",
       `rotate_every is "soon"`,
     ],
@@ -207,8 +202,8 @@ describe("status", () => {
   });
 
   test("due in 15 days is not due soon, and never is never due", () => {
-    expect(kinds(status({ rotated: "2026-08-26", rotateEvery: "90d" }))).toEqual([]);
-    const never = status({ rotated: "2020-01-01", rotateEvery: "never" });
+    expect(kinds(status({ rotated: day("2026-08-26"), rotateEvery: "90d" }))).toEqual([]);
+    const never = status({ rotated: day("2020-01-01"), rotateEvery: "never" });
     expect(kinds(never)).toEqual([]);
     expect(never.rows[0]?.due).toBeNull();
   });
@@ -224,7 +219,7 @@ describe("status", () => {
       },
     };
     const result = status(
-      { rotated: "2026-11-09", rotateEvery: null },
+      { rotated: day("2026-11-09"), rotateEvery: null },
       { maps: new Map([[PROJECT, map]]) },
     );
     expect(result.problems.find((p) => p.kind === "bad-rotation-period")).toMatchObject({
@@ -234,7 +229,7 @@ describe("status", () => {
   });
 
   test("a key never published is one notice that names the publish command", () => {
-    const result = status({ rotated: "2026-11-09", rotateEvery: "365d" }, { receipts: [] });
+    const result = status({ rotated: day("2026-11-09"), rotateEvery: "365d" }, { receipts: [] });
     expect(result.problems).toEqual([
       expect.objectContaining({
         kind: "never-published",
@@ -257,7 +252,7 @@ describe("status", () => {
       },
     };
     const result = status(
-      { rotated: "2026-11-09", rotateEvery: "365d" },
+      { rotated: day("2026-11-09"), rotateEvery: "365d" },
       { receipts: [], maps: new Map([[PROJECT, map]]) },
     );
     expect(result.problems.map((p) => p.message)).toEqual([
@@ -267,7 +262,7 @@ describe("status", () => {
 
   test("a destination missing a receipt when the key was published elsewhere is a problem", () => {
     const result = status(
-      { rotated: "2026-11-09", rotateEvery: "365d" },
+      { rotated: day("2026-11-09"), rotateEvery: "365d" },
       { receipts: [receipt(WORKER, "aaaaaaaaaaaaaaaa")] },
     );
     expect(result.problems).toEqual([
@@ -291,7 +286,7 @@ describe("status", () => {
       field: "password",
     } as const;
     const result = status(
-      { rotated: "2026-11-09", rotateEvery: "365d" },
+      { rotated: day("2026-11-09"), rotateEvery: "365d" },
       {
         receipts: [
           receipt(WORKER, "bbbbbbbbbbbbbbbb", { mapFile: "/work/web/keypin.toml", source: other }),
@@ -311,7 +306,7 @@ describe("status", () => {
   test("a stale receipt, when the caller knows the current generation", () => {
     const receipts = [receipt(WORKER, "aaaaaaaaaaaaaaaa"), receipt(GITHUB, "bbbbbbbbbbbbbbbb")];
     const result = status(
-      { rotated: "2026-11-09", rotateEvery: "365d" },
+      { rotated: day("2026-11-09"), rotateEvery: "365d" },
       { receipts, generation: () => "aaaaaaaaaaaaaaaa" },
     );
     expect(result.problems.filter((p) => p.kind === "stale-receipt")).toEqual([
@@ -353,11 +348,5 @@ describe("status", () => {
       ["no-keys", "/work/c"],
     ]);
     expect(result.problems.every((p) => p.severity === "problem")).toBe(true);
-  });
-
-  test("today must be a day", () => {
-    expect(() => status(null, { today: "11/09/2026" })).toThrow(
-      'today must be YYYY-MM-DD, got "11/09/2026"',
-    );
   });
 });

@@ -7,8 +7,10 @@ import type {
   VaultScope,
 } from "@keypin/core";
 import {
-  isDay,
+  type Day,
+  localDay,
   messageOf,
+  parseDay,
   Secret,
   SignInFailed,
   type SignInReason,
@@ -30,7 +32,6 @@ const VALUE_FIELD = "password";
 const ROTATED = "rotated";
 const NOTES = "notesPlain";
 
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const UNIX_SECONDS = /^\d+$/;
 
 type Listed = { id: string; title: string };
@@ -181,11 +182,6 @@ export function onePasswordBackend(
       if (secret.reveal() === "")
         throw new Error(`${where(ref)}: keypin won't save an empty value`);
       const rotated = options.rotated;
-      if (rotated !== undefined && !isDay(rotated)) {
-        throw new Error(
-          `${where(ref)}: rotated must be a real day as YYYY-MM-DD, got "${rotated}"`,
-        );
-      }
       const sdk = await client(ref.account);
       const id = await vaultId(sdk, ref);
       itemsIn(sdk).delete(id);
@@ -323,7 +319,7 @@ function withValue(
   item: FullItem,
   ref: OnePasswordRef,
   secret: Secret,
-  rotated: string | undefined,
+  rotated: Day | undefined,
 ): FullItem {
   const fields = [...item.fields];
   const notes = isNotes(item, ref);
@@ -349,7 +345,7 @@ function passwordField(secret: Secret): Field {
   };
 }
 
-function rotatedField(day: string): Field {
+function rotatedField(day: Day): Field {
   return { id: ROTATED, title: ROTATED, fieldType: "Date", value: day };
 }
 
@@ -362,13 +358,10 @@ function plainField(fields: Field[], title: string, ref: OnePasswordRef): string
   return field.value === "" ? null : field.value;
 }
 
-function toDay(value: string, ref: OnePasswordRef): string {
-  if (DAY.test(value)) return value;
-  if (UNIX_SECONDS.test(value)) {
-    const date = new Date(Number(value) * 1000);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-  }
+function toDay(value: string, ref: OnePasswordRef): Day {
+  if (UNIX_SECONDS.test(value)) return localDay(new Date(Number(value) * 1000));
+  const day = parseDay(value);
+  if (day) return day;
   throw new Error(`${where(ref)}: "${ROTATED}" isn't a date: "${value}"`);
 }
 

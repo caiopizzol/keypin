@@ -15,6 +15,7 @@ import {
   type ItemIds,
   type KeyEntry,
   type KeyOwner,
+  localDay,
   loadState,
   messageOf,
   NothingChanged,
@@ -32,7 +33,7 @@ import {
   vaultAccounts,
   vaultName,
 } from "@keypin/core";
-import { type Deps, localDay, UsageError } from "../deps";
+import { type Deps, UsageError } from "../deps";
 import { confirm, type Output, output } from "../output";
 import { findMap, pickEnvironment } from "../project";
 import { approval } from "../sign-in";

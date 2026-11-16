@@ -1,5 +1,6 @@
 import { assert, describe, expect, test } from "vite-plus/test";
 import { type Fetch, isRecord, Secret, SignInFailed } from "@keypin/core";
+import { day } from "@keypin/core/testing";
 import { credentialsFrom, infisicalBackend, type InfisicalRef } from "../../src/infisical/index";
 import {
   type FakeInfisical,
@@ -422,7 +423,7 @@ describe("writing", () => {
       },
     });
     await infisicalBackend(CREDENTIALS, fake.fetch).write(REF, new Secret("new-value-1234"), {
-      rotated: "2026-11-14",
+      rotated: day("2026-11-14"),
     });
     const patch = fake.calls.find((c) => c.method === "PATCH");
     expect(patch?.body).toEqual({
@@ -446,7 +447,7 @@ describe("writing", () => {
     const vault = infisicalBackend(CREDENTIALS, fake.fetch);
     await vault.write({ ...REF, name: "RESEND_KEY" }, new Secret("resend-value-99"), {
       newItem: true,
-      rotated: "2026-11-14",
+      rotated: day("2026-11-14"),
     });
     expect(fake.calls.at(-1)).toMatchObject({ method: "POST", path: "/api/v4/secrets/RESEND_KEY" });
     expect(fake.saved("RESEND_KEY")).toMatchObject({ rotated: "2026-11-14" });
@@ -467,10 +468,10 @@ describe("writing", () => {
       },
     });
     const vault = infisicalBackend(CREDENTIALS, fake.fetch);
-    await vault.write(REF, new Secret("new-value-1234"), { rotated: "2026-11-14" });
+    await vault.write(REF, new Secret("new-value-1234"), { rotated: day("2026-11-14") });
     await vault.write({ ...REF, name: "RESEND_KEY" }, new Secret("resend-value-99"), {
       newItem: true,
-      rotated: "2026-11-14",
+      rotated: day("2026-11-14"),
     });
     expect(fake.saved("STRIPE_KEY")).toMatchObject({ rotated: "2026-11-14" });
     expect(fake.saved("RESEND_KEY")).toMatchObject({ rotated: "2026-11-14" });
@@ -564,16 +565,6 @@ describe("writing", () => {
     });
     const vault = infisicalBackend(CREDENTIALS, fake.fetch);
     expect((await vault.read(REF)).equals(new Secret(`a-${SENTINEL}`))).toBe(true);
-  });
-
-  test("a bad rotated day is refused before any request", async () => {
-    const fake = fakeInfisical();
-    await expect(
-      infisicalBackend(CREDENTIALS, fake.fetch).write(REF, new Secret("v"), {
-        rotated: "2026-02-30",
-      }),
-    ).rejects.toThrow(`rotated must be a real day as YYYY-MM-DD, got "2026-02-30"`);
-    expect(fake.calls).toEqual([]);
   });
 });
 

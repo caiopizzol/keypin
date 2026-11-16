@@ -8,7 +8,6 @@ import {
   type PublishTarget,
   Secret,
   type VaultBackend,
-  type VaultMetadata,
   WriteRefused,
 } from "@keypin/core";
 import {
@@ -18,6 +17,7 @@ import {
 } from "@keypin/connectors/onepassword";
 import { infisicalRef } from "@keypin/connectors/infisical";
 import { fakeSignIn } from "@keypin/connectors/cloudflare/testing";
+import { day } from "@keypin/core/testing";
 import type { Deps, FolderEntry, Launch, Lock } from "../src/deps";
 import { destinations, issuers, vaults } from "../src/start";
 
@@ -59,7 +59,7 @@ export function memoryFiles(initial: Record<string, string> = {}) {
 
 export interface FakeVaultOptions {
   values?: Record<string, string>;
-  metadata?: Record<string, VaultMetadata>;
+  metadata?: Record<string, { rotated: string | null }>;
   failing?: string[];
   items?: string[];
   ids?: Record<string, string>;
@@ -139,7 +139,8 @@ export function fakeVault(options: FakeVaultOptions = {}) {
       const ref = own(given);
       calls.push(`metadata ${ref.item}`);
       fail(ref);
-      return options.metadata?.[ref.item] ?? { rotated: null };
+      const rotated = options.metadata?.[ref.item]?.rotated ?? null;
+      return { rotated: rotated === null ? null : day(rotated) };
     },
   };
   return { vault, calls, created };

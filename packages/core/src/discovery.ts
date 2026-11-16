@@ -63,6 +63,7 @@ export interface MapView {
 export interface Needs {
   readonly needs: readonly FoundNeed[];
   readonly notes: readonly string[];
+  readonly problems?: readonly string[];
   readonly notesAfter?: (found: readonly { name: string; place: string }[]) => readonly string[];
 }
 

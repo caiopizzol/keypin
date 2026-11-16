@@ -3,10 +3,28 @@ import { parse as parseJsonc, type ParseError } from "jsonc-parser";
 import { parse as parseToml } from "smol-toml";
 
 export const WRANGLER_FILES: readonly string[] = [
-  "wrangler.toml",
   "wrangler.json",
   "wrangler.jsonc",
+  "wrangler.toml",
 ];
+
+export function configsWranglerUses(found: readonly string[]): {
+  used: string[];
+  ignored: { config: string; used: string }[];
+} {
+  const cut = (path: string) => Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1;
+  const rank = (path: string) => WRANGLER_FILES.indexOf(path.slice(cut(path)));
+  const folder = (path: string) => path.slice(0, cut(path));
+  const used = found.filter(
+    (config) =>
+      !found.some((other) => folder(other) === folder(config) && rank(other) < rank(config)),
+  );
+  const ignored = found.flatMap((config) => {
+    const winner = used.find((u) => folder(u) === folder(config));
+    return winner === undefined || winner === config ? [] : [{ config, used: winner }];
+  });
+  return { used, ignored };
+}
 
 export interface WorkerDeclaration {
   config: string;
@@ -52,9 +70,11 @@ export function wranglerWorkers(
   text: string,
   config: string,
   calledElsewhere: ReadonlySet<string> = new Set(),
-): { ok: true; workers: WorkerDeclaration[]; skipped: string[] } | { ok: false } {
+): { ok: true; workers: WorkerDeclaration[]; skipped: string[]; pages: boolean } | { ok: false } {
   const data = parseConfig(text, config);
   if (!data) return { ok: false };
+  if (data.pages_build_output_dir !== undefined)
+    return { ok: true, workers: [], skipped: [], pages: true };
   const topName = stringOf(data.name);
   const topAccount = stringOf(data.account_id);
   const workers = [declaration(config, null, data, topName, topAccount)];
@@ -67,7 +87,7 @@ export function wranglerWorkers(
     if (localOnly(data, raw, name, called)) skipped.push(env);
     else workers.push(declaration(config, env, raw, name, stringOf(raw.account_id) ?? topAccount));
   }
-  return { ok: true, workers, skipped };
+  return { ok: true, workers, skipped, pages: false };
 }
 
 function calledWorkers(tables: readonly unknown[]): Set<string> {

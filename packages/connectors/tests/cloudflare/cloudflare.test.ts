@@ -105,6 +105,7 @@ describe("checkAccount", () => {
     const check = await worker.checkAccount();
     expect(check).toMatchObject({ destinationAccount: null, ok: false });
     expect(check.reason).toContain(`no Worker ${WORKER}`);
+    expect(check.fix).toContain("dispatch namespace");
     await expect(worker.write("API_KEY", new Secret(SENTINEL))).rejects.toThrow(/checkAccount/);
     expect(requests.some((r) => r.method === "PUT")).toBe(false);
   });
@@ -201,6 +202,48 @@ describe("write", () => {
     await worker.checkAccount();
     const evidence = await worker.write("NEW_KEY", new Secret(SENTINEL));
     expect(evidence).toMatchObject({ secret: "NEW_KEY", versionId: "v-new" });
+  });
+});
+
+describe("writeMany", () => {
+  test("PATCHes secrets-bulk once, so the keys land in one version", async () => {
+    const routes = happyRoutes();
+    routes[`PATCH ${BASE}/secrets-bulk`] = ok({});
+    const { worker, requests } = destination(routes);
+    await worker.checkAccount();
+    const evidence = await worker.writeMany([
+      { name: "API_KEY", secret: new Secret(SENTINEL) },
+      { name: "OTHER_KEY", secret: new Secret(`${SENTINEL}-2`) },
+    ]);
+    const writes = requests.filter((r) => r.method !== "GET");
+    expect(writes.map((r) => `${r.method} ${r.path}`)).toEqual([`PATCH ${BASE}/secrets-bulk`]);
+    expect(writes[0]?.headers["Content-Type"]).toBe("application/merge-patch+json");
+    expect(JSON.parse(writes[0]?.body ?? "")).toEqual({
+      secrets: {
+        API_KEY: { name: "API_KEY", text: SENTINEL, type: "secret_text" },
+        OTHER_KEY: { name: "OTHER_KEY", text: `${SENTINEL}-2`, type: "secret_text" },
+      },
+    });
+    expect(evidence).toMatchObject({ secret: "API_KEY, OTHER_KEY", versionId: "v-new" });
+  });
+
+  test("a failed PATCH hides every value", async () => {
+    const routes = happyRoutes();
+    routes[`PATCH ${BASE}/secrets-bulk`] = {
+      status: 500,
+      body: { success: false, errors: [{ code: 10013, message: `bad ${SENTINEL}-2` }] },
+    };
+    const { worker } = destination(routes);
+    await worker.checkAccount();
+    const error = await worker
+      .writeMany([
+        { name: "API_KEY", secret: new Secret(SENTINEL) },
+        { name: "OTHER_KEY", secret: new Secret(`${SENTINEL}-2`) },
+      ])
+      .catch((e: unknown) => e);
+    assert(error instanceof Error);
+    expect(error.message).toContain("PATCH");
+    expectNoSentinel(error);
   });
 });
 

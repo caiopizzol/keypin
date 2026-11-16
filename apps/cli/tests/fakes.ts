@@ -266,6 +266,21 @@ export function fakeDestinations(
         received.push({ place, name, secret });
         return { destination: place, version: `v-${log.length}` };
       },
+      ...(target.to === "cloudflare-worker"
+        ? {
+            async writeMany(secrets: readonly { name: string; secret: Secret }[]) {
+              if (!checked) throw new Error("checkAccount hasn't passed");
+              if (options.failWrite?.includes(place)) {
+                log.push(`fail ${place}`);
+                throw new Error("HTTP 500 writing secrets");
+              }
+              const names = secrets.map((s) => s.name).join(" ");
+              log.push(`write ${place} ${names} in one request`);
+              for (const { name, secret } of secrets) received.push({ place, name, secret });
+              return { destination: place, version: `v-${log.length}` };
+            },
+          }
+        : {}),
     };
   };
   const delivered = (value: string) =>

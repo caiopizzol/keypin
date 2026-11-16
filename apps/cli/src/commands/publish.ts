@@ -36,6 +36,7 @@ import {
   showRemoved,
   type Write,
   writeAll,
+  writeJobs,
   writesFor,
 } from "../publishing";
 
@@ -245,34 +246,20 @@ async function publishLocked(
   }
   if (request.plan) return planOnly(deps, "publish", request.args, needsApproval);
 
+  const jobsToWrite = writeJobs(
+    pending.map((job) => ({ ...job, environment, mapFile: job.owner.mapFile })),
+    deps.destinations,
+  );
   const total = pending.reduce((sum, job) => sum + job.writes.length, 0);
   say("");
   const question = `Write ${count(total, "secret")}?`;
   if (!(await confirmed(deps, { ...request, command: "publish", needsApproval, question })))
     return NEEDS_APPROVAL;
 
-  for (const [index, job] of pending.entries()) {
-    const written = await writeAll({
-      key: job.key,
-      environment,
-      mapFile: job.owner.mapFile,
-      entry: job.entry,
-      secret: job.secret,
-      ids: job.ids,
-      generation: job.generation,
-      writes: job.writes,
-      state,
-      path,
-      deps,
-      out,
-      label,
-    });
+  for (const job of jobsToWrite) {
+    const written = await writeAll({ ...job, state, path, deps, out, label });
     state = written.state;
     if (!written.ok) {
-      if (many) {
-        const left = pending.slice(index).map((j) => j.key.name);
-        say(`Not finished: ${left.join(", ")}.`);
-      }
       say("Stopped. Finished writes keep their receipts; run keypin publish again to continue.");
       return 1;
     }

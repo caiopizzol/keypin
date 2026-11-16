@@ -3,11 +3,18 @@ import {
   type Environment,
   type FoundNeed,
   isEnvironmentName,
+  type MapView,
   messageOf,
   type Place,
   type StoreRead,
 } from "@keypin/core";
-import { calledAcross, WRANGLER_FILES, type WorkerDeclaration, wranglerWorkers } from "./wrangler";
+import {
+  calledAcross,
+  configsWranglerUses,
+  WRANGLER_FILES,
+  type WorkerDeclaration,
+  wranglerWorkers,
+} from "./wrangler";
 
 export interface WranglerHost {
   workerSecrets(folder: string, account: string, worker: string): Promise<StoreRead>;
@@ -22,9 +29,12 @@ export const wranglerDiscovery: Discovery<WranglerHost> = {
   files: { key: "wrangler", noun: "wrangler config", names: WRANGLER_FILES, skip: [".wrangler"] },
   async scan(project, host) {
     const workers: Worker[] = [];
-    const skipped: string[] = [];
+    const { used, ignored } = configsWranglerUses(project.found);
+    const skipped = ignored.map(
+      ({ config, used }) => `wrangler reads ${used}, not ${config}, so check ignores ${config}`,
+    );
     const texts: { text: string; config: string }[] = [];
-    for (const config of project.found) {
+    for (const config of used) {
       const text = await project.read(config);
       if (text !== null) texts.push({ text, config });
     }
@@ -35,6 +45,10 @@ export const wranglerDiscovery: Discovery<WranglerHost> = {
         project.unknown(`the Workers in ${config}`, "it couldn't be parsed");
         continue;
       }
+      if (parsed.pages)
+        skipped.push(
+          `${config} is a Cloudflare Pages project, and keypin publishes only to Workers; set its secrets with wrangler pages secret put`,
+        );
       for (const env of parsed.skipped)
         skipped.push(
           `${config} env ${env} has no routes, workers.dev URL, trigger or binding to it, so check skips it as a Worker only wrangler dev runs`,
@@ -60,12 +74,12 @@ export const wranglerDiscovery: Discovery<WranglerHost> = {
       }
     }
     const discovered = {
-      files: project.found,
+      files: used,
       used: project.found.length > 0,
       about: null,
       report: {},
-      needs: ({ publishEnvironment }: { publishEnvironment: Environment }) => {
-        const found = needsOf(workers, publishEnvironment);
+      needs: (view: MapView) => {
+        const found = needsOf(workers, view);
         return { ...found, notes: [...skipped, ...found.notes] };
       },
     };
@@ -73,8 +87,10 @@ export const wranglerDiscovery: Discovery<WranglerHost> = {
   },
 };
 
-function needsOf(workers: readonly Worker[], environment: Environment) {
+function needsOf(workers: readonly Worker[], view: MapView) {
+  const environment = view.publishEnvironment;
   const notes: string[] = [];
+  const problems: string[] = [];
   const accounts = new Map<string, Set<string | null>>();
   for (const worker of workers)
     if (worker.worker !== null)
@@ -101,6 +117,11 @@ function needsOf(workers: readonly Worker[], environment: Environment) {
         `${worker.config} env ${worker.env} isn't a keypin environment name, so check proposes its Worker under ${environment}; publish it from the environment that holds its value`,
       );
     for (const name of worker.required ?? []) needs.push({ name, place, usedBy: worker.config });
+    for (const name of worker.vars)
+      if (view.publishes(name, base))
+        problems.push(
+          `${name}: keypin.toml publishes it to ${base.label} as a secret, but ${worker.config}${worker.env ? ` env ${worker.env}` : ""} sets it in vars, so the next wrangler deploy replaces the secret with that var; remove it from vars`,
+        );
   }
   for (const [id, envs] of declaredBy) {
     const label = needs.find((n) => n.place.id === id)?.place.label;
@@ -109,7 +130,7 @@ function needsOf(workers: readonly Worker[], environment: Environment) {
       `${label} is declared by the wrangler envs ${[...envs].sort().join(" and ")}; it holds one value, so check accepts it from any of them. Give each env its own Worker name to check them apart`,
     );
   }
-  return { needs, notes };
+  return { needs, notes, problems };
 }
 
 function workerPlace(worker: Worker, ambiguous: boolean): Place {

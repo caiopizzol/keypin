@@ -555,7 +555,7 @@ async function mayHaveCreated({ deps, out, args }: Job, issuer: Issuer, name: st
     );
   } else if (found?.length === 1) {
     out.line(
-      `Stopped: keypin didn't get the new key back, but ${where} lists key ${found[0]}, named ${name}. Delete it at ${issuer.dashboard()}, ${again}`,
+      `Stopped: keypin didn't get the new key back, but ${where} lists key ${found[0]}, named ${name}, which this run likely made. If no other machine rotated this key just now, delete it at ${issuer.dashboard()}, ${again}`,
     );
   } else if (found) {
     out.line(

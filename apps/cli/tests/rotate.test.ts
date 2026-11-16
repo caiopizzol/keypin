@@ -275,7 +275,7 @@ describe("keypin rotate", () => {
     expect(keys.load().live).toEqual(["key-0", "re-new-1"]);
     expect(run.stderr.text).not.toContain("Nothing was created");
     expect(run.stderr.text).toContain(
-      "Stopped: keypin didn't get the new key back, but Resend lists key re-new-1, named RESEND_API_KEY prod 2026-11-09 12:00:00. Delete it at https://resend.com/api-keys, then run this again:",
+      "Stopped: keypin didn't get the new key back, but Resend lists key re-new-1, named RESEND_API_KEY prod 2026-11-09 12:00:00, which this run likely made. If no other machine rotated this key just now, delete it at https://resend.com/api-keys, then run this again:",
     );
     expect(run.vault.values.get("mailer resend key")).toBe(OLD);
   });
@@ -286,7 +286,7 @@ describe("keypin rotate", () => {
     const run = setup({ answers: ["y"], resend: resend({ loseCreated: true, keys }) });
     expect(await run.run()).toBe(1);
     expect(run.stderr.text).toContain(
-      "Resend lists key re-new-1, named RESEND_API_KEY prod 2026-11-09 12:00:00.",
+      "Resend lists key re-new-1, named RESEND_API_KEY prod 2026-11-09 12:00:00, which this run likely made.",
     );
     expect(run.stderr.text).not.toContain("key-0");
   });

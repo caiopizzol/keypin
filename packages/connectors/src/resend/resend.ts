@@ -76,31 +76,45 @@ export class ResendIssuer implements Issuer {
       return { ok: true, facts: `${facts}, with key ${currentId}` };
     }
     const vault = await this.#vaultKey(current);
-    if (vault === "dead") {
-      this.#passed = true;
-      return {
-        ok: true,
-        facts: `${facts}; Resend doesn't accept the vault's key`,
-        gone:
-          currentId === null
-            ? "Resend doesn't accept the vault's key: it was deleted, or the vault holds another value"
-            : `key ${currentId} was deleted at Resend`,
-      };
-    }
-    if (currentId !== null)
+    if (currentId !== null) {
+      if (vault.kind === "deleted") {
+        this.#passed = true;
+        return {
+          ok: true,
+          facts: `${facts}; Resend doesn't accept the vault's key`,
+          gone: `key ${currentId} was deleted at Resend`,
+        };
+      }
       return {
         ok: false,
         facts,
         reason: `Resend doesn't list key ${currentId}, the one keypin issued last time, but it still knows the vault's key: the admin key belongs to another team`,
         fix: `use an admin key from the team at ${DASHBOARD} that has key ${currentId}`,
       };
-    if (vault.ids === null) {
+    }
+    if (vault.kind === "deleted")
+      return {
+        ok: false,
+        facts: `${facts}; Resend doesn't accept the vault's key`,
+        reason:
+          "keypin didn't issue the vault's key, so it can't tell whether the key was deleted or the vault holds another value",
+        fix: `put the key your apps use in the vault, then run this again; if it was deleted, make a new one at ${DASHBOARD}`,
+      };
+    if (vault.kind === "disabled")
+      return {
+        ok: false,
+        facts,
+        reason: `the vault's key ${vault.why}, so keypin can't tell which Resend team it belongs to`,
+        fix: `check the key at ${DASHBOARD}; put an active key in the vault, then run this again`,
+      };
+    if (vault.kind === "sending") {
       this.#passed = true;
       return {
         ok: true,
         facts,
         notes: {
-          create: `the vault's key ${vault.why}, so keypin can't check that the admin key is from its team`,
+          create:
+            "the vault's key can only send emails, so keypin can't check that the admin key is from its team",
         },
       };
     }
@@ -153,21 +167,21 @@ export class ResendIssuer implements Issuer {
 
   async #vaultKey(
     current: Secret,
-  ): Promise<"dead" | { ids: string[] } | { ids: null; why: string }> {
+  ): Promise<
+    | { kind: "listed"; ids: string[] }
+    | { kind: "sending" }
+    | { kind: "disabled"; why: string }
+    | { kind: "deleted" }
+  > {
     const reply = await this.#request("GET", "/api-keys", undefined, current);
     const kind = errorName(reply);
-    if (reply.status === 200) return { ids: keysOf(reply).map((key) => key.id) };
-    if (reply.status === 401 && kind === "restricted_api_key")
-      return { ids: null, why: "can only send emails" };
+    if (reply.status === 200) return { kind: "listed", ids: keysOf(reply).map((key) => key.id) };
+    if (reply.status === 401 && kind === "restricted_api_key") return { kind: "sending" };
     if (reply.status === 403 && kind === "restricted_api_key")
-      return { ids: null, why: "isn't active" };
+      return { kind: "disabled", why: "isn't active" };
     if (reply.status === 403 && kind === "suspended_api_key")
-      return { ids: null, why: "is suspended" };
-    if (
-      (reply.status === 400 && kind === "validation_error") ||
-      (reply.status === 401 && kind === "missing_api_key")
-    )
-      return "dead";
+      return { kind: "disabled", why: "is suspended" };
+    if (reply.status === 400 && kind === "validation_error") return { kind: "deleted" };
     throw failure("GET", "/api-keys with the vault's key", reply);
   }
 

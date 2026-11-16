@@ -20,7 +20,7 @@ export interface FakeNeon {
   endpoints?: string[];
   passwordPrefix: string;
   pollsToFinish?: number;
-  failReset?: "refuse" | "operation";
+  failReset?: "refuse" | "operation" | "role gone";
   locked?: number;
   permission?: "VIEWER" | "EDITOR" | "ADMIN";
   readOnly?: boolean;
@@ -94,6 +94,11 @@ export function neonFetch(fake: FakeNeon): Fetch {
     if (init.method === "GET" && !match[2]) return reply(200, { role: described(name, role) });
     if (init.method !== "POST" || !match[2]) return missing();
     if (fake.readOnly) return reply(404, { code: "", message: "not found" });
+    if (fake.failReset === "role gone") {
+      delete world.roles[name];
+      fake.world.save(world);
+      return missing();
+    }
     if (locked > 0) {
       locked--;
       return reply(423, { code: "LOCKED", message: "project already has running operations" });

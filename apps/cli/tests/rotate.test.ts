@@ -97,6 +97,7 @@ function resend(options: {
   admin?: string;
 }) {
   return resendFetch({
+    known: { [OLD]: "key-0" },
     tokenPrefix: "re_new_",
     keys: options.keys ?? memoryKeys(["key-0"]),
     effect: () => undefined,
@@ -301,7 +302,7 @@ describe("keypin rotate", () => {
   });
 
   test("a rerun whose new key was deleted at Resend makes another, and names the old key it left", async () => {
-    const keys = memoryKeys([]);
+    const keys = memoryKeys(["key-0"]);
     const runs = { disk: memoryFiles({ "/work/billing/keypin.toml": MAP }) };
     const first = setup({ ...runs, answers: ["y"], resend: resend({ admin: ADMIN, keys }) });
     await first.run();

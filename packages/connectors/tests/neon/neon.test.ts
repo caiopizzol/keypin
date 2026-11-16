@@ -276,6 +276,17 @@ describe("the reset operation", () => {
     expectNoSecret(error);
   });
 
+  test("a role deleted between the check and the reset is named, not blamed on the admin key", async () => {
+    const { issuer, effects } = neon({ failReset: "role gone" });
+    const each = issuer();
+    expect((await each.checkAccount(null, urlFor("app_a", LIVE_A))).ok).toBe(true);
+    const error: unknown = await each.create().catch((e: unknown) => e);
+    assert(error instanceof NothingChanged);
+    expect(error.message).toBe("Neon role app_b is gone from branch br-main");
+    expect(effects).toEqual([]);
+    expectNoSecret(error);
+  });
+
   test("a lost reset says the idle role's password may have changed and a rerun is safe", async () => {
     const { issuer } = neon();
     const each = issuer();

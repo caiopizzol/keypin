@@ -247,10 +247,13 @@ export class NeonIssuer implements Issuer {
       await this.#sleep(wait(tries));
       reply = await this.#request("POST", path);
     }
-    if (reply.status === 403 || reply.status === 404)
+    if (reply.status === 403 || reply.status === 404) {
+      if ((await this.#passwordTime(role)) === null)
+        throw new NothingChanged(`Neon role ${role} is gone from branch ${this.#branchId}`);
       throw new NothingChanged(
         `Neon refused to reset role ${role}'s password (HTTP ${reply.status}${codeOf(reply)}): the admin key can read project ${this.#projectId} but may not change it. Use an API key with Editor or Admin access to the project; see ${PERMISSIONS_DOCS}`,
       );
+    }
     if (reply.status !== 200)
       throw failure(
         "POST",

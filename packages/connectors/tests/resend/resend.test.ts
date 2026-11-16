@@ -11,6 +11,10 @@ const SENDING_ONLY: Reply = {
 };
 
 type Reply = { status: number; body?: unknown };
+const INVALID: Reply = {
+  status: 400,
+  body: { statusCode: 400, name: "validation_error", message: "API key is invalid" },
+};
 type Routes = Record<string, Reply>;
 
 function happyRoutes(): Routes {
@@ -121,19 +125,59 @@ describe("checkAccount", () => {
     });
   });
 
-  test("a vault key deleted at Resend leaves nothing to revoke", async () => {
+  test("the key keypin issued, missing from the list and refused for the vault, was deleted", async () => {
     const routes = happyRoutes();
-    routes["vault GET /api-keys"] = {
-      status: 400,
-      body: { statusCode: 400, name: "validation_error", message: "API key is invalid" },
-    };
+    routes["vault GET /api-keys"] = INVALID;
     const { resend } = issuer(routes);
     const check = await resend.checkAccount("key-leaked", VAULT);
     expect(check).toMatchObject({ ok: true, gone: "key key-leaked was deleted at Resend" });
     expect((await resend.create("K")).id).toBe("key-new");
-    const first = await resend.checkAccount(null, VAULT);
-    expect(first.gone).toContain("Resend doesn't accept the vault's key");
-    expectNoSecret(check, first);
+    expectNoSecret(check);
+  });
+
+  test("the key keypin issued, still listed, is revoked even when the vault holds a dead value", async () => {
+    const routes = happyRoutes();
+    routes["vault GET /api-keys"] = INVALID;
+    const { resend, requests } = issuer(routes);
+    const check = await resend.checkAccount("key-old", VAULT);
+    expect(check).toEqual({ ok: true, facts: "the admin key lists 1 API key, with key key-old" });
+    expect(check.gone).toBeUndefined();
+    expect(requests.map((r) => r.headers.Authorization)).not.toContain(`Bearer ${VAULT.reveal()}`);
+  });
+
+  test("a dead vault key keypin didn't issue is refused: it may be a typo, not a deleted key", async () => {
+    const routes = happyRoutes();
+    routes["vault GET /api-keys"] = INVALID;
+    const { resend } = issuer(routes);
+    const check = await resend.checkAccount(null, VAULT);
+    expect(check).toEqual({
+      ok: false,
+      facts: "the admin key lists 1 API key; Resend doesn't accept the vault's key",
+      reason:
+        "keypin didn't issue the vault's key, so it can't tell whether the key was deleted or the vault holds another value",
+      fix: "put the key your apps use in the vault, then run this again; if it was deleted, make a new one at https://resend.com/api-keys",
+    });
+    await expect(resend.create("K")).rejects.toThrow(/checkAccount hasn't passed/);
+    expectNoSecret(check);
+  });
+
+  test.each([
+    ["restricted_api_key", "isn't active"],
+    ["suspended_api_key", "is suspended"],
+  ])("a vault key answering 403 %s can't name its team, so the check fails", async (name, why) => {
+    const routes = happyRoutes();
+    routes["vault GET /api-keys"] = { status: 403, body: { statusCode: 403, name } };
+    const { resend } = issuer(routes);
+    for (const currentId of [null, "key-elsewhere"]) {
+      const check = await resend.checkAccount(currentId, VAULT);
+      expect(check.ok).toBe(false);
+      expect(check.gone).toBeUndefined();
+      if (currentId === null)
+        expect(check.reason).toBe(
+          `the vault's key ${why}, so keypin can't tell which Resend team it belongs to`,
+        );
+      await expect(resend.create("K")).rejects.toThrow(/checkAccount hasn't passed/);
+    }
   });
 
   test("a full-access vault key from another team is refused before create", async () => {

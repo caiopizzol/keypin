@@ -24,7 +24,6 @@ export interface GitHubSecretOptions {
 }
 
 export class GitHubSecretDestination implements Destination {
-  readonly capabilities = { write: true, accountCheck: true, evidence: true } as const;
   readonly #repo: string;
   readonly #owner: string;
   readonly #environment: string | null;

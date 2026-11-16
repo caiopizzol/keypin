@@ -26,16 +26,9 @@ export function vaultContract(make: Make): void {
     expectNoSentinel(items, effects);
   });
 
-  test("write then read gives back the value and the rotated date, or write rejects when capabilities.write is false", async () => {
+  test("write then read gives back the value and the rotated date", async () => {
     const { vault, ref, effects } = await make(SENTINEL);
     const value = new Secret(`${SENTINEL}-2`);
-    if (!vault.capabilities.write) {
-      const refused = await caught(vault.write(ref, value, { rotated: ROTATED }));
-      expect((await vault.read(ref)).equals(new Secret(SENTINEL))).toBe(true);
-      expect(effects).toEqual([]);
-      expectNoSentinel(refused);
-      return;
-    }
     await vault.write(ref, value, { rotated: ROTATED });
     expect((await vault.read(ref)).equals(value)).toBe(true);
     expect(await vault.metadata(ref)).toEqual({ rotated: ROTATED });

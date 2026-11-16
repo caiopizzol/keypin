@@ -102,7 +102,6 @@ export function fakeVault(options: FakeVaultOptions = {}) {
     };
   };
   const vault: VaultBackend = {
-    capabilities: { read: true, write: false, list: false, metadata: true },
     async read(ref) {
       return value(ref);
     },
@@ -155,7 +154,6 @@ export function writableVault(
   const itemIds = new Map<string, string>();
   const idsOf = (item: string) => ({ vault: "v1", item: itemIds.get(item) ?? `id-${item}` });
   const vault: VaultBackend = {
-    capabilities: { read: true, write: true, list: false, metadata: true },
     async read(ref) {
       log.push(`read ${itemOf(ref)}`);
       const value = values.get(itemOf(ref));
@@ -243,7 +241,6 @@ export function fakeDestinations(
     const owner = target.account;
     let checked = false;
     return {
-      capabilities: { write: true, accountCheck: true, evidence: true },
       describe: () => place,
       async checkAccount(): Promise<AccountCheck> {
         log.push(`check ${place}`);

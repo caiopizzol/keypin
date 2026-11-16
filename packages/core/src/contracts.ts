@@ -15,13 +15,6 @@ export interface VaultScope {
   readonly [field: string]: unknown;
 }
 
-export interface VaultCapabilities {
-  read: boolean;
-  write: boolean;
-  list: boolean;
-  metadata: boolean;
-}
-
 export interface VaultItem {
   id: string;
   title: string;
@@ -59,7 +52,6 @@ export class SignInFailed extends Error {
 }
 
 export interface VaultBackend {
-  readonly capabilities: VaultCapabilities;
   read(ref: KeyRef): Promise<Secret>;
   readItem(ref: KeyRef): Promise<{ secret: Secret; ids: ItemIds }>;
   itemIds(ref: KeyRef): Promise<ItemIds>;
@@ -70,12 +62,6 @@ export interface VaultBackend {
   ): Promise<void>;
   list(scope: VaultScope): Promise<VaultItem[]>;
   metadata(ref: KeyRef): Promise<VaultMetadata>;
-}
-
-export interface DestinationCapabilities {
-  write: boolean;
-  accountCheck: boolean;
-  evidence: boolean;
 }
 
 export interface AccountCheck {
@@ -90,7 +76,6 @@ export interface AccountCheck {
 export type Evidence = Readonly<Record<string, string | number | boolean | null>>;
 
 export interface Destination {
-  readonly capabilities: DestinationCapabilities;
   describe(): string;
   checkAccount(): Promise<AccountCheck>;
   write(name: string, secret: Secret): Promise<Evidence>;

@@ -260,7 +260,7 @@ describe("registry", () => {
     expect([...fake.contents.keys()]).toEqual([REGISTRY]);
   });
 
-  test("a registry from an older keypin with a shared list loads, and saving drops the list", async () => {
+  test("a registry from an older keypin with a shared list loads, and saving keeps an empty shared list so keypin 0.22 and older can still read it", async () => {
     const fake = fakeFiles({
       [REGISTRY]: JSON.stringify({ version: 1, projects: ["/work/web"], shared: [{ id: "K" }] }),
     });
@@ -269,7 +269,17 @@ describe("registry", () => {
       projects: ["/work/web"],
     });
     await register(fake.files, REGISTRY, "/work/billing");
-    expect(fake.contents.get(REGISTRY)).not.toContain("shared");
+    expect(JSON.parse(fake.contents.get(REGISTRY) ?? "{}")).toEqual({
+      version: 1,
+      projects: ["/work/billing", "/work/web"],
+      shared: [],
+    });
+    await unregister(fake.files, REGISTRY, "/work/web");
+    expect(JSON.parse(fake.contents.get(REGISTRY) ?? "{}")).toEqual({
+      version: 1,
+      projects: ["/work/billing"],
+      shared: [],
+    });
   });
 
   test("a relative path and another schema version are errors", async () => {

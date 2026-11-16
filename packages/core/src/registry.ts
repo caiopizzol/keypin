@@ -27,7 +27,7 @@ export async function register(files: Files, path: string, project: string): Pro
   const registry = await loadRegistry(files, path);
   if (registry.projects.includes(folder)) return registry;
   const next = { ...registry, projects: [...registry.projects, folder].sort() };
-  await writeJsonAtomic(files, path, next);
+  await saveRegistry(files, path, next);
   return next;
 }
 
@@ -36,8 +36,12 @@ export async function unregister(files: Files, path: string, project: string): P
   const registry = await loadRegistry(files, path);
   if (!registry.projects.includes(folder)) return registry;
   const next = { ...registry, projects: registry.projects.filter((p) => p !== folder) };
-  await writeJsonAtomic(files, path, next);
+  await saveRegistry(files, path, next);
   return next;
+}
+
+function saveRegistry(files: Files, path: string, registry: Registry): Promise<void> {
+  return writeJsonAtomic(files, path, { ...registry, shared: [] });
 }
 
 function projectPath(project: string): string {

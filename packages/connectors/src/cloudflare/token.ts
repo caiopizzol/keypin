@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { accessSync, constants } from "node:fs";
+import { accessSync, constants, readdirSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { devNull, tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
@@ -127,7 +127,29 @@ export function findWrangler(folder: string, path: string): string | null {
     const found = resolve(join(dir, "wrangler"));
     if (executable(found)) return found;
   }
+  return workspaceWrangler(folder);
+}
+
+function workspaceWrangler(folder: string): string | null {
+  for (const group of readable(folder)) {
+    if (group === "node_modules" || group.startsWith(".")) continue;
+    for (const member of readable(join(folder, group))) {
+      const local = join(folder, group, member, "node_modules", ".bin", "wrangler");
+      if (executable(local)) return local;
+    }
+  }
   return null;
+}
+
+function readable(dir: string): string[] {
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+  } catch {
+    return [];
+  }
 }
 
 function executable(path: string): boolean {

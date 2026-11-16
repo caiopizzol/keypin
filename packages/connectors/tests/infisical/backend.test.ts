@@ -359,6 +359,19 @@ describe("writing", () => {
     expect((await vault.read(REF)).equals(new Secret(SENTINEL))).toBe(true);
   });
 
+  test("a nested reference after an absolute one resolves in the referenced environment", async () => {
+    const fake = fakeInfisical({
+      secrets: {
+        "prod:/:STRIPE_KEY": { ...STRIPE, value: "${dev.OUTER}" },
+        "dev:/:OUTER": { value: "${INNER}" },
+        "dev:/:INNER": { value: "dev-inner" },
+        "prod:/:INNER": { value: "prod-inner" },
+      },
+    });
+    const vault = infisicalBackend(CREDENTIALS, fake.fetch);
+    expect((await vault.read(REF)).equals(new Secret("dev-inner"))).toBe(true);
+  });
+
   test("reading expands nested references", async () => {
     const fake = fakeInfisical({
       secrets: {

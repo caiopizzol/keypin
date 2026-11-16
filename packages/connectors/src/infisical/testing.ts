@@ -153,7 +153,9 @@ export function infisicalFetch(fake: FakeInfisical, store: Store): Fetch {
           const id = `${target}/${place.environment}${place.path}/${key}`;
           const secret = secretsOf(target, place.environment, place.path)[key];
           if (!secret || seen.has(id)) continue;
-          return expand(secret.value, here, place, new Set([...seen, id]));
+          if (target !== project) return secret.value;
+          const next = absolute ? place : here;
+          return expand(secret.value, next, place, new Set([...seen, id]));
         }
         return "";
       });

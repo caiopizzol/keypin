@@ -26,6 +26,8 @@ export interface FakeInfisical {
   heldByPolicy?: Stored[];
   failWrites?: boolean;
   refuseLogin?: number;
+  accessToken?: string;
+  userToken?: string;
   hideValues?: boolean;
   requireEncryptedMetadata?: boolean;
 }
@@ -94,8 +96,12 @@ export function infisicalFetch(fake: FakeInfisical, store: Store): Fetch {
       return fake.refuseLogin
         ? reply(fake.refuseLogin, { message: "Invalid credentials" })
         : reply(200, { accessToken: INFISICAL_TOKEN, expiresIn: 7200, tokenType: "Bearer" });
-    if (init.headers.Authorization !== `Bearer ${INFISICAL_TOKEN}`)
+    const bearer = init.headers.Authorization?.replace(/^Bearer /, "");
+    const user = fake.userToken !== undefined && bearer === fake.userToken;
+    if (bearer !== INFISICAL_TOKEN && bearer !== fake.accessToken && !user)
       return reply(401, { message: "Unauthorized" });
+    if (parsed.pathname === "/api/v1/identities/details" && user)
+      return reply(403, { message: "Forbidden access to /api/v1/identities/details" });
     if (parsed.pathname === "/api/v1/identities/details")
       return reply(200, {
         identityDetails: {

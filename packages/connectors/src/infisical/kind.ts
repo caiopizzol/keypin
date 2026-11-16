@@ -1,5 +1,11 @@
 import { type SignInReason, sentence, type VaultKind } from "@keypin/core";
-import { CLIENT_ID, CLIENT_SECRET } from "./backend";
+import {
+  ACCESS_TOKENS,
+  CLIENT_ID,
+  CLIENT_SECRET,
+  credentialsFrom,
+  NO_CREDENTIALS,
+} from "./backend";
 import {
   account,
   decode,
@@ -12,15 +18,37 @@ import {
   SCHEME,
 } from "./reference";
 
-function fixFor(failures: readonly SignInReason[]): string {
-  if (failures.some((reason) => reason.kind === "no-credentials"))
-    return `set ${CLIENT_ID} and ${CLIENT_SECRET} to a machine identity's Universal Auth client ID and secret (docs/infisical.md)`;
-  if (failures.some((reason) => reason.kind === "wrong-account"))
-    return "use a machine identity from the organization keypin.toml pins under [infisical]";
-  return `check ${CLIENT_ID}, ${CLIENT_SECRET} and the url under [infisical] in keypin.toml`;
+export interface InfisicalHost {
+  readonly env: Readonly<Record<string, string | undefined>>;
 }
 
-export const infisicalVault: VaultKind<unknown, InfisicalRef, InfisicalReference, InfisicalPin> = {
+function fixFor(failures: readonly SignInReason[], { env }: InfisicalHost): string {
+  if (failures.some((reason) => reason.kind === "no-credentials"))
+    return `${NO_CREDENTIALS} (docs/infisical.md)`;
+  if (failures.some((reason) => reason.kind === "wrong-account"))
+    return "use a machine identity from the organization keypin.toml pins under [infisical]";
+  const credentials = credentialsFrom(env);
+  const variables =
+    credentials && "variable" in credentials
+      ? credentials.variable
+      : `${CLIENT_ID}, ${CLIENT_SECRET}`;
+  return `check ${variables} and the url under [infisical] in keypin.toml`;
+}
+
+function signedInWith({ env }: InfisicalHost): string | null {
+  const credentials = credentialsFrom(env);
+  if (!credentials) return null;
+  if ("variable" in credentials) return `the access token in ${credentials.variable}`;
+  const ignored = ACCESS_TOKENS.filter((name) => env[name]);
+  return `the Universal Auth client ID and secret${ignored.length ? `, not ${ignored.join(" or ")}` : ""}`;
+}
+
+export const infisicalVault: VaultKind<
+  InfisicalHost,
+  InfisicalRef,
+  InfisicalReference,
+  InfisicalPin
+> = {
   kind: "infisical",
   name: "Infisical",
   scheme: SCHEME,
@@ -37,7 +65,7 @@ export const infisicalVault: VaultKind<unknown, InfisicalRef, InfisicalReference
     a.path === b.path &&
     a.name === b.name,
   stored: decode,
-  signInVariables: [CLIENT_ID, CLIENT_SECRET],
+  signInVariables: [CLIENT_ID, CLIENT_SECRET, ...ACCESS_TOKENS],
   addByHand: (map) => {
     const refs = map.keys.flatMap((key) =>
       Object.values(key.environments).flatMap((entry) => (entry ? [entry.ref] : [])),
@@ -46,9 +74,15 @@ export const infisicalVault: VaultKind<unknown, InfisicalRef, InfisicalReference
       ? `add the secrets in Infisical and map them with ${SCHEME} references (docs/infisical.md)`
       : undefined;
   },
-  prerequisites({ failures }) {
+  itemNotes(refs, host) {
+    const used = signedInWith(host);
+    return used && refs.some((ref) => ref.kind === "infisical")
+      ? [`keypin signs in to Infisical with ${used}`]
+      : [];
+  },
+  prerequisites({ failures }, host) {
     if (!failures.length) return [];
-    const fix = fixFor(failures);
+    const fix = fixFor(failures, host);
     return [
       {
         name: "Infisical",

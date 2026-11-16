@@ -13,6 +13,7 @@ const PROJECT_ID = "6f1c2a4e-1111-4222-8333-944455556666";
 const SENTINEL = "sentinel-value-3c9e1f";
 const CLIENT_SECRET = "client-secret-sentinel-7a2d";
 const CREDENTIALS = { clientId: "client-id-1", clientSecret: CLIENT_SECRET };
+const TOKEN = "access-token-sentinel-4b8f";
 
 const REF: InfisicalRef = {
   kind: "infisical",
@@ -37,6 +38,8 @@ function fakeInfisical(
     secrets?: Record<string, FakeSecret>;
     organization?: string;
     login?: number;
+    accessToken?: string;
+    userToken?: string;
     hidden?: boolean;
     approval?: boolean;
     encryptedMetadata?: boolean;
@@ -49,6 +52,8 @@ function fakeInfisical(
     projects: { billing: { prod: {}, dev: {} } },
     projectIds: { billing: PROJECT_ID },
     ...(options.login ? { refuseLogin: options.login } : {}),
+    ...(options.accessToken ? { accessToken: options.accessToken } : {}),
+    ...(options.userToken ? { userToken: options.userToken } : {}),
     ...(options.hidden ? { hideValues: true } : {}),
     ...(options.approval ? { heldByPolicy: [] } : {}),
     ...(options.encryptedMetadata ? { requireEncryptedMetadata: true } : {}),
@@ -125,7 +130,7 @@ describe("signing in", () => {
 
   test("no credentials name the variables to set", async () => {
     await expect(infisicalBackend(null, fakeInfisical().fetch).read(REF)).rejects.toThrow(
-      "Infisical organization acme at https://app.infisical.com: sign-in failed: set INFISICAL_UNIVERSAL_AUTH_CLIENT_ID and INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET to a machine identity's Universal Auth client ID and secret",
+      "Infisical organization acme at https://app.infisical.com: sign-in failed: set INFISICAL_UNIVERSAL_AUTH_CLIENT_ID and INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET to a machine identity's Universal Auth client ID and secret, or INFISICAL_TOKEN to a machine identity's access token",
     );
   });
 
@@ -152,6 +157,61 @@ describe("signing in", () => {
     await expect(
       infisicalBackend(CREDENTIALS, fakeInfisical().fetch).read({ ...REF, project: "nope" }),
     ).rejects.toThrow(`no project with the slug "nope", or the machine identity isn't a member`);
+  });
+
+  test("an access token signs in without a login request, and still checks the organization", async () => {
+    const fake = fakeInfisical({ accessToken: TOKEN, secrets: { "prod:/:STRIPE_KEY": STRIPE } });
+    const vault = infisicalBackend({ token: TOKEN, variable: "INFISICAL_TOKEN" }, fake.fetch);
+    expect((await vault.read(REF)).equals(new Secret(SENTINEL))).toBe(true);
+    expect(fake.calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      "GET /api/v1/identities/details",
+      "GET /api/v1/projects/slug/billing",
+      "GET /api/v4/secrets/STRIPE_KEY",
+    ]);
+    expect(fake.calls.every((c) => c.auth === `Bearer ${TOKEN}`)).toBe(true);
+    const other = fakeInfisical({ accessToken: TOKEN, organization: "other" });
+    await expect(
+      infisicalBackend({ token: TOKEN, variable: "INFISICAL_TOKEN" }, other.fetch).read(REF),
+    ).rejects.toThrow("the machine identity belongs to the organization other");
+  });
+
+  test("a user's token is told to use a machine identity's, without the token", async () => {
+    const fake = fakeInfisical({ userToken: TOKEN });
+    const error = await infisicalBackend({ token: TOKEN, variable: "INFISICAL_TOKEN" }, fake.fetch)
+      .read(REF)
+      .catch((e: unknown) => e);
+    expect(String(error)).toContain(
+      "sign-in failed: the access token in INFISICAL_TOKEN isn't a machine identity's; use a machine identity's access token",
+    );
+    expect(String(error)).not.toContain(TOKEN);
+    expect(fake.calls.some((c) => c.path.startsWith("/api/v4"))).toBe(false);
+  });
+
+  test("a refused access token says it may have expired", async () => {
+    const vault = infisicalBackend(
+      { token: TOKEN, variable: "INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN" },
+      fakeInfisical().fetch,
+    );
+    await expect(vault.read(REF)).rejects.toThrow(
+      "Infisical refused the access token in INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN (HTTP 401); it may have expired",
+    );
+  });
+
+  test("the client ID and secret win over a token, then INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN over INFISICAL_TOKEN", () => {
+    const both = {
+      INFISICAL_UNIVERSAL_AUTH_CLIENT_ID: "a",
+      INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET: "b",
+      INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN: "ua",
+      INFISICAL_TOKEN: "it",
+    };
+    expect(credentialsFrom(both)).toEqual({ clientId: "a", clientSecret: "b" });
+    expect(credentialsFrom({ ...both, INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET: "" })).toEqual({
+      token: "ua",
+      variable: "INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN",
+    });
+    expect(
+      credentialsFrom({ INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN: "", INFISICAL_TOKEN: "it" }),
+    ).toEqual({ token: "it", variable: "INFISICAL_TOKEN" });
   });
 
   test("credentials come from both variables, or not at all", () => {

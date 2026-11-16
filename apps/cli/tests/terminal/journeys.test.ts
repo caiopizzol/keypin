@@ -301,6 +301,25 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
+    "with an Infisical access token, check names it and run's command never sees it",
+    async () => {
+      const check = await drive({ scenario: "infisical-token", args: ["check"] });
+      expect(check.exit).toBe(0);
+      expect(check.screen).toContain(
+        "Note: keypin signs in to Infisical with the access token in INFISICAL_TOKEN",
+      );
+      const run = await drive({
+        scenario: "infisical-token",
+        args: ["run", "--", "sh", "-c", "env | grep -c INFISICAL || true"],
+      });
+      expect(run.exit).toBe(0);
+      expect(run.screen).toMatch(/^0$/m);
+      for (const result of [check, run]) clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "with Infisical, check and run need no 1Password token, though KEYPIN_1PASSWORD=service-account",
     async () => {
       const env = { KEYPIN_1PASSWORD: "service-account" };

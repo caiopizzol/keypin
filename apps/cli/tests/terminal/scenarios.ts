@@ -259,6 +259,27 @@ const neon: Scenario = {
   neon: { roles: { app_a: NEON_LIVE, app_b: "npg_verify_idle_b_3a9d" } },
 };
 
+const infisical: Scenario = {
+  ...ready,
+  about:
+    "ready, but keypin.toml reads from a fake Infisical organization acme, signed in as a machine identity",
+  files: { ...ready.files, "keypin.toml": INFISICAL_MAP },
+  onePassword: { accounts: {} },
+  infisical: {
+    organization: "acme",
+    projects: {
+      billing: {
+        dev: { STRIPE_KEY: { value: "verify-dev-stripe-6b1e", rotated: day(-30) } },
+        prod: { STRIPE_KEY: { value: "verify-prod-stripe-9d4a", rotated: day(-85) } },
+      },
+    },
+  },
+  env: {
+    INFISICAL_UNIVERSAL_AUTH_CLIENT_ID: "verify-client-id",
+    INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET: "verify-client-secret-3e7a",
+  },
+};
+
 export const scenarios: Record<string, Scenario> = {
   ready,
   "env-file": {
@@ -325,25 +346,17 @@ export const scenarios: Record<string, Scenario> = {
     },
     env: { KEYPIN_1PASSWORD: "service-account", OP_SERVICE_ACCOUNT_TOKEN: FAKE_TOKEN },
   },
-  infisical: {
-    ...ready,
-    about:
-      "ready, but keypin.toml reads from a fake Infisical organization acme, signed in as a machine identity",
-    files: { ...ready.files, "keypin.toml": INFISICAL_MAP },
-    onePassword: { accounts: {} },
+  infisical,
+  "infisical-token": {
+    ...infisical,
+    about: "infisical, but signed in with a machine identity's access token in INFISICAL_TOKEN",
     infisical: {
       organization: "acme",
-      projects: {
-        billing: {
-          dev: { STRIPE_KEY: { value: "verify-dev-stripe-6b1e", rotated: day(-30) } },
-          prod: { STRIPE_KEY: { value: "verify-prod-stripe-9d4a", rotated: day(-85) } },
-        },
-      },
+      projects: {},
+      ...infisical.infisical,
+      accessToken: "verify-access-token-8c3f",
     },
-    env: {
-      INFISICAL_UNIVERSAL_AUTH_CLIENT_ID: "verify-client-id",
-      INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET: "verify-client-secret-3e7a",
-    },
+    env: { INFISICAL_TOKEN: "verify-access-token-8c3f" },
   },
   resend,
   neon,
@@ -477,6 +490,7 @@ export function valuesOf(scenario: Scenario): string[] {
   const tokens = [
     scenario.env?.OP_SERVICE_ACCOUNT_TOKEN,
     scenario.env?.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET,
+    scenario.env?.INFISICAL_TOKEN,
   ].flatMap((token) => (token ? [token] : []));
   const issued = [
     ...(scenario.resend ? [ISSUED_PREFIX] : []),

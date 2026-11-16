@@ -152,6 +152,37 @@ printf '%s' '${OAUTH}'
     expect(ran).toContain("WRANGLER_WRITE_LOGS=false\n");
   });
 
+  test("finds a workspace's wrangler in a monorepo when the root has none", async () => {
+    const root = await folder();
+    const seen = await fakeWrangler(join(root, "apps", "api", "node_modules", ".bin"), {});
+    expect(findWrangler(root, "")).toBe(join(root, "apps/api/node_modules/.bin/wrangler"));
+    expect(
+      await cloudflareSignIn({ signIn: SIGN_IN, env: { PATH: "" }, folder: root }).token(),
+    ).toBe(TOKEN);
+    expect(await readFile(seen, "utf8")).toContain("args=auth token --json");
+  });
+
+  test("in a monorepo, skips a workspace's wrangler too old for auth token and uses the next", async () => {
+    const root = await folder();
+    await fakeWrangler(join(root, "apps", "admin", "node_modules", ".bin"), {
+      version: "4.20.0",
+      exit: 1,
+      stdout: "",
+      stderr: "Unknown argument: token",
+    });
+    const seen = await fakeWrangler(join(root, "apps", "api", "node_modules", ".bin"), {});
+    expect(
+      await cloudflareSignIn({ signIn: SIGN_IN, env: { PATH: "" }, folder: root }).token(),
+    ).toBe(TOKEN);
+    expect(await readFile(seen, "utf8")).toContain("args=auth token --json");
+  });
+
+  test("skips a wrangler in a dot folder of a workspace group", async () => {
+    const root = await folder();
+    await fakeWrangler(join(root, "apps", ".cache", "node_modules", ".bin"), {});
+    expect(findWrangler(root, "")).toBeNull();
+  });
+
   test("uses the project's wrangler before the one on PATH, from a subfolder too", async () => {
     const { root, seen } = await project();
     const onPath = await folder();

@@ -260,15 +260,23 @@ export interface PlanRow {
   detail: string | null;
 }
 
-export function publishRows(steps: readonly PlanStep[], label: Label): PlanRow[] {
-  return steps.map((step) => ({
-    sign: step.action === "skip" ? "=" : step.approval ? "+" : "~",
-    place: label(step.target),
-    why: WHY[step.reason],
-    approval: step.approval !== null,
-    detail:
-      step.reason === "account changed" || step.reason === "item changed" ? step.approval : null,
-  }));
+export function publishRows(
+  steps: readonly PlanStep[],
+  label: Label,
+  kinds: Deps["destinations"],
+): PlanRow[] {
+  return steps.map((step) => {
+    const changed =
+      step.reason === "account changed" || step.reason === "item changed" ? step.approval : null;
+    const note = step.action === "skip" ? null : (kindOf(kinds, step.target.to).writeNote ?? null);
+    return {
+      sign: step.action === "skip" ? "=" : step.approval ? "+" : "~",
+      place: label(step.target),
+      why: WHY[step.reason],
+      approval: step.approval !== null,
+      detail: [changed, note].filter((d) => d !== null).join("; ") || null,
+    };
+  });
 }
 
 export function showRemoved(out: Output, removed: readonly RemovedDestination[]): void {

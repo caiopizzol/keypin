@@ -11,8 +11,8 @@ keypin publish --all --plan          # show the plan and write nothing
 
 It writes GitHub Actions secrets with your `gh` login, and Cloudflare Worker secrets with your `wrangler` login or
 `KEYPIN_CLOUDFLARE_API_TOKEN` (see [Notes](notes.md#signing-in-to-cloudflare)). The Worker, and a GitHub
-`environment` the map names, must already exist. Run `keypin check` first: it checks each login and lists what's
-missing.
+`environment` the map names, must already exist. Writing a Worker secret deploys a new version of the Worker, so
+deploy the Worker's latest version first. Run `keypin check` first: it checks each login and lists what's missing.
 
 ## Steps
 

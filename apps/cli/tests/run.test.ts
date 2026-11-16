@@ -103,6 +103,30 @@ prod = "op://Private/ci cloudflare token/credential"
       ]);
     });
 
+    test("CLOUDFLARE_API_TOKEN stays a mappable key; KEYPIN_CLOUDFLARE_API_TOKEN never reaches the command", async () => {
+      const { deps, launcher } = setup({
+        files: { "/work/web/keypin.toml": TWO_KEYS },
+        values: { "ci cloudflare token": "ci-token" },
+        env: { KEYPIN_CLOUDFLARE_API_TOKEN: "keypin-sign-in-token" },
+      });
+      expect(await cli(["run", "--env", "prod", "--", "true"], deps)).toBe(0);
+      expect(launcher.launches[0]?.env.CLOUDFLARE_API_TOKEN).toBe("ci-token");
+      expect(JSON.stringify(launcher.launches)).not.toContain("keypin-sign-in-token");
+      expect(Object.keys(launcher.launches[0]?.env ?? {})).not.toContain(
+        "KEYPIN_CLOUDFLARE_API_TOKEN",
+      );
+    });
+
+    test("a mapped KEYPIN_CLOUDFLARE_API_TOKEN is refused, and nothing starts", async () => {
+      const map = `${WEB_MAP}\n[keys.KEYPIN_CLOUDFLARE_API_TOKEN]\ndev = "op://Private/cf token/password"\n`;
+      const { deps, launcher, stderr } = setup({ files: { "/work/web/keypin.toml": map } });
+      expect(await cli(["run", "--", "true"], deps)).toBe(1);
+      expect(stderr.text).toContain(
+        "keypin.toml maps KEYPIN_CLOUDFLARE_API_TOKEN, which keypin uses to sign in; keypin run doesn't pass it to a command",
+      );
+      expect(launcher.launches).toEqual([]);
+    });
+
     test("adds only the named keys and reads nothing else", async () => {
       for (const only of [["--only", "SESSION_SECRET"], ["--only=SESSION_SECRET,SESSION_SECRET"]]) {
         const { deps, launcher, calls, stderr } = twoKeys();

@@ -73,7 +73,7 @@ The map says where a key goes, not who writes it, so every teammate publishes fr
 
 - **GitHub:** the login in `git config github.account`, or else the active `gh` login. It needs write access to the
   repo.
-- **Cloudflare:** the `wrangler` login. It must reach the pinned `account`.
+- **Cloudflare:** the `wrangler` login, or `KEYPIN_CLOUDFLARE_API_TOKEN`. It must reach the pinned `account`.
 
 ## Vault items
 

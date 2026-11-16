@@ -287,7 +287,7 @@ async function build(
   const placeOf = (target: PublishTarget) => checkId(target, deps.destinations);
   for (const { entry } of entries)
     for (const target of entry.publish) targets.set(placeOf(target), target);
-  const { publisher, notes } = await publisherFor([...targets.values()], deps, folder, false);
+  const { publisher, notes } = await publisherFor([...targets.values()], deps, root, false);
   report.notes.push(...notes);
   const destinations = new Map<string, DestinationResult>();
   const accounts = count(targets.size, "account");

@@ -10,7 +10,7 @@ import {
 import { WRANGLER_FILES, type WorkerDeclaration, wranglerWorkers } from "./wrangler";
 
 export interface WranglerHost {
-  workerSecrets(account: string, worker: string): Promise<StoreRead>;
+  workerSecrets(folder: string, account: string, worker: string): Promise<StoreRead>;
 }
 
 type Worker = WorkerDeclaration & { read: StoreRead | null };
@@ -42,7 +42,7 @@ export const wranglerDiscovery: Discovery<WranglerHost> = {
             );
           else {
             read = await host
-              .workerSecrets(worker.account, worker.worker)
+              .workerSecrets(project.root, worker.account, worker.worker)
               .catch((error: unknown) => ({ ok: false as const, reason: messageOf(error) }));
             if (!read.ok) project.unknown(label, read.reason);
           }

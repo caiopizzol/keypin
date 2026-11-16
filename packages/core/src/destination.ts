@@ -33,6 +33,7 @@ export interface DestinationKind<
   named(target: T): string;
   where(target: T): string;
   login(target: T, publisher: P): string;
+  readonly signInVariables?: readonly string[];
   publisher?(host: H, folder: string): Promise<PublisherPart<P>>;
   prerequisites?(project: LoginProject<T>, host: H): Promise<readonly Prerequisite[]>;
   refuses?(secretName: string): string | undefined;

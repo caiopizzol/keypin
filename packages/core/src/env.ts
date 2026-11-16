@@ -7,9 +7,11 @@ export const SIGN_IN_VARIABLES: readonly string[] = [
 
 export function withoutSignIn(
   env: Readonly<Record<string, string | undefined>>,
+  also: readonly string[] = [],
 ): Record<string, string> {
   const kept: Record<string, string> = {};
   for (const [name, value] of Object.entries(env))
-    if (value !== undefined && !SIGN_IN_VARIABLES.includes(name)) kept[name] = value;
+    if (value !== undefined && !SIGN_IN_VARIABLES.includes(name) && !also.includes(name))
+      kept[name] = value;
   return kept;
 }

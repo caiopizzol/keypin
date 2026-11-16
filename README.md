@@ -125,6 +125,6 @@ npx skills add caiopizzol/keypin -g    # all your projects
   in CI
 - [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md): destinations, approvals and
   `--plan`
-- [Notes](https://github.com/caiopizzol/keypin/blob/main/docs/notes.md): `wrangler dev`, the wrangler login, and the
-  files keypin keeps
+- [Notes](https://github.com/caiopizzol/keypin/blob/main/docs/notes.md): `wrangler dev`, signing in to Cloudflare, and
+  the files keypin keeps
 - [Development](https://github.com/caiopizzol/keypin/blob/main/docs/development.md): working on keypin

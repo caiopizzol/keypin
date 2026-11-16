@@ -33,10 +33,13 @@ export async function run(args: string[], deps: Deps): Promise<number> {
     return entry ? [{ key, ref: entry.ref }] : [];
   });
   const keys = values.only ? pick(available, values.only, environment) : available;
-  const reserved = keys.filter((k) => SIGN_IN_VARIABLES.includes(k.key.name));
+  const signInNames = deps.destinations.flatMap((kind) => kind.signInVariables ?? []);
+  const reserved = keys.filter(
+    (k) => SIGN_IN_VARIABLES.includes(k.key.name) || signInNames.includes(k.key.name),
+  );
   if (reserved.length)
     throw new Error(
-      `keypin.toml maps ${reserved.map((k) => k.key.name).join(", ")}, which keypin uses to sign in to your vault; keypin run doesn't pass it to a command`,
+      `keypin.toml maps ${reserved.map((k) => k.key.name).join(", ")}, which keypin uses to sign in; keypin run doesn't pass it to a command`,
     );
 
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);
@@ -50,7 +53,7 @@ export async function run(args: string[], deps: Deps): Promise<number> {
     }
   }
 
-  const env = withoutSignIn(deps.env);
+  const env = withoutSignIn(deps.env, signInNames);
   for (const [name, secret] of found) {
     if (env[name] !== undefined) {
       out.warn(`${name} was already set; using the vault's value`);

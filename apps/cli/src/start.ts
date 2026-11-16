@@ -1,5 +1,4 @@
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { createInterface } from "node:readline/promises";
 import {
@@ -15,8 +14,8 @@ import {
 import {
   cloudflareWorker,
   CloudflareReader,
-  currentWranglerToken,
-  wranglerConfigFile,
+  type CloudflareSignIn,
+  cloudflareSignIn,
 } from "@keypin/connectors/cloudflare";
 import { ghToken, githubActions, listRepoSecrets, sshHostname } from "@keypin/connectors/github";
 import { neonIssuer } from "@keypin/connectors/neon";
@@ -51,14 +50,15 @@ import { onePasswordFrom } from "./sign-in";
 import { routedVault } from "./vault";
 
 let onePassword: ReturnType<typeof onePasswordFrom> | undefined;
-let cloudflare: CloudflareReader | undefined;
+const cloudflareLogins = new Map<string, CloudflareSignIn>();
+const cloudflareReaders = new Map<string, CloudflareReader>();
 let infisical: ReturnType<typeof infisicalBackend> | undefined;
 
 export const destinations = [githubActions, cloudflareWorker];
 export const vaults = [infisicalVault, onePasswordVault];
 
 export function destination(target: PublishTarget, publisher: Publisher): Destination {
-  return connectTo(destinations, target, publisher);
+  return connectTo<Publisher>(destinations, target, publisher);
 }
 
 export const issuers = [resendIssuer, neonIssuer];
@@ -77,6 +77,22 @@ function installed<T>(pending: Promise<T>): Promise<T> {
 const connect: Connect = (account) => installed(desktopConnect(account));
 const token: TokenClient = (value) => installed(tokenClient(value));
 const signedIn = () => (onePassword ??= onePasswordFrom(process.env, { desktop: connect, token }));
+function workerSignIn(folder: string): CloudflareSignIn {
+  const known = cloudflareLogins.get(folder);
+  if (known) return known;
+  const made = cloudflareSignIn({ env: process.env, folder });
+  cloudflareLogins.set(folder, made);
+  return made;
+}
+
+function workerReader(folder: string): CloudflareReader {
+  const known = cloudflareReaders.get(folder);
+  if (known) return known;
+  const made = new CloudflareReader({ token: () => workerSignIn(folder).token() });
+  cloudflareReaders.set(folder, made);
+  return made;
+}
+
 const vault = routedVault({
   "1password": () => signedIn().vault,
   infisical: () => (infisical ??= infisicalBackend(credentialsFrom(process.env))),
@@ -166,10 +182,8 @@ export function realDeps(): Deps {
     organizationSecrets: (repo, login) =>
       listRepoSecrets({ repo, organization: true, token: () => ghToken(login) }),
     sshHostname,
-    workerSecrets: (account, worker) =>
-      (cloudflare ??= new CloudflareReader({
-        token: () => currentWranglerToken(),
-      })).listWorkerSecrets(account, worker),
+    workerSecrets: (folder, account, worker) =>
+      workerReader(folder).listWorkerSecrets(account, worker),
     createFile,
     replaceFile,
     isLink,
@@ -186,15 +200,7 @@ export function realDeps(): Deps {
     destination,
     issuers,
     issuer,
-    wranglerLoginFile: async () => {
-      try {
-        const file = wranglerConfigFile();
-        await access(file);
-        return file;
-      } catch {
-        return null;
-      }
-    },
+    workerSignIn,
     ghLogin: async (login) => {
       if (!Bun.which("gh")) return "not installed";
       return ghToken(login, { refresh: false }).then(

@@ -17,6 +17,7 @@ import {
   onePasswordScope,
 } from "@keypin/connectors/onepassword";
 import { infisicalRef } from "@keypin/connectors/infisical";
+import { fakeSignIn } from "@keypin/connectors/cloudflare/testing";
 import type { Deps, FolderEntry, Launch, Lock } from "../src/deps";
 import { destinations, issuers, vaults } from "../src/start";
 
@@ -331,7 +332,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
     issuer: () => {
       throw new Error("this test rotates nothing");
     },
-    wranglerLoginFile: async () => null,
+    workerSignIn: () => fakeSignIn("not-logged-in"),
     ghLogin: async () => "ok",
     lock: memoryLock(disk),
     isTerminal: false,

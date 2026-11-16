@@ -9,10 +9,10 @@ keypin publish --all                 # every key with destinations, with one app
 keypin publish --all --plan          # show the plan and write nothing
 ```
 
-It writes GitHub Actions secrets with your `gh` login, and Cloudflare Worker secrets with your `wrangler` login on
-macOS or Linux (not Windows yet; see [Notes](notes.md#the-wrangler-login)). The Worker, and a GitHub `environment`
-the map names, must already exist. Run
-`keypin check` first: it checks each login and lists what's missing.
+It writes GitHub Actions secrets with your `gh` login, and Cloudflare Worker secrets with your `wrangler` login or
+`KEYPIN_CLOUDFLARE_API_TOKEN` (see [Notes](notes.md#signing-in-to-cloudflare)). The Worker, and a GitHub
+`environment` the map names, must already exist. Run `keypin check` first: it checks each login and lists what's
+missing.
 
 ## Steps
 

@@ -65,7 +65,7 @@ export interface Deps {
   githubSecrets(repo: string, login: string | null, environment?: string): Promise<StoreRead>;
   organizationSecrets(repo: string, login: string | null): Promise<StoreRead>;
   sshHostname(destination: string): Promise<string | null>;
-  workerSecrets(account: string, worker: string): Promise<StoreRead>;
+  workerSecrets(folder: string, account: string, worker: string): Promise<StoreRead>;
   createFile: CreateFile;
   replaceFile: ReplaceFile;
   isLink(path: string): Promise<boolean>;
@@ -82,7 +82,7 @@ export interface Deps {
   destination(target: PublishTarget, publisher: Publisher): Destination;
   issuers: IssuerKinds;
   issuer(spec: IssuerSpec, admin: Secret): Issuer;
-  wranglerLoginFile(): Promise<string | null>;
+  workerSignIn(folder: string): WorkerSignIn;
   ghLogin(login: string | null): Promise<"ok" | "not installed" | "not logged in">;
   lock: Lock;
   isTerminal: boolean;
@@ -94,7 +94,12 @@ export interface Deps {
 export interface Publisher {
   githubLogin: string | null;
   refreshLogins: boolean;
-  wranglerFile?: string | null;
+  workerSignIn: WorkerSignIn | null;
+}
+
+export interface WorkerSignIn {
+  readonly via: "oauth" | "api-token";
+  token(): Promise<string>;
 }
 
 export class UsageError extends Error {}

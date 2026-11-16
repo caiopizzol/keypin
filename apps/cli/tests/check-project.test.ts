@@ -1,6 +1,7 @@
 import { assert, describe, expect, test } from "vite-plus/test";
 import { isRecord, parseMap, SignInFailed, type StoreRead } from "@keypin/core";
 import { CloudflareReader } from "@keypin/connectors/cloudflare";
+import { fakeSignIn } from "@keypin/connectors/cloudflare/testing";
 import { cli } from "../src/cli";
 import { destinations, issuers, vaults } from "../src/start";
 import { AFTER_IMPORT, PASTE, THEN } from "../src/commands/check";
@@ -130,7 +131,7 @@ function setup(options: Setup = {}) {
         calls.push(`github ${repo} as ${login}`);
         return answer(options.github, { ok: true, secrets: [] });
       },
-      workerSecrets: async (account, worker) => {
+      workerSecrets: async (_folder, account, worker) => {
         calls.push(`worker ${account} ${worker}`);
         return answer(options.worker, { ok: true, secrets: [] });
       },
@@ -188,6 +189,7 @@ describe("keypin check on a whole project", () => {
     expect(text).toContain(`4 things to do, in this order:
 1 Sign in to Cloudflare
     wrangler login
+  Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
 2 Set up 1Password
   keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected.
 3 Move .env's keys into 1Password
@@ -467,7 +469,7 @@ worker = "billing-worker"
   test("a finished setup checks items by ID, without reading a value, and exits 0", async () => {
     const run = setup({
       files: { [MAP]: PUBLISHED, [`${ROOT}/.env`]: null },
-      deps: { wranglerLoginFile: async () => "/home/me/.wrangler/config/default.toml" },
+      deps: { workerSignIn: () => fakeSignIn("oauth") },
       github: { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] },
       worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
     });
@@ -500,6 +502,7 @@ worker = "billing-worker"
     expect(text.match(/STRIPE_API_KEY/g)).toHaveLength(2);
     expect(text).toContain(`1 Sign in to Cloudflare
     wrangler login
+  Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
 2 Publish 2 keys
   STRIPE_API_KEY: keypin.toml publishes it to acme/billing, which doesn't have it yet.
   RESEND_API_KEY: keypin.toml publishes it to the Worker billing-worker, which doesn't have it yet.
@@ -679,7 +682,7 @@ worker = "billing-worker"
         [`${ROOT}/staging/wrangler.toml`]: `name = "billing-worker"\naccount_id = "${other}"\n\n[secrets]\nrequired = ["RESEND_API_KEY"]\n`,
       },
       deps: {
-        workerSecrets: async (account) => ({
+        workerSecrets: async (_folder, account) => ({
           ok: true,
           secrets: account === ACCOUNT ? [{ name: "RESEND_API_KEY", updatedAt: null }] : [],
         }),
@@ -1880,7 +1883,9 @@ jobs:
     for (const flag of [[], ["--json"]]) {
       const run = setup({
         files: { [MAP]: MAPPED },
-        deps: { workerSecrets: (account, worker) => reader.listWorkerSecrets(account, worker) },
+        deps: {
+          workerSecrets: (_folder, account, worker) => reader.listWorkerSecrets(account, worker),
+        },
       });
       await cli(["check", ...flag], run.deps);
       expect(run.stdout.text).toContain(
@@ -1910,6 +1915,7 @@ describe("keypin check's prerequisites", () => {
   Sign in as alice.
 2 Sign in to Cloudflare
     wrangler login
+  Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
 3 Set up 1Password
   keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected.
 4 Move .env's keys into 1Password
@@ -1950,8 +1956,29 @@ describe("keypin check's prerequisites", () => {
     });
   });
 
+  test.each([
+    [
+      "no-wrangler",
+      "not installed",
+      "install wrangler in the project, then run wrangler login, or set KEYPIN_CLOUDFLARE_API_TOKEN",
+    ],
+    [
+      "old-wrangler",
+      "sign-in failed",
+      "wrangler 4.20.0 can't give keypin its login; upgrade wrangler to 4.57.0 or later",
+    ],
+    ["not-logged-in", "not logged in", "run wrangler login, or set KEYPIN_CLOUDFLARE_API_TOKEN"],
+  ] as const)("a Cloudflare sign-in that is %s says what to do", async (problem, status, fix) => {
+    const run = setup({
+      files: { [MAP]: TEMPLATE },
+      deps: { workerSignIn: () => fakeSignIn(problem) },
+    });
+    await cli(["check", "--json"], run.deps);
+    expect(prerequisites(run.stdout.text)).toContainEqual({ name: "Cloudflare", status, fix });
+  });
+
   test("nothing to list once the logins exist and a vault item was read", async () => {
-    const wrangler = { wranglerLoginFile: async () => "/home/me/.wrangler/config/default.toml" };
+    const wrangler = { workerSignIn: () => fakeSignIn("oauth") };
     const run = setup({ files: { [MAP]: MAPPED }, deps: wrangler });
     await cli(["check"], run.deps);
     expect(run.vault.length).toBeGreaterThan(0);
@@ -1965,7 +1992,7 @@ describe("keypin check's prerequisites", () => {
     const run = setup({
       files: { [MAP]: MAPPED },
       deps: {
-        wranglerLoginFile: async () => "/home/me/.wrangler/config/default.toml",
+        workerSignIn: () => fakeSignIn("oauth"),
         vault: () => ({
           ...fakeVault().vault,
           itemIds: async () => {
@@ -1992,7 +2019,7 @@ describe("keypin check's prerequisites", () => {
       setup({
         files: { [MAP]: MAPPED },
         deps: {
-          wranglerLoginFile: async () => "/home/me/.wrangler/config/default.toml",
+          workerSignIn: () => fakeSignIn("oauth"),
           vault: () => ({
             ...fakeVault().vault,
             itemIds: async () => {

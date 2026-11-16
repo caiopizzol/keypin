@@ -8,16 +8,16 @@ import {
   parseObject,
   type Secret,
 } from "@keypin/core";
-import { wranglerToken } from "./token";
 
 const API = "https://api.cloudflare.com/client/v4";
 const ACCOUNT_ID = /^[0-9a-f]{32}$/;
 const WORKER = /^[A-Za-z0-9_-]+$/;
+const DENIED = [401, 403];
 
 export interface WorkerSecretOptions {
   account: string;
   worker: string;
-  token?: () => Promise<string>;
+  token: () => Promise<string>;
   fetch?: Fetch;
 }
 
@@ -35,7 +35,7 @@ export class WorkerSecretDestination implements Destination {
     if (!WORKER.test(options.worker)) throw new Error(`"${options.worker}" isn't a Worker name`);
     this.#account = options.account;
     this.#worker = options.worker;
-    this.#tokenSource = options.token ?? (() => wranglerToken());
+    this.#tokenSource = options.token;
     this.#fetch = options.fetch ?? globalThis.fetch;
   }
 
@@ -47,10 +47,10 @@ export class WorkerSecretDestination implements Destination {
     this.#passed = false;
     const facts = { publisher: await this.#publisher(), expected: this.#account };
 
+    const fix = `sign in as a member of account ${this.#account}, or use an API token with Workers Scripts Edit on it`;
     const accounts = await this.#accountIds();
-    if (!accounts.includes(this.#account)) {
+    if (accounts !== null && !accounts.includes(this.#account)) {
       const reason = `the login can reach ${accounts.join(", ") || "no account"}, not ${this.#account}`;
-      const fix = `run wrangler login as a Cloudflare user who is a member of account ${this.#account}`;
       return { ...facts, destinationAccount: null, ok: false, reason, fix };
     }
 
@@ -58,6 +58,10 @@ export class WorkerSecretDestination implements Destination {
     if (settings.status === 404) {
       const reason = `account ${this.#account} has no Worker ${this.#worker}`;
       const fix = `deploy the Worker first, or fix worker in keypin.toml`;
+      return { ...facts, destinationAccount: null, ok: false, reason, fix };
+    }
+    if (accounts === null && DENIED.includes(settings.status)) {
+      const reason = `the login can't list its accounts or read the Worker ${this.#worker} in account ${this.#account}`;
       return { ...facts, destinationAccount: null, ok: false, reason, fix };
     }
     if (settings.status !== 200) throw failure("GET", `${this.#base()}/settings`, settings);
@@ -102,10 +106,11 @@ export class WorkerSecretDestination implements Destination {
     return typeof email === "string" ? email : "unknown (the token can't read /user)";
   }
 
-  async #accountIds(): Promise<string[]> {
+  async #accountIds(): Promise<string[] | null> {
     const ids: string[] = [];
     for (let page = 1; ; page++) {
       const response = await this.#request("GET", `/accounts?per_page=50&page=${page}`);
+      if (DENIED.includes(response.status)) return null;
       if (response.status !== 200) throw failure("GET", "/accounts", response);
       const result = response.body.result;
       if (!Array.isArray(result))

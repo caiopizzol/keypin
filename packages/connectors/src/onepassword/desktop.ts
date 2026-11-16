@@ -53,7 +53,7 @@ export function sandboxedApp(
 export function requireDesktopApp(
   connect: Connect,
   found: () => string | null = desktopLibrary,
-  sandboxed: () => boolean = sandboxedApp,
+  sandboxed: () => boolean = found === desktopLibrary ? sandboxedApp : () => false,
 ): Connect {
   return async (account) => {
     if (!found())

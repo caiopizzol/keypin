@@ -409,11 +409,15 @@ describe("wrong kinds and values", () => {
     ],
     [
       "op://Private/i/password?attribute=otp\\n",
-      `can't have the query "?attribute=otp\n"; keypin reads the field's value as stored`,
+      `can't have the query "?attribute=otp\\n"; keypin reads the field's value as stored`,
     ],
     [
       "op://Private/i/password#\\nx",
-      `can't have the query "#\nx"; keypin reads the field's value as stored`,
+      `can't have the query "#\\nx"; keypin reads the field's value as stored`,
+    ],
+    [
+      "op://Private/i/password?\\u001b[31mred",
+      `can't have the query "?\\u001b[31mred"; keypin reads the field's value as stored`,
     ],
   ])("the reference %s is refused", (reference, message) => {
     expect(errorsOf(`${VAULTS}[keys.A]\ndev = "${reference}"\n`)).toEqual([

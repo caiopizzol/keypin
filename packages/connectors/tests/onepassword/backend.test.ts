@@ -282,6 +282,20 @@ describe("names in a reference", () => {
 });
 
 describe("write", () => {
+  test("an empty value is refused before anything is saved", async () => {
+    const existing = item("demo dev token", [field("password", "Concealed", "keep-this")]);
+    const { client, calls } = fake([existing]);
+    const { backend } = backendFor(client);
+    await expect(backend.write(ref, new Secret(""))).rejects.toThrow(
+      "keypin won't save an empty value",
+    );
+    await expect(backend.write({ ...ref, item: "new item" }, new Secret(""))).rejects.toThrow(
+      "keypin won't save an empty value",
+    );
+    expect(calls.put).toEqual([]);
+    expect(calls.create).toEqual([]);
+  });
+
   test("writes the field the reference names, and won't create an item for another field", async () => {
     const existing = item("demo dev token", [
       field("password", "Concealed", "keep-this"),
@@ -526,6 +540,26 @@ describe("errors", () => {
     );
     await expect(backend.read({ ...ref, item: "second" })).rejects.toThrow("isn't installed");
     expect(printed).toEqual([]);
+  });
+
+  test("an injected app lookup doesn't read the host's Snap or Flatpak install", async () => {
+    let looked = false;
+    const sdk = requireDesktopApp(
+      async () => {
+        throw new Error("Native library is not available.");
+      },
+      () => {
+        looked = true;
+        return null;
+      },
+    );
+    await expect(onePasswordBackend(sdk).read(ref)).rejects.toThrow(
+      new SignInFailed(
+        `1Password account "${ACCOUNT}": sign-in failed: the 1Password desktop app isn't installed`,
+        { kind: "no-desktop-app" },
+      ),
+    );
+    expect(looked).toBe(true);
   });
 
   test("a Snap or Flatpak desktop app is named as the reason, with what to install", async () => {

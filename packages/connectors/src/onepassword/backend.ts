@@ -178,6 +178,8 @@ export function onePasswordBackend(
 
     async write(given, secret, options = {}) {
       const ref = own(given);
+      if (secret.reveal() === "")
+        throw new Error(`${where(ref)}: keypin won't save an empty value`);
       const rotated = options.rotated;
       if (rotated !== undefined && !isDay(rotated)) {
         throw new Error(

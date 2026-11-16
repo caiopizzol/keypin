@@ -78,7 +78,7 @@ async function oauthToken(options: SignInOptions): Promise<string> {
   try {
     const run = (args: string[], timeout: number) =>
       runWrangler(wrangler, args, {
-        cwd: options.folder,
+        cwd: logs,
         env: wranglerEnv(options.env, logs),
         timeout,
       });

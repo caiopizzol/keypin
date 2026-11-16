@@ -71,7 +71,24 @@ describe("cloudflareSignIn through wrangler auth token", () => {
     expect(await signIn.token()).toBe(TOKEN);
     const ran = await readFile(seen, "utf8");
     expect(ran).toContain(`args=auth token --json --env-file /dev/null\n`);
-    expect(ran).toContain(`cwd=${root}\n`);
+    expect(ran).not.toContain(`cwd=${root}\n`);
+  });
+
+  test("a broken wrangler.toml in the project doesn't block the login", async () => {
+    const root = await folder();
+    const bin = join(root, "node_modules", ".bin");
+    await mkdir(bin, { recursive: true });
+    await writeFile(join(root, "wrangler.toml"), 'name = "billing"\ncompatibility_date = 123\n');
+    const script = `#!/bin/sh
+if [ "$1" = "--version" ]; then echo "4.153.0"; exit 0; fi
+if [ -f wrangler.toml ]; then echo "Processing wrangler.toml configuration: invalid compatibility_date" >&2; exit 1; fi
+printf '%s' '${OAUTH}'
+`;
+    await writeFile(join(bin, "wrangler"), script);
+    await chmod(join(bin, "wrangler"), 0o755);
+    expect(await cloudflareSignIn({ env: { PATH: "/usr/bin:/bin" }, folder: root }).token()).toBe(
+      TOKEN,
+    );
   });
 
   test("asks wrangler once per sign-in", async () => {
@@ -128,7 +145,7 @@ describe("cloudflareSignIn through wrangler auth token", () => {
     await mkdir(sub, { recursive: true });
     expect(findWrangler(sub, onPath)).toBe(join(root, "node_modules/.bin/wrangler"));
     expect(await cloudflareSignIn({ env: { PATH: onPath }, folder: sub }).token()).toBe(TOKEN);
-    expect(await readFile(seen, "utf8")).toContain(`cwd=${sub}\n`);
+    expect(await readFile(seen, "utf8")).toContain("args=auth token --json");
     await expect(readFile(pathSeen, "utf8")).rejects.toThrow();
 
     const bare = await folder();

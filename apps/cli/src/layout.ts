@@ -26,7 +26,7 @@ export function launcherHash(text: string): string {
 
 export const LAUNCHER_MAX_BYTES = 16 * 1024;
 
-export function launchOrder(target: Target): Target[] {
+function launchOrder(target: Target): Target[] {
   switch (target) {
     case "darwin-arm64":
       return ["darwin-arm64", "darwin-x64"];

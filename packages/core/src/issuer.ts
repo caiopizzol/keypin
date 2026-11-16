@@ -20,7 +20,7 @@ export interface IssuerKind<T extends IssuerSpec = IssuerSpec> {
 
 export type IssuerKinds = readonly IssuerKind[];
 
-export function issuerKindOf(kinds: IssuerKinds, kind: string): IssuerKind {
+function issuerKindOf(kinds: IssuerKinds, kind: string): IssuerKind {
   const found = kinds.find((k) => k.kind === kind);
   if (!found) throw new Error(`keypin has no issuer kind "${kind}"`);
   return found;

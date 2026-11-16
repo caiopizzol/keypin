@@ -2,7 +2,7 @@ import type { KeyRef } from "./contracts";
 import type { VaultKind, VaultKinds } from "./login";
 import { isRecord } from "./record";
 
-export function vaultKindOf<V extends VaultKind>(vaults: readonly V[], kind: string): V {
+function vaultKindOf<V extends VaultKind>(vaults: readonly V[], kind: string): V {
   const found = vaults.find((vault) => vault.kind === kind);
   if (!found) throw new Error(`keypin has no vault kind "${kind}"`);
   return found;

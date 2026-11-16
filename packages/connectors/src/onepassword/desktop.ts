@@ -4,7 +4,7 @@ import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import { type Connect, desktopConnect as sdkConnect } from "./sdk";
 
-export const DESKTOP_APP_MISSING = "the 1Password desktop app isn't installed";
+const DESKTOP_APP_MISSING = "the 1Password desktop app isn't installed";
 
 const LIBRARIES: Record<string, (home: string) => string[]> = {
   darwin: (home) => [

@@ -1,6 +1,6 @@
 import { type Fetch, isRecord } from "@keypin/core";
 
-export const INFISICAL_TOKEN = "infisical-access-token-5d8e";
+const INFISICAL_TOKEN = "infisical-access-token-5d8e";
 
 export interface FakeMetadata {
   key: string;

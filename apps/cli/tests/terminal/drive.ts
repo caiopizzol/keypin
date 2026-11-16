@@ -99,7 +99,7 @@ function environment(sandbox: string, home: string, name: string, cols: number, 
   };
 }
 
-export function render(raw: string): string {
+function render(raw: string): string {
   const lines: string[][] = [[]];
   let col = 0;
   const text = raw.replaceAll(STYLE, "");

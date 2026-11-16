@@ -11,7 +11,7 @@ import { type Deps, UsageError } from "./deps";
 
 export type { SignIn };
 
-export const APPROVE = "1Password may be asking you to approve keypin";
+const APPROVE = "1Password may be asking you to approve keypin";
 
 export function onePasswordFrom(
   env: Readonly<Record<string, string | undefined>>,

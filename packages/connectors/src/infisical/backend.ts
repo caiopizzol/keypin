@@ -22,7 +22,7 @@ import {
 
 export const CLIENT_ID = "INFISICAL_UNIVERSAL_AUTH_CLIENT_ID";
 export const CLIENT_SECRET = "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET";
-export const ROTATED = "rotated";
+const ROTATED = "rotated";
 
 export interface Credentials {
   clientId: string;

@@ -17,7 +17,7 @@ export type InfisicalPin = Pick<InfisicalRef, "url" | "organization">;
 export type InfisicalScope = Omit<InfisicalRef, "name">;
 
 export const SCHEME = "infisical://";
-export const INFISICAL_CLOUD = "https://app.infisical.com";
+const INFISICAL_CLOUD = "https://app.infisical.com";
 
 export function parse(rest: string): InfisicalReference | string {
   const parts = rest.split("/");

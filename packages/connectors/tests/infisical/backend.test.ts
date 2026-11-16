@@ -347,6 +347,18 @@ describe("writing", () => {
     expect((await vault.read(REF)).equals(new Secret("postgres://prod-host/app"))).toBe(true);
   });
 
+  test("a reference finds a secret the environment imports", async () => {
+    const fake = fakeInfisical({
+      secrets: {
+        "prod:/:STRIPE_KEY": { ...STRIPE, value: "${SHARED}" },
+        "dev:/:SHARED": { value: SENTINEL },
+      },
+      imports: [{ into: "prod", environment: "dev" }],
+    });
+    const vault = infisicalBackend(CREDENTIALS, fake.fetch);
+    expect((await vault.read(REF)).equals(new Secret(SENTINEL))).toBe(true);
+  });
+
   test("reading expands nested references", async () => {
     const fake = fakeInfisical({
       secrets: {

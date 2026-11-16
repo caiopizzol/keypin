@@ -142,7 +142,14 @@ export function infisicalFetch(fake: FakeInfisical, store: Store): Fetch {
               (p, i, all) =>
                 all.findIndex((q) => q.environment === p.environment && q.path === p.path) === i,
             );
-        for (const place of places) {
+        const withImports = places.flatMap((place) => [
+          place,
+          ...(target === project ? (fake.imports ?? []) : [])
+            .filter((from) => from.into === place.environment)
+            .map((from) => ({ environment: from.environment, path: from.path ?? ROOT }))
+            .reverse(),
+        ]);
+        for (const place of withImports) {
           const id = `${target}/${place.environment}${place.path}/${key}`;
           const secret = secretsOf(target, place.environment, place.path)[key];
           if (!secret || seen.has(id)) continue;

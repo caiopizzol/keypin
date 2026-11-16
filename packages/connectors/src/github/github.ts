@@ -135,7 +135,7 @@ export class GitHubSecretDestination implements Destination {
     if (put.status !== 201 && put.status !== 204) {
       const limit =
         put.status >= 400 && put.status < 500 && put.status !== 401 && put.status !== 403
-          ? await this.#limitReached(name, Buffer.byteLength(value), path)
+          ? await this.#limitReached(name, Buffer.byteLength(value), path).catch(() => null)
           : null;
       if (limit !== null)
         throw new Error(`${limit} (GitHub PUT ${path} returned HTTP ${put.status})`);

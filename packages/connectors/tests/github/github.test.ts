@@ -588,6 +588,22 @@ describe("refusals that say what to do", () => {
     );
   });
 
+  test("a refused PUT keeps GitHub's message when checking the limits fails", async () => {
+    const routes = happyRoutes();
+    routes[`PUT /repos/${REPO}/actions/secrets/API_KEY`] = {
+      status: 422,
+      body: { message: "Invalid request." },
+    };
+    routes[`GET /repos/${REPO}/actions/secrets/API_KEY`] = () => {
+      throw new TypeError("fetch failed");
+    };
+    const { github } = destination(routes);
+    await github.checkAccount();
+    await expect(github.write("API_KEY", new Secret(SENTINEL))).rejects.toThrow(
+      `GitHub PUT /repos/${REPO}/actions/secrets/API_KEY returned HTTP 422: Invalid request.`,
+    );
+  });
+
   test("an invisible repository mentions that GitHub Enterprise isn't supported", async () => {
     const routes = happyRoutes();
     delete routes[`GET /repos/${REPO}`];

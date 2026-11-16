@@ -1,5 +1,7 @@
+import { type ItemIds, type KeyRef, messageOf } from "@keypin/core";
 import type { Deps } from "./deps";
-import { confirm } from "./output";
+import { confirm, type Output } from "./output";
+import { lookUpIds } from "./publishing";
 
 export const NEEDS_APPROVAL = 3;
 
@@ -64,4 +66,36 @@ export async function confirmed(
   );
   say(rerun(deps, request.command, request.args));
   return false;
+}
+
+export async function unattendedApproval(
+  deps: Deps,
+  out: Output,
+  gate: {
+    plan: boolean;
+    command: string;
+    args: readonly string[];
+    refs: readonly KeyRef[];
+    approvals: (ids: readonly (ItemIds | null)[]) => readonly { approval: string }[];
+    nothing: string;
+    stopped: string;
+  },
+): Promise<number | null> {
+  if (deps.isTerminal || gate.plan) return null;
+  const say = (text: string) => out.line(text);
+  let approvals = gate.approvals([]);
+  if (!approvals.length) {
+    try {
+      approvals = gate.approvals(await lookUpIds(gate.refs, deps, out));
+    } catch (error) {
+      say(`Stopped: couldn't find the item: ${messageOf(error)}. ${gate.nothing}`);
+      return 1;
+    }
+  }
+  if (!approvals.length) return null;
+  say("Needs approval:");
+  for (const needed of approvals) say(`  ${needed.approval}`);
+  say(gate.stopped);
+  say(rerun(deps, gate.command, gate.args));
+  return NEEDS_APPROVAL;
 }

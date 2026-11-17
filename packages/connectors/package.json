@@ -11,6 +11,8 @@
     "./convex/testing": "./src/convex/testing.ts",
     "./doppler": "./src/doppler/index.ts",
     "./doppler/testing": "./src/doppler/testing.ts",
+    "./fly": "./src/fly/index.ts",
+    "./fly/testing": "./src/fly/testing.ts",
     "./github": "./src/github/index.ts",
     "./github/testing": "./src/github/testing.ts",
     "./google": "./src/google/index.ts",

@@ -19,6 +19,7 @@ import {
   type CloudflareSignIn,
   cloudflareSignIn,
 } from "@keypin/connectors/cloudflare";
+import { convexDeployment } from "@keypin/connectors/convex";
 import { ghToken, githubActions, listRepoSecrets, sshHostname } from "@keypin/connectors/github";
 import { googleIssuer } from "@keypin/connectors/google";
 import { neonIssuer } from "@keypin/connectors/neon";
@@ -74,6 +75,7 @@ export const destinations = [
   supabaseFunctions,
   netlifyProject,
   railwayService,
+  convexDeployment,
 ];
 export const vaults = [infisicalVault, bitwardenVault, dopplerVault, onePasswordVault];
 export const signInNames = signInVariables([...vaults, ...destinations]);

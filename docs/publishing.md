@@ -34,6 +34,9 @@ Railway stages the change and uses the new value only from the service's next de
 keypin doesn't. keypin can't seal a variable through Railway's API; seal it once in Railway, and later writes keep
 it sealed. Railway reserves names that start with `RAILWAY_`, so keypin refuses them.
 
+It writes Convex environment variables with `KEYPIN_CONVEX_DEPLOY_KEY`, a deploy key for the one deployment in
+`url`. Changing a variable invalidates every subscription. Cron definitions read it only on the next deploy.
+
 ## Steps
 
 1. **Accounts:** it checks that each login reaches the account the map pins, and stops if one doesn't.

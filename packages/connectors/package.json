@@ -7,6 +7,8 @@
     "./bitwarden/testing": "./src/bitwarden/testing.ts",
     "./cloudflare": "./src/cloudflare/index.ts",
     "./cloudflare/testing": "./src/cloudflare/testing.ts",
+    "./convex": "./src/convex/index.ts",
+    "./convex/testing": "./src/convex/testing.ts",
     "./doppler": "./src/doppler/index.ts",
     "./doppler/testing": "./src/doppler/testing.ts",
     "./github": "./src/github/index.ts",

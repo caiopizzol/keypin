@@ -16,6 +16,8 @@ import { resendFetch } from "@keypin/connectors/resend/testing";
 import { supabaseFetch, type SupabaseWorld } from "@keypin/connectors/supabase/testing";
 import { credentialsFrom, infisicalBackend } from "@keypin/connectors/infisical";
 import { fileStore, infisicalFetch } from "@keypin/connectors/infisical/testing";
+import { accessTokenFrom, bitwardenBackend } from "@keypin/connectors/bitwarden";
+import { bitwardenFetch, fileStore as bitwardenStore } from "@keypin/connectors/bitwarden/testing";
 import { cli } from "../../src/cli";
 import { onePasswordFrom } from "../../src/sign-in";
 import { destinations, issuer, realDeps } from "../../src/start";
@@ -215,7 +217,23 @@ const infisical = infisicalBackend(
     ),
   ),
 );
-const vault = routedVault({ "1password": () => signedIn().vault, infisical: () => infisical });
+const BITWARDEN = join(sandbox, "bitwarden.json");
+const bitwarden = bitwardenBackend(
+  accessTokenFrom(process.env),
+  bitwardenFetch(
+    run.bitwarden ?? { organization: "", projects: {} },
+    bitwardenStore(
+      () => (existsSync(BITWARDEN) ? readFileSync(BITWARDEN, "utf8") : null),
+      (text) => writeFileSync(BITWARDEN, text),
+      effect,
+    ),
+  ),
+);
+const vault = routedVault({
+  "1password": () => signedIn().vault,
+  infisical: () => infisical,
+  bitwarden: () => bitwarden,
+});
 
 const resend = resendFetch({
   admin: RESEND_ADMIN,

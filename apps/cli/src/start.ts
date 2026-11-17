@@ -21,6 +21,7 @@ import {
 import { ghToken, githubActions, listRepoSecrets, sshHostname } from "@keypin/connectors/github";
 import { neonIssuer } from "@keypin/connectors/neon";
 import { resendIssuer } from "@keypin/connectors/resend";
+import { supabaseIssuer } from "@keypin/connectors/supabase";
 import { vercelProject } from "@keypin/connectors/vercel";
 import {
   type Connect,
@@ -64,7 +65,7 @@ export function destination(target: PublishTarget, publisher: Publisher): Destin
   return connectTo<Publisher>(destinations, target, publisher);
 }
 
-export const issuers = [resendIssuer, neonIssuer];
+export const issuers = [resendIssuer, neonIssuer, supabaseIssuer];
 
 export function issuer(spec: IssuerSpec, admin: Secret, fetch?: Fetch): Issuer {
   return connectIssuer(issuers, spec, admin, fetch);

@@ -1,6 +1,6 @@
 ---
 name: verify-keypin
-description: Run the keypin CLI in a real terminal with fake 1Password, Infisical, gh, GitHub, Cloudflare, Resend and Neon, and check what a developer sees (spinners, ✓/✗ steps, [y/N] prompts, colors, plain output) and what it writes. Use after changing a command's terminal output, prompts or exit codes.
+description: Run the keypin CLI in a real terminal with fake 1Password, Infisical, gh, GitHub, Cloudflare, Resend, Neon and Supabase, and check what a developer sees (spinners, ✓/✗ steps, [y/N] prompts, colors, plain output) and what it writes. Use after changing a command's terminal output, prompts or exit codes.
 metadata:
   internal: "true"
 ---

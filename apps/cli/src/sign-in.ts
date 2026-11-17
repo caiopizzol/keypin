@@ -47,8 +47,8 @@ export function mapSignIn(
   map: KeysMap | null,
   refs: readonly KeyRef[],
 ): SignIn | null {
-  const infisicalOnly = map?.pins.infisical && !map.pins["1password"];
-  return refs.length || infisicalOnly ? signInFor(deps, refs) : deps.signIn();
+  const otherVaultsOnly = map && !map.pins["1password"] && Object.keys(map.pins).length > 0;
+  return refs.length || otherVaultsOnly ? signInFor(deps, refs) : deps.signIn();
 }
 
 export function approval(deps: Pick<Deps, "signIn">, refs: readonly KeyRef[]): string | undefined {

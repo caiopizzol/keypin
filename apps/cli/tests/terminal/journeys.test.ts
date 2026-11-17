@@ -436,6 +436,39 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
+    "with Bitwarden, run, status and publish read from the organization and leak nothing",
+    async () => {
+      const where =
+        "Bitwarden organization 2f1d6c9e-8a3b-4c5d-9e7f-0a1b2c3d4e5f at https://vault.bitwarden.com";
+      const run = await drive({
+        scenario: "bitwarden",
+        args: ["run", "--", "sh", "-c", "env | grep -c BWS_ACCESS_TOKEN || true"],
+      });
+      expect(run.exit).toBe(0);
+      expect(run.screen).toMatch(new RegExp(`^✓ Read 1 dev value from ${where}`, "m"));
+      expect(run.screen).toMatch(/^0$/m);
+      const status = await drive({ scenario: "bitwarden", args: ["status"] });
+      expect(status.screen).toContain(`✓ Read 2 rotated dates from ${where}, not the values`);
+      expect(status.screen).toContain("STRIPE_KEY  prod  due in 5 days");
+      const publish = await drive({
+        scenario: "bitwarden",
+        args: ["publish", "STRIPE_KEY"],
+        answers: ["y"],
+      });
+      expect(publish.exit).toBe(0);
+      expect(publish.screen).toContain(`from bitwarden://billing/STRIPE_KEY in ${where}`);
+      expect(publish.effects).toEqual([
+        "destination write github-actions:acme/billing STRIPE_KEY (23 chars)",
+      ]);
+      for (const result of [run, status, publish]) {
+        expect(result.screen).not.toContain("1Password");
+        clean(result);
+      }
+    },
+    SLOW,
+  );
+
+  test(
     "with an Infisical access token, check names it and run's command never sees it",
     async () => {
       const check = await drive({ scenario: "infisical-token", args: ["check"] });

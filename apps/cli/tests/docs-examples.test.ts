@@ -13,7 +13,7 @@ const FILES = [
 ];
 const FENCE = /^( *)```toml\n([\s\S]*?)^\1```/gm;
 const KEY_TABLE = /^\[keys\.[^.\]\s]+(\.[^.\]\s]+)?\]$/m;
-const VAULT_PIN = /^\[(1password|infisical)\]$/m;
+const VAULT_PIN = /^\[(1password|infisical|bitwarden)\]$/m;
 const DOCS_PIN = '[1password]\naccount = "my.1password.com"\n\n';
 
 const examples = FILES.flatMap((file) =>

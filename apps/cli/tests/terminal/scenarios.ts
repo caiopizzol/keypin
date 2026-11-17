@@ -2,6 +2,7 @@ import { envValues } from "@keypin/core";
 import { localDay } from "@keypin/core";
 import type { FakeToken } from "@keypin/connectors/cloudflare/testing";
 import type { FakeInfisical } from "@keypin/connectors/infisical/testing";
+import { FAKE_ACCESS_TOKEN, type FakeBitwarden } from "@keypin/connectors/bitwarden/testing";
 import type { FakeOpenAIKey } from "@keypin/connectors/openai/testing";
 import type { FakeOpenRouterKey } from "@keypin/connectors/openrouter/testing";
 import type { SupabaseKey } from "@keypin/connectors/supabase/testing";
@@ -47,6 +48,7 @@ export interface Scenario {
   places: Record<string, Place>;
   env?: Record<string, string>;
   infisical?: FakeInfisical;
+  bitwarden?: FakeBitwarden;
 }
 
 export const FAKE_TOKEN = `ops_${Buffer.from(JSON.stringify({ signInAddress: "https://my.1password.com/" })).toString("base64url")}`;
@@ -506,6 +508,39 @@ const infisical: Scenario = {
   },
 };
 
+const BITWARDEN_ORGANIZATION = "2f1d6c9e-8a3b-4c5d-9e7f-0a1b2c3d4e5f";
+
+const bitwarden: Scenario = {
+  ...ready,
+  about: "ready, but keypin.toml reads from a fake Bitwarden Secrets Manager organization",
+  files: {
+    ...ready.files,
+    "keypin.toml": INFISICAL_MAP.replace(
+      '[infisical]\norganization = "acme"',
+      `[bitwarden]\norganization = "${BITWARDEN_ORGANIZATION}"`,
+    )
+      .replace("infisical://billing/dev/", "bitwarden://billing-dev/")
+      .replace("infisical://billing/prod/", "bitwarden://billing/"),
+  },
+  onePassword: { accounts: {} },
+  bitwarden: {
+    organization: BITWARDEN_ORGANIZATION,
+    projects: {
+      "billing-dev": {
+        secrets: [
+          { name: "STRIPE_KEY", value: "verify-dev-stripe-2c7f", note: `rotated: ${day(-30)}` },
+        ],
+      },
+      billing: {
+        secrets: [
+          { name: "STRIPE_KEY", value: "verify-prod-stripe-8e1b", note: `rotated: ${day(-85)}` },
+        ],
+      },
+    },
+  },
+  env: { BWS_ACCESS_TOKEN: FAKE_ACCESS_TOKEN },
+};
+
 export const scenarios: Record<string, Scenario> = {
   ready,
   "env-file": {
@@ -592,6 +627,7 @@ jobs:
     env: { KEYPIN_1PASSWORD: "service-account", OP_SERVICE_ACCOUNT_TOKEN: FAKE_TOKEN },
   },
   infisical,
+  bitwarden,
   "infisical-token": {
     ...infisical,
     about: "infisical, but signed in with a machine identity's access token in INFISICAL_TOKEN",
@@ -896,11 +932,15 @@ export function valuesOf(scenario: Scenario): string[] {
     .flatMap((secrets) => Object.values(secrets));
   if (infisical.some((secret) => secret.value.length < SHORTEST_VALUE))
     throw new Error(`Infisical values need ${SHORTEST_VALUE} characters or more`);
+  const bitwarden = Object.values(scenario.bitwarden?.projects ?? {}).flatMap((p) => p.secrets);
+  if (bitwarden.some((secret) => secret.value.length < SHORTEST_VALUE))
+    throw new Error(`Bitwarden values need ${SHORTEST_VALUE} characters or more`);
   const tokens = [
     scenario.env?.OP_SERVICE_ACCOUNT_TOKEN,
     scenario.env?.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET,
     scenario.env?.INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN,
     scenario.env?.INFISICAL_TOKEN,
+    scenario.env?.BWS_ACCESS_TOKEN,
   ].flatMap((token) => (token ? [token] : []));
   const issued = [
     ...(scenario.resend ? [ISSUED_PREFIX] : []),
@@ -912,6 +952,7 @@ export function valuesOf(scenario: Scenario): string[] {
   return [
     ...items.map((item) => item.value),
     ...infisical.map((secret) => secret.value),
+    ...bitwarden.map((secret) => secret.value),
     ...env,
     ...tokens,
     ...issued,

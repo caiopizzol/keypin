@@ -695,6 +695,68 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "AWS: replaces an IAM user's access key and its ID together, then deactivates and deletes the old key after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "aws",
+        args: ["rotate", "AWS_SECRET_ACCESS_KEY"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "✓ AWS IAM  the vault holds access key AKIAAPPVERIFY0000001 of IAM user billing-app in account 123456789012",
+      );
+      expect(result.screen).toContain(
+        "  - AWS IAM               revoke the old key AKIAAPPVERIFY0000001, after a second y\n    keypin deactivates it, then deletes it",
+      );
+      expect(result.effects).toEqual([
+        "aws create billing-app/AKIANEWVERIFY0000001",
+        "1password update my.1password.com/Private/app aws secret (24 chars)",
+        "1password update my.1password.com/Private/app aws key id (20 chars)",
+        "destination write github-actions:acme/billing AWS_SECRET_ACCESS_KEY (24 chars)",
+        "destination write github-actions:acme/billing AWS_ACCESS_KEY_ID (20 chars)",
+        "aws delete billing-app/AKIAAPPVERIFY0000001",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "AWS: a user with no free key slot stops before anything is created",
+    async () => {
+      const result = await drive({
+        scenario: "aws-full",
+        args: ["rotate", "AWS_SECRET_ACCESS_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        "aws iam delete-access-key --user-name billing-app --access-key-id AKIAOTHERVERIFY00001",
+      );
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "AWS: a lost create reply isn't retried, and says how to find the extra key",
+    async () => {
+      const result = await drive({
+        scenario: "aws-lost",
+        args: ["rotate", "AWS_SECRET_ACCESS_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("Run aws iam list-access-keys --user-name billing-app");
+      expect(result.effects).toEqual(["aws create billing-app/AKIANEWVERIFY0000001"]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "rotating the ID key points to the key that rotates it",
     async () => {
       const result = await drive({ scenario: "paired", args: ["rotate", "API_KEY_ID"] });

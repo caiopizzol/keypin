@@ -12,6 +12,7 @@ import {
   type Secret,
   signInVariables,
 } from "@keypin/core";
+import { awsIssuer } from "@keypin/connectors/aws";
 import {
   cloudflareIssuer,
   cloudflareWorker,
@@ -96,6 +97,7 @@ export const issuers = [
   openrouterIssuer,
   googleIssuer,
   elevenlabsIssuer,
+  awsIssuer,
 ];
 
 export function issuer(spec: IssuerSpec, admin: Secret, fetch?: Fetch): Issuer {

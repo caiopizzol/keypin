@@ -138,7 +138,7 @@ the key is due.
 
 Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key, at Resend, [Neon](#neon),
 [OpenAI](#openai), [Supabase](#supabase), [Cloudflare](#cloudflare), [OpenRouter](#openrouter),
-[Google Cloud](#google-cloud) or [ElevenLabs](#elevenlabs):
+[Google Cloud](#google-cloud), [ElevenLabs](#elevenlabs) or [AWS](#aws):
 
 ```toml
 [keys.RESEND_API_KEY.prod]
@@ -322,3 +322,31 @@ permission. It refuses a service account with more than one active key, since it
 give each app its own service account. The new key gets the old key's permissions, credit limit, IP allowlist,
 concurrency limits and lifetime. A credit limit starts unspent on the new key. keypin refuses a disabled key, and a
 key with a Professional Voice Clone limit, since the new key wouldn't get it.
+
+### AWS
+
+An access key is two keys in the map: the secret, and its ID. The secret's issuer names the ID's key with `key_id`:
+
+```toml
+[keys.AWS_SECRET_ACCESS_KEY.prod]
+from = "op://Private/app aws secret/credential"
+
+[keys.AWS_SECRET_ACCESS_KEY.prod.issuer]
+kind = "aws"
+admin = "op://Private/aws admin/credential"
+key_id = "AWS_ACCESS_KEY_ID"
+
+[keys.AWS_ACCESS_KEY_ID.prod]
+from = "op://Private/app aws key id/credential"
+```
+
+Give `AWS_ACCESS_KEY_ID` the same destinations as the secret. `keypin rotate AWS_SECRET_ACCESS_KEY` saves and
+publishes both. A destination without batch writes, such as GitHub Actions, gets them one after the other, so pause
+new runs there until the rotation finishes.
+
+`admin` holds the JSON that `aws iam create-access-key --user-name <admin user>` prints, for an IAM user of its own
+that may list, create, update and delete access keys.
+
+keypin checks that the vault's ID and secret work together, then makes a key for the same IAM user. AWS allows two
+keys per user, so keypin stops if the user already has a second one. To revoke, it deactivates the old key, then
+deletes it.

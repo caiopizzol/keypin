@@ -24,6 +24,7 @@ import {
   type GoogleWorld,
   serviceAccountJson,
 } from "@keypin/connectors/google/testing";
+import { type AwsWorld, awsFetch } from "@keypin/connectors/aws/testing";
 import { elevenlabsFetch, type ElevenLabsWorld } from "@keypin/connectors/elevenlabs/testing";
 import { neonFetch, type NeonWorld } from "@keypin/connectors/neon/testing";
 import { type OpenAIKeys, openaiFetch } from "@keypin/connectors/openai/testing";
@@ -42,6 +43,7 @@ import { onePasswordFrom } from "../../src/sign-in";
 import { destinations, issuer, realDeps } from "../../src/start";
 import { routedVault } from "../../src/vault";
 import {
+  AWS_PREFIX,
   CLOUDFLARE_ADMIN,
   CLOUDFLARE_PREFIX,
   ELEVENLABS_ADMIN,
@@ -105,6 +107,7 @@ const GOOGLE_KEY = scenario.google ? fakePrivateKey() : "";
 const OPENROUTER = join(sandbox, "openrouter.json");
 const ELEVENLABS = join(sandbox, "elevenlabs.json");
 const PAIRED = join(sandbox, "paired.json");
+const AWS = join(sandbox, "aws.json");
 
 function effect(line: string): void {
   appendFileSync(EFFECTS, `${line}\n`);
@@ -446,7 +449,26 @@ const elevenlabs = elevenlabsFetch({
   effect,
 });
 
+const aws = awsFetch({
+  account: "123456789012",
+  idPrefix: "AKIANEWVERIFY",
+  valuePrefix: AWS_PREFIX,
+  unready: run.aws?.unready ?? 0,
+  loseCreated: run.aws?.loseCreated === true,
+  world: {
+    load(): AwsWorld {
+      if (!existsSync(AWS)) return { keys: run.aws?.keys ?? [], created: 0 };
+      const parsed: unknown = JSON.parse(readFileSync(AWS, "utf8"));
+      if (!isAwsWorld(parsed)) throw new Error(`${AWS} isn't the fake AWS account's keys`);
+      return parsed;
+    },
+    save: (world) => writeFileSync(AWS, JSON.stringify(world)),
+  },
+  effect,
+});
+
 const issuerFetch: Record<string, Fetch> = {
+  aws,
   cloudflare,
   elevenlabs,
   google,
@@ -456,6 +478,10 @@ const issuerFetch: Record<string, Fetch> = {
   resend,
   supabase,
 };
+
+function isAwsWorld(value: unknown): value is AwsWorld {
+  return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";
+}
 
 function isElevenLabsWorld(value: unknown): value is ElevenLabsWorld {
   return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";

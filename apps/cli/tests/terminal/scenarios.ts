@@ -88,6 +88,11 @@ const NETLIFY_MAP = MAP.replace(
   'to = "netlify-project"\nteam = "acme"\nproject = "billing.netlify.app"\ncontext = "production"',
 );
 
+const RAILWAY_MAP = MAP.replace(
+  'to = "github-actions"\nrepo = "acme/billing"',
+  'to = "railway-service"\nproject = "1d01c0c0-4554-4747-93b8-34ce3448ab95"\nenvironment = "production"\nservice = "api"',
+);
+
 const WORKFLOW = `on: push
 jobs:
   deploy:
@@ -940,6 +945,12 @@ jobs:
         },
       },
     },
+  },
+  railway: {
+    ...ready,
+    about: "ready, but STRIPE_KEY publishes to a Railway service's production environment",
+    files: { "keypin.toml": RAILWAY_MAP },
+    env: { KEYPIN_RAILWAY_TOKEN: "verify-railway-token-8b3d" },
   },
   cloudflare: cloudflareTokens,
   "cloudflare-global-key": {

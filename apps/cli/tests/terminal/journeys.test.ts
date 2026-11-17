@@ -953,6 +953,45 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "ElevenLabs: makes a key for the same service account, publishes it, then deletes the old key after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "elevenlabs",
+        args: ["rotate", "ELEVENLABS_API_KEY"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        `  + ElevenLabs            create a new key\n    for service account "backend", with the old key's 3 permissions, the old key's limit of 100,000 credits a month, starting unspent; no expiry`,
+      );
+      expect(result.screen).toMatch(/^✓ ElevenLabs {2}revoked "voice" {2}\d+\.\ds$/m);
+      expect(result.effects).toEqual([
+        "elevenlabs create sa_voice/key_new1 with permissions text_to_speech,voices_read,user_read, limit 100000",
+        "1password update my.1password.com/Private/voice elevenlabs key (19 chars)",
+        "destination write github-actions:acme/billing ELEVENLABS_API_KEY (19 chars)",
+        "elevenlabs revoke sa_voice/key_old",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "ElevenLabs: a disabled vault key stops before anything is created",
+    async () => {
+      const result = await drive({
+        scenario: "elevenlabs-disabled",
+        args: ["rotate", "ELEVENLABS_API_KEY"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("ElevenLabs doesn't accept the vault's key");
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "Supabase: the secret key named default stops before anything is created",
     async () => {
       const result = await drive({

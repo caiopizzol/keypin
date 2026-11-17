@@ -13,6 +13,8 @@
     "./neon/testing": "./src/neon/testing.ts",
     "./onepassword": "./src/onepassword/index.ts",
     "./onepassword/testing": "./src/onepassword/testing.ts",
+    "./openai": "./src/openai/index.ts",
+    "./openai/testing": "./src/openai/testing.ts",
     "./resend": "./src/resend/index.ts",
     "./resend/testing": "./src/resend/testing.ts",
     "./supabase": "./src/supabase/index.ts",

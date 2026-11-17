@@ -1,6 +1,7 @@
 import { envValues } from "@keypin/core";
 import { localDay } from "@keypin/core";
 import type { FakeInfisical } from "@keypin/connectors/infisical/testing";
+import type { FakeOpenAIKey } from "@keypin/connectors/openai/testing";
 import type { SupabaseKey } from "@keypin/connectors/supabase/testing";
 
 export interface FakeItem {
@@ -25,6 +26,7 @@ export interface Scenario {
     domains?: Record<string, string>;
   };
   neon?: { roles: Record<string, string> };
+  openai?: { keys: FakeOpenAIKey[]; loseCreated?: boolean };
   supabase?: { keys: SupabaseKey[]; loseCreated?: boolean; prefixOnly?: boolean };
   registered: boolean;
   git: { origin?: string; account?: string };
@@ -272,6 +274,49 @@ const neon: Scenario = {
     },
   },
   neon: { roles: { app_a: NEON_LIVE, app_b: "npg_verify_idle_b_3a9d" } },
+};
+
+const OPENAI_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.OPENAI_API_KEY]
+rotate_every = "90d"
+
+[keys.OPENAI_API_KEY.prod]
+from = "op://Private/billing openai key/credential"
+
+[keys.OPENAI_API_KEY.prod.issuer]
+kind = "openai"
+admin = "op://Private/openai admin key/credential"
+project_id = "proj_verify"
+scopes = []
+
+[[keys.OPENAI_API_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`;
+
+export const OPENAI_ADMIN = "sk-admin-verify-admin-key-4b7e";
+export const OPENAI_PREFIX = "sk-svcacct-verify-new-";
+const OPENAI_OLD = "sk-svcacct-verify-old-key-8d3c";
+const OPENAI_BOT = { type: "service_account", id: "svc_verify", name: "billing-bot" } as const;
+
+const openai: Scenario = {
+  ...ready,
+  about:
+    "OPENAI_API_KEY has an OpenAI issuer; the vault holds key_old of service account billing-bot, and keypin has never rotated it",
+  files: { "keypin.toml": OPENAI_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          { title: "billing openai key", value: OPENAI_OLD, rotated: day(-95) },
+          { title: "openai admin key", value: OPENAI_ADMIN },
+        ],
+      },
+    },
+  },
+  openai: { keys: [{ id: "key_old", name: "prod", value: OPENAI_OLD, owner: OPENAI_BOT }] },
 };
 
 const SUPABASE_MAP = `[1password]
@@ -611,6 +656,26 @@ jobs:
       },
     },
   },
+  openai,
+  "openai-user-key": {
+    ...openai,
+    about: "openai, but the vault's key belongs to a user, not a service account",
+    openai: {
+      keys: [
+        {
+          id: "key_old",
+          name: "prod",
+          value: OPENAI_OLD,
+          owner: { type: "user", id: "user_verify", name: "Ada" },
+        },
+      ],
+    },
+  },
+  "openai-reply-lost": {
+    ...openai,
+    about: "openai, but the network drops OpenAI's reply after it creates the new key",
+    openai: { ...openai.openai, keys: openai.openai?.keys ?? [], loseCreated: true },
+  },
   fresh: {
     ...ready,
     about: "an empty git repository: no keypin.toml, not registered, nothing signed in",
@@ -652,6 +717,7 @@ export function valuesOf(scenario: Scenario): string[] {
   const issued = [
     ...(scenario.resend ? [ISSUED_PREFIX] : []),
     ...(scenario.neon ? [NEON_PREFIX, ...Object.values(scenario.neon.roles)] : []),
+    ...(scenario.openai ? [OPENAI_PREFIX] : []),
   ];
   return [
     ...items.map((item) => item.value),

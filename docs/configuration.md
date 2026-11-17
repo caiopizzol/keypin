@@ -94,8 +94,8 @@ the key is due.
 
 ## Rotating a key
 
-Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key, at Resend, [Neon](#neon) or
-[Supabase](#supabase):
+Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key, at Resend, [Neon](#neon),
+[OpenAI](#openai) or [Supabase](#supabase):
 
 ```toml
 [keys.RESEND_API_KEY.prod]
@@ -154,6 +154,29 @@ password, so every connection string with that role stops working, not only this
 keys' issuers share a role, such as a pooled and a direct URL; give the direct URL its own two roles. Each reset drops
 every open connection to the compute, whatever its role, so apps must reconnect. A table belongs to the role that
 creates it, so run migrations after `SET ROLE app`.
+
+### OpenAI
+
+keypin makes the new key for the service account that owns the vault's key, in the same project, then deletes the old
+key. OpenAI's Admin API can't make a key for a user, so keypin refuses a user-owned key: replace it once with a
+service-account key from the project's API keys page.
+
+```toml
+[keys.OPENAI_API_KEY.prod]
+from = "op://Private/app openai key/credential"
+
+[keys.OPENAI_API_KEY.prod.issuer]
+kind = "openai"
+admin = "op://Private/openai admin key/credential"
+project_id = "proj_abc123"
+scopes = []
+```
+
+- `admin`: an [Admin key](https://platform.openai.com/settings/organization/admin-keys) with write access to projects.
+- `scopes`: the new key's scopes, such as `["api.responses.write"]`, or `[]` for all permissions. OpenAI doesn't
+  show a key's scopes, so keypin can't copy them; set this to match the old key.
+
+If the old key expires, the new one gets the same lifetime.
 
 ### Supabase
 

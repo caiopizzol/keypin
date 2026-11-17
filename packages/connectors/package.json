@@ -14,7 +14,9 @@
     "./onepassword": "./src/onepassword/index.ts",
     "./onepassword/testing": "./src/onepassword/testing.ts",
     "./resend": "./src/resend/index.ts",
-    "./resend/testing": "./src/resend/testing.ts"
+    "./resend/testing": "./src/resend/testing.ts",
+    "./vercel": "./src/vercel/index.ts",
+    "./vercel/testing": "./src/vercel/testing.ts"
   },
   "scripts": {
     "typecheck": "tsc"

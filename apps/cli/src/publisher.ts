@@ -10,6 +10,7 @@ export async function publisherFor(
   let publisher: Publisher = {
     githubLogin: null,
     workerSignIn: null,
+    signInEnv: deps.env,
     refreshLogins,
     signInVariables: signInVariables([...deps.vaults, ...deps.destinations]),
   };

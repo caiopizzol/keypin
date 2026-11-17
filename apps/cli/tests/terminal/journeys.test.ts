@@ -82,6 +82,41 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
+    "publish to Vercel says new values need a new deployment, and triggers none",
+    async () => {
+      const result = await drive({
+        scenario: "vercel",
+        args: ["publish", "STRIPE_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  + Vercel  billing (production)  first write  needs approval",
+      );
+      expect(result.screen).toContain(
+        "    Vercel uses the new value only in new deployments; redeploy to use it",
+      );
+      expect(result.effects).toEqual([
+        "destination write vercel-project:billing/production STRIPE_KEY (23 chars)",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "check without KEYPIN_VERCEL_TOKEN says how to sign in to Vercel",
+    async () => {
+      const result = await drive({ scenario: "vercel-no-token", args: ["check"] });
+      expect(result.screen).toContain("1 Sign in to Vercel");
+      expect(result.screen).toContain("KEYPIN_VERCEL_TOKEN, which isn't set");
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "publish answered with anything but y writes nothing and exits 3",
     async () => {
       for (const answer of ["n", "", "yess"]) {

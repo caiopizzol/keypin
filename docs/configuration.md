@@ -75,6 +75,12 @@ repo = "owner/repo"
 to = "cloudflare-worker"
 account = "<Cloudflare account ID>"
 worker = "my-worker"
+
+[[keys.API_TOKEN.prod.publish]]
+to = "vercel-project"
+team = "<team ID or slug>"
+project = "my-project"
+environment = "production"
 ```
 
 GitHub reserves secret names that start with `GITHUB_`. Add `environment = "production"` to write a secret of that
@@ -85,6 +91,8 @@ The map says where a key goes, not who writes it, so every teammate publishes fr
 - **GitHub:** the login in `git config github.account`, or else the active `gh` login. It needs write access to the
   repo.
 - **Cloudflare:** the `wrangler` login, or `KEYPIN_CLOUDFLARE_API_TOKEN`. It must reach the pinned `account`.
+- **Vercel:** a token in `KEYPIN_VERCEL_TOKEN`, for the `team` or the project. keypin doesn't read the `vercel`
+  login or `VERCEL_TOKEN`.
 
 ## Vault items
 

@@ -6,6 +6,7 @@ export interface FakeAwsKey {
   id: string;
   secret: string;
   user: string | null;
+  path?: string;
   status?: "Active" | "Inactive";
   created?: string;
   account?: string;
@@ -113,7 +114,7 @@ export function awsFetch(fake: FakeAws): Fetch {
     const arn =
       signer.user === null
         ? `arn:aws:iam::${account}:root`
-        : `arn:aws:iam::${account}:user/${signer.user}`;
+        : `arn:aws:iam::${account}:user${signer.path ?? "/"}${signer.user}`;
 
     if (service === "sts") {
       if (action !== "GetCallerIdentity" || form.get("Version") !== "2011-06-15")

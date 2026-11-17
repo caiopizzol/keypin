@@ -100,7 +100,7 @@ describe("Google Cloud issuer", () => {
       restrictions: RESTRICTIONS,
     });
     expect(subject.issuer.label(created.id)).toBe(
-      `"${NAME}" (google-maps-api-key-prod-2026-11-17-12-00-00-a1b2c3)`,
+      "google-maps-api-key-prod-2026-11-17-12-00-00-a1b2c3",
     );
   });
 

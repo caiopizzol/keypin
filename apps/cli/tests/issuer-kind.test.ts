@@ -86,7 +86,7 @@ describe("an issuer kind defined outside keypin", () => {
     const fake = fakeDeps({ disk: memoryFiles({ "/work/billing/keypin.toml": MAP }) });
     await cli(["rotate", "FORGE_TOKEN"], fake.deps);
     expect(fake.stderr.text).toContain(
-      `issuer: field "kind" must be one of: resend, neon, openai, supabase, cloudflare, openrouter, google, elevenlabs`,
+      `issuer: field "kind" must be one of: resend, neon, openai, supabase, cloudflare, openrouter, google, elevenlabs, aws`,
     );
   });
 });

@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./aws": "./src/aws/index.ts",
+    "./aws/testing": "./src/aws/testing.ts",
     "./bitwarden": "./src/bitwarden/index.ts",
     "./bitwarden/testing": "./src/bitwarden/testing.ts",
     "./cloudflare": "./src/cloudflare/index.ts",

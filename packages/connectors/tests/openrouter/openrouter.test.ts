@@ -179,6 +179,30 @@ describe("checkAccount", () => {
     );
   });
 
+  test("refuses a key an enabled observability destination is limited to, before creating anything", async () => {
+    const { issuer, effects } = openrouter([OLD], {
+      observability: [{ enabled: true, hashes: ["hash_old"] }],
+    });
+    const check = await issuer.checkAccount(null, new Secret(VAULT));
+    assert(!check.ok);
+    expect(check.reason).toBe(
+      'key "prod" has an observability destination limited to it, and a new key wouldn\'t get it',
+    );
+    expect(effects).toEqual([]);
+  });
+
+  test("an observability destination for all keys, or a disabled one, doesn't stop the rotation", async () => {
+    const { issuer } = openrouter([OLD], {
+      observability: [
+        { enabled: true, hashes: null },
+        { enabled: false, hashes: ["hash_old"] },
+        { enabled: true, hashes: ["hash_other"] },
+      ],
+    });
+    const check = await issuer.checkAccount(null, new Secret(VAULT));
+    expect(check.ok).toBe(true);
+  });
+
   test("refuses a key a BYOK provider key is limited to", async () => {
     const { issuer } = openrouter([OLD], { byokKeys: ["hash_old"] });
     const check = await issuer.checkAccount(null, new Secret(VAULT));

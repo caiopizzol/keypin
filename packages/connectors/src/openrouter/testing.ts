@@ -28,6 +28,7 @@ export interface FakeOpenRouter {
   pageSize?: number;
   guardrailKeys?: readonly string[];
   byokKeys?: readonly string[];
+  observability?: readonly { enabled: boolean; hashes: readonly string[] | null }[];
   failCreate?: number;
   loseCreated?: boolean;
   world: { load(): OpenRouterWorld; save(world: OpenRouterWorld): void };
@@ -101,6 +102,15 @@ export function openrouterFetch(fake: FakeOpenRouter): Fetch {
         id: `byok_${hash}`,
         provider: "openai",
         allowed_api_key_hashes: [hash],
+      }));
+      return reply(200, { data: all.slice(offset, offset + size), total_count: all.length });
+    }
+    if (pathname === "/api/v1/observability/destinations" && init.method === "GET") {
+      const all = (fake.observability ?? []).map((destination, i) => ({
+        id: `obs_${i + 1}`,
+        type: "langfuse",
+        enabled: destination.enabled,
+        api_key_hashes: destination.hashes,
       }));
       return reply(200, { data: all.slice(offset, offset + size), total_count: all.length });
     }

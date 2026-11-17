@@ -255,4 +255,5 @@ admin = "op://Private/openrouter management key/credential"
 for the organization or the key's workspace. keypin finds the vault's key by the label OpenRouter shows for it, and
 gives the new key the same credit limit, reset, BYOK setting, lifetime and workspace. A limit that never resets starts
 again at $0 spent on the new key; the old key keeps its credit until you revoke it. keypin refuses a disabled key, and
-a key with its own guardrail or a BYOK provider key limited to it, since the new key wouldn't get them.
+a key with its own guardrail, or a BYOK provider key or observability destination limited to it, since the new
+key wouldn't get them.

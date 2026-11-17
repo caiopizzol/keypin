@@ -250,7 +250,7 @@ export class OpenRouterIssuer implements Issuer {
         ok: false,
         facts,
         reason: `key ${this.label(key.hash)} has ${tied}, and a new key wouldn't get it`,
-        fix: `replace it by hand at ${DASHBOARD}, and give the new key the same guardrail or BYOK access`,
+        fix: `replace it by hand at ${DASHBOARD}, and give the new key the same guardrail, BYOK or observability access`,
       };
     const lifetime =
       key.expiresAt === null || key.createdAt === null
@@ -317,7 +317,15 @@ export class OpenRouterIssuer implements Issuer {
         Array.isArray(credential.allowed_api_key_hashes) &&
         credential.allowed_api_key_hashes.includes(key.hash),
     );
-    return limited ? "a BYOK provider key limited to it" : null;
+    if (limited) return "a BYOK provider key limited to it";
+    const destinations = await this.#all("/observability/destinations", key.workspaceId);
+    const traced = destinations.some(
+      (destination) =>
+        destination.enabled === true &&
+        Array.isArray(destination.api_key_hashes) &&
+        destination.api_key_hashes.includes(key.hash),
+    );
+    return traced ? "an observability destination limited to it" : null;
   }
 
   async #all(path: string, workspace: string | null): Promise<Record<string, unknown>[]> {

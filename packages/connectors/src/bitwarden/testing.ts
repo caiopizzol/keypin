@@ -83,11 +83,18 @@ export function bitwardenFetch(fake: FakeBitwarden, store: Store): Fetch {
         };
       }),
     );
+  const projectName = (id: string) => projects().find((p) => p.id === id)?.name ?? id;
   const shape = (secret: Stored & { readOnly: boolean }, full: boolean) => ({
     id: secret.id,
     organizationId: fake.organization,
     key: seal(secret.name),
-    ...(full ? { value: seal(secret.value), note: seal(secret.note) } : {}),
+    ...(full
+      ? {
+          value: seal(secret.value),
+          note: seal(secret.note),
+          projects: [{ id: secret.project, name: projectName(secret.project) }],
+        }
+      : {}),
     revisionDate: "2026-01-01T00:00:00Z",
     read: true,
     write: !secret.readOnly,

@@ -46,6 +46,8 @@ interface Session {
   secrets: Map<string, Promise<Found[]>>;
 }
 
+class SecretMoved extends Error {}
+
 interface Found {
   id: string;
   project: string;
@@ -253,7 +255,14 @@ export function bitwardenBackend(
       token: current.token,
     });
     if (found.status !== 200) throw new Error(`${describeRef(ref)}: ${problem(found)}`);
-    const { value: sealed, note, write } = found.body;
+    const { key, value: sealed, note, write, projects } = found.body;
+    const name = typeof key === "string" ? decrypt(key, current.key) : null;
+    const inProject =
+      Array.isArray(projects) && projects.some((p) => isRecord(p) && p.id === secret.project);
+    if (name !== secret.name || !inProject)
+      throw new SecretMoved(
+        `${describeRef(ref)}: the secret changed while keypin ran (it's now named ${name ?? "something keypin can't read"}${inProject ? "" : " in another project"}); run this again`,
+      );
     const notes =
       note === null || note === undefined || note === ""
         ? ""
@@ -289,7 +298,9 @@ export function bitwardenBackend(
       const ref = own(given);
       if (options.newItem)
         throw new Error(`${describeRef(ref)}: keypin doesn't create Bitwarden secrets`);
-      const { current, secret } = await full(ref);
+      const { current, secret } = await full(ref).catch((error: unknown) => {
+        throw error instanceof SecretMoved ? new WriteRefused(error.message) : error;
+      });
       if (!secret.write) throw new WriteRefused(readOnly(ref));
       const note = withRotated(secret.note, options.rotated);
       const written = await request(ref, "PUT", `${endpoints(ref.url).api}/secrets/${secret.id}`, {

@@ -264,6 +264,25 @@ describe("saving a value", () => {
     expect(store.effects).toEqual([]);
   });
 
+  test("a secret renamed after keypin listed it is refused, not overwritten", async () => {
+    const { vault, store } = setup();
+    const { ids } = await vault.readItem(REF);
+    store.save({
+      id: ids.item,
+      project: ids.vault,
+      name: "RENAMED_KEY",
+      value: SENTINEL,
+      note: "",
+    });
+    const error = await caught(vault.write(REF, new Secret("new-value-1234")));
+    expect(error).toBeInstanceOf(WriteRefused);
+    expect(error.message).toContain(
+      "the secret changed while keypin ran (it's now named RENAMED_KEY)",
+    );
+    expect(store.effects).toEqual([]);
+    expect(store.load().find((entry) => entry.id === ids.item)?.value).toBe(SENTINEL);
+  });
+
   test("keypin doesn't create Bitwarden secrets", async () => {
     const { vault, store } = setup();
     const error = await caught(vault.write(REF, new Secret("new-value-1234"), { newItem: true }));

@@ -37,6 +37,9 @@ it sealed. Railway reserves names that start with `RAILWAY_`, so keypin refuses 
 It writes Convex environment variables with `KEYPIN_CONVEX_DEPLOY_KEY`, a deploy key for the one deployment in
 `url`. Changing a variable invalidates every subscription. Cron definitions read it only on the next deploy.
 
+It writes Fly.io app secrets with `KEYPIN_FLY_API_TOKEN`. Fly.io stages the new value; Machines use it only after
+`fly secrets deploy` or the app's next deploy, which restarts them. keypin doesn't run either.
+
 ## Steps
 
 1. **Accounts:** it checks that each login reaches the account the map pins, and stops if one doesn't.

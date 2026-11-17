@@ -101,6 +101,10 @@ service = "api"
 [[keys.API_TOKEN.prod.publish]]
 to = "convex-deployment"
 url = "https://happy-animal-123.convex.cloud"
+
+[[keys.API_TOKEN.prod.publish]]
+to = "fly-app"
+app = "my-app"
 ```
 
 GitHub reserves secret names that start with `GITHUB_`. Add `environment = "production"` to write a secret of that
@@ -121,6 +125,8 @@ The map says where a key goes, not who writes it, so every teammate publishes fr
   token for the `environment`. keypin doesn't read the `railway` login, `RAILWAY_TOKEN` or `RAILWAY_API_TOKEN`.
 - **Convex:** a deploy key for the deployment in `url`, with `deployment:env:write`, in `KEYPIN_CONVEX_DEPLOY_KEY`.
   keypin doesn't read the `npx convex` login or `CONVEX_DEPLOY_KEY`.
+- **Fly.io:** a deploy token for the `app` or an org token for its organization, in `KEYPIN_FLY_API_TOKEN`. Add
+  `org = "<org slug>"` to also pin the organization. keypin doesn't read the `fly` login or `FLY_API_TOKEN`.
 
 ## Vault items
 

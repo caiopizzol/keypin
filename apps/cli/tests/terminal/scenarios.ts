@@ -93,6 +93,11 @@ const CONVEX_MAP = MAP.replace(
   'to = "convex-deployment"\nurl = "https://happy-animal-123.convex.cloud"',
 );
 
+const FLY_MAP = MAP.replace(
+  'to = "github-actions"\nrepo = "acme/billing"',
+  'to = "fly-app"\napp = "billing-api"',
+);
+
 const RAILWAY_MAP = MAP.replace(
   'to = "github-actions"\nrepo = "acme/billing"',
   'to = "railway-service"\nproject = "1d01c0c0-4554-4747-93b8-34ce3448ab95"\nenvironment = "production"\nservice = "api"',
@@ -966,6 +971,27 @@ jobs:
         check: {
           reason:
             "keypin signs in to Convex with KEYPIN_CONVEX_DEPLOY_KEY, which isn't set. Generate a deploy key with deployment:env:write in the deployment's settings (https://dashboard.convex.dev/deployment/settings) and set KEYPIN_CONVEX_DEPLOY_KEY; keypin doesn't read the npx convex login",
+          publisher: "unknown",
+          destinationAccount: null,
+        },
+      },
+    },
+  },
+  fly: {
+    ...ready,
+    about: "ready, but STRIPE_KEY publishes to a Fly.io app's secrets",
+    files: { "keypin.toml": FLY_MAP },
+    env: { KEYPIN_FLY_API_TOKEN: "FlyV1 fm2_verify-fly-token-4e2a" },
+  },
+  "fly-no-token": {
+    ...ready,
+    about: "fly, but KEYPIN_FLY_API_TOKEN isn't set",
+    files: { "keypin.toml": FLY_MAP },
+    places: {
+      "fly-app:billing-api": {
+        check: {
+          reason:
+            "keypin signs in to Fly.io with KEYPIN_FLY_API_TOKEN, which isn't set. Create a deploy token for the app with fly tokens create deploy -a <app>, or an org token with fly tokens create org (https://fly.io/tokens), and set KEYPIN_FLY_API_TOKEN; keypin doesn't read the fly login",
           publisher: "unknown",
           destinationAccount: null,
         },

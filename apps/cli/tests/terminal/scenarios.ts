@@ -499,6 +499,7 @@ from = "op://Private/maps api key/credential"
 [keys.GOOGLE_MAPS_API_KEY.prod.issuer]
 kind = "google"
 admin = "op://Private/google key maker/credential"
+project_id = "acme-prod"
 
 [[keys.GOOGLE_MAPS_API_KEY.prod.publish]]
 to = "github-actions"

@@ -645,14 +645,14 @@ describe("keypin rotate in a real terminal", () => {
       });
       expect(result.exit).toBe(0);
       expect(result.screen).toContain(
-        `  + Google Cloud          create a new key\n    named "Maps web", with the old key's API target maps-backend.googleapis.com and 2 websites`,
+        `  + Google Cloud          create a new key\n    with the old key's API target maps-backend.googleapis.com and 2 websites`,
       );
       expect(result.screen).toMatch(
         /^✓ Google Cloud {2}revoked "Maps web" \(maps-web\) {2}\d+\.\ds$/m,
       );
       expect(result.effects).toHaveLength(4);
       expect(result.effects[0]).toMatch(
-        /^google create projects\/acme-prod\/locations\/global\/keys\/google-maps-api-key-prod-[\d-]+-[0-9a-f]{6} "Maps web" with \{"apiTargets":\[\{"service":"maps-backend\.googleapis\.com"\}\],"browserKeyRestrictions":\{"allowedReferrers":\["https:\/\/acme\.example\/\*","\*\.acme\.example\/\*"\]\}\}$/,
+        /^google create projects\/acme-prod\/locations\/global\/keys\/google-maps-api-key-prod-[\d-]+-[0-9a-f]{6} "GOOGLE_MAPS_API_KEY prod [\d-]+ [\d:]+ [0-9a-f]{6}" with \{"apiTargets":\[\{"service":"maps-backend\.googleapis\.com"\}\],"browserKeyRestrictions":\{"allowedReferrers":\["https:\/\/acme\.example\/\*","\*\.acme\.example\/\*"\]\}\}$/,
       );
       expect(result.effects.slice(1)).toEqual([
         "1password update my.1password.com/Private/maps api key (26 chars)",

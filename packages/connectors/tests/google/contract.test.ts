@@ -35,6 +35,7 @@ describe("the issuer contract", () => {
     return {
       issuer: new GoogleIssuer({
         admin: async () => new Secret(serviceAccountJson(EMAIL, PRIVATE_KEY, sentinel)),
+        projectId: "acme-prod",
         fetch: googleFetch(fake),
         sleep: async () => {},
       }),

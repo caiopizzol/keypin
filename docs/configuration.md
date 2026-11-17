@@ -270,12 +270,13 @@ from = "op://Private/maps api key/credential"
 [keys.GOOGLE_MAPS_API_KEY.prod.issuer]
 kind = "google"
 admin = "op://Private/google key maker/credential"
+project_id = "acme-prod"
 ```
 
 `admin` is a service account's [JSON key](https://cloud.google.com/iam/docs/keys-create-delete), the whole file, in
 its own 1Password item. Give the service account **API Keys Admin** (`roles/serviceusage.apiKeysAdmin`) on the
-key's project, and turn on the API Keys API in the service account's project. keypin doesn't use gcloud logins.
+`project_id` project, and turn on the API Keys API in the service account's project. keypin doesn't use gcloud logins.
 
-keypin finds the vault's key from its value, makes a key in the same project with the same name, API restrictions
-and application restrictions (websites, IP addresses, Android or iOS apps), then deletes the old one. A key with no
+keypin finds the vault's key from its value, makes a key in the same project with the same API restrictions and
+application restrictions (websites, IP addresses, Android or iOS apps), then deletes the old one. A key with no
 restrictions gets a key with none. Google Cloud keeps a deleted key for 30 days, so you can restore it.

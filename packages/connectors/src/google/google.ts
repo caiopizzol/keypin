@@ -20,6 +20,7 @@ const POLLS = 30;
 
 export interface GoogleIssuerOptions {
   admin: () => Promise<Secret>;
+  projectId: string;
   fetch?: Fetch;
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
@@ -35,12 +36,12 @@ interface Key {
 
 interface Copy {
   project: string;
-  displayName: string;
   restrictions: Record<string, unknown>;
 }
 
 export class GoogleIssuer implements Issuer {
   readonly #admin: () => Promise<Secret>;
+  readonly #pinned: string;
   readonly #fetch: Fetch;
   readonly #now: () => Date;
   readonly #sleep: (ms: number) => Promise<void>;
@@ -51,6 +52,7 @@ export class GoogleIssuer implements Issuer {
 
   constructor(options: GoogleIssuerOptions) {
     this.#admin = options.admin;
+    this.#pinned = options.projectId;
     this.#fetch = options.fetch ?? globalThis.fetch;
     this.#now = options.now ?? (() => new Date());
     this.#sleep = options.sleep ?? ((ms) => new Promise((done) => setTimeout(done, ms)));
@@ -108,6 +110,13 @@ export class GoogleIssuer implements Issuer {
         fix: `delete that key at ${CREDENTIALS} if it's still live, then run this again`,
       };
     this.#project = parsed[1] ?? null;
+    if (this.#project !== this.#pinned)
+      return {
+        ok: false,
+        facts: `${currentId === null ? "the vault's key is" : "keypin issued a key"} in project ${this.#project}`,
+        reason: `keypin.toml pins project_id ${this.#pinned}, and the key is in project ${this.#project}`,
+        fix: `check project_id in keypin.toml, and that the vault holds the key from project ${this.#pinned}`,
+      };
 
     const read = await this.#request("GET", name);
     if (read.status !== 200) return this.#refusedRead(read, name, currentId !== null);
@@ -130,7 +139,6 @@ export class GoogleIssuer implements Issuer {
       };
     this.#copy = {
       project: this.#project ?? "",
-      displayName: key.displayName,
       restrictions: key.restrictions,
     };
     return {
@@ -149,7 +157,7 @@ export class GoogleIssuer implements Issuer {
     if (typeof bearer !== "string") throw new NothingChanged(`${bearer.reason}: ${bearer.fix}`);
     const parent = `projects/${copy.project}/locations/global`;
     const body = {
-      displayName: copy.displayName || name.slice(0, KEY_ID_LIMIT),
+      displayName: name.slice(0, KEY_ID_LIMIT),
       ...(Object.keys(copy.restrictions).length ? { restrictions: copy.restrictions } : {}),
     };
     const created = await this.#request("POST", `${parent}/keys?keyId=${keyIdOf(name)}`, body);
@@ -182,8 +190,7 @@ export class GoogleIssuer implements Issuer {
   }
 
   lostCreate(name: string): string {
-    const shown = this.#copy?.displayName ? ` named "${this.#copy.displayName}"` : "";
-    return `Google Cloud may have made the key, or may still be making it. Only this run uses key ID ${keyIdOf(name)}: delete the key${shown} with that ID at ${this.dashboard()} before you run this again, or the rerun leaves it live.`;
+    return `Google Cloud may have made the key, or may still be making it. Only this run uses key ID ${keyIdOf(name)} and the name "${name.slice(0, KEY_ID_LIMIT)}": delete that key at ${this.dashboard()} before you run this again, or the rerun leaves it live.`;
   }
 
   async revoke(id: string): Promise<"revoked" | "already gone"> {
@@ -347,10 +354,9 @@ function copies(key: Key): string {
     ),
     ...counted(list("iosKeyRestrictions", "allowedBundleIds"), "iOS app", "iOS apps"),
   ];
-  const named = key.displayName ? `named "${key.displayName}"` : "with keypin's name";
-  if (!kept.length) return `${named}, with no restrictions, like the old key`;
+  if (!kept.length) return "with no restrictions, like the old key";
   const joined = kept.length === 1 ? kept[0] : `${kept.slice(0, -1).join(", ")} and ${kept.at(-1)}`;
-  return `${named}, with the old key's ${joined}`;
+  return `with the old key's ${joined}`;
 }
 
 function counted(n: number, one: string, many: string): string[] {

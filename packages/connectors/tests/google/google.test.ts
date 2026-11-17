@@ -30,7 +30,12 @@ const OLD: FakeGoogleKey = {
 };
 const NAME = "GOOGLE_MAPS_API_KEY prod 2026-11-17 12:00:00 a1b2c3";
 
-function google(keys: FakeGoogleKey[] = [OLD], options: Partial<FakeGoogle> = {}, admin = ADMIN) {
+function google(
+  keys: FakeGoogleKey[] = [OLD],
+  options: Partial<FakeGoogle> = {},
+  admin = ADMIN,
+  projectId = "acme-prod",
+) {
   const effects: string[] = [];
   const requests: { method: string; path: string; body: string }[] = [];
   const sleeps: number[] = [];
@@ -53,6 +58,7 @@ function google(keys: FakeGoogleKey[] = [OLD], options: Partial<FakeGoogle> = {}
   let now = new Date("2026-11-17T12:00:00Z");
   const issuer = new GoogleIssuer({
     admin: async () => new Secret(admin),
+    projectId,
     fetch,
     now: () => now,
     sleep: async (ms) => void sleeps.push(ms),
@@ -81,7 +87,7 @@ describe("Google Cloud issuer", () => {
     expect(check.currentId).toBe(OLD_NAME);
     expect(check.facts).toBe('the vault holds key "Maps web" (maps-web) in project acme-prod');
     expect(check.notes?.create).toBe(
-      'named "Maps web", with the old key\'s API targets maps-backend.googleapis.com, places.googleapis.com and 2 websites',
+      "with the old key's API targets maps-backend.googleapis.com, places.googleapis.com and 2 websites",
     );
     const created = await subject.issuer.create(NAME);
     expect(created.id).toBe(
@@ -90,11 +96,11 @@ describe("Google Cloud issuer", () => {
     expect(created.secret.equals(new Secret(`${PREFIX}1x`))).toBe(true);
     const post = subject.requests.find((r) => r.method === "POST" && r.path.endsWith("/keys"));
     expect(JSON.parse(post?.body ?? "")).toEqual({
-      displayName: "Maps web",
+      displayName: NAME,
       restrictions: RESTRICTIONS,
     });
     expect(subject.issuer.label(created.id)).toBe(
-      '"Maps web" (google-maps-api-key-prod-2026-11-17-12-00-00-a1b2c3)',
+      `"${NAME}" (google-maps-api-key-prod-2026-11-17-12-00-00-a1b2c3)`,
     );
   });
 
@@ -115,26 +121,38 @@ describe("Google Cloud issuer", () => {
     const subject = google([{ ...OLD, restrictions }]);
     const check = await checked(subject);
     expect(check.notes?.create).toBe(
-      'named "Maps web", with the old key\'s API target youtube.googleapis.com, 2 IP addresses, 1 Android app and 1 iOS app',
+      "with the old key's API target youtube.googleapis.com, 2 IP addresses, 1 Android app and 1 iOS app",
     );
     await subject.issuer.create(NAME);
     const post = subject.requests.find((r) => r.method === "POST" && r.path.endsWith("/keys"));
     expect(JSON.parse(post?.body ?? "")).toMatchObject({ restrictions });
   });
 
+  test("a key in another project than project_id is refused before anything is created", async () => {
+    const subject = google([OLD], {}, ADMIN, "acme-staging");
+    const check = await subject.issuer.checkAccount(null, new Secret(VAULT));
+    assert(!check.ok);
+    expect(check.reason).toBe(
+      "keypin.toml pins project_id acme-staging, and the key is in project acme-prod",
+    );
+    expect(subject.requests.some((r) => r.method !== "GET" && !r.path.endsWith("/token"))).toBe(
+      false,
+    );
+  });
+
   test("a key with no restrictions gets a new key with none", async () => {
     const subject = google([{ name: OLD_NAME, value: VAULT, displayName: "API key 1" }]);
     const check = await checked(subject);
-    expect(check.notes?.create).toBe('named "API key 1", with no restrictions, like the old key');
+    expect(check.notes?.create).toBe("with no restrictions, like the old key");
     await subject.issuer.create(NAME);
     const post = subject.requests.find((r) => r.method === "POST" && r.path.endsWith("/keys"));
-    expect(JSON.parse(post?.body ?? "")).toEqual({ displayName: "API key 1" });
+    expect(JSON.parse(post?.body ?? "")).toEqual({ displayName: NAME });
   });
 
-  test("a key without a display name gets keypin's name", async () => {
+  test("a key without a display name still rotates, and the new key gets keypin's name", async () => {
     const subject = google([{ name: OLD_NAME, value: VAULT }]);
     const check = await checked(subject);
-    expect(check.notes?.create).toBe("with keypin's name, with no restrictions, like the old key");
+    expect(check.notes?.create).toBe("with no restrictions, like the old key");
     await subject.issuer.create(NAME);
     const post = subject.requests.find((r) => r.method === "POST" && r.path.endsWith("/keys"));
     expect(JSON.parse(post?.body ?? "")).toEqual({ displayName: NAME });
@@ -156,7 +174,7 @@ describe("Google Cloud issuer", () => {
     expect(failed).not.toBeInstanceOf(NothingChanged);
     expect(failed.message).toBe("Google Cloud hasn't finished creating the key after 60 seconds");
     expect(subject.issuer.lostCreate(NAME)).toBe(
-      'Google Cloud may have made the key, or may still be making it. Only this run uses key ID google-maps-api-key-prod-2026-11-17-12-00-00-a1b2c3: delete the key named "Maps web" with that ID at https://console.cloud.google.com/apis/credentials?project=acme-prod before you run this again, or the rerun leaves it live.',
+      'Google Cloud may have made the key, or may still be making it. Only this run uses key ID google-maps-api-key-prod-2026-11-17-12-00-00-a1b2c3 and the name "GOOGLE_MAPS_API_KEY prod 2026-11-17 12:00:00 a1b2c3": delete that key at https://console.cloud.google.com/apis/credentials?project=acme-prod before you run this again, or the rerun leaves it live.',
     );
   });
 
@@ -385,15 +403,7 @@ kind = "google"
 admin = "op://Private/google key maker/credential"
 ${issuer}`;
 
-  test("takes only the admin item", () => {
-    const parsed = parseMap(map(""), "keypin.toml", [], [googleIssuer], [onePasswordVault]);
-    assert(parsed.ok, JSON.stringify(parsed));
-    expect(parsed.map.keys[0]?.environments.prod?.issuer).toMatchObject({
-      kind: "google",
-    });
-  });
-
-  test("rejects other fields", () => {
+  test("takes the admin item and the project ID", () => {
     const parsed = parseMap(
       map(`project_id = "acme-prod"\n`),
       "keypin.toml",
@@ -401,7 +411,28 @@ ${issuer}`;
       [googleIssuer],
       [onePasswordVault],
     );
+    assert(parsed.ok, JSON.stringify(parsed));
+    expect(parsed.map.keys[0]?.environments.prod?.issuer).toMatchObject({
+      kind: "google",
+      projectId: "acme-prod",
+    });
+  });
+
+  test("needs project_id", () => {
+    const parsed = parseMap(map(""), "keypin.toml", [], [googleIssuer], [onePasswordVault]);
     assert(!parsed.ok);
-    expect(parsed.errors.join("\n")).toContain(`unknown field "project_id" for google`);
+    expect(parsed.errors.join("\n")).toContain(`missing field "project_id"`);
+  });
+
+  test("rejects other fields", () => {
+    const parsed = parseMap(
+      map(`project_id = "acme-prod"\nlocation = "global"\n`),
+      "keypin.toml",
+      [],
+      [googleIssuer],
+      [onePasswordVault],
+    );
+    assert(!parsed.ok);
+    expect(parsed.errors.join("\n")).toContain(`unknown field "location" for google`);
   });
 });

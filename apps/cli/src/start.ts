@@ -37,6 +37,7 @@ import {
 } from "@keypin/connectors/onepassword";
 import { credentialsFrom, infisicalBackend, infisicalVault } from "@keypin/connectors/infisical";
 import { accessTokenFrom, bitwardenBackend, bitwardenVault } from "@keypin/connectors/bitwarden";
+import { dopplerBackend, dopplerVault, tokenFrom } from "@keypin/connectors/doppler";
 import { cli } from "./cli";
 import type { Deps, Publisher } from "./deps";
 import {
@@ -63,6 +64,7 @@ const cloudflareLogins = new Map<string, CloudflareSignIn>();
 const cloudflareReaders = new Map<string, CloudflareReader>();
 let infisical: ReturnType<typeof infisicalBackend> | undefined;
 let bitwarden: ReturnType<typeof bitwardenBackend> | undefined;
+let doppler: ReturnType<typeof dopplerBackend> | undefined;
 
 export const destinations = [
   githubActions,
@@ -71,7 +73,7 @@ export const destinations = [
   supabaseFunctions,
   netlifyProject,
 ];
-export const vaults = [infisicalVault, bitwardenVault, onePasswordVault];
+export const vaults = [infisicalVault, bitwardenVault, dopplerVault, onePasswordVault];
 export const signInNames = signInVariables([...vaults, ...destinations]);
 
 export function destination(target: PublishTarget, publisher: Publisher): Destination {
@@ -122,6 +124,7 @@ const vault = routedVault({
   "1password": () => signedIn().vault,
   infisical: () => (infisical ??= infisicalBackend(credentialsFrom(process.env))),
   bitwarden: () => (bitwarden ??= bitwardenBackend(accessTokenFrom(process.env))),
+  doppler: () => (doppler ??= dopplerBackend(tokenFrom(process.env))),
 });
 
 async function ask(question: string): Promise<string> {

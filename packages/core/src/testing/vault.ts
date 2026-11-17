@@ -16,6 +16,7 @@ export interface VaultSubject {
   ref: KeyRef;
   scope: VaultScope;
   effects: readonly string[];
+  keepsRotated?: false;
   hold?: () => void;
   refuseWrites?: () => void;
   failSignIn?: () => void;
@@ -37,11 +38,11 @@ export function vaultContract(make: Make): void {
   });
 
   test("write then read gives back the value and the rotated date", async () => {
-    const { vault, ref, effects } = await make(SENTINEL);
+    const { vault, ref, effects, keepsRotated } = await make(SENTINEL);
     const value = new Secret(`${SENTINEL}-2`);
     await vault.write(ref, value, { rotated: ROTATED });
     expect((await vault.read(ref)).equals(value)).toBe(true);
-    expect(await vault.metadata(ref)).toEqual({ rotated: ROTATED });
+    expect(await vault.metadata(ref)).toEqual({ rotated: keepsRotated === false ? null : ROTATED });
     const item = await vault.readItem(ref);
     expect(item.secret.equals(value)).toBe(true);
     expect(item.ids).toEqual(await vault.itemIds(ref));

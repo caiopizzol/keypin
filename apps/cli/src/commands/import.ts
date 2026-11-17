@@ -503,7 +503,7 @@ async function readTarget(deps: Deps, request: Request): Promise<Target> {
   );
   if (pinned === undefined && other)
     throw new Error(
-      `import creates 1Password items, and ${file} reads from ${other.name}; ${other.addByHand?.(parsed.map) ?? `add the secrets in ${other.name} yourself`}`,
+      `import creates 1Password items, and ${file} reads from ${other.name}; ${other.addByHand?.(parsed.map) ?? `add the secrets in ${other.name} and map them with ${other.scheme} references`}`,
     );
   if (!account)
     throw new UsageError(

@@ -4,6 +4,7 @@ import type { FakeToken } from "@keypin/connectors/cloudflare/testing";
 import type { FakeGoogleKey } from "@keypin/connectors/google/testing";
 import type { FakeInfisical } from "@keypin/connectors/infisical/testing";
 import { FAKE_ACCESS_TOKEN, type FakeBitwarden } from "@keypin/connectors/bitwarden/testing";
+import type { FakeDoppler } from "@keypin/connectors/doppler/testing";
 import type { FakeOpenAIKey } from "@keypin/connectors/openai/testing";
 import type { FakeOpenRouterKey } from "@keypin/connectors/openrouter/testing";
 import type { SupabaseKey } from "@keypin/connectors/supabase/testing";
@@ -51,6 +52,7 @@ export interface Scenario {
   env?: Record<string, string>;
   infisical?: FakeInfisical;
   bitwarden?: FakeBitwarden;
+  doppler?: FakeDoppler;
 }
 
 export const FAKE_TOKEN = `ops_${Buffer.from(JSON.stringify({ signInAddress: "https://my.1password.com/" })).toString("base64url")}`;
@@ -568,6 +570,33 @@ const infisical: Scenario = {
 
 const BITWARDEN_ORGANIZATION = "2f1d6c9e-8a3b-4c5d-9e7f-0a1b2c3d4e5f";
 
+const doppler: Scenario = {
+  ...ready,
+  about:
+    "ready, but keypin.toml reads from a fake Doppler workplace acme, signed in with a service account token",
+  files: {
+    ...ready.files,
+    "keypin.toml": INFISICAL_MAP.replace(
+      '[infisical]\norganization = "acme"',
+      '[doppler]\nworkplace = "acme"',
+    )
+      .replaceAll("infisical://billing/prod/", "doppler://billing/prd/")
+      .replaceAll("infisical://", "doppler://"),
+  },
+  onePassword: { accounts: {} },
+  doppler: {
+    workplace: "acme",
+    projects: {
+      billing: {
+        dev: { STRIPE_KEY: { value: "verify-dev-stripe-2c7d" } },
+        prd: { STRIPE_KEY: { value: "verify-prod-stripe-5e8b" } },
+      },
+    },
+    tokens: { "dp.sa.verify-account-token-1a9f": { type: "service_account", write: true } },
+  },
+  env: { DOPPLER_TOKEN: "dp.sa.verify-account-token-1a9f" },
+};
+
 const bitwarden: Scenario = {
   ...ready,
   about: "ready, but keypin.toml reads from a fake Bitwarden Secrets Manager organization",
@@ -686,6 +715,7 @@ jobs:
   },
   infisical,
   bitwarden,
+  doppler,
   "infisical-token": {
     ...infisical,
     about: "infisical, but signed in with a machine identity's access token in INFISICAL_TOKEN",
@@ -1011,12 +1041,18 @@ export function valuesOf(scenario: Scenario): string[] {
   const bitwarden = Object.values(scenario.bitwarden?.projects ?? {}).flatMap((p) => p.secrets);
   if (bitwarden.some((secret) => secret.value.length < SHORTEST_VALUE))
     throw new Error(`Bitwarden values need ${SHORTEST_VALUE} characters or more`);
+  const doppler = Object.values(scenario.doppler?.projects ?? {})
+    .flatMap((configs) => Object.values(configs))
+    .flatMap((secrets) => Object.values(secrets));
+  if (doppler.some((secret) => secret.value.length < SHORTEST_VALUE))
+    throw new Error(`Doppler values need ${SHORTEST_VALUE} characters or more`);
   const tokens = [
     scenario.env?.OP_SERVICE_ACCOUNT_TOKEN,
     scenario.env?.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET,
     scenario.env?.INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN,
     scenario.env?.INFISICAL_TOKEN,
     scenario.env?.BWS_ACCESS_TOKEN,
+    scenario.env?.DOPPLER_TOKEN,
   ].flatMap((token) => (token ? [token] : []));
   const issued = [
     ...(scenario.resend ? [ISSUED_PREFIX] : []),
@@ -1030,6 +1066,7 @@ export function valuesOf(scenario: Scenario): string[] {
     ...items.map((item) => item.value),
     ...infisical.map((secret) => secret.value),
     ...bitwarden.map((secret) => secret.value),
+    ...doppler.map((secret) => secret.value),
     ...env,
     ...tokens,
     ...issued,

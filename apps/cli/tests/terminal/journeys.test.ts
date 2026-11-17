@@ -436,6 +436,35 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
+    "with Doppler, run and publish read from the workplace, and the token never leaks",
+    async () => {
+      const where = "Doppler workplace acme";
+      const run = await drive({
+        scenario: "doppler",
+        args: ["run", "--", "sh", "-c", "env | grep -c DOPPLER_TOKEN || true"],
+      });
+      expect(run.exit).toBe(0);
+      expect(run.screen).toMatch(new RegExp(`^✓ Read 1 dev value from ${where}`, "m"));
+      expect(run.screen).toMatch(/^0$/m);
+      const publish = await drive({
+        scenario: "doppler",
+        args: ["publish", "STRIPE_KEY"],
+        answers: ["y"],
+      });
+      expect(publish.exit).toBe(0);
+      expect(publish.screen).toContain(`from doppler://billing/prd/STRIPE_KEY in ${where}`);
+      expect(publish.effects).toEqual([
+        "destination write github-actions:acme/billing STRIPE_KEY (23 chars)",
+      ]);
+      for (const result of [run, publish]) {
+        expect(result.screen).not.toContain("1Password");
+        clean(result);
+      }
+    },
+    SLOW,
+  );
+
+  test(
     "with Bitwarden, run, status and publish read from the organization and leak nothing",
     async () => {
       const where =

@@ -148,7 +148,7 @@ describe("a vault kind defined outside keypin", () => {
       `key "B" dev: field "from" needs your toy box: add [toy] with box = "..."`,
     );
     expect(run.stdout.text).toContain(
-      `key "C" dev: field "from" must start with op:// or bitwarden:// or infisical:// or toy://`,
+      `key "C" dev: field "from" must start with op:// or bitwarden:// or doppler:// or infisical:// or toy://`,
     );
   });
 

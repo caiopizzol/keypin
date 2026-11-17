@@ -20,7 +20,7 @@ const POLLS = 30;
 
 export interface GoogleIssuerOptions {
   admin: () => Promise<Secret>;
-  projectId: string;
+  projectNumber: string;
   fetch?: Fetch;
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
@@ -52,7 +52,7 @@ export class GoogleIssuer implements Issuer {
 
   constructor(options: GoogleIssuerOptions) {
     this.#admin = options.admin;
-    this.#pinned = options.projectId;
+    this.#pinned = options.projectNumber;
     this.#fetch = options.fetch ?? globalThis.fetch;
     this.#now = options.now ?? (() => new Date());
     this.#sleep = options.sleep ?? ((ms) => new Promise((done) => setTimeout(done, ms)));
@@ -114,8 +114,8 @@ export class GoogleIssuer implements Issuer {
       return {
         ok: false,
         facts: `${currentId === null ? "the vault's key is" : "keypin issued a key"} in project ${this.#project}`,
-        reason: `keypin.toml pins project_id ${this.#pinned}, and the key is in project ${this.#project}`,
-        fix: `check project_id in keypin.toml, and that the vault holds the key from project ${this.#pinned}`,
+        reason: `keypin.toml pins project_number ${this.#pinned}, and the key is in project ${this.#project}`,
+        fix: `check project_number in keypin.toml, and that the vault holds the key from project ${this.#pinned}`,
       };
 
     const read = await this.#request("GET", name);

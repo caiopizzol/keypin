@@ -20,12 +20,12 @@ describe("the issuer contract", () => {
     const fake: FakeGoogle = {
       serviceAccount: EMAIL,
       privateKey: PRIVATE_KEY,
-      projects: ["acme-prod"],
+      projects: ["481537286014"],
       valuePrefix: `AIzaSy${sentinel}`,
       tokenPrefix: `ya29.${sentinel}-`,
       world: memoryWorld([
         {
-          name: "projects/acme-prod/locations/global/keys/maps-web",
+          name: "projects/481537286014/locations/global/keys/maps-web",
           value: VAULT,
           displayName: "Maps web",
         },
@@ -35,7 +35,7 @@ describe("the issuer contract", () => {
     return {
       issuer: new GoogleIssuer({
         admin: async () => new Secret(serviceAccountJson(EMAIL, PRIVATE_KEY, sentinel)),
-        projectId: "acme-prod",
+        projectNumber: "481537286014",
         fetch: googleFetch(fake),
         sleep: async () => {},
       }),

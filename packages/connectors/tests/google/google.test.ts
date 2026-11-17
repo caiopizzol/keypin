@@ -17,7 +17,7 @@ const PRIVATE_KEY = fakePrivateKey();
 const ADMIN = serviceAccountJson(EMAIL, PRIVATE_KEY);
 const VAULT = "AIzaSyVaultVaultVaultVaultVaultVault0001";
 const PREFIX = "AIzaSyIssuedIssuedIssued";
-const OLD_NAME = "projects/acme-prod/locations/global/keys/maps-web";
+const OLD_NAME = "projects/481537286014/locations/global/keys/maps-web";
 const RESTRICTIONS = {
   apiTargets: [{ service: "maps-backend.googleapis.com" }, { service: "places.googleapis.com" }],
   browserKeyRestrictions: { allowedReferrers: ["https://acme.example/*", "*.acme.example/*"] },
@@ -34,7 +34,7 @@ function google(
   keys: FakeGoogleKey[] = [OLD],
   options: Partial<FakeGoogle> = {},
   admin = ADMIN,
-  projectId = "acme-prod",
+  projectNumber = "481537286014",
 ) {
   const effects: string[] = [];
   const requests: { method: string; path: string; body: string }[] = [];
@@ -43,7 +43,7 @@ function google(
   const fake: FakeGoogle = {
     serviceAccount: EMAIL,
     privateKey: PRIVATE_KEY,
-    projects: ["acme-prod"],
+    projects: ["481537286014"],
     valuePrefix: PREFIX,
     world,
     effect: (line) => void effects.push(line),
@@ -58,7 +58,7 @@ function google(
   let now = new Date("2026-11-17T12:00:00Z");
   const issuer = new GoogleIssuer({
     admin: async () => new Secret(admin),
-    projectId,
+    projectNumber,
     fetch,
     now: () => now,
     sleep: async (ms) => void sleeps.push(ms),
@@ -85,13 +85,13 @@ describe("Google Cloud issuer", () => {
     const subject = google();
     const check = await checked(subject);
     expect(check.currentId).toBe(OLD_NAME);
-    expect(check.facts).toBe('the vault holds key "Maps web" (maps-web) in project acme-prod');
+    expect(check.facts).toBe('the vault holds key "Maps web" (maps-web) in project 481537286014');
     expect(check.notes?.create).toBe(
       "with the old key's API targets maps-backend.googleapis.com, places.googleapis.com and 2 websites",
     );
     const created = await subject.issuer.create(NAME);
     expect(created.id).toBe(
-      "projects/acme-prod/locations/global/keys/google-maps-api-key-prod-2026-11-17-12-00-00-a1b2c3",
+      "projects/481537286014/locations/global/keys/google-maps-api-key-prod-2026-11-17-12-00-00-a1b2c3",
     );
     expect(created.secret.equals(new Secret(`${PREFIX}1x`))).toBe(true);
     const post = subject.requests.find((r) => r.method === "POST" && r.path.endsWith("/keys"));
@@ -128,12 +128,12 @@ describe("Google Cloud issuer", () => {
     expect(JSON.parse(post?.body ?? "")).toMatchObject({ restrictions });
   });
 
-  test("a key in another project than project_id is refused before anything is created", async () => {
-    const subject = google([OLD], {}, ADMIN, "acme-staging");
+  test("a key in another project than project_number is refused before anything is created", async () => {
+    const subject = google([OLD], {}, ADMIN, "729401556318");
     const check = await subject.issuer.checkAccount(null, new Secret(VAULT));
     assert(!check.ok);
     expect(check.reason).toBe(
-      "keypin.toml pins project_id acme-staging, and the key is in project acme-prod",
+      "keypin.toml pins project_number 729401556318, and the key is in project 481537286014",
     );
     expect(subject.requests.some((r) => r.method !== "GET" && !r.path.endsWith("/token"))).toBe(
       false,
@@ -174,7 +174,7 @@ describe("Google Cloud issuer", () => {
     expect(failed).not.toBeInstanceOf(NothingChanged);
     expect(failed.message).toBe("Google Cloud hasn't finished creating the key after 60 seconds");
     expect(subject.issuer.lostCreate(NAME)).toBe(
-      'Google Cloud may have made the key, or may still be making it. Only this run uses key ID google-maps-api-key-prod-2026-11-17-12-00-00-a1b2c3 and the name "GOOGLE_MAPS_API_KEY prod 2026-11-17 12:00:00 a1b2c3": delete that key at https://console.cloud.google.com/apis/credentials?project=acme-prod before you run this again, or the rerun leaves it live.',
+      'Google Cloud may have made the key, or may still be making it. Only this run uses key ID google-maps-api-key-prod-2026-11-17-12-00-00-a1b2c3 and the name "GOOGLE_MAPS_API_KEY prod 2026-11-17 12:00:00 a1b2c3": delete that key at https://console.cloud.google.com/apis/credentials?project=481537286014 before you run this again, or the rerun leaves it live.',
     );
   });
 
@@ -199,7 +199,7 @@ describe("Google Cloud issuer", () => {
     await checked(subject);
     const failed = await subject.issuer.create(NAME).catch((error: unknown) => error);
     assert(failed instanceof NothingChanged);
-    expect(failed.message).toContain("can't create keys in project acme-prod");
+    expect(failed.message).toContain("can't create keys in project 481537286014");
     expect(failed.message).not.toContain("ya29");
   });
 
@@ -213,12 +213,12 @@ describe("Google Cloud issuer", () => {
   });
 
   test("checks the key keypin issued last time by its name", async () => {
-    const issued = "projects/acme-prod/locations/global/keys/google-maps-api-key-prod-x";
+    const issued = "projects/481537286014/locations/global/keys/google-maps-api-key-prod-x";
     const subject = google([{ ...OLD, name: issued, displayName: "Maps web" }]);
     const check = await subject.issuer.checkAccount(issued, new Secret("anything"));
     expect(check).toMatchObject({
       ok: true,
-      facts: 'keypin issued key "Maps web" (google-maps-api-key-prod-x) in project acme-prod',
+      facts: 'keypin issued key "Maps web" (google-maps-api-key-prod-x) in project 481537286014',
     });
     expect(subject.requests.some((r) => r.path.endsWith(":lookupKey"))).toBe(false);
   });
@@ -300,7 +300,7 @@ describe("Google Cloud issuer refusals", () => {
   });
 
   test("refuses a key the admin can't look up", async () => {
-    const subject = google([OLD], { projects: ["acme-staging"] });
+    const subject = google([OLD], { projects: ["729401556318"] });
     const check = await subject.issuer.checkAccount(null, new Secret(VAULT));
     assert(!check.ok);
     expect(check.reason).toBe(
@@ -313,7 +313,7 @@ describe("Google Cloud issuer refusals", () => {
     const check = await subject.issuer.checkAccount(null, new Secret(VAULT));
     expect(check).toMatchObject({
       ok: false,
-      facts: "Google knows the vault's key in projects/acme-prod, but no longer lists it",
+      facts: "Google knows the vault's key in projects/481537286014, but no longer lists it",
     });
   });
 
@@ -356,7 +356,7 @@ describe("Google Cloud issuer refusals", () => {
   test("refuses when the issued key is gone", async () => {
     const subject = google();
     const check = await subject.issuer.checkAccount(
-      "projects/acme-prod/locations/global/keys/gone",
+      "projects/481537286014/locations/global/keys/gone",
       new Secret(VAULT),
     );
     assert(!check.ok);
@@ -366,9 +366,9 @@ describe("Google Cloud issuer refusals", () => {
   test("a delete Google refuses says where to delete the key", async () => {
     const subject = google();
     await checked(subject);
-    subject.fake.projects = ["acme-staging"];
+    subject.fake.projects = ["729401556318"];
     await expect(subject.issuer.revoke(OLD_NAME)).rejects.toThrow(
-      `the admin service account can't delete key "Maps web" (maps-web): put a JSON key of a service account with the API Keys Admin role in the admin item; create one at https://console.cloud.google.com/iam-admin/serviceaccounts, or delete it at https://console.cloud.google.com/apis/credentials?project=acme-prod`,
+      `the admin service account can't delete key "Maps web" (maps-web): put a JSON key of a service account with the API Keys Admin role in the admin item; create one at https://console.cloud.google.com/iam-admin/serviceaccounts, or delete it at https://console.cloud.google.com/apis/credentials?project=481537286014`,
     );
     expect(subject.effects).toEqual([]);
   });
@@ -405,7 +405,7 @@ ${issuer}`;
 
   test("takes the admin item and the project ID", () => {
     const parsed = parseMap(
-      map(`project_id = "acme-prod"\n`),
+      map(`project_number = "481537286014"\n`),
       "keypin.toml",
       [],
       [googleIssuer],
@@ -414,19 +414,33 @@ ${issuer}`;
     assert(parsed.ok, JSON.stringify(parsed));
     expect(parsed.map.keys[0]?.environments.prod?.issuer).toMatchObject({
       kind: "google",
-      projectId: "acme-prod",
+      projectNumber: "481537286014",
     });
   });
 
-  test("needs project_id", () => {
+  test("refuses a project ID where the project number belongs", () => {
+    const parsed = parseMap(
+      map(`project_number = "acme-prod"\n`),
+      "keypin.toml",
+      [],
+      [googleIssuer],
+      [onePasswordVault],
+    );
+    assert(!parsed.ok);
+    expect(parsed.errors.join("\n")).toContain(
+      'field "project_number" must be the project\'s number, digits only, not its ID',
+    );
+  });
+
+  test("needs project_number", () => {
     const parsed = parseMap(map(""), "keypin.toml", [], [googleIssuer], [onePasswordVault]);
     assert(!parsed.ok);
-    expect(parsed.errors.join("\n")).toContain(`missing field "project_id"`);
+    expect(parsed.errors.join("\n")).toContain(`missing field "project_number"`);
   });
 
   test("rejects other fields", () => {
     const parsed = parseMap(
-      map(`project_id = "acme-prod"\nlocation = "global"\n`),
+      map(`project_number = "481537286014"\nlocation = "global"\n`),
       "keypin.toml",
       [],
       [googleIssuer],

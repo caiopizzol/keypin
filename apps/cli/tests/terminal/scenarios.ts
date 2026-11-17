@@ -499,7 +499,7 @@ from = "op://Private/maps api key/credential"
 [keys.GOOGLE_MAPS_API_KEY.prod.issuer]
 kind = "google"
 admin = "op://Private/google key maker/credential"
-project_id = "acme-prod"
+project_number = "481537286014"
 
 [[keys.GOOGLE_MAPS_API_KEY.prod.publish]]
 to = "github-actions"
@@ -529,7 +529,7 @@ const google: Scenario = {
   google: {
     keys: [
       {
-        name: "projects/acme-prod/locations/global/keys/maps-web",
+        name: "projects/481537286014/locations/global/keys/maps-web",
         value: GOOGLE_OLD,
         displayName: "Maps web",
         restrictions: {

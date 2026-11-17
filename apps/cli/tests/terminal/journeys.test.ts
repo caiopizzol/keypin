@@ -652,12 +652,12 @@ describe("keypin rotate in a real terminal", () => {
       );
       expect(result.effects).toHaveLength(4);
       expect(result.effects[0]).toMatch(
-        /^google create projects\/acme-prod\/locations\/global\/keys\/google-maps-api-key-prod-[\d-]+-[0-9a-f]{6} "GOOGLE_MAPS_API_KEY prod [\d-]+ [\d:]+ [0-9a-f]{6}" with \{"apiTargets":\[\{"service":"maps-backend\.googleapis\.com"\}\],"browserKeyRestrictions":\{"allowedReferrers":\["https:\/\/acme\.example\/\*","\*\.acme\.example\/\*"\]\}\}$/,
+        /^google create projects\/481537286014\/locations\/global\/keys\/google-maps-api-key-prod-[\d-]+-[0-9a-f]{6} "GOOGLE_MAPS_API_KEY prod [\d-]+ [\d:]+ [0-9a-f]{6}" with \{"apiTargets":\[\{"service":"maps-backend\.googleapis\.com"\}\],"browserKeyRestrictions":\{"allowedReferrers":\["https:\/\/acme\.example\/\*","\*\.acme\.example\/\*"\]\}\}$/,
       );
       expect(result.effects.slice(1)).toEqual([
         "1password update my.1password.com/Private/maps api key (26 chars)",
         "destination write github-actions:acme/billing GOOGLE_MAPS_API_KEY (26 chars)",
-        "google delete projects/acme-prod/locations/global/keys/maps-web",
+        "google delete projects/481537286014/locations/global/keys/maps-web",
       ]);
       clean(result);
     },

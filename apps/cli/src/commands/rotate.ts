@@ -80,7 +80,6 @@ interface Job {
   spec: IssuerSpec;
   owner: KeyOwner;
   pair: Pair | null;
-  keyNamed: (name: string) => KeyEntry | undefined;
   yes: boolean;
   plan: boolean;
   args: string[];
@@ -151,7 +150,6 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
     spec,
     owner,
     pair,
-    keyNamed: (name: string) => map.keys.find((k) => k.name === name),
     yes: values.yes,
     plan: values.plan,
     args,
@@ -210,14 +208,8 @@ async function rotateLocked(job: Job): Promise<number> {
       : null;
   const pairNow = read.pair ? await pairPlan(read.pair.secret) : null;
   const recorded = issuedFor(state, owner);
-  const linked = (recorded?.idKey ?? null) === (job.pair?.key.name ?? null);
-  if (recorded && !linked && recorded.idKey && (await idUnfinished(job, recorded, inputFor))) {
-    say(movedId(recorded.idKey, job));
-    return 1;
-  }
-  const idSaved =
-    !read.pair || !recorded || !linked || read.pair.secret.equals(new Secret(recorded.id));
-  const counted = linked ? [...unpublished, ...(pairNow?.steps ?? [])] : unpublished;
+  const idSaved = !read.pair || !recorded || read.pair.secret.equals(new Secret(recorded.id));
+  const counted = [...unpublished, ...(pairNow?.steps ?? [])];
   let next = nextRotation({
     issued: recorded,
     issuer: spec.kind,
@@ -225,10 +217,6 @@ async function rotateLocked(job: Job): Promise<number> {
     published: counted.every((step) => step.action === "skip"),
     idSaved,
   });
-  if (next.action === "resume" && !linked) {
-    say(movedId(next.issued.idKey ?? null, job));
-    return 1;
-  }
   const issuer = deps.issuer(spec, read.admin);
   if (next.action === "wait") {
     const held = next.issued;
@@ -359,7 +347,6 @@ async function rotateLocked(job: Job): Promise<number> {
     generation: await generationOf(created.secret),
     at: deps.now().toISOString(),
     old: { id: current, generation, revoked: check.gone !== undefined },
-    ...(job.pair ? { idKey: job.pair.key.name } : {}),
   };
   const mayHold = vaultKindOf(deps.vaults, entry.ref.kind).holdsWrites === true;
   try {
@@ -465,35 +452,6 @@ async function revokeOrphan(job: Job, issuer: Issuer, id: string): Promise<boole
     );
     return false;
   }
-}
-
-async function idUnfinished(
-  job: Job,
-  recorded: Issued,
-  inputFor: (of: KeyEntry) => PlanInput,
-): Promise<boolean> {
-  const { owner, keyNamed } = job;
-  if (recorded.idKey === undefined) return false;
-  const generation = await generationOf(new Secret(recorded.id));
-  const idKey = keyNamed(recorded.idKey);
-  if (idKey?.environments[owner.environment])
-    return planPublish({ ...inputFor(idKey), generation, ids: null }).steps.some(
-      (step) => step.action !== "skip",
-    );
-  const { kinds, receipts } = inputFor(job.key);
-  const was = { ...owner, keyId: recorded.idKey };
-  return job.entry.publish.some((target) => {
-    const id = destinationId(target, was.keyId, kinds);
-    return !receipts.some(
-      (r) => ownedBy(r, was) && r.destinationId === id && r.generation === generation,
-    );
-  });
-}
-
-function movedId(recorded: string | null, { key, pair }: Job): string {
-  const now = pair ? `the map now names ${pair.key.name}` : "the map no longer names it";
-  const fix = recorded === null ? "remove key_id" : `set key_id back to "${recorded}"`;
-  return `Stopped: keypin is part way through rotating ${key.name}${recorded === null ? "" : ` with its ID in ${recorded}`}, and ${now}. To finish, ${fix} and run this again. Nothing was created.`;
 }
 
 function pairChecks({ pair, deps }: Job, checked: Map<string, Checked>): Map<string, Checked> {

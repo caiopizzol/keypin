@@ -220,7 +220,8 @@ describe("keypin rotate: a key whose ID is another key", () => {
     );
     const state = await run.state();
     const [issued] = state.issued;
-    expect(issued).toMatchObject({ id: "AKID-1", idKey: "API_KEY_ID" });
+    expect(issued).toMatchObject({ id: "AKID-1" });
+    expect(issued).not.toHaveProperty("idKey");
     expect(issued?.old).toMatchObject({ id: "AKID-0", revoked: true });
     expect(state.receipts.map((r) => `${r.keyId} ${r.destinationId}`).toSorted()).toEqual([
       `API_KEY_ID ${WORKER}:API_KEY_ID`,
@@ -375,7 +376,7 @@ describe("keypin rotate: a key whose ID is another key", () => {
     ]);
   });
 
-  test("a map that moves key_id part way through stops instead of writing the ID elsewhere", async () => {
+  test("a map that moves key_id part way through resumes into the entry the map names now", async () => {
     const vault = writableVault({ ...VALUES, "other id": "AKID-0" });
     const first = setup({ vault, saves: { "api key id": "refused" }, answers: ["y"] });
     expect(await first.rotate()).toBe(1);
@@ -390,15 +391,17 @@ from = "op://Private/other id/credential"
 ${PUBLISH}
 `,
     );
-    const moved = first.again({ answers: ["y"] });
-    expect(await moved.rotate()).toBe(1);
-    expect(moved.stderr.text).toContain(
-      'Stopped: keypin is part way through rotating API_SECRET with its ID in API_KEY_ID, and the map now names OTHER_ID. To finish, set key_id back to "API_KEY_ID" and run this again. Nothing was created.',
-    );
-    expect(moved.issuer.log.slice(2)).toEqual([]);
+    const moved = first.again({ answers: ["y", "y"] });
+    expect(await moved.rotate()).toBe(0);
+    expect(moved.issuer.log.slice(2)).toEqual(["check AKID-1", "revoke AKID-0"]);
+    expect([...moved.issuer.live]).not.toContain("AKID-2");
+    expect(moved.destinations.delivered("AKID-1")).toEqual([
+      `${WORKER} OTHER_ID`,
+      `${GITHUB} OTHER_ID`,
+    ]);
   });
 
-  test("with nothing left to revoke, moving key_id before the ID reached every destination stops instead of creating another key", async () => {
+  test("with nothing left to revoke, moving key_id before the ID reached every destination resumes instead of creating another key", async () => {
     const vault = writableVault({ ...VALUES, "other id": "AKID-0" });
     const first = setup({
       vault,
@@ -418,16 +421,13 @@ from = "op://Private/other id/credential"
 ${PUBLISH}
 `,
     );
-    const moved = first.again({ answers: ["y", "y"] });
-    expect(await moved.rotate()).toBe(1);
-    expect(moved.stderr.text).toContain(
-      "Stopped: keypin is part way through rotating API_SECRET with its ID in API_KEY_ID",
-    );
-    expect(moved.issuer.log.slice(2)).toEqual([]);
+    const moved = first.again({ answers: ["y"] });
+    expect(await moved.rotate()).toBe(0);
+    expect(moved.issuer.log.slice(2)).toEqual(["check AKID-1"]);
     expect([...moved.issuer.live]).not.toContain("AKID-2");
   });
 
-  test("after a finished rotation, renaming the ID entry lets the next rotation use the new name", async () => {
+  test("after a finished rotation, a renamed ID entry gets the ID first, then the next rotation runs", async () => {
     const first = setup({ answers: ["y", "y"] });
     expect(await first.rotate()).toBe(0);
     first.disk.contents.set(
@@ -437,14 +437,37 @@ ${PUBLISH}
         (m) => m.replace("API_KEY_ID", "NEW_KEY_ID"),
       ),
     );
-    const next = first.again({ answers: ["y", "y"] });
+    const publishes = first.again({ answers: ["y"] });
+    expect(await publishes.rotate()).toBe(0);
+    expect(publishes.issuer.log.slice(3)).toEqual(["check AKID-1"]);
+    const next = publishes.again({ answers: ["y", "y"] });
     expect(await next.rotate()).toBe(0);
-    expect(next.stderr.text).not.toContain("part way through");
-    expect(next.issuer.log.slice(3)).toEqual([
+    expect(next.issuer.log.slice(4)).toEqual([
       "check AKID-1",
       "create API_SECRET -> AKID-2",
       "revoke AKID-1",
     ]);
+  });
+
+  test("after a finished rotation, key_id moved to an entry with another ID resumes instead of revoking that ID", async () => {
+    const vault = writableVault({ ...VALUES, "other id": "AKID-0" });
+    const first = setup({ vault, answers: ["y", "y"] });
+    expect(await first.rotate()).toBe(0);
+    first.disk.contents.set(
+      "/work/billing/keypin.toml",
+      `${MAP.replace('key_id = "API_KEY_ID"', 'key_id = "OTHER_ID"')}
+[keys.OTHER_ID]
+rotate_every = "never"
+
+[keys.OTHER_ID.prod]
+from = "op://Private/other id/credential"
+${PUBLISH}
+`,
+    );
+    const next = first.again({ answers: ["y"] });
+    expect(await next.rotate()).toBe(0);
+    expect(next.issuer.log.slice(3)).toEqual(["check AKID-1"]);
+    expect([...next.issuer.live]).toEqual(["AKID-1"]);
   });
 
   test("keypin rotate on the ID points to the key that rotates it", async () => {

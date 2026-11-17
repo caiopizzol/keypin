@@ -37,7 +37,6 @@ export {
 } from "./destination";
 export {
   connectIssuer,
-  idKeyOf,
   type IssuerKind,
   type IssuerKinds,
   type IssuerReader,

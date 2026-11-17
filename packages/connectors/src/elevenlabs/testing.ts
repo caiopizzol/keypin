@@ -28,11 +28,11 @@ export interface FakeElevenLabs {
   people?: readonly { id: string; value: string }[];
   failCreate?: number;
   loseCreated?: boolean;
+  now?: () => Date;
   world: { load(): ElevenLabsWorld; save(world: ElevenLabsWorld): void };
   effect(line: string): void;
 }
 
-const CREATED_AT = 1_767_225_600;
 const DAY = 86_400;
 const VALUE_END = "9c4e";
 export const ALL = ["text_to_speech", "voices_read", "user_read"];
@@ -52,6 +52,8 @@ export function elevenlabsFetch(fake: FakeElevenLabs): Fetch {
         },
       });
     const token = init.headers["xi-api-key"] ?? "";
+    const now = Math.floor((fake.now?.() ?? new Date()).getTime() / 1000);
+    const listed = (key: FakeElevenLabsKey) => listing(key, now);
 
     if (pathname === "/v1/user" && init.method === "GET") {
       const person = fake.people?.find((p) => p.value === token);
@@ -154,16 +156,17 @@ export function elevenlabsFetch(fake: FakeElevenLabs): Fetch {
   };
 }
 
-function listed(key: FakeElevenLabsKey) {
+function listing(key: FakeElevenLabsKey, now: number) {
+  const createdAt = key.expiresAt === undefined ? now - DAY : key.expiresAt - 30 * DAY;
   const expires =
-    key.expiresAt ?? (key.lifetimeDays === undefined ? null : CREATED_AT + key.lifetimeDays * DAY);
+    key.expiresAt ?? (key.lifetimeDays === undefined ? null : createdAt + key.lifetimeDays * DAY);
   return {
     name: key.name,
     hint: key.value.slice(-4),
     key_id: key.keyId,
     service_account_user_id: key.account,
     hashed_xi_api_key: `hashed_${key.keyId}`,
-    created_at_unix: key.expiresAt === undefined ? CREATED_AT : key.expiresAt - 30 * DAY,
+    created_at_unix: createdAt,
     is_disabled: key.disabled === true,
     permissions: key.permissions === undefined ? ALL : key.permissions,
     disable_reason: key.disabled ? "exposed_publicly" : null,

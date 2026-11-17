@@ -149,7 +149,11 @@ export class ElevenLabsIssuer implements Issuer {
       (key) => !key.disabled && (key.expiresAt === null || key.expiresAt > now),
     );
     const [match, ...more] = live;
-    if (!match || more.length)
+    if (!match)
+      throw new Error(
+        `ElevenLabs accepts the vault's key, but lists no active key for service account "${accountName}"`,
+      );
+    if (more.length)
       return {
         ok: false,
         facts: `${facts}; service account "${accountName}" has ${plural(live.length, "active key")}`,

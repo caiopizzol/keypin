@@ -21,6 +21,11 @@ It writes Vercel variables as Sensitive with `KEYPIN_VERCEL_TOKEN`, one per `env
 publishing; keypin doesn't. It stops rather than change a variable that also covers another environment, and
 leaves Git branch variables alone.
 
+It writes Netlify variables as secrets with `KEYPIN_NETLIFY_TOKEN`, one value per `context`: `production`,
+`deploy-preview`, `branch-deploy` or `dev-server`. Netlify uses a new value only from the next build and deploy, so
+redeploy after publishing; keypin doesn't. It stops rather than write to a variable not marked as secret. It leaves
+other contexts and branch values alone. For `netlify dev`, run `keypin run -- netlify dev`.
+
 ## Steps
 
 1. **Accounts:** it checks that each login reaches the account the map pins, and stops if one doesn't.

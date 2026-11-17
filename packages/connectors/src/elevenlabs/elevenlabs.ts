@@ -123,6 +123,14 @@ export class ElevenLabsIssuer implements Issuer {
             "the vault's key has no User read permission, so ElevenLabs doesn't tell keypin which service account it belongs to",
           fix: `give the key the User read permission in ${SERVICE_ACCOUNTS}, then run this again; the new key keeps it`,
         };
+      if (user.status === 403)
+        return {
+          ok: false,
+          facts: `${facts}; ElevenLabs refused the vault's key here`,
+          reason:
+            "ElevenLabs refused the vault's key from this machine: the key's IP allowlist may not include this address, or the key was disabled",
+          fix: `run this from an address the key allows, or check its IP allowlist in ${SERVICE_ACCOUNTS}, then run this again`,
+        };
       return {
         ok: false,
         facts: `${facts}; ElevenLabs doesn't accept the vault's key`,
@@ -324,6 +332,14 @@ function refusedAdmin(reply: Reply): IssuerCheck {
       reason:
         "ElevenLabs doesn't accept the admin key: it was deleted, disabled or expired, or the item holds another value",
       fix: ADMIN_FIX,
+    };
+  if (reply.status === 403 && !missingPermission(reply))
+    return {
+      ok: false,
+      facts,
+      reason:
+        "ElevenLabs refused the admin key from this machine: its IP allowlist may not include this address, or it can't list service accounts",
+      fix: `run this from an address the admin key allows, or check its IP allowlist; ${ADMIN_FIX}`,
     };
   if (reply.status === 401 || reply.status === 403)
     return {

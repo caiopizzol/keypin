@@ -226,6 +226,29 @@ describe("checkAccount", () => {
     expectNoSecret(check);
   });
 
+  test("a 403 for the vault's key names the IP allowlist, not a bad value", async () => {
+    const { fake } = elevenlabs();
+    const served = elevenlabsFetch(fake);
+    const issuer = withFetch(async (url, init) =>
+      new URL(url).pathname === "/v1/user"
+        ? new Response(JSON.stringify({ detail: { status: "ip_not_allowed" } }), { status: 403 })
+        : served(url, init),
+    );
+    const check = await issuer.checkAccount(null, new Secret(VAULT));
+    assert(!check.ok);
+    expect(check.reason).toContain("the key's IP allowlist may not include this address");
+    expect(check.reason).not.toContain("the item holds another value");
+    expectNoSecret(check);
+  });
+
+  test("a 403 for the admin key names the IP allowlist", async () => {
+    const issuer = withFetch(answering(403, { detail: { status: "ip_not_allowed" } }));
+    const check = await issuer.checkAccount(null, new Secret(VAULT));
+    assert(!check.ok);
+    expect(check.reason).toContain("its IP allowlist may not include this address");
+    expectNoSecret(check);
+  });
+
   test("a server error listing service accounts throws without the admin key", async () => {
     const issuer = withFetch(answering(500, { detail: { code: "internal_error" } }));
     const error = await issuer.checkAccount(null, new Secret(VAULT)).catch((e: unknown) => e);

@@ -2,8 +2,6 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   type Destination,
   type Issuer,
-  type IssuerKind,
-  type IssuerSpec,
   loadState,
   type PublishTarget,
   Secret,
@@ -15,6 +13,7 @@ import { cli } from "../src/cli";
 import { issuers, vaults } from "../src/start";
 import { NEEDS_APPROVAL } from "../src/approval";
 import { fakeDeps, fakeDestinations, memoryFiles, STATE, writableVault } from "./fakes";
+import { pairedKind } from "./paired";
 
 const OLD_SECRET = "old_secret_sentinel_5c1e";
 const ADMIN = "admin_sentinel_value_3f7a";
@@ -52,25 +51,6 @@ rotate_every = "never"
 from = "op://Private/api key id/credential"
 ${PUBLISH}
 `;
-
-interface PairedSpec extends IssuerSpec {
-  readonly kind: "paired";
-  readonly keyId: string;
-}
-
-const pairedKind: IssuerKind<PairedSpec> = {
-  kind: "paired",
-  parse(read) {
-    read.only(["key_id"]);
-    const admin = read.admin();
-    const keyId = read.idKey();
-    return admin && keyId ? { kind: "paired", admin, keyId } : undefined;
-  },
-  connect: () => {
-    throw new Error("tests build the issuer themselves");
-  },
-  idKey: (spec) => spec.keyId,
-};
 
 interface IssuerOptions {
   failCreate?: boolean;
@@ -422,7 +402,7 @@ ${PUBLISH}
     const run = setup();
     expect(await run.rotate("API_KEY_ID")).toBe(1);
     expect(run.stderr.text).toContain(
-      'key "API_KEY_ID" prod holds the ID of API_SECRET, and keypin rotates the two together. Run keypin rotate API_SECRET',
+      'key "API_KEY_ID" prod holds the ID of API_SECRET, and keypin rotates the two together. Run keypin rotate API_SECRET.',
     );
     expect(run.stderr.text).not.toContain("has no issuer");
   });

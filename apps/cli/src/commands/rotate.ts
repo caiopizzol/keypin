@@ -121,7 +121,7 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
   const holder = spec ? undefined : pairedWith(map, keyId, environment);
   if (holder)
     throw new Error(
-      `key "${keyId}" ${environment} holds the ID of ${holder.name}, and keypin rotates the two together. Run keypin rotate ${holder.name}${envFlag(environment, publishEnvironment(map))}`,
+      `key "${keyId}" ${environment} holds the ID of ${holder.name}, and keypin rotates the two together. Run keypin rotate ${holder.name}${envFlag(environment, publishEnvironment(map))}.`,
     );
   if (!spec)
     throw new Error(

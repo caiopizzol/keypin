@@ -1,7 +1,15 @@
 import { appendFileSync, existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Fetch, isRecord, placeId, type PublishTarget } from "@keypin/core";
+import {
+  type Fetch,
+  type Issuer,
+  type IssuerSpec,
+  isRecord,
+  placeId,
+  type PublishTarget,
+  Secret,
+} from "@keypin/core";
 import {
   type Field,
   type FullItem,
@@ -29,6 +37,7 @@ import { bitwardenFetch, fileStore as bitwardenStore } from "@keypin/connectors/
 import { dopplerBackend, tokenFrom } from "@keypin/connectors/doppler";
 import { dopplerFetch, fileStore as dopplerStore } from "@keypin/connectors/doppler/testing";
 import { cli } from "../../src/cli";
+import { pairedKind } from "../paired";
 import { onePasswordFrom } from "../../src/sign-in";
 import { destinations, issuer, realDeps } from "../../src/start";
 import { routedVault } from "../../src/vault";
@@ -50,6 +59,8 @@ import {
   OPENAI_PREFIX,
   OPENROUTER_ADMIN,
   OPENROUTER_PREFIX,
+  PAIRED_ADMIN,
+  PAIRED_PREFIX,
   SUPABASE_ADMIN,
   SUPABASE_PREFIX,
   SANDBOX_MARKER,
@@ -93,6 +104,7 @@ const GOOGLE = join(sandbox, "google.json");
 const GOOGLE_KEY = scenario.google ? fakePrivateKey() : "";
 const OPENROUTER = join(sandbox, "openrouter.json");
 const ELEVENLABS = join(sandbox, "elevenlabs.json");
+const PAIRED = join(sandbox, "paired.json");
 
 function effect(line: string): void {
   appendFileSync(EFFECTS, `${line}\n`);
@@ -494,6 +506,55 @@ function isNeonWorld(value: unknown): value is NeonWorld {
   );
 }
 
+function pairedKeys(): { live: string[]; created: number } {
+  if (!existsSync(PAIRED)) return { live: run.paired?.keys ?? [], created: 0 };
+  const parsed: unknown = JSON.parse(readFileSync(PAIRED, "utf8"));
+  if (!isRecord(parsed) || !Array.isArray(parsed.live) || typeof parsed.created !== "number")
+    throw new Error(`${PAIRED} isn't the fake paired account's keys`);
+  return {
+    live: parsed.live.filter((id): id is string => typeof id === "string"),
+    created: parsed.created,
+  };
+}
+
+function pairedIssuer(admin: Secret): Issuer {
+  const save = (keys: { live: string[]; created: number }) =>
+    writeFileSync(PAIRED, JSON.stringify(keys));
+  return {
+    describe: () => "Keys",
+    dashboard: () => "https://keys.example/keys",
+    async checkAccount(current) {
+      const { live } = pairedKeys();
+      const facts = `the admin key lists ${live.length} keys`;
+      if (!admin.equals(new Secret(PAIRED_ADMIN)))
+        return { ok: false, facts, reason: "the admin key isn't the account's" };
+      if (current === null || !live.includes(current))
+        return { ok: false, facts, reason: `the account doesn't list key ${current ?? "(none)"}` };
+      return { ok: true, facts, currentId: current };
+    },
+    async create() {
+      const keys = pairedKeys();
+      const id = `AKID-${keys.created + 1}`;
+      save({ live: [...keys.live, id], created: keys.created + 1 });
+      effect(`paired create ${id}`);
+      return { id, secret: new Secret(`${PAIRED_PREFIX}${keys.created + 1}`) };
+    },
+    async revoke(id) {
+      const keys = pairedKeys();
+      if (!keys.live.includes(id)) return "already gone";
+      save({ ...keys, live: keys.live.filter((each) => each !== id) });
+      effect(`paired revoke ${id}`);
+      return "revoked";
+    },
+  };
+}
+
+function connectIssuer(spec: IssuerSpec, admin: Secret): Issuer {
+  return spec.kind === "paired"
+    ? pairedIssuer(admin)
+    : issuer(spec, admin, issuerFetch[spec.kind] ?? resend);
+}
+
 const real = realDeps();
 
 process.exitCode = await cli(process.argv.slice(2), {
@@ -513,7 +574,8 @@ process.exitCode = await cli(process.argv.slice(2), {
   organizationSecrets: async () => ({ ok: true, secrets: [] }),
   sshHostname: async () => null,
   workerSecrets: async () => ({ ok: false, reason: "this scenario has no Cloudflare account" }),
-  issuer: (spec, admin) => issuer(spec, admin, issuerFetch[spec.kind] ?? resend),
+  issuers: [...real.issuers, pairedKind],
+  issuer: connectIssuer,
   destination: (target) => {
     const place = placeId(target, destinations);
     const scripted = run.places[place] ?? {};

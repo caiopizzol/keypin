@@ -35,5 +35,5 @@ belongs to the pinned workplace and refuses another.
 keypin refuses to save a rotated key in a secret that references another, such as `${shared.prd.STRIPE_KEY}`, or
 that a branch config's root or an inherited config also holds; point `keypin.toml` at the source secret instead.
 
-Doppler keeps no rotated date on a secret, so `keypin status` can't tell when a Doppler key is due. To be reminded,
-set a [secret reminder](https://docs.doppler.com/docs/secrets#secret-reminders) in Doppler.
+Doppler keeps no rotated date on a secret, so `keypin status` notes it can't tell when a Doppler key is due. To be
+reminded, set a [secret reminder](https://docs.doppler.com/docs/secrets#secret-reminders) in Doppler.

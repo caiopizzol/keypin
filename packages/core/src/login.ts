@@ -63,6 +63,7 @@ export interface VaultKind<
   readonly newKeys?: NewKeys;
   readonly newValueByHand: string;
   readonly addRotatedDate: string;
+  readonly keepsRotated?: false;
   readonly holdsWrites?: boolean;
   readonly signInVariables?: readonly string[];
   addByHand?(map: KeysMap): string | undefined;

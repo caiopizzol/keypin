@@ -39,6 +39,7 @@ export const dopplerVault: VaultKind<DopplerHost, DopplerRef, DopplerReference, 
   stored: decode,
   signInVariables: [TOKEN_VARIABLE],
   newValueByHand: "Put a new value in the Doppler secret",
+  keepsRotated: false,
   addRotatedDate:
     "Doppler keeps no rotated date on a secret, so keypin can't tell when this key is due (docs/doppler.md).",
   addByHand: (map) => {

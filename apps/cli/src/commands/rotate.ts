@@ -468,16 +468,26 @@ async function revokeOrphan(job: Job, issuer: Issuer, id: string): Promise<boole
 }
 
 async function idUnfinished(
-  { owner, keyNamed }: Job,
+  job: Job,
   recorded: Issued,
   inputFor: (of: KeyEntry) => PlanInput,
 ): Promise<boolean> {
-  const idKey = recorded.idKey === undefined ? undefined : keyNamed(recorded.idKey);
-  if (!idKey?.environments[owner.environment]) return true;
+  const { owner, keyNamed } = job;
+  if (recorded.idKey === undefined) return false;
   const generation = await generationOf(new Secret(recorded.id));
-  return planPublish({ ...inputFor(idKey), generation, ids: null }).steps.some(
-    (step) => step.action !== "skip",
-  );
+  const idKey = keyNamed(recorded.idKey);
+  if (idKey?.environments[owner.environment])
+    return planPublish({ ...inputFor(idKey), generation, ids: null }).steps.some(
+      (step) => step.action !== "skip",
+    );
+  const { kinds, receipts } = inputFor(job.key);
+  const was = { ...owner, keyId: recorded.idKey };
+  return job.entry.publish.some((target) => {
+    const id = destinationId(target, was.keyId, kinds);
+    return !receipts.some(
+      (r) => ownedBy(r, was) && r.destinationId === id && r.generation === generation,
+    );
+  });
 }
 
 function movedId(recorded: string | null, { key, pair }: Job): string {

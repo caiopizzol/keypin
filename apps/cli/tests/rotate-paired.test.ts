@@ -427,6 +427,26 @@ ${PUBLISH}
     expect([...moved.issuer.live]).not.toContain("AKID-2");
   });
 
+  test("after a finished rotation, renaming the ID entry lets the next rotation use the new name", async () => {
+    const first = setup({ answers: ["y", "y"] });
+    expect(await first.rotate()).toBe(0);
+    first.disk.contents.set(
+      "/work/billing/keypin.toml",
+      MAP.replace('key_id = "API_KEY_ID"', 'key_id = "NEW_KEY_ID"').replace(
+        /\[keys\.API_KEY_ID(\.prod)?\]/g,
+        (m) => m.replace("API_KEY_ID", "NEW_KEY_ID"),
+      ),
+    );
+    const next = first.again({ answers: ["y", "y"] });
+    expect(await next.rotate()).toBe(0);
+    expect(next.stderr.text).not.toContain("part way through");
+    expect(next.issuer.log.slice(3)).toEqual([
+      "check AKID-1",
+      "create API_SECRET -> AKID-2",
+      "revoke AKID-1",
+    ]);
+  });
+
   test("keypin rotate on the ID points to the key that rotates it", async () => {
     const run = setup();
     expect(await run.rotate("API_KEY_ID")).toBe(1);

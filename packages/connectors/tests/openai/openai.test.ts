@@ -148,9 +148,7 @@ describe("checkAccount", () => {
   });
 
   test("the key keypin issued, missing and refused for the vault, was deleted; create uses its service account", async () => {
-    const { issuer, effects } = openai([
-      { id: "key_x", name: "x", value: "sk-svcacct-other-bot-key-33cd", owner: BOT },
-    ]);
+    const { issuer, effects } = openai([], { serviceAccounts: [BOT] });
     const check = await issuer.checkAccount("svc_bot/key_gone", new Secret(VAULT));
     assert(check.ok);
     expect(check.gone).toBe("key key_gone was deleted at OpenAI");

@@ -13,6 +13,7 @@ import { fakeSignIn } from "@keypin/connectors/cloudflare/testing";
 import { neonFetch, type NeonWorld } from "@keypin/connectors/neon/testing";
 import { type OpenAIKeys, openaiFetch } from "@keypin/connectors/openai/testing";
 import { resendFetch } from "@keypin/connectors/resend/testing";
+import { supabaseFetch, type SupabaseWorld } from "@keypin/connectors/supabase/testing";
 import { credentialsFrom, infisicalBackend } from "@keypin/connectors/infisical";
 import { fileStore, infisicalFetch } from "@keypin/connectors/infisical/testing";
 import { cli } from "../../src/cli";
@@ -28,6 +29,8 @@ import {
   NEON_PREFIX,
   OPENAI_ADMIN,
   OPENAI_PREFIX,
+  SUPABASE_ADMIN,
+  SUPABASE_PREFIX,
   SANDBOX_MARKER,
   type Scenario,
   scenarios,
@@ -63,6 +66,7 @@ const VAULT = join(sandbox, "onepassword.json");
 const RESEND = join(sandbox, "resend.json");
 const NEON = join(sandbox, "neon.json");
 const OPENAI = join(sandbox, "openai.json");
+const SUPABASE = join(sandbox, "supabase.json");
 
 function effect(line: string): void {
   appendFileSync(EFFECTS, `${line}\n`);
@@ -282,7 +286,29 @@ const openai = openaiFetch({
   effect,
 });
 
-const issuerFetch: Record<string, Fetch> = { neon, openai, resend };
+const supabase = supabaseFetch({
+  admin: SUPABASE_ADMIN,
+  projectRef: "abcdefghijklmnopqrst",
+  valuePrefix: SUPABASE_PREFIX,
+  loseCreated: run.supabase?.loseCreated ?? false,
+  prefixOnly: run.supabase?.prefixOnly ?? false,
+  world: {
+    load() {
+      if (!existsSync(SUPABASE)) return { keys: run.supabase?.keys ?? [], created: 0 };
+      const parsed: unknown = JSON.parse(readFileSync(SUPABASE, "utf8"));
+      if (!isSupabaseWorld(parsed)) throw new Error(`${SUPABASE} isn't the fake Supabase's keys`);
+      return parsed;
+    },
+    save: (world) => writeFileSync(SUPABASE, JSON.stringify(world)),
+  },
+  effect,
+});
+
+const issuerFetch: Record<string, Fetch> = { neon, openai, resend, supabase };
+
+function isSupabaseWorld(value: unknown): value is SupabaseWorld {
+  return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";
+}
 
 function isOpenAIKeys(value: unknown): value is OpenAIKeys {
   return (

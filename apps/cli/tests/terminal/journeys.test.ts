@@ -461,6 +461,46 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "Supabase: creates a secret key, saves and publishes it, then deletes the old one after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "supabase",
+        args: ["rotate", "SUPABASE_SECRET_KEY"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  - Supabase              revoke the old key key-backend, after a second y\n    Supabase can't undo deleting a secret key",
+      );
+      expect(result.screen).toContain("Revoke the old key at Supabase? [y/N] y");
+      expect(result.effects).toEqual([
+        "supabase create key-new-1",
+        "1password update my.1password.com/Private/app supabase key (18 chars)",
+        "destination write github-actions:acme/billing SUPABASE_SECRET_KEY (18 chars)",
+        "supabase revoke key-backend",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "Supabase: a create reply with only the key's prefix saves, publishes and deletes nothing",
+    async () => {
+      const result = await drive({
+        scenario: "supabase-prefix-only",
+        args: ["rotate", "SUPABASE_SECRET_KEY"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).not.toBe(0);
+      expect(result.screen).toContain("didn't return its value");
+      expect(result.effects).toEqual(["supabase create key-new-1"]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "OpenAI: makes a key for the vault key's service account, publishes it, then deletes the old key after a second y",
     async () => {
       const result = await drive({
@@ -514,6 +554,24 @@ describe("keypin rotate in a real terminal", () => {
         /^Stopped: keypin didn't get the new key back\. OpenAI may have made the key before the reply was lost\. Only this run uses the name "OPENAI_API_KEY prod \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [0-9a-f]{6}": delete a key with that name in project billing at https:\/\/platform\.openai\.com\/settings\/organization\/api-keys before you run this again, or the rerun leaves it live\.$/m,
       );
       expect(result.effects).toEqual(["openai create key_new1 for svc_verify"]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "Supabase: the secret key named default stops before anything is created",
+    async () => {
+      const result = await drive({
+        scenario: "supabase-default",
+        args: ["rotate", "SUPABASE_SECRET_KEY"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        "keypin won't replace the secret key named default: Edge Functions that check keys with withSupabase({ auth: 'secret' }) accept only that key",
+      );
+      expect(result.effects).toEqual([]);
       clean(result);
     },
     SLOW,

@@ -16,7 +16,9 @@
     "./openai": "./src/openai/index.ts",
     "./openai/testing": "./src/openai/testing.ts",
     "./resend": "./src/resend/index.ts",
-    "./resend/testing": "./src/resend/testing.ts"
+    "./resend/testing": "./src/resend/testing.ts",
+    "./supabase": "./src/supabase/index.ts",
+    "./supabase/testing": "./src/supabase/testing.ts"
   },
   "scripts": {
     "typecheck": "tsc"

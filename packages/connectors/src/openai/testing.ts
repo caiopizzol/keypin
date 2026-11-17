@@ -22,6 +22,7 @@ export interface FakeOpenAI {
   pageSize?: number;
   failCreate?: number;
   loseCreated?: boolean;
+  serviceAccounts?: readonly FakeOpenAIKey["owner"][];
   keys: {
     load(): OpenAIKeys;
     save(keys: OpenAIKeys): void;
@@ -77,9 +78,9 @@ export function openaiFetch(fake: FakeOpenAI): Fetch {
     const make = /^\/service_accounts\/([^/]+)\/api_keys$/.exec(rest);
     if (init.method === "POST" && make) {
       const account = decodeURIComponent(make[1] ?? "");
-      const owner = live.find(
-        (key) => key.owner.type === "service_account" && key.owner.id === account,
-      )?.owner;
+      const owner =
+        live.find((key) => key.owner.type === "service_account" && key.owner.id === account)
+          ?.owner ?? fake.serviceAccounts?.find((known) => known.id === account);
       if (!owner) return error(404, "not_found");
       if (fake.failCreate !== undefined) return error(fake.failCreate, "server_error");
       const asked: unknown = JSON.parse(init.body ?? "{}");

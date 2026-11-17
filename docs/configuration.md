@@ -94,7 +94,8 @@ the key is due.
 
 ## Rotating a key
 
-Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key, at Resend, [Neon](#neon) or [OpenAI](#openai):
+Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key, at Resend, [Neon](#neon),
+[OpenAI](#openai) or [Supabase](#supabase):
 
 ```toml
 [keys.RESEND_API_KEY.prod]
@@ -176,3 +177,24 @@ scopes = []
   show a key's scopes, so keypin can't copy them; set this to match the old key.
 
 If the old key expires, the new one gets the same lifetime.
+
+### Supabase
+
+```toml
+[keys.SUPABASE_SECRET_KEY.prod]
+from = "op://Private/app supabase key/credential"
+
+[keys.SUPABASE_SECRET_KEY.prod.issuer]
+kind = "supabase"
+admin = "op://Private/supabase token/credential"
+project_ref = "abcdefghijklmnopqrst"
+```
+
+`admin` is a [personal access token](https://supabase.com/dashboard/account/tokens). A scoped token needs **API Keys**
+Read-write and **API Key Secrets** Read on the project. `project_ref` is the 20 letters in the project's dashboard URL.
+
+keypin won't rotate the secret key named `default`: Edge Functions that use `withSupabase({ auth: 'secret' })` accept
+only that key, and a deleted key can't come back. Give each app its own named key, and rotate that. Each new key
+gets a new name, so a function that checks `auth: 'secret:<name>'` rejects it. keypin also refuses a legacy
+`service_role` key; move to a secret key with
+[Supabase's guide](https://supabase.com/docs/guides/security/rotate-leaked-api-keys).

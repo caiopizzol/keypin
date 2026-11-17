@@ -1,6 +1,7 @@
 import { envValues } from "@keypin/core";
 import { localDay } from "@keypin/core";
 import type { FakeInfisical } from "@keypin/connectors/infisical/testing";
+import type { SupabaseKey } from "@keypin/connectors/supabase/testing";
 
 export interface FakeItem {
   title: string;
@@ -24,6 +25,7 @@ export interface Scenario {
     domains?: Record<string, string>;
   };
   neon?: { roles: Record<string, string> };
+  supabase?: { keys: SupabaseKey[]; loseCreated?: boolean };
   registered: boolean;
   git: { origin?: string; account?: string };
   onePassword: {
@@ -267,6 +269,53 @@ const neon: Scenario = {
   neon: { roles: { app_a: NEON_LIVE, app_b: "npg_verify_idle_b_3a9d" } },
 };
 
+const SUPABASE_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.SUPABASE_SECRET_KEY]
+rotate_every = "90d"
+
+[keys.SUPABASE_SECRET_KEY.prod]
+from = "op://Private/app supabase key/credential"
+
+[keys.SUPABASE_SECRET_KEY.prod.issuer]
+kind = "supabase"
+admin = "op://Private/supabase token/credential"
+project_ref = "abcdefghijklmnopqrst"
+
+[[keys.SUPABASE_SECRET_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`;
+
+export const SUPABASE_ADMIN = "sbp_verify_admin_token_4c2a";
+export const SUPABASE_PREFIX = "sb_secret_Nw";
+const SUPABASE_LIVE = "sb_secret_Bk7Qv2live_backend_2d7e";
+const SUPABASE_DEFAULT = "sb_secret_Df9Xa1live_default_9b3c";
+
+const supabase: Scenario = {
+  ...ready,
+  about:
+    "SUPABASE_SECRET_KEY has a Supabase issuer; the vault holds secret key backend, and the project also has secret key default",
+  files: { "keypin.toml": SUPABASE_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          { title: "app supabase key", value: SUPABASE_LIVE, rotated: day(-95) },
+          { title: "supabase token", value: SUPABASE_ADMIN },
+        ],
+      },
+    },
+  },
+  supabase: {
+    keys: [
+      { id: "key-default", name: "default", type: "secret", value: SUPABASE_DEFAULT },
+      { id: "key-backend", name: "backend", type: "secret", value: SUPABASE_LIVE },
+    ],
+  },
+};
+
 const infisical: Scenario = {
   ...ready,
   about:
@@ -387,6 +436,44 @@ jobs:
   },
   resend,
   neon,
+  supabase,
+  "supabase-default": {
+    ...supabase,
+    about: "supabase, but the vault holds the secret key named default",
+    onePassword: {
+      accounts: {
+        "my.1password.com": {
+          Private: [
+            { title: "app supabase key", value: SUPABASE_DEFAULT, rotated: day(-95) },
+            { title: "supabase token", value: SUPABASE_ADMIN },
+          ],
+        },
+      },
+    },
+  },
+  "supabase-legacy": {
+    ...supabase,
+    about: "supabase, but the vault holds a legacy service_role JWT",
+    onePassword: {
+      accounts: {
+        "my.1password.com": {
+          Private: [
+            {
+              title: "app supabase key",
+              value: "eyJhbGciOiJIUzI1NiJ9.verify.legacy",
+              rotated: day(-95),
+            },
+            { title: "supabase token", value: SUPABASE_ADMIN },
+          ],
+        },
+      },
+    },
+  },
+  "supabase-lost-create": {
+    ...supabase,
+    about: "supabase, but the reply to the create is lost after Supabase made the key",
+    supabase: { keys: supabase.supabase?.keys ?? [], loseCreated: true },
+  },
   "neon-one-role": {
     ...neon,
     about: "neon, but the branch has only app_a: nobody created app_b",

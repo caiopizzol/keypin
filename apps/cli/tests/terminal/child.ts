@@ -12,6 +12,7 @@ import {
 import { fakeSignIn } from "@keypin/connectors/cloudflare/testing";
 import { neonFetch, type NeonWorld } from "@keypin/connectors/neon/testing";
 import { resendFetch } from "@keypin/connectors/resend/testing";
+import { supabaseFetch, type SupabaseWorld } from "@keypin/connectors/supabase/testing";
 import { credentialsFrom, infisicalBackend } from "@keypin/connectors/infisical";
 import { fileStore, infisicalFetch } from "@keypin/connectors/infisical/testing";
 import { cli } from "../../src/cli";
@@ -26,6 +27,8 @@ import {
   NEON_HOST,
   NEON_PREFIX,
   SANDBOX_MARKER,
+  SUPABASE_ADMIN,
+  SUPABASE_PREFIX,
   type Scenario,
   scenarios,
 } from "./scenarios";
@@ -59,6 +62,7 @@ const EFFECTS = join(sandbox, "effects.txt");
 const VAULT = join(sandbox, "onepassword.json");
 const RESEND = join(sandbox, "resend.json");
 const NEON = join(sandbox, "neon.json");
+const SUPABASE = join(sandbox, "supabase.json");
 
 function effect(line: string): void {
   appendFileSync(EFFECTS, `${line}\n`);
@@ -260,6 +264,27 @@ const neon = neonFetch({
   effect,
 });
 
+const supabase = supabaseFetch({
+  admin: SUPABASE_ADMIN,
+  projectRef: "abcdefghijklmnopqrst",
+  valuePrefix: SUPABASE_PREFIX,
+  loseCreated: run.supabase?.loseCreated ?? false,
+  world: {
+    load() {
+      if (!existsSync(SUPABASE)) return { keys: run.supabase?.keys ?? [], created: 0 };
+      const parsed: unknown = JSON.parse(readFileSync(SUPABASE, "utf8"));
+      if (!isSupabaseWorld(parsed)) throw new Error(`${SUPABASE} isn't the fake Supabase's keys`);
+      return parsed;
+    },
+    save: (world) => writeFileSync(SUPABASE, JSON.stringify(world)),
+  },
+  effect,
+});
+
+function isSupabaseWorld(value: unknown): value is SupabaseWorld {
+  return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";
+}
+
 function isNeonWorld(value: unknown): value is NeonWorld {
   return (
     isRecord(value) &&
@@ -288,7 +313,7 @@ process.exitCode = await cli(process.argv.slice(2), {
   organizationSecrets: async () => ({ ok: true, secrets: [] }),
   sshHostname: async () => null,
   workerSecrets: async () => ({ ok: false, reason: "this scenario has no Cloudflare account" }),
-  issuer: (spec, admin) => issuer(spec, admin, spec.kind === "neon" ? neon : resend),
+  issuer: (spec, admin) => issuer(spec, admin, { neon, supabase }[spec.kind] ?? resend),
   destination: (target) => {
     const place = placeId(target, destinations);
     const scripted = run.places[place] ?? {};

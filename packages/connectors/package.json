@@ -11,6 +11,8 @@
     "./convex/testing": "./src/convex/testing.ts",
     "./doppler": "./src/doppler/index.ts",
     "./doppler/testing": "./src/doppler/testing.ts",
+    "./elevenlabs": "./src/elevenlabs/index.ts",
+    "./elevenlabs/testing": "./src/elevenlabs/testing.ts",
     "./fly": "./src/fly/index.ts",
     "./fly/testing": "./src/fly/testing.ts",
     "./github": "./src/github/index.ts",

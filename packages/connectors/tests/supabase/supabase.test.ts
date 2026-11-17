@@ -218,7 +218,7 @@ describe("create", () => {
 
   test.each([
     ["9_KEYS prod", "_9_keys_prod"],
-    ["A".repeat(80), `_${"a".repeat(63)}`],
+    [`${"H".repeat(40)}${"T".repeat(40)}`, `_${"h".repeat(23)}${"t".repeat(40)}`],
   ])("fits %s to Supabase's name rules", async (name, fitted) => {
     const { issuer, world } = supabase();
     await issuer.checkAccount(null, new Secret(BACKEND));

@@ -32,7 +32,12 @@ const TOKENS: Record<string, FakeToken> = {
 
 function setup(
   token: string | null,
-  options: { secrets?: FakeDoppler["projects"]; workplace?: string; failWrites?: boolean } = {},
+  options: {
+    secrets?: FakeDoppler["projects"];
+    inherits?: FakeDoppler["inherits"];
+    workplace?: string;
+    failWrites?: boolean;
+  } = {},
 ) {
   const store = memoryStore();
   const fake: FakeDoppler = {
@@ -44,6 +49,7 @@ function setup(
       },
     },
     tokens: TOKENS,
+    ...(options.inherits ? { inherits: options.inherits } : {}),
     ...(options.failWrites ? { failWrites: true } : {}),
   };
   const calls: string[] = [];
@@ -244,6 +250,93 @@ describe("writing", () => {
     await expect(vault.checkWrite?.(REF)).rejects.toThrow(
       "Doppler hides this restricted secret's value from a personal token, so keypin can't tell whether it references another secret",
     );
+  });
+
+  test("a branch config's secret inherited from its root is read, but not written", async () => {
+    const branch = { ...REF, config: "prd_aws" };
+    const { vault, store } = setup(ACCOUNT, {
+      secrets: { billing: { prd: { STRIPE_KEY: { value: SENTINEL } }, prd_aws: {} } },
+    });
+    expect((await vault.read(branch)).equals(new Secret(SENTINEL))).toBe(true);
+    const message =
+      "doppler://billing/prd_aws/STRIPE_KEY (Doppler workplace acme): billing/prd_aws inherits doppler://billing/prd/STRIPE_KEY, and Doppler doesn't say whether the secret here overrides it, so a new key saved here could leave that secret, and every config that inherits it, with the old key; point keypin.toml at doppler://billing/prd/STRIPE_KEY instead";
+    await expect(vault.checkWrite?.(branch)).rejects.toThrow(message);
+    const error = await failure(vault.write(branch, new Secret("x")));
+    expect(error).toBeInstanceOf(WriteRefused);
+    expect(error.message).toBe(message);
+    expect(store.effects).toEqual([]);
+  });
+
+  test("a branch config's override of its root's secret is refused too", async () => {
+    const branch = { ...REF, config: "prd_aws" };
+    const { vault } = setup(ACCOUNT, {
+      secrets: {
+        billing: {
+          prd: { STRIPE_KEY: { value: SENTINEL } },
+          prd_aws: { STRIPE_KEY: { value: `${SENTINEL}-aws` } },
+        },
+      },
+    });
+    expect((await vault.read(branch)).equals(new Secret(`${SENTINEL}-aws`))).toBe(true);
+    await expect(vault.checkWrite?.(branch)).rejects.toThrow(
+      "billing/prd_aws inherits doppler://billing/prd/STRIPE_KEY,",
+    );
+  });
+
+  test("a branch config's own secret, with none of that name in its root, is written", async () => {
+    const branch = { ...REF, config: "prd_aws" };
+    const { vault, store } = setup(ACCOUNT, {
+      secrets: {
+        billing: {
+          prd: { OTHER_KEY: { value: SENTINEL } },
+          prd_aws: { STRIPE_KEY: { value: `${SENTINEL}-aws` } },
+        },
+      },
+    });
+    await vault.checkWrite?.(branch);
+    await vault.write(branch, new Secret(`${SENTINEL}-2`));
+    expect(store.effects).toEqual(["doppler update billing/prd_aws/STRIPE_KEY"]);
+  });
+
+  test("a secret inherited from another project's config is refused, naming it", async () => {
+    const { vault, store } = setup(ACCOUNT, {
+      secrets: {
+        billing: { prd: { OTHER_KEY: { value: SENTINEL } } },
+        shared: { prd: { STRIPE_KEY: { value: `${SENTINEL}-shared` } } },
+      },
+      inherits: { "billing/prd": [{ project: "shared", config: "prd" }] },
+    });
+    expect((await vault.read(REF)).equals(new Secret(`${SENTINEL}-shared`))).toBe(true);
+    const error = await failure(vault.write(REF, new Secret("x")));
+    expect(error).toBeInstanceOf(WriteRefused);
+    expect(error.message).toContain("point keypin.toml at doppler://shared/prd/STRIPE_KEY instead");
+    expect(store.effects).toEqual([]);
+  });
+
+  test("a service token for a branch config can't read its root, so the write is refused", async () => {
+    const token = "dp.st.prd_aws.sentinel-token-2c3d";
+    const store = memoryStore();
+    const fake: FakeDoppler = {
+      workplace: "acme",
+      projects: { billing: { prd: {}, prd_aws: { STRIPE_KEY: { value: SENTINEL } } } },
+      tokens: {
+        [token]: {
+          type: "service_token",
+          project: "billing",
+          config: "prd_aws",
+          access: "read/write",
+        },
+      },
+    };
+    const vault = dopplerBackend(token, dopplerFetch(fake, store));
+    const branch = { ...REF, config: "prd_aws" };
+    expect((await vault.read(branch)).equals(new Secret(SENTINEL))).toBe(true);
+    const error = await failure(vault.write(branch, new Secret("x")));
+    expect(error).toBeInstanceOf(WriteRefused);
+    expect(error.message).toBe(
+      "doppler://billing/prd_aws/STRIPE_KEY (Doppler workplace acme): keypin can't read the configs of billing, so it can't tell whether the secret is inherited from another config: Doppler returned HTTP 403: This token does not have access to requested config; a service token reads only the config it was made for, so use a service account token or personal token that can read it",
+    );
+    expect(store.effects).toEqual([]);
   });
 
   test("a new item that already exists is refused without writing", async () => {

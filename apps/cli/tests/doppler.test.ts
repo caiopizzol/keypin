@@ -271,4 +271,51 @@ describe("keypin with Doppler", () => {
     expect(run.issued).toEqual([]);
     expect(run.store.effects).toEqual([]);
   });
+
+  test("rotate stops before creating a key when the secret is inherited from another config", async () => {
+    const doppler: FakeDoppler = {
+      ...world(),
+      projects: {
+        billing: {
+          dev: { STRIPE_API_KEY: { value: SENTINEL } },
+          prd: { RESEND_ADMIN_KEY: { value: `${SENTINEL}-admin` } },
+        },
+        shared: { prd: { STRIPE_API_KEY: { value: `${SENTINEL}-shared` } } },
+      },
+      inherits: { "billing/prd": [{ project: "shared", config: "prd" }] },
+    };
+    const run = project({ map: ISSUER_MAP, doppler });
+    expect(await cli(["publish", "STRIPE_API_KEY"], run.deps)).toBe(0);
+    expect(await cli(["rotate", "STRIPE_API_KEY"], run.deps)).toBe(1);
+    expect(run.stderr.text + run.stdout.text).toContain(
+      "billing/prd inherits doppler://shared/prd/STRIPE_API_KEY, and Doppler doesn't say whether the secret here overrides it",
+    );
+    expect(run.stderr.text + run.stdout.text).toContain(
+      "point keypin.toml at doppler://shared/prd/STRIPE_API_KEY instead",
+    );
+    expect(run.issued).toEqual([]);
+    expect(run.store.effects).toEqual([]);
+  });
+
+  test("rotate saves a branch config's own secret when its root has none of that name", async () => {
+    const doppler: FakeDoppler = {
+      ...world(),
+      projects: {
+        billing: {
+          dev: { STRIPE_API_KEY: { value: SENTINEL } },
+          prd: { RESEND_ADMIN_KEY: { value: `${SENTINEL}-admin` } },
+          prd_aws: { STRIPE_API_KEY: { value: `${SENTINEL}-aws` } },
+        },
+      },
+    };
+    const map = ISSUER_MAP.replace(
+      'from = "doppler://billing/prd/STRIPE_API_KEY"',
+      'from = "doppler://billing/prd_aws/STRIPE_API_KEY"',
+    );
+    const run = project({ map, doppler });
+    expect(await cli(["rotate", "STRIPE_API_KEY"], run.deps)).toBe(0);
+    expect(run.store.effects).toEqual(["doppler update billing/prd_aws/STRIPE_API_KEY"]);
+    expect(run.store.load()[0]?.secret).toEqual({ value: ISSUED });
+    expect(run.issued).toEqual([expect.stringMatching(/^create /)]);
+  });
 });

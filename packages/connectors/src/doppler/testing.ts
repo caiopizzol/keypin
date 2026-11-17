@@ -12,10 +12,16 @@ export type FakeToken =
 
 type Projects = Record<string, Record<string, Record<string, FakeSecret>>>;
 
+export interface FakeConfigName {
+  project: string;
+  config: string;
+}
+
 export interface FakeDoppler {
   workplace: string;
   projects: Projects;
   tokens: Record<string, FakeToken>;
+  inherits?: Record<string, FakeConfigName[]>;
   failWrites?: boolean;
 }
 
@@ -41,7 +47,7 @@ export function dopplerFetch(fake: FakeDoppler, store: Store): Fetch {
     Promise.resolve(new Response(JSON.stringify(body), { status }));
   const fail = (status: number, message: string) =>
     reply(status, { messages: [message], success: false });
-  const secretsOf = (project: string, config: string): Record<string, FakeSecret> => ({
+  const localOf = (project: string, config: string): Record<string, FakeSecret> => ({
     ...fake.projects[project]?.[config],
     ...Object.fromEntries(
       store
@@ -50,6 +56,33 @@ export function dopplerFetch(fake: FakeDoppler, store: Store): Fetch {
         .map((s) => [s.name, s.secret]),
     ),
   });
+  const rootOf = (project: string, config: string): string =>
+    Object.keys(fake.projects[project] ?? {}).find((root) => config.startsWith(`${root}_`)) ??
+    config;
+  const inheritsOf = (project: string, config: string) =>
+    fake.inherits?.[`${project}/${config}`] ?? [];
+  const configOf = (project: string, config: string) => ({
+    name: config,
+    root: rootOf(project, config) === config,
+    locked: false,
+    environment: rootOf(project, config),
+    project,
+    inheritable: Object.values(fake.inherits ?? {}).some((parents) =>
+      parents.some((parent) => parent.project === project && parent.config === config),
+    ),
+    inherits: inheritsOf(project, config),
+  });
+  const secretsOf = (project: string, config: string): Record<string, FakeSecret> => {
+    const root = rootOf(project, config);
+    const parents = [...inheritsOf(project, config)].reverse();
+    return {
+      ...Object.fromEntries(
+        parents.flatMap((parent) => Object.entries(localOf(parent.project, parent.config))),
+      ),
+      ...(root === config ? {} : localOf(project, root)),
+      ...localOf(project, config),
+    };
+  };
   const computed = (project: string, config: string, raw: string): string =>
     raw.replace(REFERENCE, (whole, inner: string) => {
       const parts = inner.split(".");
@@ -74,7 +107,18 @@ export function dopplerFetch(fake: FakeDoppler, store: Store): Fetch {
     const config = parsed.searchParams.get("config") ?? text(body.config);
     if (token.type === "service_token" && (token.project !== project || token.config !== config))
       return fail(403, "This token does not have access to requested config");
+    if (init.method === "GET" && parsed.pathname === "/v3/configs") {
+      const environment = parsed.searchParams.get("environment");
+      const page = Number(parsed.searchParams.get("page") ?? "1");
+      const perPage = Number(parsed.searchParams.get("per_page") ?? "20");
+      const configs = Object.keys(fake.projects[project] ?? {})
+        .map((name) => configOf(project, name))
+        .filter((found) => environment === null || found.environment === environment);
+      return reply(200, { page, configs: configs.slice((page - 1) * perPage, page * perPage) });
+    }
     if (!fake.projects[project]?.[config]) return fail(404, "Could not find requested config");
+    if (init.method === "GET" && parsed.pathname === "/v3/configs/config")
+      return reply(200, { config: configOf(project, config) });
     const secrets = secretsOf(project, config);
     const user = token.type === "personal";
     if (init.method === "GET" && parsed.pathname === "/v3/configs/config/secrets/names")
@@ -103,7 +147,7 @@ export function dopplerFetch(fake: FakeDoppler, store: Store): Fetch {
       if (fake.failWrites) return fail(500, "internal error");
       const changed = isRecord(body.secrets) ? body.secrets : {};
       for (const [name, value] of Object.entries(changed)) {
-        const before = secrets[name];
+        const before = localOf(project, config)[name];
         store.save({
           project,
           config,

@@ -24,6 +24,7 @@ import {
 export const TOKEN_VARIABLE = "DOPPLER_TOKEN";
 export const NO_CREDENTIALS = `set ${TOKEN_VARIABLE} to a Doppler service token, service account token or personal token`;
 const API = "https://api.doppler.com";
+const PAGE = 20;
 
 type Json = Record<string, unknown>;
 
@@ -161,12 +162,78 @@ export function dopplerBackend(
         `${describeRef(ref)}: Doppler hides this restricted secret's value from a ${kind}, so keypin can't tell whether it references another secret; use a service token or service account token`,
       );
     const sources = referencedBy(ref, raw);
-    if (sources.length) {
-      const [only] = sources;
-      const source = sources.length === 1 && only ? only : "the source secret";
+    if (sources.length)
       throw fail(
-        `${describeRef(ref)}: the secret references ${sources.join(" and ")}, so a new key saved here would leave that secret, and everything that uses it, with the old key; point keypin.toml at ${source} instead`,
+        `${describeRef(ref)}: the secret references ${sources.join(" and ")}, so a new key saved here would leave that secret, and everything that uses it, with the old key; point keypin.toml at ${sourceOf(sources)} instead`,
       );
+    const holders: string[] = [];
+    for (const parent of await parentsOf(ref, fail)) {
+      const found = await request("GET", "/v3/configs/config/secrets/names", {
+        query: { project: parent.project, config: parent.config },
+      });
+      if (found.status !== 200 || !Array.isArray(found.body.names))
+        throw fail(
+          unknownSource(
+            ref,
+            `${parent.project}/${parent.config}, which ${ref.project}/${ref.config} inherits from`,
+            found,
+          ),
+        );
+      if (found.body.names.includes(ref.name)) holders.push(format({ ...parent, name: ref.name }));
+    }
+    if (holders.length)
+      throw fail(
+        `${describeRef(ref)}: ${ref.project}/${ref.config} inherits ${holders.join(" and ")}, and Doppler doesn't say whether the secret here overrides it, so a new key saved here could leave that secret, and every config that inherits it, with the old key; point keypin.toml at ${sourceOf(holders)} instead`,
+      );
+  }
+
+  function unknownSource(ref: DopplerRef, what: string, found: { status: number; body: Json }) {
+    const scoped =
+      found.status === 403 && token !== null && isServiceToken(token)
+        ? "; a service token reads only the config it was made for, so use a service account token or personal token that can read it"
+        : "";
+    return `${describeRef(ref)}: keypin can't read ${what}, so it can't tell whether the secret is inherited from another config: ${problem(found)}${scoped}`;
+  }
+
+  async function parentsOf(ref: DopplerRef, fail: (message: string) => Error): Promise<Scope[]> {
+    const found = await request("GET", "/v3/configs/config", {
+      query: { project: ref.project, config: ref.config },
+    });
+    const config = isRecord(found.body.config) ? found.body.config : {};
+    const { root, environment } = config;
+    const inherits = config.inherits ?? [];
+    if (
+      found.status !== 200 ||
+      typeof root !== "boolean" ||
+      typeof environment !== "string" ||
+      !Array.isArray(inherits) ||
+      !inherits.every(isConfigName)
+    )
+      throw fail(unknownSource(ref, `the details of ${ref.project}/${ref.config}`, found));
+    const inherited = inherits.map((parent): Scope => ({ ...scopeOf(ref), ...parent }));
+    return root ? inherited : [await rootOf(ref, environment, fail), ...inherited];
+  }
+
+  async function rootOf(
+    ref: DopplerRef,
+    environment: string,
+    fail: (message: string) => Error,
+  ): Promise<Scope> {
+    for (let page = 1; ; page++) {
+      const found = await request("GET", "/v3/configs", {
+        query: { project: ref.project, environment, page: String(page), per_page: String(PAGE) },
+      });
+      const configs = Array.isArray(found.body.configs)
+        ? found.body.configs.filter(isRecord)
+        : null;
+      if (found.status !== 200 || !configs)
+        throw fail(unknownSource(ref, `the configs of ${ref.project}`, found));
+      const root = configs.find((config) => config.root === true);
+      if (root && typeof root.name === "string") return { ...scopeOf(ref), config: root.name };
+      if (configs.length < PAGE)
+        throw fail(
+          `${describeRef(ref)}: Doppler lists no root config for ${ref.project}'s ${environment} environment, so keypin can't tell whether the secret is inherited from it`,
+        );
     }
   }
 
@@ -236,6 +303,19 @@ function ownScope(scope: VaultScope): Scope {
   const mine = decodeScope(scope);
   if (!mine) throw new Error(`keypin's Doppler vault can't list ${scope.kind} items`);
   return mine;
+}
+
+function scopeOf(ref: DopplerRef): Scope {
+  return { kind: ref.kind, workplace: ref.workplace, project: ref.project, config: ref.config };
+}
+
+function isConfigName(entry: unknown): entry is { project: string; config: string } {
+  return isRecord(entry) && typeof entry.project === "string" && typeof entry.config === "string";
+}
+
+function sourceOf(sources: string[]): string {
+  const [only] = sources;
+  return sources.length === 1 && only ? only : "the source secret";
 }
 
 function idsOf(ref: DopplerRef) {

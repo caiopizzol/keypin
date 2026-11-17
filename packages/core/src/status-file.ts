@@ -15,16 +15,20 @@ export function statusFile(
   environments: readonly string[],
   written: Day,
 ): StatusFile {
-  const keys: StatusFile["keys"] = {};
+  const keys = new Map<string, Map<string, { rotated: Day | null }>>();
   for (const name of [...new Set(rows.map((row) => row.keyId))].sort()) {
-    const dates: Record<string, { rotated: Day | null }> = {};
+    const dates = new Map<string, { rotated: Day | null }>();
     for (const environment of environments) {
       const row = rows.find((r) => r.keyId === name && r.environment === environment);
-      if (row) dates[environment] = { rotated: row.rotated };
+      if (row) dates.set(environment, { rotated: row.rotated });
     }
-    keys[name] = dates;
+    keys.set(name, dates);
   }
-  return { version: STATUS_FILE_VERSION, written, keys };
+  return {
+    version: STATUS_FILE_VERSION,
+    written,
+    keys: Object.fromEntries([...keys].map(([name, dates]) => [name, Object.fromEntries(dates)])),
+  };
 }
 
 export async function writeStatusFile(

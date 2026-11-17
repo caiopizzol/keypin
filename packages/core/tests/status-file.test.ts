@@ -53,6 +53,12 @@ describe("the status file", () => {
     );
   });
 
+  test("keeps a key named __proto__ as an ordinary key", () => {
+    const file = statusFile([row("__proto__", "prod", "2026-10-23")], ["prod"], day("2026-11-09"));
+    expect(Object.keys(file.keys)).toEqual(["__proto__"]);
+    expect(JSON.stringify(file.keys)).toBe('{"__proto__":{"prod":{"rotated":"2026-10-23"}}}');
+  });
+
   test("holds no reference, item, account, path, receipt, generation or due day", () => {
     const text = JSON.stringify(statusFile(ROWS, ["dev", "prod"], day("2026-11-09")));
     for (const absent of [

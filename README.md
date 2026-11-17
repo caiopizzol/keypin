@@ -28,7 +28,7 @@ commands with the dev keys and publishes the prod keys. It reads a value only wh
 | Infisical | Cloudflare Workers | Neon                  |
 |           | Vercel projects    | OpenAI                |
 |           | Supabase Functions | Supabase              |
-|           |                    | Cloudflare API tokens |
+|           | Netlify projects   | Cloudflare API tokens |
 
 Want another? Vote for it on the [roadmap](https://github.com/caiopizzol/keypin/issues/138).
 

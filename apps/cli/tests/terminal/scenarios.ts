@@ -75,6 +75,11 @@ const VERCEL_MAP = MAP.replace(
   'to = "vercel-project"\nteam = "acme"\nproject = "billing"\nenvironment = "production"',
 );
 
+const NETLIFY_MAP = MAP.replace(
+  'to = "github-actions"\nrepo = "acme/billing"',
+  'to = "netlify-project"\nteam = "acme"\nproject = "billing.netlify.app"\ncontext = "production"',
+);
+
 const WORKFLOW = `on: push
 jobs:
   deploy:
@@ -739,6 +744,27 @@ jobs:
         check: {
           reason:
             "keypin signs in to Vercel with KEYPIN_VERCEL_TOKEN, which isn't set. Create a token at https://vercel.com/account/tokens for the project's team and set KEYPIN_VERCEL_TOKEN; keypin doesn't read the vercel login",
+          publisher: "unknown",
+          destinationAccount: null,
+        },
+      },
+    },
+  },
+  netlify: {
+    ...ready,
+    about: "ready, but STRIPE_KEY publishes to a Netlify project's production deploy context",
+    files: { "keypin.toml": NETLIFY_MAP },
+    env: { KEYPIN_NETLIFY_TOKEN: "verify-netlify-token-4e7a" },
+  },
+  "netlify-no-token": {
+    ...ready,
+    about: "netlify, but KEYPIN_NETLIFY_TOKEN isn't set",
+    files: { "keypin.toml": NETLIFY_MAP },
+    places: {
+      "netlify-project:billing.netlify.app/production": {
+        check: {
+          reason:
+            "keypin signs in to Netlify with KEYPIN_NETLIFY_TOKEN, which isn't set. Create a personal access token at https://app.netlify.com/user/applications#personal-access-tokens and set KEYPIN_NETLIFY_TOKEN; keypin doesn't read the netlify login",
           publisher: "unknown",
           destinationAccount: null,
         },

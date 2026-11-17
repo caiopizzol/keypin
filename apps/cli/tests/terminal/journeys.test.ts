@@ -154,6 +154,42 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
+    "publish to Netlify says new values need a new build and deploy, and triggers none",
+    async () => {
+      const result = await drive({
+        scenario: "netlify",
+        args: ["publish", "STRIPE_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  + Netlify  billing.netlify.app (production)  first write  needs approval",
+      );
+      expect(result.screen).toContain(
+        "    Netlify uses the new value only from the next build and deploy; redeploy to use it",
+      );
+      expect(result.effects).toEqual([
+        "destination write netlify-project:billing.netlify.app/production STRIPE_KEY (23 chars)",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "check without KEYPIN_NETLIFY_TOKEN says how to sign in to Netlify",
+    async () => {
+      const result = await drive({ scenario: "netlify-no-token", args: ["check"] });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("1 Sign in to Netlify");
+      expect(result.screen).toContain("KEYPIN_NETLIFY_TOKEN, which isn't set");
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "publish answered with anything but y writes nothing and exits 3",
     async () => {
       for (const answer of ["n", "", "yess"]) {

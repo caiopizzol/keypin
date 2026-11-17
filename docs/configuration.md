@@ -85,6 +85,12 @@ environment = "production"
 [[keys.API_TOKEN.prod.publish]]
 to = "supabase-functions"
 project_ref = "<20-letter project ref>"
+
+[[keys.API_TOKEN.prod.publish]]
+to = "netlify-project"
+team = "<team slug>"
+project = "my-project.netlify.app"
+context = "production"
 ```
 
 GitHub reserves secret names that start with `GITHUB_`. Add `environment = "production"` to write a secret of that
@@ -99,6 +105,8 @@ The map says where a key goes, not who writes it, so every teammate publishes fr
   login or `VERCEL_TOKEN`.
 - **Supabase:** a personal access token in `KEYPIN_SUPABASE_ACCESS_TOKEN` with Edge Function Secrets Read-write on
   the project. keypin doesn't read the `supabase` login or `SUPABASE_ACCESS_TOKEN`.
+- **Netlify:** a personal access token in `KEYPIN_NETLIFY_TOKEN`, from a member of the `team`. keypin doesn't read
+  the `netlify` login or `NETLIFY_AUTH_TOKEN`.
 
 ## Vault items
 

@@ -11,6 +11,8 @@
     "./infisical/testing": "./src/infisical/testing.ts",
     "./neon": "./src/neon/index.ts",
     "./neon/testing": "./src/neon/testing.ts",
+    "./netlify": "./src/netlify/index.ts",
+    "./netlify/testing": "./src/netlify/testing.ts",
     "./onepassword": "./src/onepassword/index.ts",
     "./onepassword/testing": "./src/onepassword/testing.ts",
     "./openai": "./src/openai/index.ts",

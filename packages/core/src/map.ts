@@ -8,16 +8,17 @@ import {
   secretKey,
   type TableReader,
 } from "./destination";
-import type { IssuerKinds, IssuerReader, IssuerSpec } from "./issuer";
+import { idKeyOf, type IssuerKinds, type IssuerReader, type IssuerSpec } from "./issuer";
 import type { VaultKinds } from "./login";
 import { isRecord } from "./record";
-import { byKind, parseReference, referenceSchemes, sameItem } from "./reference";
+import { byKind, parseReference, referenceSchemes, sameItem, sameRef } from "./reference";
 import { periodDays } from "./days";
 
 export interface EnvEntry {
   ref: KeyRef;
   publish: PublishTarget[];
   issuer?: IssuerSpec;
+  idKey?: KeyId;
 }
 
 export interface KeyEntry {
@@ -48,6 +49,14 @@ export function publishEnvironment(map: Pick<KeysMap, "environments">): Environm
 
 export function envFlag(environment: Environment, fallback: Environment): string {
   return environment === fallback ? "" : ` --env ${environment}`;
+}
+
+export function pairedWith(
+  map: Pick<KeysMap, "keys">,
+  name: KeyId,
+  environment: Environment,
+): KeyEntry | undefined {
+  return map.keys.find((key) => key.environments[environment]?.idKey === name);
 }
 
 export function isEnvironmentName(name: string): boolean {
@@ -138,6 +147,7 @@ function validateMap(
   );
   sharedDestinations(keys, environments, kinds, (where, message) => fail(where, message));
   sharedClaims(keys, environments, issuers, (where, message) => fail(where, message));
+  pairedKeys(keys, environments, { kinds, vaults }, (where, message) => fail(where, message));
   return errors.length
     ? { ok: false, errors }
     : { ok: true, map: { file, pins, environments, ignore, keys } };
@@ -257,6 +267,57 @@ function sharedClaims(
       for (const claim of claims) if (!owners.has(id(claim))) owners.set(id(claim), where);
     }
   }
+}
+
+function pairedKeys(
+  keys: KeyEntry[],
+  environments: readonly Environment[],
+  { kinds, vaults }: Pick<MapContext, "kinds" | "vaults">,
+  fail: (where: string, message: string) => void,
+) {
+  const places = (entry: EnvEntry) =>
+    new Set(entry.publish.map((target) => `${placeId(target, kinds)} ${target.account}`));
+  for (const environment of environments) {
+    const owners = new Map<KeyId, KeyId>();
+    for (const key of keys) {
+      const entry = key.environments[environment];
+      const name = entry?.idKey;
+      if (!entry?.issuer || name === undefined) continue;
+      const err = (message: string) => fail(`key "${key.name}" ${environment} issuer: `, message);
+      const pair = keys.find((k) => k.name === name)?.environments[environment];
+      const owner = owners.get(name);
+      if (name === key.name)
+        err(`field "key_id" names the key itself; name the key that holds its ID`);
+      else if (!pair)
+        err(
+          `field "key_id" names "${name}", which has no ${environment} entry; add [keys.${name}.${environment}]`,
+        );
+      else if (owner !== undefined)
+        err(
+          `key "${owner}" ${environment} also names "${name}" as its key_id; each key needs its own`,
+        );
+      else if (pair.issuer)
+        err(
+          `"${name}" ${environment} has its own issuer; a key_id is rotated with its key, so remove one`,
+        );
+      else if (
+        sameRef(pair.ref, entry.ref, vaults) ||
+        sameRef(pair.ref, entry.issuer.admin, vaults)
+      )
+        err(
+          `"${name}" ${environment} reads the same field as this key or its admin key; give the ID its own field`,
+        );
+      else if (!sameSet(places(pair), places(entry)))
+        err(
+          `"${name}" ${environment} publishes to different destinations; list the same destinations for both keys`,
+        );
+      if (!owners.has(name)) owners.set(name, key.name);
+    }
+  }
+}
+
+function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  return a.size === b.size && [...a].every((each) => b.has(each));
 }
 
 interface MapContext {
@@ -388,7 +449,9 @@ function validateEnv(
       ? undefined
       : validateIssuer(raw.issuer, ref, context, (m) => err(`issuer: ${m}`));
   if (failed || !ref) return undefined;
-  return issuer ? { ref, publish, issuer } : { ref, publish };
+  if (!issuer) return { ref, publish };
+  const idKey = idKeyOf(context.issuers, issuer);
+  return idKey === null ? { ref, publish, issuer } : { ref, publish, issuer, idKey };
 }
 
 function validateIssuer(
@@ -420,6 +483,12 @@ function validateIssuer(
       const admin = reference(raw, "admin", context, err);
       if (!admin || !sameItem(admin, own, vaults)) return admin;
       err(`field "admin" names the key's own item; the admin key needs its own item`);
+      return undefined;
+    },
+    idKey() {
+      const name = requiredString(raw, "key_id", err);
+      if (name === undefined || VARIABLE_NAME.test(name)) return name;
+      err(`field "key_id" must name a key in this map, such as "API_KEY_ID"`);
       return undefined;
     },
   };

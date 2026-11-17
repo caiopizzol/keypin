@@ -18,6 +18,7 @@ export interface Issued {
   at: string;
   old: { id: string | null; generation: Generation; revoked: boolean };
   held?: boolean;
+  idKey?: KeyId;
 }
 
 export interface State {
@@ -108,13 +109,14 @@ export function nextRotation(input: {
   issuer: string;
   generation: Generation;
   published: boolean;
+  idSaved?: boolean;
 }): NextRotation {
-  const { issued, issuer, generation, published } = input;
+  const { issued, issuer, generation, published, idSaved = true } = input;
   if (!issued) return { action: "create", current: null, abandoned: null };
   if (issued.issuer !== issuer) return { action: "create", current: null, abandoned: issued };
   if (issued.generation === generation) {
     const revokeLeft = issued.old.id !== null && !issued.old.revoked;
-    return !published || revokeLeft
+    return !published || revokeLeft || !idSaved
       ? { action: "resume", issued }
       : { action: "create", current: issued.id, abandoned: null };
   }
@@ -156,6 +158,7 @@ function isIssued(i: unknown): i is Issued {
     isTextOrNull(i.old.id) &&
     isText(i.old.generation) &&
     typeof i.old.revoked === "boolean" &&
-    (i.held === undefined || typeof i.held === "boolean")
+    (i.held === undefined || typeof i.held === "boolean") &&
+    (i.idKey === undefined || isText(i.idKey))
   );
 }

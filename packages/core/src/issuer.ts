@@ -1,4 +1,4 @@
-import type { Issuer, KeyRef } from "./contracts";
+import type { Issuer, KeyId, KeyRef } from "./contracts";
 import type { TableReader } from "./destination";
 import type { Fetch } from "./fetch";
 import type { Secret } from "./secret";
@@ -10,6 +10,7 @@ export interface IssuerSpec {
 
 export interface IssuerReader extends TableReader {
   admin(): KeyRef | undefined;
+  idKey(): KeyId | undefined;
 }
 
 export interface IssuerKind<T extends IssuerSpec = IssuerSpec> {
@@ -17,6 +18,7 @@ export interface IssuerKind<T extends IssuerSpec = IssuerSpec> {
   parse(read: IssuerReader): T | undefined;
   connect(spec: T, admin: Secret, fetch?: Fetch): Issuer;
   claims?(spec: T): readonly string[];
+  idKey?(spec: T): KeyId;
 }
 
 export type IssuerKinds = readonly IssuerKind[];
@@ -34,4 +36,8 @@ export function connectIssuer(
   fetch?: Fetch,
 ): Issuer {
   return issuerKindOf(kinds, spec.kind).connect(spec, admin, fetch);
+}
+
+export function idKeyOf(kinds: IssuerKinds, spec: IssuerSpec): KeyId | null {
+  return kinds.find((k) => k.kind === spec.kind)?.idKey?.(spec) ?? null;
 }

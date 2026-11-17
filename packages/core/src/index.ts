@@ -1,4 +1,4 @@
-export { Secret, generationOf, type Generation } from "./secret";
+export { Secret, generationOf, keyIdText, type Generation } from "./secret";
 export { type Fetch } from "./fetch";
 export {
   DEFAULT_ENVIRONMENTS,
@@ -37,6 +37,7 @@ export {
 } from "./destination";
 export {
   connectIssuer,
+  idKeyOf,
   type IssuerKind,
   type IssuerKinds,
   type IssuerReader,
@@ -46,6 +47,7 @@ export {
   envFlag,
   isEnvironmentName,
   isVariableName,
+  pairedWith,
   parseMap,
   publishEnvironment,
   runEnvironment,

@@ -91,18 +91,17 @@ export class NetlifyEnvDestination implements Destination {
       throw new Error(`refusing to write to ${this.describe()}: checkAccount hasn't passed`);
     if (!name) throw new Error("a Netlify environment variable needs a name");
     const existing = await this.#existing(site, name);
-    const hidden = async () => [secret.reveal(), await this.#tokenOrEmpty()];
     const value = { context: this.#context, value: secret.reveal() };
     if (existing) {
       const path = this.#path(site, `/${encodeURIComponent(name)}`);
       const sent = await this.#request("PATCH", path, value);
       if (sent.status !== 200 && sent.status !== 201)
-        throw failure("PATCH", "/accounts/env", sent, await hidden());
+        throw failure("PATCH", "/accounts/env", sent, { echoesValue: true });
     } else {
       const created = [{ key: name, is_secret: true, scopes: SCOPES, values: [value] }];
       const sent = await this.#request("POST", this.#path(site, ""), created);
       if (sent.status !== 200 && sent.status !== 201)
-        throw failure("POST", "/accounts/env", sent, await hidden());
+        throw failure("POST", "/accounts/env", sent, { echoesValue: true });
     }
     return {
       destination: this.describe(),
@@ -142,10 +141,6 @@ export class NetlifyEnvDestination implements Destination {
       : "unknown (the token can't read its user)";
   }
 
-  async #tokenOrEmpty(): Promise<string> {
-    return this.#token ? await this.#token.catch(() => "") : "";
-  }
-
   async #request(method: string, path: string, body?: unknown): Promise<Reply> {
     this.#token ??= this.#tokenSource();
     const response = await this.#fetch(`${API}${path}`, {
@@ -174,13 +169,14 @@ function failure(
   method: string,
   path: string,
   reply: Reply,
-  hidden: readonly string[] = [],
+  write = { echoesValue: false },
 ): Error {
   const body = isRecord(reply.body) ? reply.body : {};
-  const secrets = hidden.flatMap((h) => [h, h.trim()]).filter((h) => h);
-  const said = [body.message, objectField(body, "error").message]
-    .map((m) => (typeof m === "string" ? m.trim() : ""))
-    .filter((m) => m && !secrets.some((h) => m.includes(h)));
+  const said = write.echoesValue
+    ? []
+    : [body.message, objectField(body, "error").message]
+        .map((m) => (typeof m === "string" ? m.trim() : ""))
+        .filter((m) => m);
   const where = `Netlify ${method} ${path} returned HTTP ${reply.status}`;
   const detail = said.length ? `, "${[...new Set(said)].join("; ")}"` : "";
   const why = explain(reply);

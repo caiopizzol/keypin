@@ -164,13 +164,17 @@ describe("refusals", () => {
     expect(check.publisher).toContain("unknown");
   });
 
-  test("a refused write names the HTTP status and hides the value and token", async () => {
-    const { destination } = setup({ failWrites: true });
-    await destination.checkAccount();
-    const failed = await caught(destination.write("API_KEY", new Secret(VALUE)));
-    expect(failed.message).toContain("returned HTTP 400");
-    expectNoneOf([VALUE, TOKEN], failed);
-  });
+  test.each([VALUE, 'line-one\nline-two "quoted" back\\slash', '{"client_secret":"s3cr3t"}'])(
+    "a refused write names the HTTP status and never repeats Netlify's message: %j",
+    async (value) => {
+      const { destination } = setup({ failWrites: true });
+      await destination.checkAccount();
+      const failed = await caught(destination.write("API_KEY", new Secret(value)));
+      expect(failed.message).toContain("returned HTTP 400");
+      expect(failed.message).not.toContain("could not store");
+      expectNoneOf([value, JSON.stringify(value).slice(1, -1), TOKEN], failed);
+    },
+  );
 
   test("a context keypin doesn't write is refused when constructing", () => {
     expect(

@@ -92,6 +92,7 @@ export {
   type StatusInput,
   type StatusRow,
 } from "./status";
+export { type StatusFile, statusFile, writeStatusFile } from "./status-file";
 export { envFileKind, envNames, envValues, type EnvFileKind } from "./dotenv";
 export {
   type Discovered,

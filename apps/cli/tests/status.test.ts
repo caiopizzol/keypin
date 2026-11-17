@@ -605,3 +605,83 @@ dev = "op://Private/forever/password"
     }
   });
 });
+
+describe("keypin status --write", () => {
+  const FILE = "/work/billing/.keypin/status.json";
+
+  test("writes only this project's rotated dates, and no reference, path or receipt", async () => {
+    const { deps, stdout, stderr, calls } = setup();
+    expect(await cli(["status", "--write"], deps)).toBe(0);
+    expect(calls).toEqual(["metadata billing stripe api key"]);
+    const text = await deps.files.read(FILE);
+    expect(text).toBe(
+      [
+        "{",
+        '  "version": 1,',
+        '  "written": "2026-11-09",',
+        '  "keys": {',
+        '    "STRIPE_API_KEY": {',
+        '      "dev": {',
+        '        "rotated": "2026-10-23"',
+        "      },",
+        '      "prod": {',
+        '        "rotated": "2026-10-23"',
+        "      }",
+        "    }",
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    expect(text).not.toMatch(/op:|billing stripe|Private|my\.1password|\/work|SESSION_SECRET/);
+    expect(stdout.text).toBe("");
+    expect(stderr.text).toBe(
+      [
+        "ok     Read 1 rotated date from 1Password account my.1password.com, not the values",
+        "ok     wrote /work/billing/.keypin/status.json",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  test("leaves the file alone when the dates haven't changed", async () => {
+    const { deps, stderr } = setup();
+    expect(await cli(["status", "--write"], deps)).toBe(0);
+    const first = await deps.files.read(FILE);
+    deps.now = () => new Date(2026, 10, 20, 12, 0, 0);
+    expect(await cli(["status", "--write"], deps)).toBe(0);
+    expect(await deps.files.read(FILE)).toBe(first);
+    expect(stderr.text).toContain(
+      "ok     /work/billing/.keypin/status.json has these dates already; left it as it is\n",
+    );
+  });
+
+  test("a key with no rotated date is null", async () => {
+    const files = memoryFiles({ "/work/billing/keypin.toml": BILLING_MAP });
+    const { deps } = fakeDeps({ disk: files, backend: fakeVault().vault });
+    expect(await cli(["status", "--write"], deps)).toBe(0);
+    expect(parseJson((await deps.files.read(FILE)) ?? "")).toEqual({
+      version: 1,
+      written: "2026-11-09",
+      keys: { STRIPE_API_KEY: { dev: { rotated: null }, prod: { rotated: null } } },
+    });
+  });
+
+  test("an unreadable date leaves the file as it is and exits 1", async () => {
+    const { deps, stderr } = setup({ failing: ["billing stripe api key"] });
+    expect(await cli(["status", "--write"], deps)).toBe(1);
+    expect(await deps.files.read(FILE)).toBeNull();
+    expect(stderr.text).toContain(
+      "keypin: left .keypin/status.json as it is, since a rotated date couldn't be read\n",
+    );
+  });
+
+  test("needs a keypin.toml, and takes no --json", async () => {
+    const empty = fakeDeps();
+    expect(await cli(["status", "--write"], empty.deps)).toBe(1);
+    expect(empty.stderr.text).toContain("no keypin.toml in /work/billing");
+    const both = setup();
+    expect(await cli(["status", "--write", "--json"], both.deps)).toBe(2);
+    expect(await both.deps.files.read(FILE)).toBeNull();
+  });
+});

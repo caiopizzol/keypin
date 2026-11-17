@@ -1,10 +1,11 @@
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 import {
   buildStatus,
   type DestinationKinds,
   envFlag,
   kindOf,
+  type KeysMap,
   loadRegistry,
   loadState,
   localDay,
@@ -14,15 +15,17 @@ import {
   publishEnvironment,
   type Status,
   type StatusRow,
+  statusFile,
   targetOf,
   type VaultKinds,
   vaultKindOf,
   type VaultMetadata,
   vaultAccounts,
+  writeStatusFile,
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
 import { registryPath, statePath } from "../paths";
-import { MAP_FILE } from "../project";
+import { findMap, MAP_FILE, STATUS_FILE } from "../project";
 import { columns, count, type Output, output, tilde } from "../output";
 import { approval } from "../sign-in";
 import { distinctRefs, refKey } from "../vault";
@@ -32,10 +35,17 @@ type Problem = Status["problems"][number];
 export async function status(args: string[], deps: Deps): Promise<number> {
   const { values, positionals } = parseArgs({
     args,
-    options: { json: { type: "boolean", default: false } },
+    options: {
+      json: { type: "boolean", default: false },
+      write: { type: "boolean", default: false },
+    },
     allowPositionals: true,
   });
   if (positionals.length) throw new UsageError("keypin status takes no arguments");
+  if (values.write) {
+    if (values.json) throw new UsageError("--write prints no status, so it takes no --json");
+    return writeFile(deps);
+  }
 
   const registry = await loadRegistry(deps.files, registryPath(deps));
   const state = await loadState(deps.files, statePath(deps), deps.vaults);
@@ -51,43 +61,10 @@ export async function status(args: string[], deps: Deps): Promise<number> {
     }
   }
 
-  const refs = distinctRefs(
-    [...maps.values()].flatMap((result) =>
-      result.ok
-        ? result.map.keys.flatMap((key) =>
-            Object.values(key.environments).flatMap((e) => (e ? [e.ref] : [])),
-          )
-        : [],
-    ),
+  const metadata = await readDates(
+    deps,
+    [...maps.values()].flatMap((result) => (result.ok ? [result.map] : [])),
   );
-  const metadata = new Map<string, VaultMetadata | null>();
-  if (refs.length) {
-    const errors: string[] = [];
-    const dates = count(refs.length, "rotated date");
-    const from = `from ${vaultAccounts(refs, deps.vaults)}, not the values`;
-    await output(deps.stderr, deps.styled.stderr, deps.columns).step(
-      `Reading ${dates}`,
-      async () => {
-        const vault = deps.vault();
-        for (const ref of refs) {
-          try {
-            metadata.set(refKey(ref), await vault.metadata(ref));
-          } catch (error) {
-            errors.push(messageOf(error));
-            metadata.set(refKey(ref), null);
-          }
-        }
-      },
-      () => ({
-        ok: !errors.length,
-        text: errors.length
-          ? `Couldn't read ${errors.length} of ${dates} ${from}`
-          : `Read ${dates} ${from}`,
-      }),
-      approval(deps, refs),
-    );
-    for (const error of new Set(errors)) deps.stderr.write(`keypin: ${error}\n`);
-  }
 
   const today = localDay(deps.now());
   const result = buildStatus({
@@ -96,7 +73,7 @@ export async function status(args: string[], deps: Deps): Promise<number> {
     registry,
     maps,
     receipts: state.receipts,
-    metadata: (ref) => metadata.get(refKey(ref)) ?? null,
+    metadata: (ref) => metadata.dates.get(refKey(ref)) ?? null,
     today,
   });
 
@@ -123,6 +100,78 @@ export async function status(args: string[], deps: Deps): Promise<number> {
     );
   }
   return result.problems.some((p) => p.severity === "problem") ? 1 : 0;
+}
+
+async function writeFile(deps: Deps): Promise<number> {
+  const map = await findMap(deps);
+  const project = dirname(map.file);
+  const metadata = await readDates(deps, [map]);
+  if (metadata.failed) {
+    deps.stderr.write(
+      `keypin: left ${STATUS_FILE} as it is, since a rotated date couldn't be read\n`,
+    );
+    return 1;
+  }
+  const today = localDay(deps.now());
+  const { rows } = buildStatus({
+    kinds: deps.destinations,
+    vaults: deps.vaults,
+    registry: { version: 1, projects: [project] },
+    maps: new Map([[project, { ok: true, map }]]),
+    receipts: [],
+    metadata: (ref) => metadata.dates.get(refKey(ref)) ?? null,
+    today,
+  });
+  const file = join(project, STATUS_FILE);
+  const result = await writeStatusFile(deps.files, file, statusFile(rows, map.environments, today));
+  const out = output(deps.stderr, deps.styled.stderr, deps.columns);
+  const shown = tilde(file, deps.home);
+  out.line(
+    result === "written"
+      ? `${out.mark(true)} wrote ${shown}`
+      : `${out.mark(true)} ${shown} has these dates already; left it as it is`,
+  );
+  return 0;
+}
+
+async function readDates(
+  deps: Deps,
+  maps: readonly KeysMap[],
+): Promise<{ dates: Map<string, VaultMetadata | null>; failed: boolean }> {
+  const refs = distinctRefs(
+    maps.flatMap((map) =>
+      map.keys.flatMap((key) => Object.values(key.environments).flatMap((e) => (e ? [e.ref] : []))),
+    ),
+  );
+  const dates = new Map<string, VaultMetadata | null>();
+  const errors: string[] = [];
+  if (refs.length) {
+    const counted = count(refs.length, "rotated date");
+    const from = `from ${vaultAccounts(refs, deps.vaults)}, not the values`;
+    await output(deps.stderr, deps.styled.stderr, deps.columns).step(
+      `Reading ${counted}`,
+      async () => {
+        const vault = deps.vault();
+        for (const ref of refs) {
+          try {
+            dates.set(refKey(ref), await vault.metadata(ref));
+          } catch (error) {
+            errors.push(messageOf(error));
+            dates.set(refKey(ref), null);
+          }
+        }
+      },
+      () => ({
+        ok: !errors.length,
+        text: errors.length
+          ? `Couldn't read ${errors.length} of ${counted} ${from}`
+          : `Read ${counted} ${from}`,
+      }),
+      approval(deps, refs),
+    );
+    for (const error of new Set(errors)) deps.stderr.write(`keypin: ${error}\n`);
+  }
+  return { dates, failed: errors.length > 0 };
 }
 
 interface Context {

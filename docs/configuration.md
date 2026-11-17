@@ -29,8 +29,7 @@ see [Infisical](infisical.md), [Bitwarden](bitwarden.md) or [Doppler](doppler.md
 
 Each `[keys.NAME]` table is named after the variable your program reads.
 
-- `rotate_every`: how often to rotate the key, as `<n>d`, `<n>w`, `<n>m` or `never`. `keypin status` uses it to
-  show when the key is due.
+- `rotate_every`: how often to rotate the key, as `<n>d`, `<n>w`, `<n>m` or `never`.
 - One entry per environment, `dev` and `prod` by default. Each names a 1Password secret reference:
   `op://<vault>/<item>/<field>`, or `op://<vault>/<item>/<section>/<field>` when two fields share a name. In
   1Password, open the field's menu and select **Copy Secret Reference**. keypin reads a field's value, or the item's
@@ -133,6 +132,10 @@ The map says where a key goes, not who writes it, so every teammate publishes fr
 Any field except `rotated` can hold the value, such as `password` or an API Credential's `credential`. Add a
 **`rotated`** Date field with the day the value last changed; `keypin status` adds `rotate_every` to it to show when
 the key is due.
+
+The hosted console can't read your vault. For it to show when each key is due, run `keypin status --write` in the
+project and commit `.keypin/status.json`. It holds each key's `rotated` day per environment, or `null`, and the day
+it was written; no values or vault references.
 
 ## Rotating a key
 

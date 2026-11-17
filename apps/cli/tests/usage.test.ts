@@ -42,7 +42,10 @@ describe("a usage error", () => {
     const [error, ...rest] = stderr.text.split("\n");
     expect(error).toMatch(/^keypin status: Unknown option '--bogus'/);
     expect(rest.join("\n")).toBe(
-      "  keypin status [--json]   every key in every registered project, with problems\n" + MORE,
+      "  keypin status [--json]   every key in every registered project, with problems\n" +
+        "  keypin status --write    write each of this project's rotated dates to .keypin/status.json,\n" +
+        "                           for the hosted console; never a value\n" +
+        MORE,
     );
     expect(stdout.text).toBe("");
   });

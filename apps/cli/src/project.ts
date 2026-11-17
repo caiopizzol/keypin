@@ -3,6 +3,7 @@ import { type Environment, type KeysMap, parseMap } from "@keypin/core";
 import { type Deps, UsageError } from "./deps";
 
 export const MAP_FILE = "keypin.toml";
+export const STATUS_FILE = ".keypin/status.json";
 
 export async function findMap(deps: Deps): Promise<KeysMap> {
   const found = await locateMap(deps.files, deps.cwd);

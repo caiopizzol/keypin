@@ -20,6 +20,7 @@ import {
   cloudflareSignIn,
 } from "@keypin/connectors/cloudflare";
 import { ghToken, githubActions, listRepoSecrets, sshHostname } from "@keypin/connectors/github";
+import { googleIssuer } from "@keypin/connectors/google";
 import { neonIssuer } from "@keypin/connectors/neon";
 import { netlifyProject } from "@keypin/connectors/netlify";
 import { openaiIssuer } from "@keypin/connectors/openai";
@@ -86,6 +87,7 @@ export const issuers = [
   supabaseIssuer,
   cloudflareIssuer,
   openrouterIssuer,
+  googleIssuer,
 ];
 
 export function issuer(spec: IssuerSpec, admin: Secret, fetch?: Fetch): Issuer {

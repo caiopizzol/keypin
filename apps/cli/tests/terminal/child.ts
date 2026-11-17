@@ -10,6 +10,12 @@ import {
   signInAddress,
 } from "@keypin/connectors/onepassword";
 import { fakeSignIn, type TokenWorld, tokensFetch } from "@keypin/connectors/cloudflare/testing";
+import {
+  fakePrivateKey,
+  googleFetch,
+  type GoogleWorld,
+  serviceAccountJson,
+} from "@keypin/connectors/google/testing";
 import { neonFetch, type NeonWorld } from "@keypin/connectors/neon/testing";
 import { type OpenAIKeys, openaiFetch } from "@keypin/connectors/openai/testing";
 import { openrouterFetch, type OpenRouterWorld } from "@keypin/connectors/openrouter/testing";
@@ -29,6 +35,9 @@ import {
   CLOUDFLARE_ADMIN,
   CLOUDFLARE_PREFIX,
   type FakeItem,
+  GOOGLE_ADMIN,
+  GOOGLE_EMAIL,
+  GOOGLE_PREFIX,
   ISSUED_PREFIX,
   RESEND_ADMIN,
   RESEND_KNOWN,
@@ -77,6 +86,8 @@ const NEON = join(sandbox, "neon.json");
 const OPENAI = join(sandbox, "openai.json");
 const SUPABASE = join(sandbox, "supabase.json");
 const CLOUDFLARE = join(sandbox, "cloudflare-tokens.json");
+const GOOGLE = join(sandbox, "google.json");
+const GOOGLE_KEY = scenario.google ? fakePrivateKey() : "";
 const OPENROUTER = join(sandbox, "openrouter.json");
 
 function effect(line: string): void {
@@ -118,10 +129,16 @@ function itemsOf(account: string, vault: string, scenario: Scenario): FakeItem[]
   return [...base.filter((b) => !added.some((a) => a.title === b.title)), ...added];
 }
 
+function served(value: string): string {
+  return value === GOOGLE_ADMIN
+    ? serviceAccountJson(GOOGLE_EMAIL, GOOGLE_KEY, GOOGLE_ADMIN)
+    : value;
+}
+
 function full(vault: string, item: FakeItem): FullItem {
   const fields: Field[] = [
-    { id: "password", title: "password", fieldType: "Concealed", value: item.value },
-    { id: "credential", title: "credential", fieldType: "Concealed", value: item.value },
+    { id: "password", title: "password", fieldType: "Concealed", value: served(item.value) },
+    { id: "credential", title: "credential", fieldType: "Concealed", value: served(item.value) },
   ];
   if (item.rotated)
     fields.push({ id: "rotated", title: "rotated", fieldType: "Date", value: item.rotated });
@@ -362,6 +379,24 @@ const cloudflare = tokensFetch({
   effect,
 });
 
+const google = googleFetch({
+  serviceAccount: GOOGLE_EMAIL,
+  privateKey: GOOGLE_KEY,
+  projects: ["481537286014"],
+  valuePrefix: GOOGLE_PREFIX,
+  pendingPolls: run.google?.pendingPolls ?? 0,
+  world: {
+    load(): GoogleWorld {
+      if (!existsSync(GOOGLE)) return { keys: run.google?.keys ?? [], created: 0, operations: [] };
+      const parsed: unknown = JSON.parse(readFileSync(GOOGLE, "utf8"));
+      if (!isGoogleWorld(parsed)) throw new Error(`${GOOGLE} isn't the fake Google Cloud's keys`);
+      return parsed;
+    },
+    save: (world) => writeFileSync(GOOGLE, JSON.stringify(world)),
+  },
+  effect,
+});
+
 const openrouter = openrouterFetch({
   admin: OPENROUTER_ADMIN,
   valuePrefix: OPENROUTER_PREFIX,
@@ -380,6 +415,7 @@ const openrouter = openrouterFetch({
 
 const issuerFetch: Record<string, Fetch> = {
   cloudflare,
+  google,
   neon,
   openai,
   openrouter,
@@ -389,6 +425,15 @@ const issuerFetch: Record<string, Fetch> = {
 
 function isOpenRouterWorld(value: unknown): value is OpenRouterWorld {
   return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";
+}
+
+function isGoogleWorld(value: unknown): value is GoogleWorld {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.keys) &&
+    Array.isArray(value.operations) &&
+    typeof value.created === "number"
+  );
 }
 
 function isTokenWorld(value: unknown): value is TokenWorld {

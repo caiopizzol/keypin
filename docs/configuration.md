@@ -117,7 +117,8 @@ the key is due.
 ## Rotating a key
 
 Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key, at Resend, [Neon](#neon),
-[OpenAI](#openai), [Supabase](#supabase), [Cloudflare](#cloudflare) or [OpenRouter](#openrouter):
+[OpenAI](#openai), [Supabase](#supabase), [Cloudflare](#cloudflare), [OpenRouter](#openrouter) or
+[Google Cloud](#google-cloud):
 
 ```toml
 [keys.RESEND_API_KEY.prod]
@@ -257,3 +258,26 @@ gives the new key the same credit limit, reset, BYOK setting, lifetime and works
 again at $0 spent on the new key; the old key keeps its credit until you revoke it. keypin refuses a disabled key, and
 a key with its own guardrail, or a BYOK provider key or observability destination limited to it, since the new
 key wouldn't get them.
+
+### Google Cloud
+
+For Google API keys such as `GEMINI_API_KEY`, `GOOGLE_MAPS_API_KEY` or `YOUTUBE_API_KEY`:
+
+```toml
+[keys.GOOGLE_MAPS_API_KEY.prod]
+from = "op://Private/maps api key/credential"
+
+[keys.GOOGLE_MAPS_API_KEY.prod.issuer]
+kind = "google"
+admin = "op://Private/google key maker/credential"
+project_number = "481537286014"
+```
+
+`project_number` is the project's number, digits only, from its Dashboard; Google names keys by number, not by
+project ID. `admin` is a service account's [JSON key](https://cloud.google.com/iam/docs/keys-create-delete), the whole
+file, in its own 1Password item. Give it **API Keys Admin** (`roles/serviceusage.apiKeysAdmin`) on that project, and
+turn on the API Keys API in the service account's project. keypin doesn't use gcloud logins.
+
+keypin finds the vault's key from its value, makes a key in the same project with the same API restrictions and
+application restrictions (websites, IP addresses, Android or iOS apps), then deletes the old one. A key with no
+restrictions gets a key with none. Google Cloud keeps a deleted key for 30 days, so you can restore it.

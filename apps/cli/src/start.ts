@@ -20,6 +20,7 @@ import {
 } from "@keypin/connectors/cloudflare";
 import { ghToken, githubActions, listRepoSecrets, sshHostname } from "@keypin/connectors/github";
 import { neonIssuer } from "@keypin/connectors/neon";
+import { openaiIssuer } from "@keypin/connectors/openai";
 import { resendIssuer } from "@keypin/connectors/resend";
 import {
   type Connect,
@@ -63,7 +64,7 @@ export function destination(target: PublishTarget, publisher: Publisher): Destin
   return connectTo<Publisher>(destinations, target, publisher);
 }
 
-export const issuers = [resendIssuer, neonIssuer];
+export const issuers = [resendIssuer, neonIssuer, openaiIssuer];
 
 export function issuer(spec: IssuerSpec, admin: Secret, fetch?: Fetch): Issuer {
   return connectIssuer(issuers, spec, admin, fetch);

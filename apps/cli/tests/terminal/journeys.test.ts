@@ -461,6 +461,65 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "OpenAI: makes a key for the vault key's service account, publishes it, then deletes the old key after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "openai",
+        args: ["rotate", "OPENAI_API_KEY"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  + OpenAI                create a new key\n    for service account billing-bot, with all permissions",
+      );
+      expect(result.screen).toMatch(/^✓ OpenAI {2}revoked svc_verify\/key_old {2}\d+\.\ds$/m);
+      expect(result.effects).toEqual([
+        "openai create key_new1 for svc_verify",
+        "1password update my.1password.com/Private/billing openai key (28 chars)",
+        "destination write github-actions:acme/billing OPENAI_API_KEY (28 chars)",
+        "openai revoke key_old",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "OpenAI: a user-owned vault key stops before anything is created",
+    async () => {
+      const result = await drive({
+        scenario: "openai-user-key",
+        args: ["rotate", "OPENAI_API_KEY"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        "    key key_old belongs to a user, and OpenAI's Admin API makes keys only for service accounts",
+      );
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "OpenAI: a create whose reply is lost names the key and project to look in",
+    async () => {
+      const result = await drive({
+        scenario: "openai-reply-lost",
+        args: ["rotate", "OPENAI_API_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toMatch(
+        /^Stopped: keypin didn't get the new key back\. OpenAI may have made the key before the reply was lost\. Only this run uses the name "OPENAI_API_KEY prod \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [0-9a-f]{6}": delete a key with that name in project billing at https:\/\/platform\.openai\.com\/settings\/organization\/api-keys before you run this again, or the rerun leaves it live\.$/m,
+      );
+      expect(result.effects).toEqual(["openai create key_new1 for svc_verify"]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "Neon: a role missing from the branch stops before any reset",
     async () => {
       const result = await drive({ scenario: "neon-one-role", args: ["rotate", "DATABASE_URL"] });

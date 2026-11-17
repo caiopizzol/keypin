@@ -1,7 +1,7 @@
 import { appendFileSync, existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { isRecord, placeId, type PublishTarget } from "@keypin/core";
+import { type Fetch, isRecord, placeId, type PublishTarget } from "@keypin/core";
 import {
   type Field,
   type FullItem,
@@ -11,6 +11,7 @@ import {
 } from "@keypin/connectors/onepassword";
 import { fakeSignIn } from "@keypin/connectors/cloudflare/testing";
 import { neonFetch, type NeonWorld } from "@keypin/connectors/neon/testing";
+import { type OpenAIKeys, openaiFetch } from "@keypin/connectors/openai/testing";
 import { resendFetch } from "@keypin/connectors/resend/testing";
 import { credentialsFrom, infisicalBackend } from "@keypin/connectors/infisical";
 import { fileStore, infisicalFetch } from "@keypin/connectors/infisical/testing";
@@ -25,6 +26,8 @@ import {
   RESEND_KNOWN,
   NEON_HOST,
   NEON_PREFIX,
+  OPENAI_ADMIN,
+  OPENAI_PREFIX,
   SANDBOX_MARKER,
   type Scenario,
   scenarios,
@@ -59,6 +62,7 @@ const EFFECTS = join(sandbox, "effects.txt");
 const VAULT = join(sandbox, "onepassword.json");
 const RESEND = join(sandbox, "resend.json");
 const NEON = join(sandbox, "neon.json");
+const OPENAI = join(sandbox, "openai.json");
 
 function effect(line: string): void {
   appendFileSync(EFFECTS, `${line}\n`);
@@ -260,6 +264,41 @@ const neon = neonFetch({
   effect,
 });
 
+const openai = openaiFetch({
+  admin: OPENAI_ADMIN,
+  projectId: "proj_verify",
+  projectName: "billing",
+  tokenPrefix: OPENAI_PREFIX,
+  loseCreated: run.openai?.loseCreated ?? false,
+  keys: {
+    load(): OpenAIKeys {
+      if (!existsSync(OPENAI)) return { live: run.openai?.keys ?? [], created: 0 };
+      const parsed: unknown = JSON.parse(readFileSync(OPENAI, "utf8"));
+      if (!isOpenAIKeys(parsed)) throw new Error(`${OPENAI} isn't the fake OpenAI's keys`);
+      return parsed;
+    },
+    save: (keys) => writeFileSync(OPENAI, JSON.stringify(keys)),
+  },
+  effect,
+});
+
+const issuerFetch: Record<string, Fetch> = { neon, openai, resend };
+
+function isOpenAIKeys(value: unknown): value is OpenAIKeys {
+  return (
+    isRecord(value) &&
+    typeof value.created === "number" &&
+    Array.isArray(value.live) &&
+    value.live.every(
+      (key: unknown) =>
+        isRecord(key) &&
+        typeof key.id === "string" &&
+        typeof key.value === "string" &&
+        isRecord(key.owner),
+    )
+  );
+}
+
 function isNeonWorld(value: unknown): value is NeonWorld {
   return (
     isRecord(value) &&
@@ -288,7 +327,7 @@ process.exitCode = await cli(process.argv.slice(2), {
   organizationSecrets: async () => ({ ok: true, secrets: [] }),
   sshHostname: async () => null,
   workerSecrets: async () => ({ ok: false, reason: "this scenario has no Cloudflare account" }),
-  issuer: (spec, admin) => issuer(spec, admin, spec.kind === "neon" ? neon : resend),
+  issuer: (spec, admin) => issuer(spec, admin, issuerFetch[spec.kind] ?? resend),
   destination: (target) => {
     const place = placeId(target, destinations);
     const scripted = run.places[place] ?? {};

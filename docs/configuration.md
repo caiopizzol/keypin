@@ -137,8 +137,8 @@ the key is due.
 ## Rotating a key
 
 Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key, at Resend, [Neon](#neon),
-[OpenAI](#openai), [Supabase](#supabase), [Cloudflare](#cloudflare), [OpenRouter](#openrouter) or
-[Google Cloud](#google-cloud):
+[OpenAI](#openai), [Supabase](#supabase), [Cloudflare](#cloudflare), [OpenRouter](#openrouter),
+[Google Cloud](#google-cloud) or [ElevenLabs](#elevenlabs):
 
 ```toml
 [keys.RESEND_API_KEY.prod]
@@ -301,3 +301,24 @@ turn on the API Keys API in the service account's project. keypin doesn't use gc
 keypin finds the vault's key from its value, makes a key in the same project with the same API restrictions and
 application restrictions (websites, IP addresses, Android or iOS apps), then deletes the old one. A key with no
 restrictions gets a key with none. Google Cloud keeps a deleted key for 30 days, so you can restore it.
+
+### ElevenLabs
+
+```toml
+[keys.ELEVENLABS_API_KEY.prod]
+from = "op://Private/app elevenlabs key/credential"
+
+[keys.ELEVENLABS_API_KEY.prod.issuer]
+kind = "elevenlabs"
+admin = "op://Private/elevenlabs admin key/credential"
+```
+
+`admin` is a workspace admin's API key, in its own 1Password item; a restricted one needs access to service accounts.
+ElevenLabs' API makes keys only for [service accounts](https://elevenlabs.io/docs/overview/administration/workspaces/service-accounts),
+so keypin refuses a key that belongs to a person: replace it once with a service account key.
+
+keypin asks ElevenLabs which service account the vault's key belongs to, so the key needs the **User** read
+permission. It refuses a service account with more than one active key, since it can't tell which one the vault holds:
+give each app its own service account. The new key gets the old key's permissions, credit limit, IP allowlist,
+concurrency limits and lifetime. A credit limit starts unspent on the new key. keypin refuses a disabled key, and a
+key with a Professional Voice Clone limit, since the new key wouldn't get it.

@@ -16,6 +16,7 @@ import {
   type GoogleWorld,
   serviceAccountJson,
 } from "@keypin/connectors/google/testing";
+import { elevenlabsFetch, type ElevenLabsWorld } from "@keypin/connectors/elevenlabs/testing";
 import { neonFetch, type NeonWorld } from "@keypin/connectors/neon/testing";
 import { type OpenAIKeys, openaiFetch } from "@keypin/connectors/openai/testing";
 import { openrouterFetch, type OpenRouterWorld } from "@keypin/connectors/openrouter/testing";
@@ -34,6 +35,8 @@ import { routedVault } from "../../src/vault";
 import {
   CLOUDFLARE_ADMIN,
   CLOUDFLARE_PREFIX,
+  ELEVENLABS_ADMIN,
+  ELEVENLABS_PREFIX,
   type FakeItem,
   GOOGLE_ADMIN,
   GOOGLE_EMAIL,
@@ -89,6 +92,7 @@ const CLOUDFLARE = join(sandbox, "cloudflare-tokens.json");
 const GOOGLE = join(sandbox, "google.json");
 const GOOGLE_KEY = scenario.google ? fakePrivateKey() : "";
 const OPENROUTER = join(sandbox, "openrouter.json");
+const ELEVENLABS = join(sandbox, "elevenlabs.json");
 
 function effect(line: string): void {
   appendFileSync(EFFECTS, `${line}\n`);
@@ -413,8 +417,26 @@ const openrouter = openrouterFetch({
   effect,
 });
 
+const elevenlabs = elevenlabsFetch({
+  admin: ELEVENLABS_ADMIN,
+  valuePrefix: ELEVENLABS_PREFIX,
+  accounts: [{ id: "sa_voice", name: "backend" }],
+  world: {
+    load(): ElevenLabsWorld {
+      if (!existsSync(ELEVENLABS)) return { keys: run.elevenlabs?.keys ?? [], created: 0 };
+      const parsed: unknown = JSON.parse(readFileSync(ELEVENLABS, "utf8"));
+      if (!isElevenLabsWorld(parsed))
+        throw new Error(`${ELEVENLABS} isn't the fake ElevenLabs' keys`);
+      return parsed;
+    },
+    save: (world) => writeFileSync(ELEVENLABS, JSON.stringify(world)),
+  },
+  effect,
+});
+
 const issuerFetch: Record<string, Fetch> = {
   cloudflare,
+  elevenlabs,
   google,
   neon,
   openai,
@@ -422,6 +444,10 @@ const issuerFetch: Record<string, Fetch> = {
   resend,
   supabase,
 };
+
+function isElevenLabsWorld(value: unknown): value is ElevenLabsWorld {
+  return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";
+}
 
 function isOpenRouterWorld(value: unknown): value is OpenRouterWorld {
   return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";

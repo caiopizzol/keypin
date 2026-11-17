@@ -6,6 +6,7 @@ import type { FakeInfisical } from "@keypin/connectors/infisical/testing";
 import { FAKE_ACCESS_TOKEN, type FakeBitwarden } from "@keypin/connectors/bitwarden/testing";
 import type { FakeDoppler } from "@keypin/connectors/doppler/testing";
 import type { FakeOpenAIKey } from "@keypin/connectors/openai/testing";
+import type { FakeElevenLabsKey } from "@keypin/connectors/elevenlabs/testing";
 import type { FakeOpenRouterKey } from "@keypin/connectors/openrouter/testing";
 import type { SupabaseKey } from "@keypin/connectors/supabase/testing";
 
@@ -36,6 +37,7 @@ export interface Scenario {
   cloudflareTokens?: { tokens: FakeToken[]; loseCreated?: boolean };
   google?: { keys: FakeGoogleKey[]; pendingPolls?: number };
   openrouter?: { keys: FakeOpenRouterKey[] };
+  elevenlabs?: { keys: FakeElevenLabsKey[] };
   registered: boolean;
   git: { origin?: string; account?: string };
   onePassword: {
@@ -391,6 +393,53 @@ const openrouter: Scenario = {
       { hash: "hash_old", name: "chat", value: OPENROUTER_OLD, limit: 25, limitReset: "monthly" },
     ],
   },
+};
+
+const ELEVENLABS_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.ELEVENLABS_API_KEY]
+rotate_every = "90d"
+
+[keys.ELEVENLABS_API_KEY.prod]
+from = "op://Private/voice elevenlabs key/credential"
+
+[keys.ELEVENLABS_API_KEY.prod.issuer]
+kind = "elevenlabs"
+admin = "op://Private/elevenlabs admin key/credential"
+
+[[keys.ELEVENLABS_API_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`;
+
+export const ELEVENLABS_ADMIN = "sk_verify_admin_key_4b7e";
+export const ELEVENLABS_PREFIX = "sk_verify_new_";
+const ELEVENLABS_OLD = "sk_verify_old_key_8d3c";
+const ELEVENLABS_KEY: FakeElevenLabsKey = {
+  account: "sa_voice",
+  keyId: "key_old",
+  name: "voice",
+  value: ELEVENLABS_OLD,
+  characterLimit: 100_000,
+};
+
+const elevenlabs: Scenario = {
+  ...ready,
+  about:
+    'ELEVENLABS_API_KEY has an ElevenLabs issuer; the vault holds key "voice" of service account "backend", with a 100,000-credit limit, and keypin has never rotated it',
+  files: { "keypin.toml": ELEVENLABS_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          { title: "voice elevenlabs key", value: ELEVENLABS_OLD, rotated: day(-95) },
+          { title: "elevenlabs admin key", value: ELEVENLABS_ADMIN },
+        ],
+      },
+    },
+  },
+  elevenlabs: { keys: [ELEVENLABS_KEY] },
 };
 
 const SUPABASE_MAP = `[1password]
@@ -1069,6 +1118,12 @@ jobs:
       keys: [{ hash: "hash_old", name: "chat", value: OPENROUTER_OLD, limit: 25, disabled: true }],
     },
   },
+  elevenlabs,
+  "elevenlabs-disabled": {
+    ...elevenlabs,
+    about: "elevenlabs, but ElevenLabs disabled the vault's key after it leaked",
+    elevenlabs: { keys: [{ ...ELEVENLABS_KEY, disabled: true }] },
+  },
   fresh: {
     ...ready,
     about: "an empty git repository: no keypin.toml, not registered, nothing signed in",
@@ -1124,6 +1179,7 @@ export function valuesOf(scenario: Scenario): string[] {
     ...(scenario.cloudflareTokens ? [CLOUDFLARE_PREFIX] : []),
     ...(scenario.google ? [GOOGLE_PREFIX] : []),
     ...(scenario.openrouter ? [OPENROUTER_PREFIX] : []),
+    ...(scenario.elevenlabs ? [ELEVENLABS_PREFIX] : []),
   ];
   return [
     ...items.map((item) => item.value),

@@ -31,7 +31,7 @@ commands with the dev keys and publishes the prod keys. It reads a value only wh
 |           | Netlify projects   | Cloudflare API tokens |
 |           | Railway services   | OpenRouter            |
 |           | Convex deployments | Google Cloud API keys |
-|           | Fly.io apps        |                       |
+|           | Fly.io apps        | ElevenLabs            |
 
 Want another? Vote for it on the [roadmap](https://github.com/caiopizzol/keypin/issues/138).
 

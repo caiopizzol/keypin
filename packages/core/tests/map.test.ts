@@ -1120,3 +1120,106 @@ prod = { from = "op://Private/b prod/password", issuer = { kind = "pool", admin 
     expect(parse("1", "2").ok).toBe(true);
   });
 });
+
+describe("an issuer whose key's ID is another key", () => {
+  const paired: IssuerKind<IssuerSpec & { kind: "paired"; keyId: string }> = {
+    kind: "paired",
+    parse: (read) => {
+      read.only(["key_id"]);
+      const admin = read.admin();
+      const keyId = read.idKey();
+      return admin && keyId ? { kind: "paired", admin, keyId } : undefined;
+    },
+    connect: () => {
+      throw new Error("never connected");
+    },
+    idKey: (spec) => spec.keyId,
+  };
+  const WORKER_TARGET = `{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "api" }`;
+  const map = (keyId: string, id: string, extra = "") => `${VAULTS}
+[keys.SECRET.prod]
+from = "op://Private/secret/credential"
+publish = [${WORKER_TARGET}]
+issuer = { kind = "paired", admin = "op://Private/admin/credential", key_id = "${keyId}" }
+${extra}
+[keys.KEY_ID]
+prod = ${id}
+`;
+  const ID = `{ from = "op://Private/key id/credential", publish = [${WORKER_TARGET}] }`;
+  const parse = (text: string) =>
+    parseMap(text, MAP_FILE, KINDS, [...ISSUERS, paired], VAULT_KINDS);
+  const errors = (text: string) => {
+    const result = parse(text);
+    assert(!result.ok, "expected the map to be rejected");
+    return result.errors;
+  };
+  const where = `${MAP_FILE}: key "SECRET" prod issuer: `;
+
+  test("names the ID key on the entry, and other issuers' entries have none", () => {
+    const result = parse(map("KEY_ID", ID));
+    assert(result.ok);
+    expect(result.map.keys[0]?.environments.prod?.idKey).toBe("KEY_ID");
+    expect(result.map.keys[1]?.environments.prod).not.toHaveProperty("idKey");
+  });
+
+  test.each([
+    [
+      "the key itself",
+      map("SECRET", ID),
+      `field "key_id" names the key itself; name the key that holds its ID`,
+    ],
+    [
+      "a key with no entry in that environment",
+      map("KEY_ID", ID).replace("[keys.KEY_ID]\nprod", "[keys.KEY_ID]\ndev"),
+      `field "key_id" names "KEY_ID", which has no prod entry; add [keys.KEY_ID.prod]`,
+    ],
+    [
+      "a key that reads the secret's field",
+      map("KEY_ID", ID.replace("key id", "secret")),
+      `"KEY_ID" prod reads the same field as this key or its admin key; give the ID its own field`,
+    ],
+    [
+      "a key that reads the admin key's field",
+      map("KEY_ID", ID.replace("key id", "admin")),
+      `"KEY_ID" prod reads the same field as this key or its admin key; give the ID its own field`,
+    ],
+    [
+      "a key published elsewhere",
+      map("KEY_ID", ID.replace('worker = "api"', 'worker = "web"')),
+      `"KEY_ID" prod publishes to different destinations; list the same destinations for both keys`,
+    ],
+    [
+      "a key published to fewer places",
+      map("KEY_ID", `{ from = "op://Private/key id/credential" }`),
+      `"KEY_ID" prod publishes to different destinations; list the same destinations for both keys`,
+    ],
+    [
+      "a key with its own issuer",
+      map(
+        "KEY_ID",
+        `{ from = "op://Private/key id/credential", publish = [${WORKER_TARGET}], issuer = { kind = "paired", admin = "op://Private/admin 2/credential", key_id = "SECRET" } }`,
+      ),
+      `"KEY_ID" prod has its own issuer; a key_id is rotated with its key, so remove one`,
+    ],
+  ])("refuses %s", (_, text, message) => {
+    expect(errors(text)).toContain(`${where}${message}`);
+  });
+
+  test("refuses two keys that name the same ID key", () => {
+    const other = `
+[keys.OTHER.prod]
+from = "op://Private/other/credential"
+publish = [${WORKER_TARGET}]
+issuer = { kind = "paired", admin = "op://Private/admin/credential", key_id = "KEY_ID" }
+`;
+    expect(errors(map("KEY_ID", ID, other))).toEqual([
+      `${MAP_FILE}: key "OTHER" prod issuer: key "SECRET" prod also names "KEY_ID" as its key_id; each key needs its own`,
+    ]);
+  });
+
+  test("refuses a key_id that isn't a variable name", () => {
+    expect(errors(map("not a name", ID))).toEqual([
+      `${MAP_FILE}: key "SECRET" prod: issuer: field "key_id" must name a key in this map, such as "API_KEY_ID"`,
+    ]);
+  });
+});

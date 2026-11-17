@@ -6,8 +6,9 @@ description: Use the keypin CLI to map, check, run with, or publish a project's 
 # keypin
 
 keypin maps a project's keys in `keypin.toml` (variable names and vault references, never values) and reads values
-from the vault only while a command runs. The steps below use 1Password; for `infisical://` references, follow
-[Infisical](https://github.com/caiopizzol/keypin/blob/main/docs/infisical.md) instead.
+from the vault only while a command runs. The steps below use 1Password; for `infisical://` or `doppler://`
+references, follow [Infisical](https://github.com/caiopizzol/keypin/blob/main/docs/infisical.md) or
+[Doppler](https://github.com/caiopizzol/keypin/blob/main/docs/doppler.md) instead.
 
 ## Rules
 

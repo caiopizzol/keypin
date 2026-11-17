@@ -5,6 +5,8 @@
   "exports": {
     "./cloudflare": "./src/cloudflare/index.ts",
     "./cloudflare/testing": "./src/cloudflare/testing.ts",
+    "./doppler": "./src/doppler/index.ts",
+    "./doppler/testing": "./src/doppler/testing.ts",
     "./github": "./src/github/index.ts",
     "./github/testing": "./src/github/testing.ts",
     "./infisical": "./src/infisical/index.ts",

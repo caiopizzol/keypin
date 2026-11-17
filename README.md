@@ -26,7 +26,7 @@ commands with the dev keys and publishes the prod keys. It reads a value only wh
 | --------- | ------------------ | --------------------- |
 | 1Password | GitHub Actions     | Resend                |
 | Infisical | Cloudflare Workers | Neon                  |
-|           | Vercel projects    | OpenAI                |
+| Doppler   | Vercel projects    | OpenAI                |
 |           | Supabase Functions | Supabase              |
 |           | Netlify projects   | Cloudflare API tokens |
 
@@ -123,7 +123,8 @@ npx skills add caiopizzol/keypin -g    # all your projects
 - [Configuration](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md): every field in
   `keypin.toml`
 - [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md): moving an env file's values into 1Password
-- [Infisical](https://github.com/caiopizzol/keypin/blob/main/docs/infisical.md): reading keys from Infisical instead
+- [Infisical](https://github.com/caiopizzol/keypin/blob/main/docs/infisical.md) and
+  [Doppler](https://github.com/caiopizzol/keypin/blob/main/docs/doppler.md): reading keys from them instead
 - [Service account](https://github.com/caiopizzol/keypin/blob/main/docs/service-account.md): 1Password on a server or
   in CI
 - [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md): destinations, approvals and

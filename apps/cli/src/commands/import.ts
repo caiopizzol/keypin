@@ -498,9 +498,10 @@ async function readTarget(deps: Deps, request: Request): Promise<Target> {
   if (!parsed.ok) throw new Error(`fix ${file} first: ${parsed.errors.join("; ")}`);
   const pinned = parsed.map.pins["1password"];
   const account = typeof pinned === "string" ? pinned : request.account;
-  if (pinned === undefined && parsed.map.pins.infisical)
+  const other = deps.vaults.find((vault) => parsed.map.pins[vault.kind] !== undefined);
+  if (pinned === undefined && other)
     throw new Error(
-      `import creates 1Password items, and ${file} reads from Infisical; add the secrets in Infisical and map them with infisical:// references (docs/infisical.md)`,
+      `import creates 1Password items, and ${file} reads from ${other.name}; ${other.addByHand?.(parsed.map) ?? `add the secrets in ${other.name} and map them with ${other.scheme} references`}`,
     );
   if (!account)
     throw new UsageError(

@@ -16,6 +16,8 @@ import { resendFetch } from "@keypin/connectors/resend/testing";
 import { supabaseFetch, type SupabaseWorld } from "@keypin/connectors/supabase/testing";
 import { credentialsFrom, infisicalBackend } from "@keypin/connectors/infisical";
 import { fileStore, infisicalFetch } from "@keypin/connectors/infisical/testing";
+import { dopplerBackend, tokenFrom } from "@keypin/connectors/doppler";
+import { dopplerFetch, fileStore as dopplerStore } from "@keypin/connectors/doppler/testing";
 import { cli } from "../../src/cli";
 import { onePasswordFrom } from "../../src/sign-in";
 import { destinations, issuer, realDeps } from "../../src/start";
@@ -215,7 +217,23 @@ const infisical = infisicalBackend(
     ),
   ),
 );
-const vault = routedVault({ "1password": () => signedIn().vault, infisical: () => infisical });
+const DOPPLER = join(sandbox, "doppler.json");
+const doppler = dopplerBackend(
+  tokenFrom(process.env),
+  dopplerFetch(
+    run.doppler ?? { workplace: "", projects: {}, tokens: {} },
+    dopplerStore(
+      () => (existsSync(DOPPLER) ? readFileSync(DOPPLER, "utf8") : null),
+      (text) => writeFileSync(DOPPLER, text),
+      effect,
+    ),
+  ),
+);
+const vault = routedVault({
+  "1password": () => signedIn().vault,
+  infisical: () => infisical,
+  doppler: () => doppler,
+});
 
 const resend = resendFetch({
   admin: RESEND_ADMIN,

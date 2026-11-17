@@ -34,6 +34,7 @@ import {
   tokenClient,
 } from "@keypin/connectors/onepassword";
 import { credentialsFrom, infisicalBackend, infisicalVault } from "@keypin/connectors/infisical";
+import { dopplerBackend, dopplerVault, tokenFrom } from "@keypin/connectors/doppler";
 import { cli } from "./cli";
 import type { Deps, Publisher } from "./deps";
 import {
@@ -59,6 +60,7 @@ let onePassword: ReturnType<typeof onePasswordFrom> | undefined;
 const cloudflareLogins = new Map<string, CloudflareSignIn>();
 const cloudflareReaders = new Map<string, CloudflareReader>();
 let infisical: ReturnType<typeof infisicalBackend> | undefined;
+let doppler: ReturnType<typeof dopplerBackend> | undefined;
 
 export const destinations = [
   githubActions,
@@ -67,7 +69,7 @@ export const destinations = [
   supabaseFunctions,
   netlifyProject,
 ];
-export const vaults = [infisicalVault, onePasswordVault];
+export const vaults = [infisicalVault, dopplerVault, onePasswordVault];
 export const signInNames = signInVariables([...vaults, ...destinations]);
 
 export function destination(target: PublishTarget, publisher: Publisher): Destination {
@@ -109,6 +111,7 @@ function workerReader(folder: string): CloudflareReader {
 const vault = routedVault({
   "1password": () => signedIn().vault,
   infisical: () => (infisical ??= infisicalBackend(credentialsFrom(process.env))),
+  doppler: () => (doppler ??= dopplerBackend(tokenFrom(process.env))),
 });
 
 async function ask(question: string): Promise<string> {

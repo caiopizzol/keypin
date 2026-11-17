@@ -29,6 +29,12 @@ const COMMAND_USAGE: [string, string][] = [
 `,
   ],
   [
+    "status",
+    `  keypin status --write    write each of this project's rotated dates to .keypin/status.json,
+                           for the hosted console; never a value
+`,
+  ],
+  [
     "check",
     `  keypin check [folder] [--json]
                            report a project without writing anything: each mapped item exists,

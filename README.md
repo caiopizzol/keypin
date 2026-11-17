@@ -29,6 +29,7 @@ commands with the dev keys and publishes the prod keys. It reads a value only wh
 |           | Vercel projects    | OpenAI                |
 |           | Supabase Functions | Supabase              |
 |           | Netlify projects   | Cloudflare API tokens |
+|           |                    | OpenRouter            |
 
 Want another? Vote for it on the [roadmap](https://github.com/caiopizzol/keypin/issues/138).
 

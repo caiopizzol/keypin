@@ -23,6 +23,7 @@ import { ghToken, githubActions, listRepoSecrets, sshHostname } from "@keypin/co
 import { neonIssuer } from "@keypin/connectors/neon";
 import { netlifyProject } from "@keypin/connectors/netlify";
 import { openaiIssuer } from "@keypin/connectors/openai";
+import { openrouterIssuer } from "@keypin/connectors/openrouter";
 import { resendIssuer } from "@keypin/connectors/resend";
 import { supabaseFunctions, supabaseIssuer } from "@keypin/connectors/supabase";
 import { vercelProject } from "@keypin/connectors/vercel";
@@ -74,7 +75,14 @@ export function destination(target: PublishTarget, publisher: Publisher): Destin
   return connectTo<Publisher>(destinations, target, publisher);
 }
 
-export const issuers = [resendIssuer, neonIssuer, openaiIssuer, supabaseIssuer, cloudflareIssuer];
+export const issuers = [
+  resendIssuer,
+  neonIssuer,
+  openaiIssuer,
+  supabaseIssuer,
+  cloudflareIssuer,
+  openrouterIssuer,
+];
 
 export function issuer(spec: IssuerSpec, admin: Secret, fetch?: Fetch): Issuer {
   return connectIssuer(issuers, spec, admin, fetch);

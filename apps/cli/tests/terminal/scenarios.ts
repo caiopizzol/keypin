@@ -3,6 +3,7 @@ import { localDay } from "@keypin/core";
 import type { FakeToken } from "@keypin/connectors/cloudflare/testing";
 import type { FakeInfisical } from "@keypin/connectors/infisical/testing";
 import type { FakeOpenAIKey } from "@keypin/connectors/openai/testing";
+import type { FakeOpenRouterKey } from "@keypin/connectors/openrouter/testing";
 import type { SupabaseKey } from "@keypin/connectors/supabase/testing";
 
 export interface FakeItem {
@@ -30,6 +31,7 @@ export interface Scenario {
   openai?: { keys: FakeOpenAIKey[]; loseCreated?: boolean };
   supabase?: { keys: SupabaseKey[]; loseCreated?: boolean; prefixOnly?: boolean };
   cloudflareTokens?: { tokens: FakeToken[]; loseCreated?: boolean };
+  openrouter?: { keys: FakeOpenRouterKey[] };
   registered: boolean;
   git: { origin?: string; account?: string };
   onePassword: {
@@ -324,6 +326,50 @@ const openai: Scenario = {
     },
   },
   openai: { keys: [{ id: "key_old", name: "prod", value: OPENAI_OLD, owner: OPENAI_BOT }] },
+};
+
+const OPENROUTER_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.OPENROUTER_API_KEY]
+rotate_every = "90d"
+
+[keys.OPENROUTER_API_KEY.prod]
+from = "op://Private/chat openrouter key/credential"
+
+[keys.OPENROUTER_API_KEY.prod.issuer]
+kind = "openrouter"
+admin = "op://Private/openrouter management key/credential"
+
+[[keys.OPENROUTER_API_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`;
+
+export const OPENROUTER_ADMIN = "sk-or-v1-verify-management-key-4b7e";
+export const OPENROUTER_PREFIX = "sk-or-v1-verify-new-";
+const OPENROUTER_OLD = "sk-or-v1-verify-old-key-8d3c";
+
+const openrouter: Scenario = {
+  ...ready,
+  about:
+    'OPENROUTER_API_KEY has an OpenRouter issuer; the vault holds key "chat" with a $25 monthly limit, and keypin has never rotated it',
+  files: { "keypin.toml": OPENROUTER_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          { title: "chat openrouter key", value: OPENROUTER_OLD, rotated: day(-95) },
+          { title: "openrouter management key", value: OPENROUTER_ADMIN },
+        ],
+      },
+    },
+  },
+  openrouter: {
+    keys: [
+      { hash: "hash_old", name: "chat", value: OPENROUTER_OLD, limit: 25, limitReset: "monthly" },
+    ],
+  },
 };
 
 const SUPABASE_MAP = `[1password]
@@ -810,6 +856,14 @@ jobs:
     about: "openai, but the network drops OpenAI's reply after it creates the new key",
     openai: { ...openai.openai, keys: openai.openai?.keys ?? [], loseCreated: true },
   },
+  openrouter,
+  "openrouter-disabled": {
+    ...openrouter,
+    about: "openrouter, but the vault's key is disabled at OpenRouter",
+    openrouter: {
+      keys: [{ hash: "hash_old", name: "chat", value: OPENROUTER_OLD, limit: 25, disabled: true }],
+    },
+  },
   fresh: {
     ...ready,
     about: "an empty git repository: no keypin.toml, not registered, nothing signed in",
@@ -853,6 +907,7 @@ export function valuesOf(scenario: Scenario): string[] {
     ...(scenario.neon ? [NEON_PREFIX, ...Object.values(scenario.neon.roles)] : []),
     ...(scenario.openai ? [OPENAI_PREFIX] : []),
     ...(scenario.cloudflareTokens ? [CLOUDFLARE_PREFIX] : []),
+    ...(scenario.openrouter ? [OPENROUTER_PREFIX] : []),
   ];
   return [
     ...items.map((item) => item.value),

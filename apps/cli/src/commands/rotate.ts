@@ -80,6 +80,7 @@ interface Job {
   spec: IssuerSpec;
   owner: KeyOwner;
   pair: Pair | null;
+  keyNamed: (name: string) => KeyEntry | undefined;
   yes: boolean;
   plan: boolean;
   args: string[];
@@ -150,6 +151,7 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
     spec,
     owner,
     pair,
+    keyNamed: (name: string) => map.keys.find((k) => k.name === name),
     yes: values.yes,
     plan: values.plan,
     args,
@@ -209,6 +211,10 @@ async function rotateLocked(job: Job): Promise<number> {
   const pairNow = read.pair ? await pairPlan(read.pair.secret) : null;
   const recorded = issuedFor(state, owner);
   const linked = (recorded?.idKey ?? null) === (job.pair?.key.name ?? null);
+  if (recorded && !linked && recorded.idKey && (await idUnfinished(job, recorded, inputFor))) {
+    say(movedId(recorded.idKey, job));
+    return 1;
+  }
   const idSaved =
     !read.pair || !recorded || !linked || read.pair.secret.equals(new Secret(recorded.id));
   const counted = linked ? [...unpublished, ...(pairNow?.steps ?? [])] : unpublished;
@@ -459,6 +465,19 @@ async function revokeOrphan(job: Job, issuer: Issuer, id: string): Promise<boole
     );
     return false;
   }
+}
+
+async function idUnfinished(
+  { owner, keyNamed }: Job,
+  recorded: Issued,
+  inputFor: (of: KeyEntry) => PlanInput,
+): Promise<boolean> {
+  const idKey = recorded.idKey === undefined ? undefined : keyNamed(recorded.idKey);
+  if (!idKey?.environments[owner.environment]) return true;
+  const generation = await generationOf(new Secret(recorded.id));
+  return planPublish({ ...inputFor(idKey), generation, ids: null }).steps.some(
+    (step) => step.action !== "skip",
+  );
 }
 
 function movedId(recorded: string | null, { key, pair }: Job): string {

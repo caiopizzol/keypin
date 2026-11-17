@@ -252,7 +252,7 @@ describe("keypin rotate: a key whose ID is another key", () => {
     const rerun = first.again({ answers: ["y", "y"] });
     expect(await rerun.rotate()).toBe(0);
     expect(rerun.stderr.text).toContain(
-      "  - Keys                  revoke key AKID-1, which keypin created on 2026-11-09T15:00:00.000Z but never saved",
+      `  - Keys                  revoke key AKID-1, which keypin created on ${rerun.deps.now().toISOString()} but never saved`,
     );
     expect(rerun.issuer.log.slice(-4)).toEqual([
       "check AKID-0",
@@ -396,6 +396,35 @@ ${PUBLISH}
       'Stopped: keypin is part way through rotating API_SECRET with its ID in API_KEY_ID, and the map now names OTHER_ID. To finish, set key_id back to "API_KEY_ID" and run this again. Nothing was created.',
     );
     expect(moved.issuer.log.slice(2)).toEqual([]);
+  });
+
+  test("with nothing left to revoke, moving key_id before the ID reached every destination stops instead of creating another key", async () => {
+    const vault = writableVault({ ...VALUES, "other id": "AKID-0" });
+    const first = setup({
+      vault,
+      gone: "AKID-0",
+      failName: { place: GITHUB, name: "API_KEY_ID" },
+      answers: ["y"],
+    });
+    expect(await first.rotate()).toBe(1);
+    first.disk.contents.set(
+      "/work/billing/keypin.toml",
+      `${MAP.replace('key_id = "API_KEY_ID"', 'key_id = "OTHER_ID"')}
+[keys.OTHER_ID]
+rotate_every = "never"
+
+[keys.OTHER_ID.prod]
+from = "op://Private/other id/credential"
+${PUBLISH}
+`,
+    );
+    const moved = first.again({ answers: ["y", "y"] });
+    expect(await moved.rotate()).toBe(1);
+    expect(moved.stderr.text).toContain(
+      "Stopped: keypin is part way through rotating API_SECRET with its ID in API_KEY_ID",
+    );
+    expect(moved.issuer.log.slice(2)).toEqual([]);
+    expect([...moved.issuer.live]).not.toContain("AKID-2");
   });
 
   test("keypin rotate on the ID points to the key that rotates it", async () => {

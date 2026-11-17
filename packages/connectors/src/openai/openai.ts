@@ -50,6 +50,7 @@ export class OpenAIIssuer implements Issuer {
   #project = "";
   #serviceAccount = "";
   #lifetime: number | null = null;
+  readonly #names = new Map<string, string>();
 
   constructor(options: OpenAIIssuerOptions) {
     this.#admin = options.admin;
@@ -153,6 +154,12 @@ export class OpenAIIssuer implements Issuer {
     return { id: idOf(this.#serviceAccount, id), secret: new Secret(value) };
   }
 
+  label(id: string): string {
+    const parsed = parseId(id);
+    const name = parsed && this.#names.get(parsed.serviceAccount);
+    return parsed && name ? `${parsed.key} of service account ${name}` : id;
+  }
+
   lostCreate(name: string): string {
     return `OpenAI may have made the key before the reply was lost. Only this run uses the name "${name}": delete a key with that name in project ${this.#project} at ${DASHBOARD} before you run this again, or the rerun leaves it live.`;
   }
@@ -240,7 +247,10 @@ export class OpenAIIssuer implements Issuer {
       if (reply.status !== 200)
         throw failure("GET", "/organization/projects/<project_id>/api_keys", reply);
       const data = Array.isArray(reply.body.data) ? reply.body.data : [];
-      keys.push(...data.flatMap(projectKey));
+      for (const key of data.flatMap(projectKey)) {
+        keys.push(key);
+        this.#names.set(key.owner.id, key.owner.name);
+      }
       const last = reply.body.last_id ?? keys.at(-1)?.id;
       if (reply.body.has_more !== true || typeof last !== "string" || last === after) return keys;
       after = last;

@@ -174,13 +174,15 @@ async function rotateLocked(job: Job): Promise<number> {
     if (listed === null) return 1;
     if (listed) {
       say(
-        `\nStopped: Infisical still holds the change that saves key ${held.id} for approval. Nothing was created.`,
+        `\nStopped: Infisical still holds the change that saves key ${shown(issuer, held.id)} for approval. Nothing was created.`,
       );
       say(heldSteps(job, issuer, held.id));
       return NEEDS_APPROVAL;
     }
     say(
-      out.dim(`\nKey ${held.id} is gone from ${issuer.describe()}, so keypin creates a new one.`),
+      out.dim(
+        `\nKey ${shown(issuer, held.id)} is gone from ${issuer.describe()}, so keypin creates a new one.`,
+      ),
     );
     next = { action: "create", current: held.old.id, abandoned: null };
   }
@@ -205,7 +207,7 @@ async function rotateLocked(job: Job): Promise<number> {
     if (old.id !== null && !old.revoked)
       say(
         out.dim(
-          `\nkeypin didn't revoke key ${old.id}, the one key ${next.issued.id} replaced. If nothing uses it, delete it at ${issuer.dashboard()}.`,
+          `\nkeypin didn't revoke key ${shown(issuer, old.id)}, the one key ${shown(issuer, next.issued.id)} replaced. If nothing uses it, delete it at ${issuer.dashboard()}.`,
         ),
       );
     next = { action: "create", current: null, abandoned: null };
@@ -288,7 +290,7 @@ async function rotateLocked(job: Job): Promise<number> {
   state = recordIssued(state, issued);
   if (saved === "held") {
     say(
-      `Stopped. The new key ${created.id} at ${issuer.describe()} stays valid: the change holds it.`,
+      `Stopped. The new key ${shown(issuer, created.id)} at ${issuer.describe()} stays valid: the change holds it.`,
     );
     say(heldSteps(job, issuer, created.id));
     return NEEDS_APPROVAL;
@@ -296,7 +298,7 @@ async function rotateLocked(job: Job): Promise<number> {
   if (saved === "unknown") {
     const vault = vaultName(entry.ref, deps.vaults);
     say(
-      `Stopped: keypin can't tell whether ${vault} saved the new key ${created.id}. Run this again, and keypin picks up from what ${vault} holds:\n  ${commandLine(deps, "rotate", job.args)}`,
+      `Stopped: keypin can't tell whether ${vault} saved the new key ${shown(issuer, created.id)}. Run this again, and keypin picks up from what ${vault} holds:\n  ${commandLine(deps, "rotate", job.args)}`,
     );
     return 1;
   }
@@ -324,7 +326,7 @@ async function vaultTakesWrites({ entry, deps, out }: Job): Promise<boolean> {
 
 function heldSteps(job: Job, issuer: Issuer, id: string): string {
   const again = commandLine(job.deps, "rotate", withoutPlan(job.args));
-  return `Once someone approves it, run this again to publish the new key and revoke the old one:\n  ${again}\nIf the change is rejected or cancelled, delete key ${id} at ${issuer.dashboard()}, then run this again.`;
+  return `Once someone approves it, run this again to publish the new key and revoke the old one:\n  ${again}\nIf the change is rejected or cancelled, delete key ${shown(issuer, id)} at ${issuer.dashboard()}, then run this again.`;
 }
 
 async function issuerLists(
@@ -338,7 +340,7 @@ async function issuerLists(
     return check.ok && check.gone === undefined;
   } catch (error) {
     out.line(
-      `Stopped: couldn't check key ${id} at ${issuer.describe()}: ${messageOf(error)}. Nothing was created.`,
+      `Stopped: couldn't check key ${shown(issuer, id)} at ${issuer.describe()}: ${messageOf(error)}. Nothing was created.`,
     );
     return null;
   }
@@ -354,7 +356,7 @@ async function resume(
 ): Promise<number> {
   const { out, deps } = job;
   out.line(
-    `\nResuming: keypin created key ${issued.id} at ${ready.issuer.describe()} on ${issued.at}, and ${vaultName(job.entry.ref, job.deps.vaults)} holds it.`,
+    `\nResuming: keypin created key ${shown(ready.issuer, issued.id)} at ${ready.issuer.describe()} on ${issued.at}, and ${vaultName(job.entry.ref, job.deps.vaults)} holds it.`,
   );
   const published = steps.every((step) => step.action === "skip");
   if (published && !job.plan) return revokeOld(job, ready, issued, state);
@@ -441,27 +443,29 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
   const asked = job.args.filter((arg) => arg !== "--yes");
   const later = `To revoke it later, run this in a terminal:\n  ${commandLine(deps, "rotate", asked)}`;
   if (!deps.isTerminal) {
-    out.line(`The old key ${old} still works. Revoking it needs a y in a terminal.\n${later}`);
+    out.line(
+      `The old key ${shown(issuer, old)} still works. Revoking it needs a y in a terminal.\n${later}`,
+    );
     return NEEDS_APPROVAL;
   }
-  out.line(`The old key ${old} still works. Revoke it once nothing uses it.`);
+  out.line(`The old key ${shown(issuer, old)} still works. Revoke it once nothing uses it.`);
   if (!(await confirm(deps, `Revoke the old key at ${where}?`))) {
     out.line(later);
     return 0;
   }
   try {
     await out.step(
-      `${where}  revoking ${old}`,
+      `${where}  revoking ${shown(issuer, old)}`,
       () => issuer.revoke(old),
       (result) => ({
         ok: true,
-        text: `${where}  ${result === "revoked" ? "revoked" : "already gone:"} ${old}`,
+        text: `${where}  ${result === "revoked" ? "revoked" : "already gone:"} ${shown(issuer, old)}`,
       }),
     );
   } catch (error) {
     out.line(`    ${messageOf(error)}`);
     out.line(
-      `Stopped: the old key ${old} may still work. To try again, run:\n  ${commandLine(deps, "rotate", job.args)}`,
+      `Stopped: the old key ${shown(issuer, old)} may still work. To try again, run:\n  ${commandLine(deps, "rotate", job.args)}`,
     );
     return 1;
   }
@@ -476,13 +480,17 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
 function abandonedNote(old: Issued, issuer: Issuer, spec: IssuerSpec, vault: string): string {
   if (old.issuer !== spec.kind)
     return `keypin created key ${old.id} at ${old.issuer} on ${old.at}, before this key's issuer became ${issuer.describe()}. If nothing uses it, delete it at ${old.issuer}, not ${issuer.describe()}.`;
-  return `keypin created key ${old.id} at ${issuer.describe()} on ${old.at}, but ${vault} doesn't hold it. If nothing uses it, delete it at ${issuer.dashboard()}.`;
+  return `keypin created key ${shown(issuer, old.id)} at ${issuer.describe()} on ${old.at}, but ${vault} doesn't hold it. If nothing uses it, delete it at ${issuer.dashboard()}.`;
 }
 
 function revokeRow(issuer: Issuer, old: string | null, when: string, detail?: string): PlanRow {
   return old === null
     ? row("-", issuer.describe(), "the old key stays: keypin doesn't know its ID")
-    : row("-", issuer.describe(), `revoke the old key ${old}, ${when}`, detail);
+    : row("-", issuer.describe(), `revoke the old key ${shown(issuer, old)}, ${when}`, detail);
+}
+
+function shown(issuer: Issuer, id: string): string {
+  return issuer.label?.(id) ?? id;
 }
 
 function row(sign: PlanRow["sign"], place: string, why: string, detail?: string): PlanRow {
@@ -554,7 +562,7 @@ async function createKey(
     return await out.step(
       `${where}  creating ${name}`,
       () => issuer.create(name),
-      (created) => ({ ok: true, text: `${where}  created ${name} (${created.id})` }),
+      (created) => ({ ok: true, text: `${where}  created ${name} (${shown(issuer, created.id)})` }),
     );
   } catch (error) {
     out.line(`    ${messageOf(error)}`);
@@ -582,21 +590,21 @@ async function undoCreate(
   const unrecorded = `Stopped: ${stopped}`;
   try {
     await out.step(
-      `${where}  revoking the new key ${id}`,
+      `${where}  revoking the new key ${shown(issuer, id)}`,
       () => issuer.revoke(id),
-      () => ({ ok: true, text: `${where}  revoked the new key ${id}` }),
+      () => ({ ok: true, text: `${where}  revoked the new key ${shown(issuer, id)}` }),
     );
   } catch (error) {
     out.line(`    ${messageOf(error)}`);
     out.line(
-      `${unrecorded}. keypin couldn't revoke it either: delete key ${id} at ${issuer.dashboard()}. The old key still works.`,
+      `${unrecorded}. keypin couldn't revoke it either: delete key ${shown(issuer, id)} at ${issuer.dashboard()}. The old key still works.`,
     );
     return 1;
   }
   out.line(`${unrecorded}. Revoked it at ${where}. Nothing changed.`);
   await forget().catch((error: unknown) =>
     out.line(
-      `keypin couldn't update ${job.path}: ${messageOf(error)}. If the next run says to delete key ${id}, it's already revoked.`,
+      `keypin couldn't update ${job.path}: ${messageOf(error)}. If the next run says to delete key ${shown(issuer, id)}, it's already revoked.`,
     ),
   );
   return 1;

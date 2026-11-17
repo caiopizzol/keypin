@@ -344,6 +344,22 @@ describe("revoke", () => {
   });
 });
 
+describe("label", () => {
+  test("names the key's service account once the project's keys are listed", async () => {
+    const { issuer } = openai();
+    expect(issuer.label("svc_bot/key_old")).toBe("svc_bot/key_old");
+    await issuer.checkAccount(null, new Secret(VAULT));
+    expect(issuer.label("svc_bot/key_old")).toBe("key_old of service account billing-bot");
+  });
+
+  test("an unknown service account keeps the stored ID", async () => {
+    const { issuer } = openai();
+    await issuer.checkAccount(null, new Secret(VAULT));
+    expect(issuer.label("svc_gone/key_x")).toBe("svc_gone/key_x");
+    expect(issuer.label("key_x")).toBe("key_x");
+  });
+});
+
 describe("the fake's redacted value", () => {
   test("keeps the prefix and the last four characters, as OpenAI does", () => {
     expect(redacted("sk-proj-abcdefgh1234")).toBe("sk-proj-********1234");

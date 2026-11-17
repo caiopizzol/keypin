@@ -548,7 +548,12 @@ describe("keypin rotate in a real terminal", () => {
       expect(result.screen).toContain(
         "  + OpenAI                create a new key\n    for service account billing-bot, with all permissions",
       );
-      expect(result.screen).toMatch(/^✓ OpenAI {2}revoked svc_verify\/key_old {2}\d+\.\ds$/m);
+      expect(result.screen).toContain(
+        "  - OpenAI                revoke the old key key_old of service account billing-bot, after a second y",
+      );
+      expect(result.screen).toMatch(
+        /^✓ OpenAI {2}revoked key_old of service account billing-bot {2}\d+\.\ds$/m,
+      );
       expect(result.effects).toEqual([
         "openai create key_new1 for svc_verify",
         "1password update my.1password.com/Private/billing openai key (28 chars)",

@@ -82,6 +82,42 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
+    "publish to Supabase Edge Function secrets says functions read it with no redeploy",
+    async () => {
+      const result = await drive({
+        scenario: "supabase-functions",
+        args: ["publish", "STRIPE_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  + Supabase  abcdefghijklmnopqrst  first write  needs approval",
+      );
+      expect(result.screen).toContain(
+        "    Edge Functions read the new value at once, with no redeploy",
+      );
+      expect(result.effects).toEqual([
+        "destination write supabase-functions:abcdefghijklmnopqrst STRIPE_KEY (23 chars)",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "check without KEYPIN_SUPABASE_ACCESS_TOKEN says how to sign in to Supabase",
+    async () => {
+      const result = await drive({ scenario: "supabase-functions-no-token", args: ["check"] });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("1 Sign in to Supabase");
+      expect(result.screen).toContain("KEYPIN_SUPABASE_ACCESS_TOKEN, which isn't set");
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "publish to Vercel says new values need a new deployment, and triggers none",
     async () => {
       const result = await drive({

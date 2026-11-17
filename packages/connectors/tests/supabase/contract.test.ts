@@ -1,8 +1,14 @@
 import { describe, expect, test } from "vite-plus/test";
 import { Secret } from "@keypin/core";
-import { issuerContract } from "@keypin/core/testing";
-import { SupabaseIssuer } from "../../src/supabase/index";
-import { type FakeSupabase, memoryWorld, supabaseFetch } from "../../src/supabase/testing";
+import { destinationContract, issuerContract } from "@keypin/core/testing";
+import { SupabaseIssuer, SupabaseSecretsDestination } from "../../src/supabase/index";
+import {
+  type FakeSecrets,
+  type FakeSupabase,
+  memoryWorld,
+  secretsFetch,
+  supabaseFetch,
+} from "../../src/supabase/testing";
 
 const REF = "abcdefghijklmnopqrst";
 const VAULT = "sb_secret_vaultkey12345_9a7f";
@@ -36,6 +42,29 @@ describe("the issuer contract", () => {
       effects,
       failCreate: () => {
         fake.failCreate = 500;
+      },
+    };
+  });
+});
+
+describe("the destination contract", () => {
+  destinationContract(() => {
+    const fake: FakeSecrets = { token: "sbp_fake", username: "alice", projects: { [REF]: {} } };
+    const supabase = secretsFetch(fake);
+    return {
+      destination: new SupabaseSecretsDestination({
+        projectRef: REF,
+        token: async () => "sbp_fake",
+        fetch: supabase.fetch,
+      }),
+      name: "API_KEY",
+      effects: supabase.effects,
+      received: (name) => fake.projects[REF]?.[name],
+      refuse: () => {
+        fake.projects = {};
+      },
+      breakWrites: () => {
+        fake.failWrites = 400;
       },
     };
   });

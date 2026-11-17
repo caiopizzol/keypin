@@ -117,7 +117,7 @@ the key is due.
 ## Rotating a key
 
 Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key, at Resend, [Neon](#neon),
-[OpenAI](#openai), [Supabase](#supabase) or [Cloudflare](#cloudflare):
+[OpenAI](#openai), [Supabase](#supabase), [Cloudflare](#cloudflare) or [Google Cloud](#google-cloud):
 
 ```toml
 [keys.RESEND_API_KEY.prod]
@@ -239,3 +239,24 @@ its own 1Password item. For an account API token (`cfat_`), add `account_id` and
 
 keypin finds the vault's token with Cloudflare's verify endpoint, makes a new token with the same policies, IP
 filter and lifetime (and its start date, if still ahead), then deletes the old one. It doesn't use Roll, which stops the old token at once.
+
+### Google Cloud
+
+For Google API keys such as `GEMINI_API_KEY`, `GOOGLE_MAPS_API_KEY` or `YOUTUBE_API_KEY`:
+
+```toml
+[keys.GOOGLE_MAPS_API_KEY.prod]
+from = "op://Private/maps api key/credential"
+
+[keys.GOOGLE_MAPS_API_KEY.prod.issuer]
+kind = "google"
+admin = "op://Private/google key maker/credential"
+```
+
+`admin` is a service account's [JSON key](https://cloud.google.com/iam/docs/keys-create-delete), the whole file, in
+its own 1Password item. Give the service account **API Keys Admin** (`roles/serviceusage.apiKeysAdmin`) on the
+key's project, and turn on the API Keys API in the service account's project. keypin doesn't use gcloud logins.
+
+keypin finds the vault's key from its value, makes a key in the same project with the same name, API restrictions
+and application restrictions (websites, IP addresses, Android or iOS apps), then deletes the old one. A key with no
+restrictions gets a key with none. Google Cloud keeps a deleted key for 30 days, so you can restore it.

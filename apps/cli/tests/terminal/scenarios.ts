@@ -1,6 +1,7 @@
 import { envValues } from "@keypin/core";
 import { localDay } from "@keypin/core";
 import type { FakeToken } from "@keypin/connectors/cloudflare/testing";
+import type { FakeGoogleKey } from "@keypin/connectors/google/testing";
 import type { FakeInfisical } from "@keypin/connectors/infisical/testing";
 import type { FakeOpenAIKey } from "@keypin/connectors/openai/testing";
 import type { SupabaseKey } from "@keypin/connectors/supabase/testing";
@@ -30,6 +31,7 @@ export interface Scenario {
   openai?: { keys: FakeOpenAIKey[]; loseCreated?: boolean };
   supabase?: { keys: SupabaseKey[]; loseCreated?: boolean; prefixOnly?: boolean };
   cloudflareTokens?: { tokens: FakeToken[]; loseCreated?: boolean };
+  google?: { keys: FakeGoogleKey[]; pendingPolls?: number };
   registered: boolean;
   git: { origin?: string; account?: string };
   onePassword: {
@@ -439,6 +441,61 @@ const cloudflareTokens: Scenario = {
   },
 };
 
+const GOOGLE_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.GOOGLE_MAPS_API_KEY]
+rotate_every = "90d"
+
+[keys.GOOGLE_MAPS_API_KEY.prod]
+from = "op://Private/maps api key/credential"
+
+[keys.GOOGLE_MAPS_API_KEY.prod.issuer]
+kind = "google"
+admin = "op://Private/google key maker/credential"
+
+[[keys.GOOGLE_MAPS_API_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`;
+
+export const GOOGLE_ADMIN = "verify-google-admin-key-id-7f3a";
+export const GOOGLE_EMAIL = "keypin@acme-admin.iam.gserviceaccount.com";
+export const GOOGLE_PREFIX = "AIzaSyVerifyNewVerifyNew";
+const GOOGLE_OLD = "AIzaSyVerifyOldVerifyOldVerifyOld000001";
+
+const google: Scenario = {
+  ...ready,
+  about:
+    'GOOGLE_MAPS_API_KEY has a Google Cloud issuer; the vault holds key "Maps web", limited to the Maps API and two websites',
+  files: { "keypin.toml": GOOGLE_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          { title: "maps api key", value: GOOGLE_OLD, rotated: day(-95) },
+          { title: "google key maker", value: GOOGLE_ADMIN },
+        ],
+      },
+    },
+  },
+  google: {
+    keys: [
+      {
+        name: "projects/acme-prod/locations/global/keys/maps-web",
+        value: GOOGLE_OLD,
+        displayName: "Maps web",
+        restrictions: {
+          apiTargets: [{ service: "maps-backend.googleapis.com" }],
+          browserKeyRestrictions: {
+            allowedReferrers: ["https://acme.example/*", "*.acme.example/*"],
+          },
+        },
+      },
+    ],
+  },
+};
+
 const infisical: Scenario = {
   ...ready,
   about:
@@ -790,6 +847,24 @@ jobs:
       },
     },
   },
+  google,
+  "google-user-login": {
+    ...google,
+    about: "google, but the admin item holds a gcloud user login, not a service account key",
+    onePassword: {
+      accounts: {
+        "my.1password.com": {
+          Private: [
+            { title: "maps api key", value: GOOGLE_OLD, rotated: day(-95) },
+            {
+              title: "google key maker",
+              value: JSON.stringify({ type: "authorized_user", client_id: "verify-client-id" }),
+            },
+          ],
+        },
+      },
+    },
+  },
   openai,
   "openai-user-key": {
     ...openai,
@@ -853,6 +928,7 @@ export function valuesOf(scenario: Scenario): string[] {
     ...(scenario.neon ? [NEON_PREFIX, ...Object.values(scenario.neon.roles)] : []),
     ...(scenario.openai ? [OPENAI_PREFIX] : []),
     ...(scenario.cloudflareTokens ? [CLOUDFLARE_PREFIX] : []),
+    ...(scenario.google ? [GOOGLE_PREFIX] : []),
   ];
   return [
     ...items.map((item) => item.value),

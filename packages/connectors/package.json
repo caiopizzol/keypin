@@ -7,6 +7,8 @@
     "./cloudflare/testing": "./src/cloudflare/testing.ts",
     "./github": "./src/github/index.ts",
     "./github/testing": "./src/github/testing.ts",
+    "./google": "./src/google/index.ts",
+    "./google/testing": "./src/google/testing.ts",
     "./infisical": "./src/infisical/index.ts",
     "./infisical/testing": "./src/infisical/testing.ts",
     "./neon": "./src/neon/index.ts",

@@ -96,6 +96,7 @@ export interface Issuer {
   create(name: string): Promise<IssuedKey>;
   lostCreate?(name: string): string;
   revoke(id: string): Promise<"revoked" | "already gone">;
+  label?(id: string): string;
 }
 
 export interface Receipt {

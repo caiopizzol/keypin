@@ -208,19 +208,18 @@ async function rotateLocked(job: Job): Promise<number> {
       : null;
   const pairNow = read.pair ? await pairPlan(read.pair.secret) : null;
   const recorded = issuedFor(state, owner);
-  const idSaved = !read.pair || !recorded || read.pair.secret.equals(new Secret(recorded.id));
+  const linked = (recorded?.idKey ?? null) === (job.pair?.key.name ?? null);
+  const idSaved =
+    !read.pair || !recorded || !linked || read.pair.secret.equals(new Secret(recorded.id));
+  const counted = linked ? [...unpublished, ...(pairNow?.steps ?? [])] : unpublished;
   let next = nextRotation({
     issued: recorded,
     issuer: spec.kind,
     generation,
-    published: [...unpublished, ...(pairNow?.steps ?? [])].every((step) => step.action === "skip"),
+    published: counted.every((step) => step.action === "skip"),
     idSaved,
   });
-  if (
-    next.action === "resume" &&
-    (next.issued.idKey ?? null) !== (job.pair?.key.name ?? null) &&
-    !finished(next.issued, unpublished)
-  ) {
+  if (next.action === "resume" && !linked) {
     say(movedId(next.issued.idKey ?? null, job));
     return 1;
   }
@@ -295,7 +294,8 @@ async function rotateLocked(job: Job): Promise<number> {
     say(
       `\n${out.dim(abandonedNote(next.abandoned, issuer, spec, vaultName(entry.ref, deps.vaults)))}`,
     );
-  const current = check.gone === undefined ? (inVault ?? check.currentId ?? null) : null;
+  const known = job.pair ? check.currentId : (next.current ?? check.currentId);
+  const current = check.gone === undefined ? (known ?? null) : null;
   const steps = planNewValue(input, read.ids);
   const pairSteps = pairInput ? planNewValue(pairInput, read.pair?.ids ?? null) : [];
   say("\nPlan");
@@ -403,11 +403,6 @@ async function rotateLocked(job: Job): Promise<number> {
     { steps, pairSteps, idSaved: true },
     state,
   );
-}
-
-function finished(issued: Issued, steps: PlanStep[]): boolean {
-  const revoked = issued.old.revoked || issued.old.id === null;
-  return revoked && steps.every((step) => step.action === "skip");
 }
 
 async function itemIdsAfterSave({

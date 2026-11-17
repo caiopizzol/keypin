@@ -29,7 +29,7 @@ commands with the dev keys and publishes the prod keys. It reads a value only wh
 | Bitwarden | Vercel projects    | OpenAI                |
 | Doppler   | Supabase Functions | Supabase              |
 |           | Netlify projects   | Cloudflare API tokens |
-|           |                    | OpenRouter            |
+|           | Convex deployments | OpenRouter            |
 |           |                    | Google Cloud API keys |
 
 Want another? Vote for it on the [roadmap](https://github.com/caiopizzol/keypin/issues/138).

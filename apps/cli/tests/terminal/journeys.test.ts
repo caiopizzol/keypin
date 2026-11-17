@@ -190,6 +190,40 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
+    "publish to Convex says every subscription is invalidated",
+    async () => {
+      const result = await drive({
+        scenario: "convex",
+        args: ["publish", "STRIPE_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain("  + Convex  happy-animal-123  first write  needs approval");
+      expect(result.screen).toContain(
+        "    Convex invalidates every subscription when a variable changes; cron definitions read it only on the next deploy",
+      );
+      expect(result.effects).toEqual([
+        "destination write convex-deployment:happy-animal-123.convex.cloud STRIPE_KEY (23 chars)",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "check without KEYPIN_CONVEX_DEPLOY_KEY says how to sign in to Convex",
+    async () => {
+      const result = await drive({ scenario: "convex-no-key", args: ["check"] });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("1 Sign in to Convex");
+      expect(result.screen).toContain("KEYPIN_CONVEX_DEPLOY_KEY, which isn't set");
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "publish answered with anything but y writes nothing and exits 3",
     async () => {
       for (const answer of ["n", "", "yess"]) {

@@ -88,6 +88,11 @@ const NETLIFY_MAP = MAP.replace(
   'to = "netlify-project"\nteam = "acme"\nproject = "billing.netlify.app"\ncontext = "production"',
 );
 
+const CONVEX_MAP = MAP.replace(
+  'to = "github-actions"\nrepo = "acme/billing"',
+  'to = "convex-deployment"\nurl = "https://happy-animal-123.convex.cloud"',
+);
+
 const WORKFLOW = `on: push
 jobs:
   deploy:
@@ -935,6 +940,27 @@ jobs:
         check: {
           reason:
             "keypin signs in to Netlify with KEYPIN_NETLIFY_TOKEN, which isn't set. Create a personal access token at https://app.netlify.com/user/applications#personal-access-tokens and set KEYPIN_NETLIFY_TOKEN; keypin doesn't read the netlify login",
+          publisher: "unknown",
+          destinationAccount: null,
+        },
+      },
+    },
+  },
+  convex: {
+    ...ready,
+    about: "ready, but STRIPE_KEY publishes to a Convex deployment's environment variables",
+    files: { "keypin.toml": CONVEX_MAP },
+    env: { KEYPIN_CONVEX_DEPLOY_KEY: "prod:happy-animal-123|verify-convex-key-61c2" },
+  },
+  "convex-no-key": {
+    ...ready,
+    about: "convex, but KEYPIN_CONVEX_DEPLOY_KEY isn't set",
+    files: { "keypin.toml": CONVEX_MAP },
+    places: {
+      "convex-deployment:happy-animal-123.convex.cloud": {
+        check: {
+          reason:
+            "keypin signs in to Convex with KEYPIN_CONVEX_DEPLOY_KEY, which isn't set. Generate a deploy key with deployment:env:write in the deployment's settings (https://dashboard.convex.dev/deployment/settings) and set KEYPIN_CONVEX_DEPLOY_KEY; keypin doesn't read the npx convex login",
           publisher: "unknown",
           destinationAccount: null,
         },

@@ -29,6 +29,9 @@ It writes Netlify variables as secrets with `KEYPIN_NETLIFY_TOKEN`, one value pe
 redeploy after publishing; keypin doesn't. It stops rather than write to a variable not marked as secret. It leaves
 other contexts and branch values alone. For `netlify dev`, run `keypin run -- netlify dev`.
 
+It writes Convex environment variables with `KEYPIN_CONVEX_DEPLOY_KEY`, a deploy key for the one deployment in
+`url`. Changing a variable invalidates every subscription. Cron definitions read it only on the next deploy.
+
 ## Steps
 
 1. **Accounts:** it checks that each login reaches the account the map pins, and stops if one doesn't.

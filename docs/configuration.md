@@ -91,6 +91,10 @@ to = "netlify-project"
 team = "<team slug>"
 project = "my-project.netlify.app"
 context = "production"
+
+[[keys.API_TOKEN.prod.publish]]
+to = "convex-deployment"
+url = "https://happy-animal-123.convex.cloud"
 ```
 
 GitHub reserves secret names that start with `GITHUB_`. Add `environment = "production"` to write a secret of that
@@ -107,6 +111,8 @@ The map says where a key goes, not who writes it, so every teammate publishes fr
   the project. keypin doesn't read the `supabase` login or `SUPABASE_ACCESS_TOKEN`.
 - **Netlify:** a personal access token in `KEYPIN_NETLIFY_TOKEN`, from a member of the `team`. keypin doesn't read
   the `netlify` login or `NETLIFY_AUTH_TOKEN`.
+- **Convex:** a deploy key for the deployment in `url`, with `deployment:env:write`, in `KEYPIN_CONVEX_DEPLOY_KEY`.
+  keypin doesn't read the `npx convex` login or `CONVEX_DEPLOY_KEY`.
 
 ## Vault items
 

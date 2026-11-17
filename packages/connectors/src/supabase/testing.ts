@@ -97,3 +97,53 @@ export function memoryWorld(keys: SupabaseKey[]) {
   let world: SupabaseWorld = { keys: [...keys], created: 0 };
   return { load: () => world, save: (next: SupabaseWorld) => void (world = next) };
 }
+
+export interface FakeSecrets {
+  token: string;
+  username: string | null;
+  projects: Record<string, Record<string, string>>;
+  readOnly?: boolean;
+  failWrites?: number;
+}
+
+export function secretsFetch(fake: FakeSecrets) {
+  const effects: string[] = [];
+  const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
+  const fetch: Fetch = async (url, init) => {
+    const { pathname } = new URL(url);
+    if (init.headers.Authorization !== `Bearer ${fake.token}`)
+      return reply(401, { message: "Unauthorized" });
+    if (pathname === "/v1/profile")
+      return fake.username === null
+        ? reply(403, { message: "Forbidden resource" })
+        : reply(200, { gotrue_id: "u1", primary_email: "a@example.com", username: fake.username });
+    const [, ref = ""] = /^\/v1\/projects\/([^/]+)\/secrets$/.exec(pathname) ?? [];
+    const secrets = fake.projects[decodeURIComponent(ref)];
+    if (!secrets) return reply(403, { message: "Forbidden resource" });
+    if (init.method === "GET")
+      return reply(
+        200,
+        Object.keys(secrets).map((name) => ({ name, value: `digest-${name.length}` })),
+      );
+    if (init.method !== "POST") return reply(405, { message: "Method not allowed" });
+    if (fake.readOnly) return reply(403, { message: "Forbidden resource" });
+    const sent: unknown = JSON.parse(init.body ?? "[]");
+    const items = Array.isArray(sent) ? sent.filter(isRecord) : [];
+    if (fake.failWrites !== undefined)
+      return reply(fake.failWrites, {
+        message: `could not store ${items.map((i) => String(i.value)).join(", ")}`,
+      });
+    if (
+      !items.length ||
+      items.some((i) => typeof i.name !== "string" || i.name.startsWith("SUPABASE_"))
+    )
+      return reply(400, { message: "Secret name must not start with the SUPABASE_ prefix." });
+    for (const { name, value } of items) {
+      const verb = Object.hasOwn(secrets, String(name)) ? "update" : "create";
+      secrets[String(name)] = String(value);
+      effects.push(`supabase secret ${verb} ${ref} ${String(name)}`);
+    }
+    return reply(201, null);
+  };
+  return { fetch, effects };
+}

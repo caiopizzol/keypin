@@ -24,7 +24,7 @@ import { neonIssuer } from "@keypin/connectors/neon";
 import { netlifyProject } from "@keypin/connectors/netlify";
 import { openaiIssuer } from "@keypin/connectors/openai";
 import { resendIssuer } from "@keypin/connectors/resend";
-import { supabaseIssuer } from "@keypin/connectors/supabase";
+import { supabaseFunctions, supabaseIssuer } from "@keypin/connectors/supabase";
 import { vercelProject } from "@keypin/connectors/vercel";
 import {
   type Connect,
@@ -60,7 +60,13 @@ const cloudflareLogins = new Map<string, CloudflareSignIn>();
 const cloudflareReaders = new Map<string, CloudflareReader>();
 let infisical: ReturnType<typeof infisicalBackend> | undefined;
 
-export const destinations = [githubActions, cloudflareWorker, vercelProject, netlifyProject];
+export const destinations = [
+  githubActions,
+  cloudflareWorker,
+  vercelProject,
+  supabaseFunctions,
+  netlifyProject,
+];
 export const vaults = [infisicalVault, onePasswordVault];
 export const signInNames = signInVariables([...vaults, ...destinations]);
 

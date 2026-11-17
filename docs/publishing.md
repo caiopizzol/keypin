@@ -21,6 +21,9 @@ It writes Vercel variables as Sensitive with `KEYPIN_VERCEL_TOKEN`, one per `env
 publishing; keypin doesn't. It stops rather than change a variable that also covers another environment, and
 leaves Git branch variables alone.
 
+It writes Supabase Edge Function secrets with `KEYPIN_SUPABASE_ACCESS_TOKEN`. Functions read a new value at once, with
+no redeploy. Supabase reserves names that start with `SUPABASE_`, so keypin refuses them.
+
 It writes Netlify variables as secrets with `KEYPIN_NETLIFY_TOKEN`, one value per `context`: `production`,
 `deploy-preview`, `branch-deploy` or `dev-server`. Netlify uses a new value only from the next build and deploy, so
 redeploy after publishing; keypin doesn't. It stops rather than write to a variable not marked as secret. It leaves

@@ -7,10 +7,8 @@ import {
   NothingChanged,
   Secret,
 } from "@keypin/core";
+import { type Reply, supabaseRequest, TOKEN_DOCS, TOKENS } from "./api";
 
-const API = "https://api.supabase.com/v1";
-const TOKENS = "https://supabase.com/dashboard/account/tokens";
-const TOKEN_DOCS = "https://supabase.com/docs/guides/platform/personal-access-tokens";
 const LEGACY_DOCS = "https://supabase.com/docs/guides/security/rotate-leaked-api-keys";
 const FUNCTIONS_DOCS = "https://supabase.com/docs/guides/functions/auth#service-to-service-calls";
 const DEFAULT = "default";
@@ -21,11 +19,6 @@ export interface SupabaseIssuerOptions {
   admin: () => Promise<Secret>;
   projectRef: string;
   fetch?: Fetch;
-}
-
-interface Reply {
-  status: number;
-  body: unknown;
 }
 
 interface Listed {
@@ -198,17 +191,7 @@ export class SupabaseIssuer implements Issuer {
 
   async #request(method: string, path: string, body?: unknown): Promise<Reply> {
     this.#key ??= this.#admin();
-    const response = await this.#fetch(`${API}${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${(await this.#key).reveal()}`,
-        Accept: "application/json",
-        "User-Agent": "keypin",
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    });
-    return { status: response.status, body: parseJson(await response.text()) };
+    return supabaseRequest(this.#fetch, (await this.#key).reveal(), method, path, body);
   }
 }
 
@@ -274,14 +257,6 @@ function fitName(name: string): string {
   return words.length < NAME_LIMIT && /^[a-z]/.test(words)
     ? words
     : `_${words.slice(-(NAME_LIMIT - 1))}`;
-}
-
-function parseJson(text: string): unknown {
-  try {
-    return JSON.parse(text);
-  } catch {
-    return null;
-  }
 }
 
 function failure(

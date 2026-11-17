@@ -83,6 +83,10 @@ project = "my-project"
 environment = "production"
 
 [[keys.API_TOKEN.prod.publish]]
+to = "supabase-functions"
+project_ref = "<20-letter project ref>"
+
+[[keys.API_TOKEN.prod.publish]]
 to = "netlify-project"
 team = "<team slug>"
 project = "my-project.netlify.app"
@@ -99,6 +103,8 @@ The map says where a key goes, not who writes it, so every teammate publishes fr
 - **Cloudflare:** the `wrangler` login, or `KEYPIN_CLOUDFLARE_API_TOKEN`. It must reach the pinned `account`.
 - **Vercel:** a token in `KEYPIN_VERCEL_TOKEN`, for the `team` or the project. keypin doesn't read the `vercel`
   login or `VERCEL_TOKEN`.
+- **Supabase:** a personal access token in `KEYPIN_SUPABASE_ACCESS_TOKEN` with Edge Function Secrets Read-write on
+  the project. keypin doesn't read the `supabase` login or `SUPABASE_ACCESS_TOKEN`.
 - **Netlify:** a personal access token in `KEYPIN_NETLIFY_TOKEN`, from a member of the `team`. keypin doesn't read
   the `netlify` login or `NETLIFY_AUTH_TOKEN`.
 

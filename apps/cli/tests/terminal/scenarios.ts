@@ -345,6 +345,11 @@ to = "github-actions"
 repo = "acme/billing"
 `;
 
+const SUPABASE_FUNCTIONS_MAP = MAP.replace(
+  'to = "github-actions"\nrepo = "acme/billing"',
+  'to = "supabase-functions"\nproject_ref = "abcdefghijklmnopqrst"',
+);
+
 export const SUPABASE_ADMIN = "sbp_verify_admin_token_4c2a";
 export const SUPABASE_PREFIX = "sb_secret_Nw";
 const SUPABASE_LIVE = "sb_secret_Bk7Qv2live_backend_2d7e";
@@ -596,6 +601,27 @@ jobs:
     ...supabase,
     about: "supabase, but the create reply holds only the key's 15-character prefix",
     supabase: { keys: supabase.supabase?.keys ?? [], prefixOnly: true },
+  },
+  "supabase-functions": {
+    ...ready,
+    about: "ready, but STRIPE_KEY publishes to a Supabase project's Edge Function secrets",
+    files: { "keypin.toml": SUPABASE_FUNCTIONS_MAP },
+    env: { KEYPIN_SUPABASE_ACCESS_TOKEN: "sbp_verify_functions_token_6e1d" },
+  },
+  "supabase-functions-no-token": {
+    ...ready,
+    about: "supabase-functions, but KEYPIN_SUPABASE_ACCESS_TOKEN isn't set",
+    files: { "keypin.toml": SUPABASE_FUNCTIONS_MAP },
+    places: {
+      "supabase-functions:abcdefghijklmnopqrst": {
+        check: {
+          reason:
+            "keypin signs in to Supabase with KEYPIN_SUPABASE_ACCESS_TOKEN, which isn't set. Create a personal access token at https://supabase.com/dashboard/account/tokens with Edge Function Secrets Read-write on the project and set KEYPIN_SUPABASE_ACCESS_TOKEN; keypin doesn't read the supabase login",
+          publisher: "unknown",
+          destinationAccount: null,
+        },
+      },
+    },
   },
   "neon-one-role": {
     ...neon,

@@ -245,6 +245,40 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
+    "publish to Fly.io says Machines use the value only after fly secrets deploy",
+    async () => {
+      const result = await drive({
+        scenario: "fly",
+        args: ["publish", "STRIPE_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain("  + Fly.io  billing-api  first write  needs approval");
+      expect(result.screen).toContain(
+        "    Fly.io stages the new value; Machines use it only after fly secrets deploy or the app's next deploy, which keypin doesn't run",
+      );
+      expect(result.effects).toEqual([
+        "destination write fly-app:billing-api STRIPE_KEY (23 chars)",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "check without KEYPIN_FLY_API_TOKEN says how to sign in to Fly.io",
+    async () => {
+      const result = await drive({ scenario: "fly-no-token", args: ["check"] });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("1 Sign in to Fly.io");
+      expect(result.screen).toContain("KEYPIN_FLY_API_TOKEN, which isn't set");
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "publish answered with anything but y writes nothing and exits 3",
     async () => {
       for (const answer of ["n", "", "yess"]) {

@@ -192,9 +192,11 @@ describe("keypin with Doppler", () => {
     );
   });
 
-  test("status says Doppler keeps no rotated date", async () => {
+  test("status notes that Doppler keeps no rotated date, without failing", async () => {
     const run = project();
-    expect(await cli(["status"], run.deps)).toBe(1);
+    expect(await cli(["status"], run.deps)).toBe(0);
+    expect(run.stdout.text).not.toMatch(/\bproblems?\b/);
+    expect(run.stdout.text).toMatch(/notice/);
     expect(run.stdout.text).toContain(
       "STRIPE_API_KEY (dev): no rotated date\n    Doppler keeps no rotated date on a secret, so keypin can't tell when this key is due (docs/doppler.md).",
     );

@@ -3,7 +3,7 @@ import { destinationId, type DestinationKinds, receiptSecretKey, secretKey } fro
 import { envFlag, type KeyEntry, type MapResult, publishEnvironment } from "./map";
 import { latestPerSecret } from "./plan";
 import type { VaultKinds } from "./login";
-import { sameRef } from "./reference";
+import { sameRef, vaultKindOf } from "./reference";
 import type { Registry } from "./registry";
 import { ownedBy } from "./state";
 import { addDays, type Day } from "./days";
@@ -115,10 +115,14 @@ export function buildStatus(input: StatusInput): Status {
         const where = { project, keyId: key.name, environment };
         const owner = { keyId: key.name, environment, mapFile: result.map.file };
         const label = `${key.name} (${environment})`;
+        const undated = vaultKindOf(input.vaults, entry.ref.kind).keepsRotated === false;
         const add = (kind: ProblemKind, message: string, extra: Partial<Problem> = {}) =>
           problems.push({
             kind,
-            severity: NOTICES.includes(kind) ? "notice" : "problem",
+            severity:
+              NOTICES.includes(kind) || (undated && kind === "no-rotation-date")
+                ? "notice"
+                : "problem",
             ...where,
             ...extra,
             message,

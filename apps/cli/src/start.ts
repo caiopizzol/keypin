@@ -24,6 +24,7 @@ import { googleIssuer } from "@keypin/connectors/google";
 import { neonIssuer } from "@keypin/connectors/neon";
 import { netlifyProject } from "@keypin/connectors/netlify";
 import { openaiIssuer } from "@keypin/connectors/openai";
+import { openrouterIssuer } from "@keypin/connectors/openrouter";
 import { resendIssuer } from "@keypin/connectors/resend";
 import { supabaseFunctions, supabaseIssuer } from "@keypin/connectors/supabase";
 import { vercelProject } from "@keypin/connectors/vercel";
@@ -81,6 +82,7 @@ export const issuers = [
   openaiIssuer,
   supabaseIssuer,
   cloudflareIssuer,
+  openrouterIssuer,
   googleIssuer,
 ];
 

@@ -761,6 +761,47 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "OpenRouter: makes a key with the old key's limit, publishes it, then deletes the old key after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "openrouter",
+        args: ["rotate", "OPENROUTER_API_KEY"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  + OpenRouter            create a new key\n    with the old key's $25 limit, reset monthly; no expiry, in the same workspace",
+      );
+      expect(result.screen).toMatch(/^✓ OpenRouter {2}revoked "chat" {2}\d+\.\ds$/m);
+      expect(result.effects).toEqual([
+        "openrouter create hash_new1 with limit $25 monthly, workspace ws_default",
+        "1password update my.1password.com/Private/chat openrouter key (26 chars)",
+        "destination write github-actions:acme/billing OPENROUTER_API_KEY (26 chars)",
+        "openrouter revoke hash_old",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "OpenRouter: a disabled vault key stops before anything is created",
+    async () => {
+      const result = await drive({
+        scenario: "openrouter-disabled",
+        args: ["rotate", "OPENROUTER_API_KEY"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        `    key "chat" is disabled at OpenRouter, and keypin won't make an active copy of it`,
+      );
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "Supabase: the secret key named default stops before anything is created",
     async () => {
       const result = await drive({

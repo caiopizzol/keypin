@@ -117,7 +117,8 @@ the key is due.
 ## Rotating a key
 
 Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key, at Resend, [Neon](#neon),
-[OpenAI](#openai), [Supabase](#supabase), [Cloudflare](#cloudflare) or [Google Cloud](#google-cloud):
+[OpenAI](#openai), [Supabase](#supabase), [Cloudflare](#cloudflare), [OpenRouter](#openrouter) or
+[Google Cloud](#google-cloud):
 
 ```toml
 [keys.RESEND_API_KEY.prod]
@@ -239,6 +240,24 @@ its own 1Password item. For an account API token (`cfat_`), add `account_id` and
 
 keypin finds the vault's token with Cloudflare's verify endpoint, makes a new token with the same policies, IP
 filter and lifetime (and its start date, if still ahead), then deletes the old one. It doesn't use Roll, which stops the old token at once.
+
+### OpenRouter
+
+```toml
+[keys.OPENROUTER_API_KEY.prod]
+from = "op://Private/app openrouter key/credential"
+
+[keys.OPENROUTER_API_KEY.prod.issuer]
+kind = "openrouter"
+admin = "op://Private/openrouter management key/credential"
+```
+
+`admin` is a read/write [management key](https://openrouter.ai/settings/management-keys), in its own 1Password item,
+for the organization or the key's workspace. keypin finds the vault's key by the label OpenRouter shows for it, and
+gives the new key the same credit limit, reset, BYOK setting, lifetime and workspace. A limit that never resets starts
+again at $0 spent on the new key; the old key keeps its credit until you revoke it. keypin refuses a disabled key, and
+a key with its own guardrail, or a BYOK provider key or observability destination limited to it, since the new
+key wouldn't get them.
 
 ### Google Cloud
 

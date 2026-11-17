@@ -71,6 +71,7 @@ export {
   loadState,
   nextRotation,
   type NextRotation,
+  ownedBy,
   receiptsFor,
   recordIssued,
   recordReceipt,
@@ -79,6 +80,7 @@ export {
 } from "./state";
 export {
   approvalsFor,
+  type PlanInput,
   planNewValue,
   planPublish,
   type PlanStep,

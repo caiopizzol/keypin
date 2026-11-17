@@ -269,6 +269,7 @@ const supabase = supabaseFetch({
   projectRef: "abcdefghijklmnopqrst",
   valuePrefix: SUPABASE_PREFIX,
   loseCreated: run.supabase?.loseCreated ?? false,
+  prefixOnly: run.supabase?.prefixOnly ?? false,
   world: {
     load() {
       if (!existsSync(SUPABASE)) return { keys: run.supabase?.keys ?? [], created: 0 };

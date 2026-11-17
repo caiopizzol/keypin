@@ -32,6 +32,7 @@ interface Listed {
   id: string;
   name: string;
   prefix: string;
+  template: unknown;
 }
 
 export class SupabaseIssuer implements Issuer {
@@ -97,6 +98,13 @@ export class SupabaseIssuer implements Issuer {
         fix: `check project_ref in keypin.toml; if the key was deleted, put the key your apps use in the vault, then run this again`,
       };
     }
+    if (!isDefaultTemplate(old.template))
+      return {
+        ok: false,
+        facts: `${facts}; key ${old.name} has a custom JWT template`,
+        reason: `keypin won't replace key ${old.name}: it has a custom secret_jwt_template, and keypin creates keys with Supabase's default service_role template, so the new key would carry different claims`,
+        fix: `create the replacement key with the same JWT template at ${this.dashboard()}, put it in the vault and publish it, then delete the old key yourself`,
+      };
     if (old.name === DEFAULT)
       return {
         ok: false,
@@ -139,7 +147,8 @@ export class SupabaseIssuer implements Issuer {
     const { id, api_key: value } = body;
     if (typeof id !== "string" || !id)
       throw new Error("Supabase's POST /api-keys response has no key id");
-    if (typeof value !== "string" || !isSecretKey(value))
+    const prefix = typeof body.prefix === "string" ? body.prefix : "";
+    if (typeof value !== "string" || !isSecretKey(value) || value === prefix)
       throw new Error(
         `Supabase created key ${id} but didn't return its value: the token needs API Key Secrets Read as well as API Keys Read-write; see ${TOKEN_DOCS}`,
       );
@@ -231,6 +240,13 @@ function refusedVault(kind: Exclude<VaultKind, "secret">): { reason: string; fix
   };
 }
 
+function isDefaultTemplate(template: unknown): boolean {
+  if (template === undefined || template === null) return true;
+  if (!isRecord(template)) return false;
+  const entries = Object.entries(template);
+  return entries.length === 1 && template.role === "service_role";
+}
+
 function isSecretKey(value: string): boolean {
   return value.startsWith(SECRET) && /^[A-Za-z0-9_-]+$/.test(value);
 }
@@ -245,7 +261,7 @@ function secretKeys(body: unknown): Listed[] {
     typeof key.prefix === "string" &&
     key.prefix.length > SECRET.length &&
     key.prefix.startsWith(SECRET)
-      ? [{ id: key.id, name: key.name, prefix: key.prefix }]
+      ? [{ id: key.id, name: key.name, prefix: key.prefix, template: key.secret_jwt_template }]
       : [],
   );
 }

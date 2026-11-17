@@ -485,6 +485,22 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "Supabase: a create reply with only the key's prefix saves, publishes and deletes nothing",
+    async () => {
+      const result = await drive({
+        scenario: "supabase-prefix-only",
+        args: ["rotate", "SUPABASE_SECRET_KEY"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).not.toBe(0);
+      expect(result.screen).toContain("didn't return its value");
+      expect(result.effects).toEqual(["supabase create key-new-1"]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "Supabase: the secret key named default stops before anything is created",
     async () => {
       const result = await drive({

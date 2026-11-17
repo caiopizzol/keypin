@@ -5,6 +5,7 @@ export interface SupabaseKey {
   name: string;
   type: "secret" | "publishable" | "legacy";
   value: string;
+  template?: Record<string, unknown>;
 }
 
 export interface SupabaseWorld {
@@ -20,6 +21,7 @@ export interface FakeSupabase {
   failCreate?: number;
   loseCreated?: boolean;
   hideValues?: boolean;
+  prefixOnly?: boolean;
   world: {
     load(): SupabaseWorld;
     save(world: SupabaseWorld): void;
@@ -39,7 +41,7 @@ export function supabaseFetch(fake: FakeSupabase): Fetch {
       return reply(401, { message: "Unauthorized" });
     const keys = `/v1/projects/${fake.projectRef}/api-keys`;
     if (!pathname.startsWith(keys)) return reply(403, { message: "Forbidden resource" });
-    const reveal = searchParams.get("reveal") === "true" && !fake.hideValues;
+    const reveal = searchParams.get("reveal") === "true" && !fake.hideValues && !fake.prefixOnly;
     const shown = (key: SupabaseKey) => ({
       id: key.id,
       name: key.name,
@@ -48,7 +50,11 @@ export function supabaseFetch(fake: FakeSupabase): Fetch {
       api_key:
         reveal || key.type !== "secret"
           ? key.value
-          : `${key.value.slice(0, PREFIX_LENGTH)}··························`,
+          : fake.prefixOnly
+            ? key.value.slice(0, PREFIX_LENGTH)
+            : `${key.value.slice(0, PREFIX_LENGTH)}··························`,
+      secret_jwt_template:
+        key.type === "secret" ? (key.template ?? { role: "service_role" }) : null,
       hash: "not-checked",
       description: null,
     });

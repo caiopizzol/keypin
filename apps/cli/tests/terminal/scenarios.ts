@@ -25,7 +25,7 @@ export interface Scenario {
     domains?: Record<string, string>;
   };
   neon?: { roles: Record<string, string> };
-  supabase?: { keys: SupabaseKey[]; loseCreated?: boolean };
+  supabase?: { keys: SupabaseKey[]; loseCreated?: boolean; prefixOnly?: boolean };
   registered: boolean;
   git: { origin?: string; account?: string };
   onePassword: {
@@ -473,6 +473,11 @@ jobs:
     ...supabase,
     about: "supabase, but the reply to the create is lost after Supabase made the key",
     supabase: { keys: supabase.supabase?.keys ?? [], loseCreated: true },
+  },
+  "supabase-prefix-only": {
+    ...supabase,
+    about: "supabase, but the create reply holds only the key's 15-character prefix",
+    supabase: { keys: supabase.supabase?.keys ?? [], prefixOnly: true },
   },
   "neon-one-role": {
     ...neon,

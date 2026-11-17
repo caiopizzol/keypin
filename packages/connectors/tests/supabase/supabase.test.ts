@@ -122,6 +122,28 @@ describe("checkAccount", () => {
     expectNoSecret(check);
   });
 
+  test("refuses a key with a custom JWT template before any write", async () => {
+    const custom: SupabaseKey[] = KEYS.map((key) =>
+      key.id === "key-backend" ? { ...key, template: { role: "app_reader", tenant: "t1" } } : key,
+    );
+    const { issuer, effects } = supabase({}, custom);
+    const check = await issuer.checkAccount(null, new Secret(BACKEND));
+    assert(!check.ok);
+    expect(check.reason).toContain("custom secret_jwt_template");
+    await expect(issuer.create("KEY prod")).rejects.toThrow("checkAccount hasn't passed");
+    await expect(issuer.revoke("key-backend")).rejects.toThrow("checkAccount hasn't passed");
+    expect(effects).toEqual([]);
+    expectNoSecret(check);
+  });
+
+  test("accepts the default service_role template", async () => {
+    const plain: SupabaseKey[] = KEYS.map((key) =>
+      key.id === "key-backend" ? { ...key, template: { role: "service_role" } } : key,
+    );
+    const { issuer } = supabase({}, plain);
+    expect((await issuer.checkAccount(null, new Secret(BACKEND))).ok).toBe(true);
+  });
+
   test("refuses when two listed prefixes match the vault's key", async () => {
     const twin: SupabaseKey = {
       id: "key-twin",
@@ -257,6 +279,17 @@ describe("create", () => {
     expect(error.message).toBe(
       "Supabase created key key-new-1 but didn't return its value: the token needs API Key Secrets Read as well as API Keys Read-write; see https://supabase.com/docs/guides/platform/personal-access-tokens",
     );
+    expect(effects).toEqual(["supabase create key-new-1"]);
+    expectNoSecret(error);
+  });
+
+  test("a reply with only the 15-character prefix is refused, not saved as the key", async () => {
+    const { issuer, effects } = supabase({ prefixOnly: true });
+    await issuer.checkAccount(null, new Secret(BACKEND));
+    const error = await issuer.create("KEY prod").catch((e: unknown) => e);
+    assert(error instanceof Error);
+    expect(error).not.toBeInstanceOf(NothingChanged);
+    expect(error.message).toContain("didn't return its value");
     expect(effects).toEqual(["supabase create key-new-1"]);
     expectNoSecret(error);
   });

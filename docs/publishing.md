@@ -29,6 +29,11 @@ It writes Netlify variables as secrets with `KEYPIN_NETLIFY_TOKEN`, one value pe
 redeploy after publishing; keypin doesn't. It stops rather than write to a variable not marked as secret. It leaves
 other contexts and branch values alone. For `netlify dev`, run `keypin run -- netlify dev`.
 
+It writes Railway service variables with `KEYPIN_RAILWAY_TOKEN`. `environment` and `service` take a name or an ID.
+Railway stages the change and uses the new value only from the service's next deploy, so deploy after publishing;
+keypin doesn't. keypin can't seal a variable through Railway's API; seal it once in Railway, and later writes keep
+it sealed. Railway reserves names that start with `RAILWAY_`, so keypin refuses them.
+
 It writes Convex environment variables with `KEYPIN_CONVEX_DEPLOY_KEY`, a deploy key for the one deployment in
 `url`. Changing a variable invalidates every subscription. Cron definitions read it only on the next deploy.
 

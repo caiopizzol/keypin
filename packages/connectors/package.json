@@ -27,6 +27,8 @@
     "./openai/testing": "./src/openai/testing.ts",
     "./openrouter": "./src/openrouter/index.ts",
     "./openrouter/testing": "./src/openrouter/testing.ts",
+    "./railway": "./src/railway/index.ts",
+    "./railway/testing": "./src/railway/testing.ts",
     "./resend": "./src/resend/index.ts",
     "./resend/testing": "./src/resend/testing.ts",
     "./supabase": "./src/supabase/index.ts",

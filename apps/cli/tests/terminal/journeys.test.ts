@@ -177,6 +177,27 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
+    "publish to Railway says the new value waits for the next deploy, and deploys nothing",
+    async () => {
+      const result = await drive({
+        scenario: "railway",
+        args: ["publish", "STRIPE_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain("  + Railway  api (production)  first write  needs approval");
+      expect(result.screen).toContain(
+        "    Railway uses the new value only from the service's next deploy; deploy it to use it",
+      );
+      expect(result.effects).toEqual([
+        "destination write railway-service:production/api STRIPE_KEY (23 chars)",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "check without KEYPIN_NETLIFY_TOKEN says how to sign in to Netlify",
     async () => {
       const result = await drive({ scenario: "netlify-no-token", args: ["check"] });

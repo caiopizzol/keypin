@@ -277,10 +277,15 @@ export function publishRows(
   label: Label,
   kinds: Deps["destinations"],
 ): PlanRow[] {
+  const lastWrite = new Map<string, PlanStep>();
+  for (const step of steps) if (step.action !== "skip") lastWrite.set(step.target.to, step);
   return steps.map((step) => {
     const changed =
       step.reason === "account changed" || step.reason === "item changed" ? step.approval : null;
-    const note = step.action === "skip" ? null : (kindOf(kinds, step.target.to).writeNote ?? null);
+    const note =
+      lastWrite.get(step.target.to) === step
+        ? (kindOf(kinds, step.target.to).writeNote ?? null)
+        : null;
     return {
       sign: step.action === "skip" ? "=" : step.approval ? "+" : "~",
       place: label(step.target),

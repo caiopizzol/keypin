@@ -74,6 +74,7 @@ const pairedKind: IssuerKind<PairedSpec> = {
 
 interface IssuerOptions {
   failCreate?: boolean;
+  gone?: string;
 }
 
 function pairedIssuer(options: IssuerOptions) {
@@ -85,6 +86,12 @@ function pairedIssuer(options: IssuerOptions) {
     dashboard: () => "https://keys.example/keys",
     async checkAccount(current) {
       log.push(`check ${current ?? "none"}`);
+      if (current === options.gone)
+        return {
+          ok: true,
+          facts: "the admin key lists 0 keys",
+          gone: `key ${current} was deleted`,
+        };
       if (current === null || !live.has(current))
         return {
           ok: false,
@@ -135,6 +142,7 @@ interface Setup {
   failName?: { place: string; name: string };
   map?: string;
   failCreate?: boolean;
+  gone?: string;
 }
 
 function setup(options: Setup = {}) {
@@ -345,6 +353,21 @@ describe("keypin rotate: a key whose ID is another key", () => {
     expect(rerun.writes()).toEqual([`write ${GITHUB} API_KEY_ID (6 chars)`]);
     expect(rerun.destinations.delivered("AKID-1")).toEqual([`${GITHUB} API_KEY_ID`]);
     expect(rerun.issuer.log.slice(2)).toEqual(["check AKID-1", "revoke AKID-0"]);
+  });
+
+  test("with nothing left to revoke, an ID that missed a destination is published on the rerun, not replaced by another key", async () => {
+    const first = setup({
+      gone: "AKID-0",
+      failName: { place: GITHUB, name: "API_KEY_ID" },
+      answers: ["y"],
+    });
+    expect(await first.rotate()).toBe(1);
+    expect((await first.state()).issued[0]?.old).toMatchObject({ id: null, revoked: true });
+
+    const rerun = first.again({ answers: ["y"] });
+    expect(await rerun.rotate()).toBe(0);
+    expect(rerun.issuer.log.slice(2)).toEqual(["check AKID-1"]);
+    expect(rerun.writes()).toEqual([`write ${GITHUB} API_KEY_ID (6 chars)`]);
   });
 
   test("a crash part way through publishing resumes both keys from the record", async () => {

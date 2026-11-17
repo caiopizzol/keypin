@@ -1,5 +1,6 @@
 import { envValues } from "@keypin/core";
 import { localDay } from "@keypin/core";
+import type { FakeToken } from "@keypin/connectors/cloudflare/testing";
 import type { FakeInfisical } from "@keypin/connectors/infisical/testing";
 import type { FakeOpenAIKey } from "@keypin/connectors/openai/testing";
 import type { SupabaseKey } from "@keypin/connectors/supabase/testing";
@@ -28,6 +29,7 @@ export interface Scenario {
   neon?: { roles: Record<string, string> };
   openai?: { keys: FakeOpenAIKey[]; loseCreated?: boolean };
   supabase?: { keys: SupabaseKey[]; loseCreated?: boolean; prefixOnly?: boolean };
+  cloudflareTokens?: { tokens: FakeToken[]; loseCreated?: boolean };
   registered: boolean;
   git: { origin?: string; account?: string };
   onePassword: {
@@ -366,6 +368,67 @@ const supabase: Scenario = {
   },
 };
 
+const CLOUDFLARE_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.CLOUDFLARE_API_TOKEN]
+rotate_every = "90d"
+
+[keys.CLOUDFLARE_API_TOKEN.prod]
+from = "op://Private/deploy cloudflare token/credential"
+
+[keys.CLOUDFLARE_API_TOKEN.prod.issuer]
+kind = "cloudflare"
+admin = "op://Private/cloudflare token maker/credential"
+
+[[keys.CLOUDFLARE_API_TOKEN.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`;
+
+export const CLOUDFLARE_ADMIN = "cfut_verifyadminverifyadminverify00000000_4b7e";
+export const CLOUDFLARE_PREFIX = "cfut_verifynew";
+const CLOUDFLARE_OLD = "cfut_verifyoldverifyoldverifyold000000000_8d3c";
+
+const cloudflareTokens: Scenario = {
+  ...ready,
+  about:
+    'CLOUDFLARE_API_TOKEN has a Cloudflare issuer; the vault holds user API token "deploy" with an IP filter, expiring 30 days after it was made',
+  files: { "keypin.toml": CLOUDFLARE_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          { title: "deploy cloudflare token", value: CLOUDFLARE_OLD, rotated: day(-95) },
+          { title: "cloudflare token maker", value: CLOUDFLARE_ADMIN },
+        ],
+      },
+    },
+  },
+  cloudflareTokens: {
+    tokens: [
+      {
+        id: "a".repeat(32),
+        name: "deploy",
+        value: CLOUDFLARE_OLD,
+        policies: [
+          {
+            id: "f267e341f3dd4697bd3b9f71dd96247f",
+            effect: "allow",
+            resources: { "com.cloudflare.api.account.0123456789abcdef0123456789abcdef": "*" },
+            permission_groups: [
+              { id: "e086da7e2179491d91ee5f35b3ca210a", name: "Workers Scripts Write" },
+            ],
+          },
+        ],
+        condition: { "request.ip": { in: ["192.0.2.0/24"] } },
+        issued_on: "2026-11-01T00:00:00Z",
+        expires_on: "2026-12-01T00:00:00Z",
+      },
+    ],
+  },
+};
+
 const infisical: Scenario = {
   ...ready,
   about:
@@ -656,6 +719,25 @@ jobs:
       },
     },
   },
+  cloudflare: cloudflareTokens,
+  "cloudflare-global-key": {
+    ...cloudflareTokens,
+    about: "cloudflare, but the vault holds a Global API Key, not an API token",
+    onePassword: {
+      accounts: {
+        "my.1password.com": {
+          Private: [
+            {
+              title: "deploy cloudflare token",
+              value: "cfk_verifyglobalverifyglobalverify000000000_1a2b",
+              rotated: day(-95),
+            },
+            { title: "cloudflare token maker", value: CLOUDFLARE_ADMIN },
+          ],
+        },
+      },
+    },
+  },
   openai,
   "openai-user-key": {
     ...openai,
@@ -718,6 +800,7 @@ export function valuesOf(scenario: Scenario): string[] {
     ...(scenario.resend ? [ISSUED_PREFIX] : []),
     ...(scenario.neon ? [NEON_PREFIX, ...Object.values(scenario.neon.roles)] : []),
     ...(scenario.openai ? [OPENAI_PREFIX] : []),
+    ...(scenario.cloudflareTokens ? [CLOUDFLARE_PREFIX] : []),
   ];
   return [
     ...items.map((item) => item.value),

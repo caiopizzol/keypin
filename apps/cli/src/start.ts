@@ -13,6 +13,7 @@ import {
   signInVariables,
 } from "@keypin/core";
 import {
+  cloudflareIssuer,
   cloudflareWorker,
   CloudflareReader,
   type CloudflareSignIn,
@@ -66,7 +67,7 @@ export function destination(target: PublishTarget, publisher: Publisher): Destin
   return connectTo<Publisher>(destinations, target, publisher);
 }
 
-export const issuers = [resendIssuer, neonIssuer, openaiIssuer, supabaseIssuer];
+export const issuers = [resendIssuer, neonIssuer, openaiIssuer, supabaseIssuer, cloudflareIssuer];
 
 export function issuer(spec: IssuerSpec, admin: Secret, fetch?: Fetch): Issuer {
   return connectIssuer(issuers, spec, admin, fetch);

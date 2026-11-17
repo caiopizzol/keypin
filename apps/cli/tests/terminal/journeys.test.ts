@@ -537,6 +537,48 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "Cloudflare: copies the vault token's policies, IP filter and lifetime, publishes it, then deletes the old token after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "cloudflare",
+        args: ["rotate", "CLOUDFLARE_API_TOKEN"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  + Cloudflare            create a new key\n    with the old token's 1 policy and IP filter; expiring 30 days after it starts",
+      );
+      expect(result.screen).toMatch(/^✓ Cloudflare {2}revoked "deploy" {2}\d+\.\ds$/m);
+      expect(result.effects).toHaveLength(4);
+      expect(result.effects[0]).toMatch(
+        /^cloudflare create token 0001e+ with \[\{"effect":"allow",.*"permission_groups":\[\{"id":"e086da7e2179491d91ee5f35b3ca210a"\}\]\}\], condition \{"request\.ip":\{"in":\["192\.0\.2\.0\/24"\]\}\}, expires_on \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/,
+      );
+      expect(result.effects.slice(1)).toEqual([
+        "1password update my.1password.com/Private/deploy cloudflare token (20 chars)",
+        "destination write github-actions:acme/billing CLOUDFLARE_API_TOKEN (20 chars)",
+        `cloudflare delete token ${"a".repeat(32)}`,
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "Cloudflare: a Global API Key in the vault stops before anything is created",
+    async () => {
+      const result = await drive({
+        scenario: "cloudflare-global-key",
+        args: ["rotate", "CLOUDFLARE_API_TOKEN"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("    keypin rotates API tokens, not the Global API Key");
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "OpenAI: makes a key for the vault key's service account, publishes it, then deletes the old key after a second y",
     async () => {
       const result = await drive({

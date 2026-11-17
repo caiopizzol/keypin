@@ -509,7 +509,7 @@ repo = "acme/billing"
 export const GOOGLE_ADMIN = "verify-google-admin-key-id-7f3a";
 export const GOOGLE_EMAIL = "keypin@acme-admin.iam.gserviceaccount.com";
 export const GOOGLE_PREFIX = "AIzaSyVerifyNewVerifyNew";
-const GOOGLE_OLD = "AIzaSyVerifyOldVerifyOldVerifyOld000001";
+const GOOGLE_OLD = "AIzaSyVerifyOldVerifyOldVerifyOld00000";
 
 const google: Scenario = {
   ...ready,

@@ -291,7 +291,7 @@ describe("Google Cloud issuer refusals", () => {
     const subject = google();
     const check = await subject.issuer.checkAccount(
       null,
-      new Secret("AIzaSyUnknownUnknownUnknownUnknown00001"),
+      new Secret("AIzaSyUnknownUnknownUnknownUnknown0000"),
     );
     assert(!check.ok);
     expect(check.reason).toBe(

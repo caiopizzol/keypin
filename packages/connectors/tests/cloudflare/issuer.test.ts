@@ -295,7 +295,7 @@ describe("checkAccount", () => {
 });
 
 describe("create", () => {
-  test("copies the old token's policies, IP filter and start date, and keeps its lifetime", async () => {
+  test("copies the old token's policies and IP filter, and keeps its lifetime", async () => {
     const condition = { "request.ip": { in: ["199.27.128.0/21"], not_in: ["199.27.128.1/32"] } };
     const old: FakeToken = {
       ...OLD,
@@ -307,7 +307,7 @@ describe("create", () => {
     const check = await issuer.checkAccount(null, new Secret(VAULT));
     assert(check.ok);
     expect(check.notes?.create).toBe(
-      "with the old token's 1 policy, IP filter and start date 2026-01-01; expiring 90 days after it starts",
+      "with the old token's 1 policy and IP filter; expiring 90 days after it starts",
     );
     const created = await issuer.create("CLOUDFLARE_API_TOKEN prod");
     const sent: unknown = JSON.parse(requests.at(-1)?.body ?? "");
@@ -321,9 +321,9 @@ describe("create", () => {
         },
       ],
       condition,
-      not_before: "2026-01-01T00:00:00Z",
       expires_on: "2027-02-15T12:00:00Z",
     });
+    expect(sent).not.toHaveProperty("not_before");
     expect(created.secret.includes(PREFIX)).toBe(true);
     expect(world.load().tokens.map((t) => t.id)).toEqual([OLD_ID, created.id]);
   });
@@ -366,11 +366,37 @@ describe("create", () => {
     expect(effects).toHaveLength(1);
   });
 
-  test("a long name is cut to Cloudflare's 120 characters", async () => {
+  test("a long name is cut to Cloudflare's 120 characters, keeping the run's time and tag at the end", async () => {
     const { issuer, requests } = cloudflare();
     await issuer.checkAccount(null, new Secret(VAULT));
-    await issuer.create("A".repeat(130));
-    expect(JSON.parse(requests.at(-1)?.body ?? "")).toMatchObject({ name: "A".repeat(120) });
+    const name = `${"A".repeat(120)} prod 2026-11-17 09:30:00 3f9a2c`;
+    await issuer.create(name);
+    const body: unknown = JSON.parse(requests.at(-1)?.body ?? "");
+    assert(
+      typeof body === "object" && body !== null && "name" in body && typeof body.name === "string",
+    );
+    const sent = body.name;
+    expect(sent).toHaveLength(120);
+    expect(sent.endsWith(" prod 2026-11-17 09:30:00 3f9a2c")).toBe(true);
+    expect(issuer.lostCreate(name)).toContain(`"${sent}"`);
+  });
+
+  test("the lifetime stays the same over successive rotations", async () => {
+    const { issuer, fake } = cloudflare([
+      { ...OLD, not_before: "2026-01-01T00:00:00Z", expires_on: "2026-04-01T00:00:00Z" },
+    ]);
+    await issuer.checkAccount(null, new Secret(VAULT));
+    const first = await issuer.create("API_TOKEN 1");
+    const next = new CloudflareIssuer({
+      admin: async () => new Secret(ADMIN),
+      fetch: tokensFetch(fake),
+      now: () => NOW,
+    });
+    const check = await next.checkAccount(first.id, first.secret);
+    assert(check.ok);
+    expect(check.notes?.create).toBe(
+      "with the old token's 1 policy; expiring 90 days after it starts",
+    );
   });
 
   test.each([401, 403])(

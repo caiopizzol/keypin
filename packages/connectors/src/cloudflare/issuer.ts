@@ -136,10 +136,11 @@ export class CloudflareIssuer implements Issuer {
         reason: `keypin can't tell how long token ${this.label(token.id)} lasts, so it can't give the new token the same lifetime`,
         fix: `replace it by hand at ${this.dashboard()}`,
       };
+    const ahead = token.notBefore !== null && Date.parse(token.notBefore) > this.#now().getTime();
     this.#copy = {
       policies: token.policies,
       condition: token.condition,
-      notBefore: token.notBefore,
+      notBefore: ahead ? token.notBefore : null,
       lifetime,
     };
     return {
@@ -155,7 +156,7 @@ export class CloudflareIssuer implements Issuer {
     if (!copy)
       throw new NothingChanged("refusing to create a Cloudflare token: checkAccount hasn't passed");
     const now = this.#now().getTime();
-    const start = copy.notBefore === null ? now : Math.max(now, Date.parse(copy.notBefore));
+    const start = copy.notBefore === null ? now : Date.parse(copy.notBefore);
     const body = {
       name: fitName(name),
       policies: copy.policies,
@@ -375,5 +376,5 @@ function timestamp(ms: number): string {
 }
 
 function fitName(name: string): string {
-  return name.length <= NAME_LIMIT ? name : name.slice(0, NAME_LIMIT);
+  return name.length <= NAME_LIMIT ? name : `…${name.slice(name.length - NAME_LIMIT + 1)}`;
 }

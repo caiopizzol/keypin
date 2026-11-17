@@ -224,4 +224,4 @@ its own 1Password item. For an account API token (`cfat_`), add `account_id` and
 **Account API Tokens** Edit on that account.
 
 keypin finds the vault's token with Cloudflare's verify endpoint, makes a new token with the same policies, IP
-filter, start date and lifetime, then deletes the old one. It doesn't use Roll, which stops the old token at once.
+filter and lifetime (and its start date, if still ahead), then deletes the old one. It doesn't use Roll, which stops the old token at once.

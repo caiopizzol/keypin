@@ -15,6 +15,8 @@ import {
   type Status,
   type StatusRow,
   targetOf,
+  type VaultKinds,
+  vaultKindOf,
   type VaultMetadata,
   vaultAccounts,
 } from "@keypin/core";
@@ -112,6 +114,7 @@ export async function status(args: string[], deps: Deps): Promise<number> {
         today,
         home: deps.home,
         kinds: deps.destinations,
+        vaults: deps.vaults,
         out,
         publish: command("publish"),
         rotate: command("rotate"),
@@ -126,6 +129,7 @@ interface Context {
   today: string;
   home: string;
   kinds: DestinationKinds;
+  vaults: VaultKinds;
   out: Output;
   publish: (row: StatusRow) => string;
   rotate: (row: StatusRow) => string;
@@ -213,20 +217,15 @@ function places(row: StatusRow, problems: readonly Problem[], context: Context):
 function nextStep(problem: Problem, rows: readonly StatusRow[], context: Context): string | null {
   const row = rows.find((r) => sameRow(problem, r));
   if (!row) return null;
-  const infisical = row.ref.kind === "infisical";
+  const vault = vaultKindOf(context.vaults, row.ref.kind);
   if (problem.kind === "overdue" || problem.kind === "due-soon") {
     if (context.rotates(row)) return `Run ${context.rotate(row)} in ${row.project}.`;
-    const rotate = infisical
-      ? "Put a new value in the Infisical secret and set its rotated metadata to today"
-      : "Put a new value in the 1Password item and set rotated to today";
+    const rotate = vault.newValueByHand;
     return row.destinations.length
       ? `${rotate}, then run ${context.publish(row)} in ${row.project}.`
       : `${rotate}.`;
   }
-  if (problem.kind === "no-rotation-date")
-    return infisical
-      ? "Add rotated to the Infisical secret's metadata, with the day the value last changed as YYYY-MM-DD."
-      : "Add a rotated Date field to the 1Password item, with the day the value last changed.";
+  if (problem.kind === "no-rotation-date") return vault.addRotatedDate;
   return null;
 }
 

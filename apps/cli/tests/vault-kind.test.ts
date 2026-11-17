@@ -57,6 +57,8 @@ const toy: VaultKind<unknown, ToyRef, ToyReference, string> = {
   sameItem: (a, b) => a.shelf === b.shelf && a.slot === b.slot,
   stored: toyRef,
   signInVariables: ["TOY_KEY_RING"],
+  newValueByHand: "Put a new toy in the slot and write today on its tag",
+  addRotatedDate: "Write the day the toy last changed on its tag.",
 };
 
 const toyBackend = (values: Record<string, string>, reads: KeyRef[]): VaultBackend => {
@@ -79,7 +81,9 @@ const toyBackend = (values: Record<string, string>, reads: KeyRef[]): VaultBacke
       throw new Error("the toy vault doesn't write");
     },
     list: async () => [],
-    metadata: async () => ({ rotated: day("2026-11-01") }),
+    metadata: async (ref) => ({
+      rotated: toyRef(ref)?.slot === "right" ? null : day("2026-11-01"),
+    }),
   };
 };
 
@@ -190,6 +194,17 @@ describe("a vault kind defined outside keypin", () => {
     expect(await cli(["rotate", "TOY_KEY"], run.deps)).toBe(1);
     expect(run.stderr.text).toMatch(/~ Toy +save it to toy:\/\/top\/right, rotated today/);
     expect(run.stderr.text).toContain("keypin can't tell whether Toy saved the new key");
+  });
+
+  test("status gives its own next steps for a key without a rotation date", async () => {
+    const run = setup(MAP.replace("[keys.TOY_KEY]", '[keys.TOY_KEY]\nrotate_every = "90d"'));
+    await cli(["status"], run.deps);
+    expect(run.stdout.text).toContain(
+      "TOY_KEY (prod): no rotated date\n    Write the day the toy last changed on its tag.",
+    );
+    expect(run.stdout.text).toContain(
+      "OTHER_KEY (dev): no rotated date\n    Add a rotated Date field to the 1Password item",
+    );
   });
 
   test("its reference round-trips through state.json and still matches the map", async () => {

@@ -40,6 +40,10 @@ export class Secret {
   }
 }
 
+export function keyIdText(id: Secret): string {
+  return id.reveal();
+}
+
 export type Generation = string;
 
 export async function generationOf(secret: Secret): Promise<Generation> {

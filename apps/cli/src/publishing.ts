@@ -13,6 +13,7 @@ import {
   type KeyEntry,
   type KeyRef,
   messageOf,
+  placeId,
   type PlanStep,
   type PublishTarget,
   type Receipt,
@@ -164,23 +165,52 @@ export function writesFor(steps: readonly PlanStep[], checked: Map<string, Check
   });
 }
 
-export async function writeAll(
-  job: WriteJob & {
-    state: State;
-    path: string;
-    deps: Deps;
-    out: Output;
-    label: Label;
-  },
+interface WriteContext {
+  state: State;
+  path: string;
+  deps: Deps;
+  out: Output;
+  label: Label;
+}
+
+interface Member {
+  job: WriteJob;
+  write: Write;
+}
+
+export function writeAll(job: WriteJob & WriteContext): Promise<{ ok: boolean; state: State }> {
+  return writeMembers(
+    job.writes.map((write) => ({ job, write })),
+    job,
+  );
+}
+
+export function writeEach(
+  jobs: readonly WriteJob[],
+  context: WriteContext,
 ): Promise<{ ok: boolean; state: State }> {
-  const { key, secret, writes, path, deps, out } = job;
-  let state = job.state;
+  const kinds = context.deps.destinations;
+  writeTogether(jobs, kinds);
+  const byPlace = new Map<string, Member[]>();
+  for (const job of jobs)
+    for (const write of job.writes) {
+      const place = placeId(write.found.target, kinds);
+      byPlace.set(place, [...(byPlace.get(place) ?? []), { job, write }]);
+    }
+  return writeMembers([...byPlace.values()].flat(), context);
+}
+
+async function writeMembers(
+  all: readonly Member[],
+  { path, deps, out, label, ...context }: WriteContext,
+): Promise<{ ok: boolean; state: State }> {
+  let state = context.state;
   await saveState(deps.files, path, state);
 
-  for (const write of writes) {
+  for (const { job, write } of all) {
     const { found, together } = write;
     if (together?.sent) continue;
-    const place = job.label(found.target);
+    const place = label(found.target);
     const members = together?.members ?? [{ job, write }];
     const names = members.map((m) => m.job.key.name).join(", ");
     const writeMany = found.destination.writeMany?.bind(found.destination);
@@ -190,7 +220,7 @@ export async function writeAll(
         () =>
           together && writeMany
             ? writeMany(members.map((m) => ({ name: m.job.key.name, secret: m.job.secret })))
-            : found.destination.write(key.name, secret),
+            : found.destination.write(job.key.name, job.secret),
         () => ({
           ok: true,
           text: `${place}  wrote ${together ? `${names} in one version` : names}`,

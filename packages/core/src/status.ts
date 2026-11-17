@@ -1,6 +1,6 @@
 import type { Environment, KeyId, KeyRef, Receipt, VaultMetadata } from "./contracts";
 import { destinationId, type DestinationKinds, receiptSecretKey, secretKey } from "./destination";
-import { envFlag, type KeyEntry, type MapResult, publishEnvironment } from "./map";
+import { envFlag, type KeyEntry, type MapResult, pairedWith, publishEnvironment } from "./map";
 import { latestPerSecret } from "./plan";
 import type { VaultKinds } from "./login";
 import { sameRef, vaultKindOf } from "./reference";
@@ -50,6 +50,7 @@ export interface StatusRow {
   rotateEvery: string | null;
   due: Day | null;
   issuer: string | null;
+  rotatesWith?: KeyId;
   destinations: DestinationRow[];
 }
 
@@ -129,9 +130,20 @@ export function buildStatus(input: StatusInput): Status {
           });
 
         const metadata = input.metadata(entry.ref);
-        const rotateEvery = key.rotateEvery;
         const rotated = metadata?.rotated ?? null;
-        const due = rotationDue({ label, metadata, rotated, rotateEvery, today: input.today, add });
+        const holder = pairedWith(result.map, key.name, environment);
+        const holderRef = holder?.environments[environment]?.ref;
+        const rotateEvery = holder ? holder.rotateEvery : key.rotateEvery;
+        const due = holderRef
+          ? rotationDue({
+              label,
+              metadata: input.metadata(holderRef),
+              rotated: input.metadata(holderRef)?.rotated ?? null,
+              rotateEvery,
+              today: input.today,
+              add: () => {},
+            })
+          : rotationDue({ label, metadata, rotated, rotateEvery, today: input.today, add });
 
         const current = input.generation?.(key.name, environment);
         const published = input.receipts.some((r) => ownedBy(r, owner));
@@ -194,6 +206,7 @@ export function buildStatus(input: StatusInput): Status {
           rotateEvery: rotateEvery?.text ?? null,
           due,
           issuer: entry.issuer?.kind ?? null,
+          ...(holder ? { rotatesWith: holder.name } : {}),
           destinations,
         });
       }

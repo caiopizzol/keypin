@@ -14,6 +14,7 @@ export interface FakeItem {
   title: string;
   value: string;
   rotated?: string;
+  public?: true;
 }
 
 export interface Place {
@@ -38,6 +39,7 @@ export interface Scenario {
   google?: { keys: FakeGoogleKey[]; pendingPolls?: number };
   openrouter?: { keys: FakeOpenRouterKey[] };
   elevenlabs?: { keys: FakeElevenLabsKey[] };
+  paired?: { keys: string[] };
   registered: boolean;
   git: { origin?: string; account?: string };
   onePassword: {
@@ -692,8 +694,70 @@ const bitwarden: Scenario = {
   env: { BWS_ACCESS_TOKEN: FAKE_ACCESS_TOKEN },
 };
 
+const PAIRED_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.API_SECRET]
+rotate_every = "90d"
+
+[keys.API_SECRET.prod]
+from = "op://Private/api secret/credential"
+
+[keys.API_SECRET.prod.issuer]
+kind = "paired"
+admin = "op://Private/keys admin/credential"
+key_id = "API_KEY_ID"
+
+[[keys.API_SECRET.prod.publish]]
+to = "github-actions"
+repo = "acme/api"
+
+[[keys.API_SECRET.prod.publish]]
+to = "cloudflare-worker"
+account = "11111111111111111111111111111111"
+worker = "api"
+
+[keys.API_KEY_ID]
+rotate_every = "never"
+
+[keys.API_KEY_ID.prod]
+from = "op://Private/api key id/credential"
+
+[[keys.API_KEY_ID.prod.publish]]
+to = "github-actions"
+repo = "acme/api"
+
+[[keys.API_KEY_ID.prod.publish]]
+to = "cloudflare-worker"
+account = "11111111111111111111111111111111"
+worker = "api"
+`;
+
+export const PAIRED_ADMIN = "paired_verify_admin_key_8e1d";
+export const PAIRED_PREFIX = "paired_verify_new_";
+
+const paired: Scenario = {
+  ...ready,
+  about:
+    "API_SECRET has a test issuer whose key ID is API_KEY_ID, a second key in the map; a fake account lists key AKID-0",
+  files: { "keypin.toml": PAIRED_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          { title: "api secret", value: "paired_verify_old_secret_2a9c", rotated: day(-95) },
+          { title: "api key id", value: "AKID-0", rotated: day(-95), public: true },
+          { title: "keys admin", value: PAIRED_ADMIN },
+        ],
+      },
+    },
+  },
+  paired: { keys: ["AKID-0"] },
+};
+
 export const scenarios: Record<string, Scenario> = {
   ready,
+  paired,
   "env-file": {
     ...ready,
     about: "ready, plus a .env with a key keypin.toml doesn't map, to import",
@@ -1139,9 +1203,9 @@ const SHORTEST_VALUE = 8;
 export const SANDBOX_MARKER = ".keypin-verify-sandbox";
 
 export function valuesOf(scenario: Scenario): string[] {
-  const items = Object.values(scenario.onePassword.accounts).flatMap((vaults) =>
-    Object.values(vaults).flat(),
-  );
+  const items = Object.values(scenario.onePassword.accounts)
+    .flatMap((vaults) => Object.values(vaults).flat())
+    .filter((item) => !item.public);
   const short = items.filter((item) => item.value.length < SHORTEST_VALUE);
   if (short.length)
     throw new Error(

@@ -192,6 +192,7 @@ function placeName(id: string, account: string, kinds: DestinationKinds): string
 }
 
 function due(row: StatusRow, { out, today }: Context): string {
+  if (row.rotatesWith !== undefined) return out.dim(`rotates with ${row.rotatesWith}`);
   if (row.rotateEvery === "never") return out.dim("never rotates");
   if (row.due === null) return out.red("rotation unknown");
   const days = daysBetween(today, row.due);

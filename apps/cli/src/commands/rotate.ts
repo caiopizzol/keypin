@@ -1,7 +1,9 @@
 import { parseArgs } from "node:util";
 import {
   approvalsFor,
+  destinationId,
   type EnvEntry,
+  envFlag,
   formatReference,
   generationOf,
   HeldForApproval,
@@ -15,19 +17,26 @@ import {
   type ItemIds,
   type KeyEntry,
   type KeyOwner,
+  type KeyRef,
+  keyIdText,
+  kindOf,
   localDay,
   loadState,
   messageOf,
   NothingChanged,
+  ownedBy,
+  pairedWith,
+  placeId,
   nextRotation,
   planNewValue,
+  type PlanInput,
   planPublish,
   type PlanStep,
   publishEnvironment,
   recordIssued,
   type RemovedDestination,
   saveState,
-  type Secret,
+  Secret,
   type State,
   vaultAccount,
   vaultAccounts,
@@ -56,15 +65,21 @@ import {
   publishRows,
   showPlan,
   showRemoved,
-  writeAll,
+  writeEach,
   writesFor,
 } from "../publishing";
+
+interface Pair {
+  key: KeyEntry;
+  entry: EnvEntry;
+}
 
 interface Job {
   key: KeyEntry;
   entry: EnvEntry;
   spec: IssuerSpec;
   owner: KeyOwner;
+  pair: Pair | null;
   yes: boolean;
   plan: boolean;
   args: string[];
@@ -76,8 +91,10 @@ interface Job {
 
 interface Ready {
   ids: ItemIds;
+  pairIds: ItemIds | null;
   issuer: Issuer;
   checked: Map<string, Checked>;
+  pairChecked: Map<string, Checked>;
   removed: RemovedDestination[];
 }
 
@@ -101,6 +118,11 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
   const entry = key.environments[environment];
   if (!entry) throw new Error(`key "${keyId}" has no ${environment} entry in ${map.file}`);
   const spec = entry.issuer;
+  const holder = spec ? undefined : pairedWith(map, keyId, environment);
+  if (holder)
+    throw new Error(
+      `key "${keyId}" ${environment} holds the ID of ${holder.name}, and keypin rotates the two together. Run keypin rotate ${holder.name}${envFlag(environment, publishEnvironment(map))}.`,
+    );
   if (!spec)
     throw new Error(
       `key "${keyId}" ${environment} has no issuer in ${map.file}, so keypin can't make a new key. Add one (see docs/configuration.md), or rotate it by hand.`,
@@ -108,6 +130,16 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
   if (!entry.publish.length)
     throw new Error(
       `the map lists no destinations for ${keyId} (${environment}); add them first, so the new key reaches what uses it`,
+    );
+  const pairKey = map.keys.find((k) => k.name === entry.idKey);
+  const pairEntry = pairKey?.environments[environment];
+  const pair = pairKey && pairEntry ? { key: pairKey, entry: pairEntry } : null;
+  const holds = pair
+    ? [entry.ref, pair.entry.ref].find((ref) => vaultKindOf(deps.vaults, ref.kind).holdsWrites)
+    : undefined;
+  if (pair && holds)
+    throw new Error(
+      `${vaultName(holds, deps.vaults)} may hold a change for approval, which would leave ${keyId} and its ID ${pair.key.name} saved apart, so keypin can't rotate them. Rotate both by hand.`,
     );
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);
   const owner = { keyId, environment, mapFile: map.file };
@@ -117,6 +149,7 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
     entry,
     spec,
     owner,
+    pair,
     yes: values.yes,
     plan: values.plan,
     args,
@@ -131,14 +164,16 @@ async function rotateLocked(job: Job): Promise<number> {
   const { key, entry, spec, owner, deps, out } = job;
   const say = (text: string) => out.line(text);
   let state = await loadState(deps.files, job.path, deps.vaults);
-  const input = {
+  const inputFor = (of: KeyEntry): PlanInput => ({
     kinds: deps.destinations,
     vaults: deps.vaults,
-    key,
+    key: of,
     environment: owner.environment,
     mapFile: owner.mapFile,
     receipts: state.receipts,
-  };
+  });
+  const input = inputFor(key);
+  const pairInput = job.pair ? inputFor(job.pair.key) : null;
 
   say(
     `${out.bold(key.name)} ${owner.environment}  ${out.dim(`from ${formatReference(entry.ref, deps.vaults)} in ${vaultAccount(entry.ref, deps.vaults)}`)}`,
@@ -147,8 +182,11 @@ async function rotateLocked(job: Job): Promise<number> {
     plan: job.plan,
     command: "rotate",
     args: job.args,
-    refs: [entry.ref],
-    approvals: ([ids = null]) => approvalsFor(input, ids),
+    refs: job.pair ? [entry.ref, job.pair.entry.ref] : [entry.ref],
+    approvals: ([ids = null, pairIds = null]) => [
+      ...approvalsFor(input, ids),
+      ...(pairInput ? approvalsFor(pairInput, pairIds) : []),
+    ],
     nothing: "Nothing was created.",
     stopped:
       "Stopped before reading the key: this rotation needs approval, and --yes can't give it. Nothing was read and nothing was created.",
@@ -162,11 +200,22 @@ async function rotateLocked(job: Job): Promise<number> {
   }
   const generation = await generationOf(read.secret);
   const { steps: unpublished, removed } = planPublish({ ...input, generation, ids: read.ids });
+  const pairPlan = (value: Secret) =>
+    pairInput && read.pair
+      ? generationOf(value).then((g) =>
+          planPublish({ ...pairInput, generation: g, ids: read.pair?.ids ?? null }),
+        )
+      : null;
+  const pairNow = read.pair ? await pairPlan(read.pair.secret) : null;
+  const recorded = issuedFor(state, owner);
+  const idSaved = !read.pair || !recorded || read.pair.secret.equals(new Secret(recorded.id));
+  const counted = [...unpublished, ...(pairNow?.steps ?? [])];
   let next = nextRotation({
-    issued: issuedFor(state, owner),
+    issued: recorded,
     issuer: spec.kind,
     generation,
-    published: unpublished.every((step) => step.action === "skip"),
+    published: counted.every((step) => step.action === "skip"),
+    idSaved,
   });
   const issuer = deps.issuer(spec, read.admin);
   if (next.action === "wait") {
@@ -194,14 +243,26 @@ async function rotateLocked(job: Job): Promise<number> {
   }
   if (next.action === "create" && !(await vaultTakesWrites(job))) return 1;
 
-  const inVault = next.action === "resume" ? next.issued.id : next.current;
+  const inVault =
+    next.action === "resume"
+      ? next.issued.id
+      : read.pair
+        ? keyIdText(read.pair.secret)
+        : next.current;
   const check = await checkIssuer(issuer, inVault, read.secret, out);
   const checked = await checkAccounts(key, entry, deps, out, job.label);
   if (!check || !checked) {
     say("\nStopped: an account check failed. Nothing was created and nothing was written.");
     return 1;
   }
-  const ready = { ids: read.ids, issuer, checked, removed };
+  const ready: Ready = {
+    ids: read.ids,
+    pairIds: read.pair?.ids ?? null,
+    issuer,
+    checked,
+    pairChecked: pairChecks(job, checked),
+    removed: [...removed, ...(pairNow?.removed ?? [])],
+  };
   if (next.action === "resume" && check.gone !== undefined) {
     if (!(await vaultTakesWrites(job))) return 1;
     const { old } = next.issued;
@@ -213,30 +274,50 @@ async function rotateLocked(job: Job): Promise<number> {
       );
     next = { action: "create", current: null, abandoned: null };
   }
-  if (next.action === "resume")
-    return resume(job, ready, next.issued, read.secret, unpublished, state);
+  if (next.action === "resume") {
+    const pairSteps = (await pairPlan(new Secret(next.issued.id)))?.steps ?? [];
+    const writes = { steps: unpublished, pairSteps, idSaved };
+    return resume(job, ready, next.issued, read.secret, writes, state);
+  }
 
-  if (next.abandoned)
+  const orphan =
+    job.pair && next.abandoned && neverSaved(next.abandoned, spec, generation, state)
+      ? next.abandoned
+      : null;
+  if (next.abandoned && !orphan)
     say(
       `\n${out.dim(abandonedNote(next.abandoned, issuer, spec, vaultName(entry.ref, deps.vaults)))}`,
     );
-  const current = check.gone === undefined ? (next.current ?? check.currentId ?? null) : null;
+  const known = job.pair ? check.currentId : (next.current ?? check.currentId);
+  const current = check.gone === undefined ? (known ?? null) : null;
   const steps = planNewValue(input, read.ids);
+  const pairSteps = pairInput ? planNewValue(pairInput, read.pair?.ids ?? null) : [];
   say("\nPlan");
   showPlan(out, [
+    ...(orphan
+      ? [
+          row(
+            "-",
+            issuer.describe(),
+            `revoke key ${shown(issuer, orphan.id)}, which keypin created on ${orphan.at} but never saved`,
+          ),
+        ]
+      : []),
     row("+", issuer.describe(), "create a new key", check.notes?.create),
     row(
       "~",
       vaultName(entry.ref, deps.vaults),
       `save it to ${formatReference(entry.ref, deps.vaults)}, rotated today`,
     ),
-    ...publishRows(steps, job.label, deps.destinations),
+    ...(job.pair ? [saveIdRow(job, job.pair)] : []),
+    ...writeRows(job, steps, pairSteps),
     check.gone === undefined
       ? revokeRow(issuer, current, "after a second y", check.notes?.revoke)
       : row("=", issuer.describe(), `nothing to revoke: ${check.gone}`),
   ]);
-  showRemoved(out, removed);
-  const needsApproval = steps.some((step) => step.approval !== null);
+  showRemoved(out, ready.removed);
+  apartNote(job, checked);
+  const needsApproval = [...steps, ...pairSteps].some((step) => step.approval !== null);
   if (job.plan) return planOnly(deps, "rotate", job.args, needsApproval);
   say("");
   const ok = await confirmed(
@@ -252,6 +333,7 @@ async function rotateLocked(job: Job): Promise<number> {
   );
   if (!ok) return NEEDS_APPROVAL;
 
+  if (orphan && !(await revokeOrphan(job, issuer, orphan.id))) return 1;
   const created = await createKey(job, issuer);
   if ("unchanged" in created) {
     if (created.unchanged) say("Stopped. Nothing was created.");
@@ -279,7 +361,7 @@ async function rotateLocked(job: Job): Promise<number> {
     );
   }
 
-  const saved = await saveKey(job, created.secret);
+  const saved = await saveKey(job, entry.ref, created.secret, "the new key");
   if (saved === "refused")
     return undoCreate(
       job,
@@ -303,21 +385,132 @@ async function rotateLocked(job: Job): Promise<number> {
     );
     return 1;
   }
-  let ids: ItemIds;
-  try {
-    ids = await deps.vault().itemIds(entry.ref);
-  } catch (error) {
-    say(
-      `    ${messageOf(error)}\nStopped. The new key is in ${vaultName(entry.ref, deps.vaults)}, and the old key still works. To continue, run:\n  ${commandLine(deps, "rotate", job.args)}`,
-    );
-    return 1;
-  }
-  return publishThenRevoke(job, { ...ready, ids }, issued, created.secret, steps, state);
+  if (job.pair && !(await saveId(job, job.pair, issuer, created.id))) return 1;
+  const ids = await itemIdsAfterSave(job);
+  if (!ids) return 1;
+  return publishThenRevoke(
+    job,
+    { ...ready, ...ids },
+    issued,
+    created.secret,
+    { steps, pairSteps, idSaved: true },
+    state,
+  );
 }
 
-async function vaultTakesWrites({ entry, deps, out }: Job): Promise<boolean> {
+async function itemIdsAfterSave({
+  entry,
+  pair,
+  deps,
+  out,
+  args,
+}: Job): Promise<{ ids: ItemIds; pairIds: ItemIds | null } | null> {
+  try {
+    const ids = await deps.vault().itemIds(entry.ref);
+    return { ids, pairIds: pair ? await deps.vault().itemIds(pair.entry.ref) : null };
+  } catch (error) {
+    out.line(
+      `    ${messageOf(error)}\nStopped. The new key is in ${vaultName(entry.ref, deps.vaults)}, and the old key still works. To continue, run:\n  ${commandLine(deps, "rotate", args)}`,
+    );
+    return null;
+  }
+}
+
+async function saveId(job: Job, pair: Pair, issuer: Issuer, id: string): Promise<boolean> {
+  const saved = await saveKey(job, pair.entry.ref, new Secret(id), "the new key's ID");
+  if (saved === "saved") return true;
+  const { deps } = job;
+  job.out.line(
+    `Stopped: the new key ${shown(issuer, id)} is in ${vaultName(job.entry.ref, deps.vaults)}, but its ID isn't in ${formatReference(pair.entry.ref, deps.vaults)} yet. The old key still works. Run this again to save the ID and publish both:\n  ${commandLine(deps, "rotate", withoutPlan(job.args))}`,
+  );
+  return false;
+}
+
+function neverSaved(abandoned: Issued, spec: IssuerSpec, generation: string, state: State) {
+  return (
+    abandoned.issuer === spec.kind &&
+    abandoned.old.generation === generation &&
+    !state.receipts.some((r) => ownedBy(r, abandoned) && r.generation === abandoned.generation)
+  );
+}
+
+async function revokeOrphan(job: Job, issuer: Issuer, id: string): Promise<boolean> {
+  const where = issuer.describe();
+  try {
+    await job.out.step(
+      `${where}  revoking ${shown(issuer, id)}`,
+      () => issuer.revoke(id),
+      (result) => ({
+        ok: true,
+        text: `${where}  ${result === "revoked" ? "revoked" : "already gone:"} ${shown(issuer, id)}`,
+      }),
+    );
+    return true;
+  } catch (error) {
+    job.out.line(
+      `    ${messageOf(error)}\nStopped. Nothing was created. Delete key ${shown(issuer, id)} at ${issuer.dashboard()}, or run this again.`,
+    );
+    return false;
+  }
+}
+
+function pairChecks({ pair, deps }: Job, checked: Map<string, Checked>): Map<string, Checked> {
+  const found = new Map<string, Checked>();
+  if (!pair) return found;
+  const kinds = deps.destinations;
+  for (const target of pair.entry.publish) {
+    const same = [...checked.values()].find(
+      (c) => placeId(c.target, kinds) === placeId(target, kinds),
+    );
+    if (same) found.set(destinationId(target, pair.key.name, kinds), same);
+  }
+  return found;
+}
+
+function saveIdRow({ deps }: Job, pair: Pair): PlanRow {
+  return row(
+    "~",
+    vaultName(pair.entry.ref, deps.vaults),
+    `save its ID to ${formatReference(pair.entry.ref, deps.vaults)}, rotated today`,
+  );
+}
+
+function writeRows(job: Job, steps: PlanStep[], pairSteps: PlanStep[]): PlanRow[] {
+  const { key, pair, deps } = job;
+  if (!pair) return publishRows(steps, job.label, deps.destinations);
+  const kinds = deps.destinations;
+  const place = (step: PlanStep) => placeId(step.target, kinds);
+  const both = steps.flatMap((step) => [
+    { step, name: key.name },
+    ...pairSteps
+      .filter((p) => place(p) === place(step))
+      .map((p) => ({ step: { ...p, target: step.target }, name: pair.key.name })),
+  ]);
+  const rows = publishRows(
+    both.map((b) => b.step),
+    job.label,
+    kinds,
+  );
+  return rows.map((r, i) => ({ ...r, why: `${both[i]?.name ?? ""}: ${r.why}` }));
+}
+
+function apartNote({ key, pair, deps, out }: Job, checked: Map<string, Checked>): void {
+  if (!pair) return;
+  const kinds = deps.destinations;
+  const apart = pair.entry.publish.filter(
+    (target) => !checked.get(destinationId(target, key.name, kinds))?.destination.writeMany,
+  );
+  if (!apart.length) return;
+  const names = apart.map((target) => kindOf(kinds, target.to).named(target)).join(", ");
+  out.line(
+    `  ${out.dim(`${names} ${apart.length === 1 ? "gets" : "get"} ${key.name} and ${pair.key.name} one write after the other; a run that starts between them reads a mismatched pair. Pause new runs there until the rotation finishes.`)}`,
+  );
+}
+
+async function vaultTakesWrites({ entry, pair, deps, out }: Job): Promise<boolean> {
   try {
     await deps.vault().checkWrite?.(entry.ref);
+    if (pair) await deps.vault().checkWrite?.(pair.entry.ref);
     return true;
   } catch (error) {
     out.line(`Stopped: ${messageOf(error)}. Nothing was created.`);
@@ -347,33 +540,47 @@ async function issuerLists(
   }
 }
 
+interface Writes {
+  steps: PlanStep[];
+  pairSteps: PlanStep[];
+  idSaved: boolean;
+}
+
 async function resume(
   job: Job,
   ready: Ready,
   issued: Issued,
   secret: Secret,
-  steps: PlanStep[],
+  writes: Writes,
   state: State,
 ): Promise<number> {
-  const { out, deps } = job;
+  const { out, deps, pair } = job;
   out.line(
     `\nResuming: keypin created key ${shown(ready.issuer, issued.id)} at ${ready.issuer.describe()} on ${issued.at}, and ${vaultName(job.entry.ref, job.deps.vaults)} holds it.`,
   );
-  const published = steps.every((step) => step.action === "skip");
+  const { steps, pairSteps } = writes;
+  const unsavedId = pair !== null && !writes.idSaved;
+  const all = [...steps, ...pairSteps];
+  const published = all.every((step) => step.action === "skip") && !unsavedId;
   if (published && !job.plan) return revokeOld(job, ready, issued, state);
   const old = issued.old.revoked ? null : issued.old.id;
   out.line("\nPlan");
   showPlan(out, [
-    ...publishRows(steps, job.label, deps.destinations),
+    ...(pair && unsavedId ? [saveIdRow(job, pair)] : []),
+    ...writeRows(job, steps, pairSteps),
     ...(old === null
       ? []
       : [revokeRow(ready.issuer, old, published ? "after a y" : "after a second y")]),
   ]);
   showRemoved(out, ready.removed);
-  const needsApproval = published || steps.some((step) => step.approval !== null);
+  apartNote(job, ready.checked);
+  const needsApproval = published || all.some((step) => step.approval !== null);
   if (job.plan) return planOnly(deps, "rotate", job.args, needsApproval);
   out.line("");
-  const total = writesFor(steps, ready.checked).length;
+  const total =
+    writesFor(steps, ready.checked).length +
+    writesFor(pairSteps, ready.pairChecked).length +
+    (unsavedId ? 1 : 0);
   const ok = await confirmed(deps, {
     yes: job.yes,
     args: job.args,
@@ -382,7 +589,13 @@ async function resume(
     question: `Write ${total} secret${total === 1 ? "" : "s"}?`,
   });
   if (!ok) return NEEDS_APPROVAL;
-  return publishThenRevoke(job, ready, issued, secret, steps, state);
+  if (pair && unsavedId) {
+    if (!(await saveId(job, pair, ready.issuer, issued.id))) return 1;
+    const ids = await itemIdsAfterSave(job);
+    if (!ids) return 1;
+    return publishThenRevoke(job, { ...ready, ...ids }, issued, secret, writes, state);
+  }
+  return publishThenRevoke(job, ready, issued, secret, writes, state);
 }
 
 async function publishThenRevoke(
@@ -390,25 +603,35 @@ async function publishThenRevoke(
   ready: Ready,
   issued: Issued,
   secret: Secret,
-  steps: PlanStep[],
+  { steps, pairSteps }: Writes,
   state: State,
 ): Promise<number> {
-  const { key, entry, owner, deps, out } = job;
-  const written = await writeAll({
-    key,
-    environment: owner.environment,
-    mapFile: owner.mapFile,
-    entry,
-    secret,
-    ids: ready.ids,
-    generation: issued.generation,
-    writes: writesFor(steps, ready.checked),
-    state,
-    path: job.path,
-    deps,
-    out,
-    label: job.label,
-  });
+  const { key, entry, owner, pair, deps, out } = job;
+  const place = { environment: owner.environment, mapFile: owner.mapFile };
+  const jobs = [
+    {
+      ...place,
+      key,
+      entry,
+      secret,
+      ids: ready.ids,
+      generation: issued.generation,
+      writes: writesFor(steps, ready.checked),
+    },
+  ];
+  if (pair && ready.pairIds) {
+    const id = new Secret(issued.id);
+    jobs.push({
+      ...place,
+      key: pair.key,
+      entry: pair.entry,
+      secret: id,
+      ids: ready.pairIds,
+      generation: await generationOf(id),
+      writes: writesFor(pairSteps, ready.pairChecked),
+    });
+  }
+  const written = await writeEach(jobs, { state, path: job.path, deps, out, label: job.label });
   if (!written.ok) {
     out.line(
       `Stopped. The new key is in ${vaultName(entry.ref, deps.vaults)}, and the old key still works. To continue, run:\n  ${commandLine(deps, "rotate", job.args)}`,
@@ -499,19 +722,26 @@ function row(sign: PlanRow["sign"], place: string, why: string, detail?: string)
 }
 
 type Read =
-  | { ok: true; secret: Secret; ids: ItemIds; admin: Secret }
+  | {
+      ok: true;
+      secret: Secret;
+      ids: ItemIds;
+      admin: Secret;
+      pair: { secret: Secret; ids: ItemIds } | null;
+    }
   | { ok: false; failed: string };
 
-function readKeys({ entry, spec, deps, out }: Job): Promise<Read> {
-  const refs = [entry.ref, spec.admin];
+function readKeys({ entry, spec, pair, deps, out }: Job): Promise<Read> {
+  const refs = pair ? [entry.ref, pair.entry.ref, spec.admin] : [entry.ref, spec.admin];
   const account = vaultAccounts(refs, deps.vaults);
   return out.step(
     `Reading the key and the admin key from ${account}`,
     async (): Promise<Read> => {
       try {
         const current = await deps.vault().readItem(entry.ref);
+        const id = pair ? await deps.vault().readItem(pair.entry.ref) : null;
         const admin = await deps.vault().read(spec.admin);
-        return { ok: true, ...current, admin };
+        return { ok: true, ...current, admin, pair: id };
       } catch (error) {
         return { ok: false, failed: messageOf(error) };
       }
@@ -612,17 +842,19 @@ async function undoCreate(
 }
 
 async function saveKey(
-  { entry, deps, out }: Job,
+  { deps, out }: Job,
+  ref: KeyRef,
   secret: Secret,
+  what: string,
 ): Promise<"saved" | "held" | "refused" | "unknown"> {
-  const place = `${vaultName(entry.ref, deps.vaults)}  ${formatReference(entry.ref, deps.vaults)}`;
+  const place = `${vaultName(ref, deps.vaults)}  ${formatReference(ref, deps.vaults)}`;
   const today = localDay(deps.now());
   try {
     await out.step(
-      `${place}  saving the new key`,
-      () => deps.vault().write(entry.ref, secret, { rotated: today }),
+      `${place}  saving ${what}`,
+      () => deps.vault().write(ref, secret, { rotated: today }),
       () => ({ ok: true, text: `${place}  saved, rotated ${today}` }),
-      approval(deps, [entry.ref]),
+      approval(deps, [ref]),
     );
     return "saved";
   } catch (error) {

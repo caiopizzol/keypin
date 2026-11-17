@@ -1,4 +1,4 @@
-export { Secret, generationOf, type Generation } from "./secret";
+export { Secret, generationOf, keyIdText, type Generation } from "./secret";
 export { type Fetch } from "./fetch";
 export {
   DEFAULT_ENVIRONMENTS,
@@ -46,6 +46,7 @@ export {
   envFlag,
   isEnvironmentName,
   isVariableName,
+  pairedWith,
   parseMap,
   publishEnvironment,
   runEnvironment,
@@ -69,6 +70,7 @@ export {
   loadState,
   nextRotation,
   type NextRotation,
+  ownedBy,
   receiptsFor,
   recordIssued,
   recordReceipt,
@@ -77,6 +79,7 @@ export {
 } from "./state";
 export {
   approvalsFor,
+  type PlanInput,
   planNewValue,
   planPublish,
   type PlanStep,

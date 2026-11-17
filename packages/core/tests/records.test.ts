@@ -406,6 +406,18 @@ describe("nextRotation", () => {
     });
   });
 
+  test("published and revoked, but the vault doesn't hold the issued key's ID yet: resume, to save it", () => {
+    const found = issued({ old: { id: "key-old", generation: "a", revoked: true } });
+    const unsaved = nextRotation({
+      issued: found,
+      issuer: "resend",
+      generation: "bbbbbbbbbbbbbbbb",
+      published: true,
+      idSaved: false,
+    });
+    expect(unsaved).toEqual({ action: "resume", issued: found });
+  });
+
   test("another issuer's record is stale", () => {
     const found = issued({ issuer: "openai" });
     expect(next(found, "bbbbbbbbbbbbbbbb")).toEqual({

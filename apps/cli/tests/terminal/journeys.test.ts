@@ -665,6 +665,50 @@ describe("keypin in a real terminal", () => {
 
 describe("keypin rotate in a real terminal", () => {
   test(
+    "a key whose ID is another key: saves the secret then the ID, writes both to each destination, and warns about the gap",
+    async () => {
+      const result = await drive({
+        scenario: "paired",
+        args: ["rotate", "API_SECRET"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  ~ 1Password             save its ID to op://Private/api key id/credential, rotated today",
+      );
+      expect(result.screen).toContain(
+        "GitHub acme/api, the Worker api get API_SECRET and API_KEY_ID one write after the other; a run that starts between them reads a mismatched pair. Pause new runs there until the rotation finishes.",
+      );
+      expect(result.effects).toEqual([
+        "paired create AKID-1",
+        "1password update my.1password.com/Private/api secret (19 chars)",
+        "1password update my.1password.com/Private/api key id (6 chars)",
+        "destination write github-actions:acme/api API_SECRET (19 chars)",
+        "destination write github-actions:acme/api API_KEY_ID (6 chars)",
+        "destination write cloudflare-worker:api API_SECRET (19 chars)",
+        "destination write cloudflare-worker:api API_KEY_ID (6 chars)",
+        "paired revoke AKID-0",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "rotating the ID key points to the key that rotates it",
+    async () => {
+      const result = await drive({ scenario: "paired", args: ["rotate", "API_KEY_ID"] });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        'keypin rotate: key "API_KEY_ID" prod holds the ID of API_SECRET, and keypin rotates the two together. Run keypin rotate API_SECRET.',
+      );
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "creates at Resend, saves, publishes, then revokes the old key after a second y",
     async () => {
       const result = await drive({

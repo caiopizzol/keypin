@@ -101,6 +101,7 @@ export interface Publisher {
   githubLogin: string | null;
   refreshLogins: boolean;
   signInVariables: readonly string[];
+  signInEnv: Readonly<Record<string, string | undefined>>;
   workerSignIn: WorkerSignIn | null;
 }
 

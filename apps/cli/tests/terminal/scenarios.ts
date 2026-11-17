@@ -68,6 +68,11 @@ to = "github-actions"
 repo = "acme/billing"
 `;
 
+const VERCEL_MAP = MAP.replace(
+  'to = "github-actions"\nrepo = "acme/billing"',
+  'to = "vercel-project"\nteam = "acme"\nproject = "billing"\nenvironment = "production"',
+);
+
 const WORKFLOW = `on: push
 jobs:
   deploy:
@@ -629,6 +634,27 @@ jobs:
     ...resend,
     about: "resend, but 1Password saves the new key and then its reply times out",
     onePassword: { ...resend.onePassword, saveTimesOut: true },
+  },
+  vercel: {
+    ...ready,
+    about: "ready, but STRIPE_KEY publishes to a Vercel project's production environment",
+    files: { "keypin.toml": VERCEL_MAP },
+    env: { KEYPIN_VERCEL_TOKEN: "verify-vercel-token-8c2f" },
+  },
+  "vercel-no-token": {
+    ...ready,
+    about: "vercel, but KEYPIN_VERCEL_TOKEN isn't set",
+    files: { "keypin.toml": VERCEL_MAP },
+    places: {
+      "vercel-project:billing/production": {
+        check: {
+          reason:
+            "keypin signs in to Vercel with KEYPIN_VERCEL_TOKEN, which isn't set. Create a token at https://vercel.com/account/tokens for the project's team and set KEYPIN_VERCEL_TOKEN; keypin doesn't read the vercel login",
+          publisher: "unknown",
+          destinationAccount: null,
+        },
+      },
+    },
   },
   openai,
   "openai-user-key": {

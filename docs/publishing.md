@@ -16,6 +16,11 @@ deploy the Worker's latest version first; `--all` writes up to 100 of a Worker's
 publish to Pages projects, Workers for Platforms namespaces, GitHub Enterprise Server or ghe.com. Run `keypin check`
 first: it lists what's missing.
 
+It writes Vercel variables as Sensitive with `KEYPIN_VERCEL_TOKEN`, one per `environment`: `production`, `preview`,
+`development` or a custom environment's name. Vercel uses a new value only in new deployments, so redeploy after
+publishing; keypin doesn't. It stops rather than change a variable that also covers another environment, and
+leaves Git branch variables alone.
+
 ## Steps
 
 1. **Accounts:** it checks that each login reaches the account the map pins, and stops if one doesn't.

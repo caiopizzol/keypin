@@ -531,6 +531,7 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
       const check = await realDestination(target, {
         githubLogin: "alice",
         workerSignIn: null,
+        signInEnv: {},
         refreshLogins: true,
         signInVariables: signInNames,
       }).checkAccount();

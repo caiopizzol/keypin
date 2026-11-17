@@ -178,7 +178,6 @@ export class GoogleIssuer implements Issuer {
     const id = objectField(done, "response").name;
     if (typeof id !== "string" || !KEY_NAME.test(id))
       throw new Error("Google's finished create operation has no key name");
-    this.#names.set(id, body.displayName);
     const value = await this.#keyString(id, objectField(done, "response").keyString);
     return { id, secret: new Secret(value) };
   }

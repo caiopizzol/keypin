@@ -25,6 +25,7 @@ import { neonIssuer } from "@keypin/connectors/neon";
 import { netlifyProject } from "@keypin/connectors/netlify";
 import { openaiIssuer } from "@keypin/connectors/openai";
 import { openrouterIssuer } from "@keypin/connectors/openrouter";
+import { railwayService } from "@keypin/connectors/railway";
 import { resendIssuer } from "@keypin/connectors/resend";
 import { supabaseFunctions, supabaseIssuer } from "@keypin/connectors/supabase";
 import { vercelProject } from "@keypin/connectors/vercel";
@@ -72,6 +73,7 @@ export const destinations = [
   vercelProject,
   supabaseFunctions,
   netlifyProject,
+  railwayService,
 ];
 export const vaults = [infisicalVault, bitwardenVault, dopplerVault, onePasswordVault];
 export const signInNames = signInVariables([...vaults, ...destinations]);

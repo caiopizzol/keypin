@@ -66,6 +66,10 @@ export const infisicalVault: VaultKind<
     a.name === b.name,
   stored: decode,
   signInVariables: [CLIENT_ID, CLIENT_SECRET, ...ACCESS_TOKENS],
+  newValueByHand: "Put a new value in the Infisical secret and set its rotated metadata to today",
+  addRotatedDate:
+    "Add rotated to the Infisical secret's metadata, with the day the value last changed as YYYY-MM-DD.",
+  holdsWrites: true,
   addByHand: (map) => {
     const refs = map.keys.flatMap((key) =>
       Object.values(key.environments).flatMap((entry) => (entry ? [entry.ref] : [])),

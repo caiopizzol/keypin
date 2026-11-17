@@ -56,7 +56,7 @@ export {
   type MapResult,
 } from "./map";
 export { addDays, type Day, localDay, parseDay, periodDays } from "./days";
-export { formatReference, vaultAccount, vaultAccounts, vaultName } from "./reference";
+export { formatReference, vaultAccount, vaultAccounts, vaultKindOf, vaultName } from "./reference";
 export { type Files } from "./files";
 export { messageOf } from "./error";
 export { isRecord, objectField, parseObject } from "./record";

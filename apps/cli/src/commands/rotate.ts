@@ -32,6 +32,7 @@ import {
   vaultAccount,
   vaultAccounts,
   vaultName,
+  vaultKindOf,
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
 import { confirm, type Output, output } from "../output";
@@ -174,7 +175,7 @@ async function rotateLocked(job: Job): Promise<number> {
     if (listed === null) return 1;
     if (listed) {
       say(
-        `\nStopped: Infisical still holds the change that saves key ${shown(issuer, held.id)} for approval. Nothing was created.`,
+        `\nStopped: ${vaultName(entry.ref, deps.vaults)} still holds the change that saves key ${shown(issuer, held.id)} for approval. Nothing was created.`,
       );
       say(heldSteps(job, issuer, held.id));
       return NEEDS_APPROVAL;
@@ -265,7 +266,7 @@ async function rotateLocked(job: Job): Promise<number> {
     at: deps.now().toISOString(),
     old: { id: current, generation, revoked: check.gone !== undefined },
   };
-  const mayHold = entry.ref.kind === "infisical";
+  const mayHold = vaultKindOf(deps.vaults, entry.ref.kind).holdsWrites === true;
   try {
     const pending = mayHold ? { ...issued, held: true } : issued;
     await saveState(deps.files, job.path, recordIssued(state, pending));

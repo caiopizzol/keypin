@@ -78,6 +78,9 @@ export const onePasswordVault: VaultKind<
   sameField: (a, b) => sameName(a.section, b.section) && sameName(a.field, b.field),
   stored: decode,
   signInVariables: ["OP_SERVICE_ACCOUNT_TOKEN", "KEYPIN_1PASSWORD"],
+  newValueByHand: "Put a new value in the 1Password item and set rotated to today",
+  addRotatedDate:
+    "Add a rotated Date field to the 1Password item, with the day the value last changed.",
   newKeys: {
     reference: "<vault>/<item>/<field>",
     pin: { account: "<1Password sign-in address>" },

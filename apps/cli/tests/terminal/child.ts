@@ -12,10 +12,13 @@ import {
 import { fakeSignIn, type TokenWorld, tokensFetch } from "@keypin/connectors/cloudflare/testing";
 import { neonFetch, type NeonWorld } from "@keypin/connectors/neon/testing";
 import { type OpenAIKeys, openaiFetch } from "@keypin/connectors/openai/testing";
+import { openrouterFetch, type OpenRouterWorld } from "@keypin/connectors/openrouter/testing";
 import { resendFetch } from "@keypin/connectors/resend/testing";
 import { supabaseFetch, type SupabaseWorld } from "@keypin/connectors/supabase/testing";
 import { credentialsFrom, infisicalBackend } from "@keypin/connectors/infisical";
 import { fileStore, infisicalFetch } from "@keypin/connectors/infisical/testing";
+import { accessTokenFrom, bitwardenBackend } from "@keypin/connectors/bitwarden";
+import { bitwardenFetch, fileStore as bitwardenStore } from "@keypin/connectors/bitwarden/testing";
 import { dopplerBackend, tokenFrom } from "@keypin/connectors/doppler";
 import { dopplerFetch, fileStore as dopplerStore } from "@keypin/connectors/doppler/testing";
 import { cli } from "../../src/cli";
@@ -33,6 +36,8 @@ import {
   NEON_PREFIX,
   OPENAI_ADMIN,
   OPENAI_PREFIX,
+  OPENROUTER_ADMIN,
+  OPENROUTER_PREFIX,
   SUPABASE_ADMIN,
   SUPABASE_PREFIX,
   SANDBOX_MARKER,
@@ -72,6 +77,7 @@ const NEON = join(sandbox, "neon.json");
 const OPENAI = join(sandbox, "openai.json");
 const SUPABASE = join(sandbox, "supabase.json");
 const CLOUDFLARE = join(sandbox, "cloudflare-tokens.json");
+const OPENROUTER = join(sandbox, "openrouter.json");
 
 function effect(line: string): void {
   appendFileSync(EFFECTS, `${line}\n`);
@@ -217,6 +223,18 @@ const infisical = infisicalBackend(
     ),
   ),
 );
+const BITWARDEN = join(sandbox, "bitwarden.json");
+const bitwarden = bitwardenBackend(
+  accessTokenFrom(process.env),
+  bitwardenFetch(
+    run.bitwarden ?? { organization: "", projects: {} },
+    bitwardenStore(
+      () => (existsSync(BITWARDEN) ? readFileSync(BITWARDEN, "utf8") : null),
+      (text) => writeFileSync(BITWARDEN, text),
+      effect,
+    ),
+  ),
+);
 const DOPPLER = join(sandbox, "doppler.json");
 const doppler = dopplerBackend(
   tokenFrom(process.env),
@@ -232,6 +250,7 @@ const doppler = dopplerBackend(
 const vault = routedVault({
   "1password": () => signedIn().vault,
   infisical: () => infisical,
+  bitwarden: () => bitwarden,
   doppler: () => doppler,
 });
 
@@ -343,7 +362,34 @@ const cloudflare = tokensFetch({
   effect,
 });
 
-const issuerFetch: Record<string, Fetch> = { cloudflare, neon, openai, resend, supabase };
+const openrouter = openrouterFetch({
+  admin: OPENROUTER_ADMIN,
+  valuePrefix: OPENROUTER_PREFIX,
+  world: {
+    load(): OpenRouterWorld {
+      if (!existsSync(OPENROUTER)) return { keys: run.openrouter?.keys ?? [], created: 0 };
+      const parsed: unknown = JSON.parse(readFileSync(OPENROUTER, "utf8"));
+      if (!isOpenRouterWorld(parsed))
+        throw new Error(`${OPENROUTER} isn't the fake OpenRouter's keys`);
+      return parsed;
+    },
+    save: (world) => writeFileSync(OPENROUTER, JSON.stringify(world)),
+  },
+  effect,
+});
+
+const issuerFetch: Record<string, Fetch> = {
+  cloudflare,
+  neon,
+  openai,
+  openrouter,
+  resend,
+  supabase,
+};
+
+function isOpenRouterWorld(value: unknown): value is OpenRouterWorld {
+  return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";
+}
 
 function isTokenWorld(value: unknown): value is TokenWorld {
   return isRecord(value) && Array.isArray(value.tokens) && typeof value.created === "number";

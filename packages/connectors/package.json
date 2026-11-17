@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./bitwarden": "./src/bitwarden/index.ts",
+    "./bitwarden/testing": "./src/bitwarden/testing.ts",
     "./cloudflare": "./src/cloudflare/index.ts",
     "./cloudflare/testing": "./src/cloudflare/testing.ts",
     "./doppler": "./src/doppler/index.ts",
@@ -19,6 +21,8 @@
     "./onepassword/testing": "./src/onepassword/testing.ts",
     "./openai": "./src/openai/index.ts",
     "./openai/testing": "./src/openai/testing.ts",
+    "./openrouter": "./src/openrouter/index.ts",
+    "./openrouter/testing": "./src/openrouter/testing.ts",
     "./resend": "./src/resend/index.ts",
     "./resend/testing": "./src/resend/testing.ts",
     "./supabase": "./src/supabase/index.ts",

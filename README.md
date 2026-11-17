@@ -26,9 +26,10 @@ commands with the dev keys and publishes the prod keys. It reads a value only wh
 | --------- | ------------------ | --------------------- |
 | 1Password | GitHub Actions     | Resend                |
 | Infisical | Cloudflare Workers | Neon                  |
-| Doppler   | Vercel projects    | OpenAI                |
-|           | Supabase Functions | Supabase              |
+| Bitwarden | Vercel projects    | OpenAI                |
+| Doppler   | Supabase Functions | Supabase              |
 |           | Netlify projects   | Cloudflare API tokens |
+|           |                    | OpenRouter            |
 
 Want another? Vote for it on the [roadmap](https://github.com/caiopizzol/keypin/issues/138).
 
@@ -123,7 +124,8 @@ npx skills add caiopizzol/keypin -g    # all your projects
 - [Configuration](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md): every field in
   `keypin.toml`
 - [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md): moving an env file's values into 1Password
-- [Infisical](https://github.com/caiopizzol/keypin/blob/main/docs/infisical.md) and
+- [Infisical](https://github.com/caiopizzol/keypin/blob/main/docs/infisical.md),
+  [Bitwarden](https://github.com/caiopizzol/keypin/blob/main/docs/bitwarden.md) and
   [Doppler](https://github.com/caiopizzol/keypin/blob/main/docs/doppler.md): reading keys from them instead
 - [Service account](https://github.com/caiopizzol/keypin/blob/main/docs/service-account.md): 1Password on a server or
   in CI

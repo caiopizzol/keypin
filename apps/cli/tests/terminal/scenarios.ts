@@ -2,8 +2,10 @@ import { envValues } from "@keypin/core";
 import { localDay } from "@keypin/core";
 import type { FakeToken } from "@keypin/connectors/cloudflare/testing";
 import type { FakeInfisical } from "@keypin/connectors/infisical/testing";
+import { FAKE_ACCESS_TOKEN, type FakeBitwarden } from "@keypin/connectors/bitwarden/testing";
 import type { FakeDoppler } from "@keypin/connectors/doppler/testing";
 import type { FakeOpenAIKey } from "@keypin/connectors/openai/testing";
+import type { FakeOpenRouterKey } from "@keypin/connectors/openrouter/testing";
 import type { SupabaseKey } from "@keypin/connectors/supabase/testing";
 
 export interface FakeItem {
@@ -31,6 +33,7 @@ export interface Scenario {
   openai?: { keys: FakeOpenAIKey[]; loseCreated?: boolean };
   supabase?: { keys: SupabaseKey[]; loseCreated?: boolean; prefixOnly?: boolean };
   cloudflareTokens?: { tokens: FakeToken[]; loseCreated?: boolean };
+  openrouter?: { keys: FakeOpenRouterKey[] };
   registered: boolean;
   git: { origin?: string; account?: string };
   onePassword: {
@@ -46,6 +49,7 @@ export interface Scenario {
   places: Record<string, Place>;
   env?: Record<string, string>;
   infisical?: FakeInfisical;
+  bitwarden?: FakeBitwarden;
   doppler?: FakeDoppler;
 }
 
@@ -328,6 +332,50 @@ const openai: Scenario = {
   openai: { keys: [{ id: "key_old", name: "prod", value: OPENAI_OLD, owner: OPENAI_BOT }] },
 };
 
+const OPENROUTER_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.OPENROUTER_API_KEY]
+rotate_every = "90d"
+
+[keys.OPENROUTER_API_KEY.prod]
+from = "op://Private/chat openrouter key/credential"
+
+[keys.OPENROUTER_API_KEY.prod.issuer]
+kind = "openrouter"
+admin = "op://Private/openrouter management key/credential"
+
+[[keys.OPENROUTER_API_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`;
+
+export const OPENROUTER_ADMIN = "sk-or-v1-verify-management-key-4b7e";
+export const OPENROUTER_PREFIX = "sk-or-v1-verify-new-";
+const OPENROUTER_OLD = "sk-or-v1-verify-old-key-8d3c";
+
+const openrouter: Scenario = {
+  ...ready,
+  about:
+    'OPENROUTER_API_KEY has an OpenRouter issuer; the vault holds key "chat" with a $25 monthly limit, and keypin has never rotated it',
+  files: { "keypin.toml": OPENROUTER_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          { title: "chat openrouter key", value: OPENROUTER_OLD, rotated: day(-95) },
+          { title: "openrouter management key", value: OPENROUTER_ADMIN },
+        ],
+      },
+    },
+  },
+  openrouter: {
+    keys: [
+      { hash: "hash_old", name: "chat", value: OPENROUTER_OLD, limit: 25, limitReset: "monthly" },
+    ],
+  },
+};
+
 const SUPABASE_MAP = `[1password]
 account = "my.1password.com"
 
@@ -462,6 +510,8 @@ const infisical: Scenario = {
   },
 };
 
+const BITWARDEN_ORGANIZATION = "2f1d6c9e-8a3b-4c5d-9e7f-0a1b2c3d4e5f";
+
 const doppler: Scenario = {
   ...ready,
   about:
@@ -487,6 +537,37 @@ const doppler: Scenario = {
     tokens: { "dp.sa.verify-account-token-1a9f": { type: "service_account", write: true } },
   },
   env: { DOPPLER_TOKEN: "dp.sa.verify-account-token-1a9f" },
+};
+
+const bitwarden: Scenario = {
+  ...ready,
+  about: "ready, but keypin.toml reads from a fake Bitwarden Secrets Manager organization",
+  files: {
+    ...ready.files,
+    "keypin.toml": INFISICAL_MAP.replace(
+      '[infisical]\norganization = "acme"',
+      `[bitwarden]\norganization = "${BITWARDEN_ORGANIZATION}"`,
+    )
+      .replace("infisical://billing/dev/", "bitwarden://billing-dev/")
+      .replace("infisical://billing/prod/", "bitwarden://billing/"),
+  },
+  onePassword: { accounts: {} },
+  bitwarden: {
+    organization: BITWARDEN_ORGANIZATION,
+    projects: {
+      "billing-dev": {
+        secrets: [
+          { name: "STRIPE_KEY", value: "verify-dev-stripe-2c7f", note: `rotated: ${day(-30)}` },
+        ],
+      },
+      billing: {
+        secrets: [
+          { name: "STRIPE_KEY", value: "verify-prod-stripe-8e1b", note: `rotated: ${day(-85)}` },
+        ],
+      },
+    },
+  },
+  env: { BWS_ACCESS_TOKEN: FAKE_ACCESS_TOKEN },
 };
 
 export const scenarios: Record<string, Scenario> = {
@@ -575,6 +656,8 @@ jobs:
     env: { KEYPIN_1PASSWORD: "service-account", OP_SERVICE_ACCOUNT_TOKEN: FAKE_TOKEN },
   },
   infisical,
+  bitwarden,
+  doppler,
   "infisical-token": {
     ...infisical,
     about: "infisical, but signed in with a machine identity's access token in INFISICAL_TOKEN",
@@ -586,7 +669,6 @@ jobs:
     },
     env: { INFISICAL_TOKEN: "verify-access-token-8c3f" },
   },
-  doppler,
   resend,
   neon,
   supabase,
@@ -840,6 +922,14 @@ jobs:
     about: "openai, but the network drops OpenAI's reply after it creates the new key",
     openai: { ...openai.openai, keys: openai.openai?.keys ?? [], loseCreated: true },
   },
+  openrouter,
+  "openrouter-disabled": {
+    ...openrouter,
+    about: "openrouter, but the vault's key is disabled at OpenRouter",
+    openrouter: {
+      keys: [{ hash: "hash_old", name: "chat", value: OPENROUTER_OLD, limit: 25, disabled: true }],
+    },
+  },
   fresh: {
     ...ready,
     about: "an empty git repository: no keypin.toml, not registered, nothing signed in",
@@ -872,6 +962,9 @@ export function valuesOf(scenario: Scenario): string[] {
     .flatMap((secrets) => Object.values(secrets));
   if (infisical.some((secret) => secret.value.length < SHORTEST_VALUE))
     throw new Error(`Infisical values need ${SHORTEST_VALUE} characters or more`);
+  const bitwarden = Object.values(scenario.bitwarden?.projects ?? {}).flatMap((p) => p.secrets);
+  if (bitwarden.some((secret) => secret.value.length < SHORTEST_VALUE))
+    throw new Error(`Bitwarden values need ${SHORTEST_VALUE} characters or more`);
   const doppler = Object.values(scenario.doppler?.projects ?? {})
     .flatMap((configs) => Object.values(configs))
     .flatMap((secrets) => Object.values(secrets));
@@ -882,6 +975,7 @@ export function valuesOf(scenario: Scenario): string[] {
     scenario.env?.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET,
     scenario.env?.INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN,
     scenario.env?.INFISICAL_TOKEN,
+    scenario.env?.BWS_ACCESS_TOKEN,
     scenario.env?.DOPPLER_TOKEN,
   ].flatMap((token) => (token ? [token] : []));
   const issued = [
@@ -889,10 +983,12 @@ export function valuesOf(scenario: Scenario): string[] {
     ...(scenario.neon ? [NEON_PREFIX, ...Object.values(scenario.neon.roles)] : []),
     ...(scenario.openai ? [OPENAI_PREFIX] : []),
     ...(scenario.cloudflareTokens ? [CLOUDFLARE_PREFIX] : []),
+    ...(scenario.openrouter ? [OPENROUTER_PREFIX] : []),
   ];
   return [
     ...items.map((item) => item.value),
     ...infisical.map((secret) => secret.value),
+    ...bitwarden.map((secret) => secret.value),
     ...doppler.map((secret) => secret.value),
     ...env,
     ...tokens,

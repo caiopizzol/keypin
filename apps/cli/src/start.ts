@@ -23,6 +23,7 @@ import { ghToken, githubActions, listRepoSecrets, sshHostname } from "@keypin/co
 import { neonIssuer } from "@keypin/connectors/neon";
 import { netlifyProject } from "@keypin/connectors/netlify";
 import { openaiIssuer } from "@keypin/connectors/openai";
+import { openrouterIssuer } from "@keypin/connectors/openrouter";
 import { resendIssuer } from "@keypin/connectors/resend";
 import { supabaseFunctions, supabaseIssuer } from "@keypin/connectors/supabase";
 import { vercelProject } from "@keypin/connectors/vercel";
@@ -34,6 +35,7 @@ import {
   tokenClient,
 } from "@keypin/connectors/onepassword";
 import { credentialsFrom, infisicalBackend, infisicalVault } from "@keypin/connectors/infisical";
+import { accessTokenFrom, bitwardenBackend, bitwardenVault } from "@keypin/connectors/bitwarden";
 import { dopplerBackend, dopplerVault, tokenFrom } from "@keypin/connectors/doppler";
 import { cli } from "./cli";
 import type { Deps, Publisher } from "./deps";
@@ -60,6 +62,7 @@ let onePassword: ReturnType<typeof onePasswordFrom> | undefined;
 const cloudflareLogins = new Map<string, CloudflareSignIn>();
 const cloudflareReaders = new Map<string, CloudflareReader>();
 let infisical: ReturnType<typeof infisicalBackend> | undefined;
+let bitwarden: ReturnType<typeof bitwardenBackend> | undefined;
 let doppler: ReturnType<typeof dopplerBackend> | undefined;
 
 export const destinations = [
@@ -69,14 +72,21 @@ export const destinations = [
   supabaseFunctions,
   netlifyProject,
 ];
-export const vaults = [infisicalVault, dopplerVault, onePasswordVault];
+export const vaults = [infisicalVault, bitwardenVault, dopplerVault, onePasswordVault];
 export const signInNames = signInVariables([...vaults, ...destinations]);
 
 export function destination(target: PublishTarget, publisher: Publisher): Destination {
   return connectTo<Publisher>(destinations, target, publisher);
 }
 
-export const issuers = [resendIssuer, neonIssuer, openaiIssuer, supabaseIssuer, cloudflareIssuer];
+export const issuers = [
+  resendIssuer,
+  neonIssuer,
+  openaiIssuer,
+  supabaseIssuer,
+  cloudflareIssuer,
+  openrouterIssuer,
+];
 
 export function issuer(spec: IssuerSpec, admin: Secret, fetch?: Fetch): Issuer {
   return connectIssuer(issuers, spec, admin, fetch);
@@ -111,6 +121,7 @@ function workerReader(folder: string): CloudflareReader {
 const vault = routedVault({
   "1password": () => signedIn().vault,
   infisical: () => (infisical ??= infisicalBackend(credentialsFrom(process.env))),
+  bitwarden: () => (bitwarden ??= bitwardenBackend(accessTokenFrom(process.env))),
   doppler: () => (doppler ??= dopplerBackend(tokenFrom(process.env))),
 });
 

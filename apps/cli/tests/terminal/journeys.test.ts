@@ -465,6 +465,39 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
+    "with Bitwarden, run, status and publish read from the organization and leak nothing",
+    async () => {
+      const where =
+        "Bitwarden organization 2f1d6c9e-8a3b-4c5d-9e7f-0a1b2c3d4e5f at https://vault.bitwarden.com";
+      const run = await drive({
+        scenario: "bitwarden",
+        args: ["run", "--", "sh", "-c", "env | grep -c BWS_ACCESS_TOKEN || true"],
+      });
+      expect(run.exit).toBe(0);
+      expect(run.screen).toMatch(new RegExp(`^✓ Read 1 dev value from ${where}`, "m"));
+      expect(run.screen).toMatch(/^0$/m);
+      const status = await drive({ scenario: "bitwarden", args: ["status"] });
+      expect(status.screen).toContain(`✓ Read 2 rotated dates from ${where}, not the values`);
+      expect(status.screen).toContain("STRIPE_KEY  prod  due in 5 days");
+      const publish = await drive({
+        scenario: "bitwarden",
+        args: ["publish", "STRIPE_KEY"],
+        answers: ["y"],
+      });
+      expect(publish.exit).toBe(0);
+      expect(publish.screen).toContain(`from bitwarden://billing/STRIPE_KEY in ${where}`);
+      expect(publish.effects).toEqual([
+        "destination write github-actions:acme/billing STRIPE_KEY (23 chars)",
+      ]);
+      for (const result of [run, status, publish]) {
+        expect(result.screen).not.toContain("1Password");
+        clean(result);
+      }
+    },
+    SLOW,
+  );
+
+  test(
     "with an Infisical access token, check names it and run's command never sees it",
     async () => {
       const check = await drive({ scenario: "infisical-token", args: ["check"] });
@@ -738,6 +771,47 @@ describe("keypin rotate in a real terminal", () => {
         /^Stopped: keypin didn't get the new key back\. OpenAI may have made the key before the reply was lost\. Only this run uses the name "OPENAI_API_KEY prod \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [0-9a-f]{6}": delete a key with that name in project billing at https:\/\/platform\.openai\.com\/settings\/organization\/api-keys before you run this again, or the rerun leaves it live\.$/m,
       );
       expect(result.effects).toEqual(["openai create key_new1 for svc_verify"]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "OpenRouter: makes a key with the old key's limit, publishes it, then deletes the old key after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "openrouter",
+        args: ["rotate", "OPENROUTER_API_KEY"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  + OpenRouter            create a new key\n    with the old key's $25 limit, reset monthly; no expiry, in the same workspace",
+      );
+      expect(result.screen).toMatch(/^✓ OpenRouter {2}revoked "chat" {2}\d+\.\ds$/m);
+      expect(result.effects).toEqual([
+        "openrouter create hash_new1 with limit $25 monthly, workspace ws_default",
+        "1password update my.1password.com/Private/chat openrouter key (26 chars)",
+        "destination write github-actions:acme/billing OPENROUTER_API_KEY (26 chars)",
+        "openrouter revoke hash_old",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "OpenRouter: a disabled vault key stops before anything is created",
+    async () => {
+      const result = await drive({
+        scenario: "openrouter-disabled",
+        args: ["rotate", "OPENROUTER_API_KEY"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        `    key "chat" is disabled at OpenRouter, and keypin won't make an active copy of it`,
+      );
+      expect(result.effects).toEqual([]);
       clean(result);
     },
     SLOW,

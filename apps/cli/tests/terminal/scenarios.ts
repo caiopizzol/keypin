@@ -600,6 +600,16 @@ jobs:
     ...ready,
     about: "vercel, but KEYPIN_VERCEL_TOKEN isn't set",
     files: { "keypin.toml": VERCEL_MAP },
+    places: {
+      "vercel-project:billing/production": {
+        check: {
+          reason:
+            "keypin signs in to Vercel with KEYPIN_VERCEL_TOKEN, which isn't set. Create a token at https://vercel.com/account/tokens for the project's team and set KEYPIN_VERCEL_TOKEN; keypin doesn't read the vercel login",
+          publisher: "unknown",
+          destinationAccount: null,
+        },
+      },
+    },
   },
   fresh: {
     ...ready,

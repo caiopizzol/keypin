@@ -108,6 +108,7 @@ describe("keypin in a real terminal", () => {
     "check without KEYPIN_VERCEL_TOKEN says how to sign in to Vercel",
     async () => {
       const result = await drive({ scenario: "vercel-no-token", args: ["check"] });
+      expect(result.exit).toBe(1);
       expect(result.screen).toContain("1 Sign in to Vercel");
       expect(result.screen).toContain("KEYPIN_VERCEL_TOKEN, which isn't set");
       expect(result.effects).toEqual([]);

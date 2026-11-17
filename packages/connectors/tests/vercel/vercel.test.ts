@@ -71,9 +71,9 @@ describe("writing", () => {
     expectNoneOf([VALUE, TOKEN], evidence, vercel.effects);
   });
 
-  test("updates the variable already there for that environment", async () => {
+  test("updates a readable variable already there and turns it into a secret", async () => {
     const { destination, vercel, requests } = setup({
-      variables: [variable({ type: "encrypted" })],
+      variables: [variable({ type: "plain" })],
     });
     await destination.checkAccount();
     const evidence = await destination.write("API_KEY", new Secret(VALUE));
@@ -81,7 +81,34 @@ describe("writing", () => {
     expect(vercel.variables()[0]?.type).toBe("sensitive");
     expect(vercel.value("API_KEY", "production")).toBe(VALUE);
     expect(evidence).toMatchObject({ action: "updated", variableId: "env-old" });
-    expect(requests.map((r) => r.method)).toContain("PATCH");
+    const patch = requests.find((r) => r.method === "PATCH");
+    expect(JSON.parse(patch?.body ?? "{}")).toMatchObject({ visibility: "secret" });
+  });
+
+  test("finds the variable on a later page instead of creating a duplicate", async () => {
+    const filler = Array.from({ length: 5 }, (_, i) =>
+      variable({ id: `env-f${i}`, key: `OTHER_${i}` }),
+    );
+    const { destination, vercel, requests } = setup({
+      variables: [...filler, variable({})],
+      pageSize: 2,
+    });
+    await destination.checkAccount();
+    const evidence = await destination.write("API_KEY", new Secret(VALUE));
+    expect(evidence).toMatchObject({ action: "updated", variableId: "env-old" });
+    expect(vercel.variables()).toHaveLength(6);
+    expect(requests.filter((r) => r.method === "GET" && r.url.includes("/env")).length).toBe(3);
+  });
+
+  test("another project's variables are separate", async () => {
+    const { destination, vercel, state } = setup({
+      teams: { team_acme: { slug: "acme", projects: { web: ["staging"], api: [] } } },
+      otherProjects: { "team_acme/api": [variable({ id: "env-api" })] },
+    });
+    await destination.checkAccount();
+    expect((await destination.write("API_KEY", new Secret(VALUE))).action).toBe("created");
+    expect(vercel.variables()).toHaveLength(1);
+    expect(state.otherProjects?.["team_acme/api"]).toHaveLength(1);
   });
 
   test("leaves the same name in other environments and preview branches alone", async () => {

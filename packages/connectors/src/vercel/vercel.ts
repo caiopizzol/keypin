@@ -127,11 +127,20 @@ export class VercelEnvDestination implements Destination {
   }
 
   async #existing(name: string): Promise<string | null> {
-    const listed = await this.#request("GET", this.#path("/env", "v10"));
-    if (listed.status !== 200) throw failure("GET", "/v10/projects/env", listed);
-    if (!Array.isArray(listed.body.envs))
-      throw new Error("Vercel's environment variable list has no envs");
-    const mine = listed.body.envs.filter(isRecord).filter((env) => {
+    const envs: unknown[] = [];
+    let until: string | null = null;
+    do {
+      const page = until === null ? "" : `&until=${encodeURIComponent(until)}`;
+      const listed = await this.#request("GET", `${this.#path("/env", "v10")}${page}`);
+      if (listed.status !== 200) throw failure("GET", "/v10/projects/env", listed);
+      if (!Array.isArray(listed.body.envs))
+        throw new Error("Vercel's environment variable list has no envs");
+      const listedEnvs: unknown[] = listed.body.envs;
+      envs.push(...listedEnvs);
+      const next = objectField(listed.body, "pagination").next;
+      until = typeof next === "number" || typeof next === "string" ? String(next) : null;
+    } while (until !== null);
+    const mine = envs.filter(isRecord).filter((env) => {
       if (env.key !== name || (typeof env.gitBranch === "string" && env.gitBranch)) return false;
       return this.#customId === null
         ? strings(env.target).includes(this.#environment)

@@ -13,6 +13,8 @@ export interface FakeVercel {
   username: string | null;
   teams: Record<string, { slug: string; projects: Record<string, string[]> }>;
   variables?: FakeVariable[];
+  otherProjects?: Record<string, FakeVariable[]>;
+  pageSize?: number;
   invalidToken?: boolean;
   failWrites?: boolean;
 }
@@ -43,14 +45,25 @@ export function vercelFetch(fake: FakeVercel) {
     const environments = team?.[1].projects[decodeURIComponent(project)];
     if (!team || !environments) return refuse(404, "not_found", "Project not found");
     const where = `${team[0]}/${decodeURIComponent(project)}`;
-    const variables = (fake.variables ??= []);
+    const home = Object.keys(fake.teams)[0];
+    const homeProject = Object.keys(fake.teams[home ?? ""]?.projects ?? {})[0];
+    const variables =
+      where === `${home}/${homeProject}`
+        ? (fake.variables ??= [])
+        : ((fake.otherProjects ??= {})[where] ??= []);
 
     if (part === "") return reply(200, { id: `prj_${project}`, name: project, accountId: team[0] });
     if (part === "/custom-environments")
       return reply(200, {
         environments: environments.map((slug) => ({ id: `env_${slug}`, slug, type: "preview" })),
       });
-    if (init.method === "GET") return reply(200, { envs: variables, pagination: { next: null } });
+    if (init.method === "GET") {
+      const size = fake.pageSize ?? 100;
+      const from = Number(searchParams.get("until") ?? 0);
+      const envs = variables.slice(from, from + size);
+      const next = from + size < variables.length ? from + size : null;
+      return reply(200, { envs, pagination: { count: envs.length, next, prev: null } });
+    }
 
     const sent: unknown = JSON.parse(init.body ?? "{}");
     const body = isRecord(sent) ? sent : {};
@@ -61,7 +74,12 @@ export function vercelFetch(fake: FakeVercel) {
     if (init.method === "PATCH" && id) {
       const found = variables.find((v) => v.id === decodeURIComponent(id));
       if (!found) return refuse(404, "not_found", "Environment variable not found");
-      found.type = String(body.type);
+      found.type =
+        body.visibility === "secret"
+          ? "sensitive"
+          : typeof body.type === "string"
+            ? body.type
+            : found.type;
       values.set(found.id, value);
       effects.push(`vercel update ${where} ${found.key}`);
       return reply(200, { ...found, value: "" });
@@ -71,7 +89,7 @@ export function vercelFetch(fake: FakeVercel) {
       const variable: FakeVariable = {
         id: `env-${++made}`,
         key,
-        type: String(body.type),
+        type: body.visibility === "secret" ? "sensitive" : String(body.type),
         target: Array.isArray(body.target) ? body.target.map(String) : [],
         customEnvironmentIds: Array.isArray(body.customEnvironmentIds)
           ? body.customEnvironmentIds.map(String)

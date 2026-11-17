@@ -104,3 +104,109 @@ export function fakeSignIn(
     },
   };
 }
+
+export interface FakeToken {
+  id: string;
+  name: string;
+  value: string;
+  status?: "active" | "disabled" | "expired";
+  policies: unknown[];
+  condition?: Record<string, unknown>;
+  not_before?: string;
+  expires_on?: string;
+  issued_on?: string;
+}
+
+export interface TokenWorld {
+  tokens: FakeToken[];
+  created: number;
+}
+
+export interface FakeTokens {
+  admin: string;
+  account?: string;
+  valuePrefix: string;
+  issuedOn?: string;
+  failCreate?: number;
+  loseCreated?: boolean;
+  world: { load(): TokenWorld; save(world: TokenWorld): void };
+  effect(line: string): void;
+}
+
+const ISSUED_ON = "2026-11-17T12:00:00Z";
+
+export function tokensFetch(fake: FakeTokens): Fetch {
+  return async (url, init) => {
+    const world = fake.world.load();
+    const path = new URL(url).pathname;
+    const reply = (status: number, result: unknown) =>
+      new Response(JSON.stringify({ success: true, errors: [], messages: [], result }), { status });
+    const refuse = (status: number, code: number, message: string) =>
+      new Response(JSON.stringify({ success: false, errors: [{ code, message }], result: null }), {
+        status,
+      });
+    const bearer = (init.headers.Authorization ?? "").replace(/^Bearer /, "");
+    const base =
+      fake.account === undefined
+        ? "/client/v4/user/tokens"
+        : `/client/v4/accounts/${fake.account}/tokens`;
+    if (path === `${base}/verify` && init.method === "GET") {
+      const token = world.tokens.find((t) => t.value === bearer);
+      return token
+        ? reply(200, { id: token.id, status: token.status ?? "active" })
+        : refuse(401, 1000, "Invalid API Token");
+    }
+    if (bearer !== fake.admin) return refuse(401, 1000, "Invalid API Token");
+    if (!path.startsWith(base))
+      return refuse(403, 9109, "Unauthorized to access requested resource");
+    const shown = ({ value: _value, ...token }: FakeToken) => ({
+      status: "active",
+      issued_on: ISSUED_ON,
+      ...token,
+    });
+    if (path === base && init.method === "POST") {
+      if (fake.failCreate !== undefined)
+        return refuse(fake.failCreate, 1001, `refused ${init.headers.Authorization}`);
+      const asked: unknown = JSON.parse(init.body ?? "{}");
+      if (!isRecord(asked) || typeof asked.name !== "string" || asked.name.length > 120)
+        return refuse(400, 1002, "invalid name");
+      if (!Array.isArray(asked.policies) || !asked.policies.length)
+        return refuse(400, 1002, "a token needs a policy");
+      const made = world.created + 1;
+      const token: FakeToken = {
+        id: `${String(made).padStart(4, "0")}${"e".repeat(28)}`,
+        name: asked.name,
+        value: `${fake.valuePrefix}${made}_7d1e`,
+        policies: asked.policies,
+        issued_on: fake.issuedOn ?? ISSUED_ON,
+        ...(isRecord(asked.condition) ? { condition: asked.condition } : {}),
+        ...(typeof asked.not_before === "string" ? { not_before: asked.not_before } : {}),
+        ...(typeof asked.expires_on === "string" ? { expires_on: asked.expires_on } : {}),
+      };
+      fake.world.save({ tokens: [...world.tokens, token], created: made });
+      const limits = [
+        ...(token.condition ? [`condition ${JSON.stringify(token.condition)}`] : []),
+        ...(token.not_before ? [`not_before ${token.not_before}`] : []),
+        ...(token.expires_on ? [`expires_on ${token.expires_on}`] : []),
+      ];
+      fake.effect(
+        `cloudflare create token ${token.id} with ${JSON.stringify(token.policies)}${limits.length ? `, ${limits.join(", ")}` : ""}`,
+      );
+      if (fake.loseCreated) throw new TypeError("fetch failed");
+      return reply(200, { ...shown(token), value: token.value });
+    }
+    const id = decodeURIComponent(path.slice(base.length + 1));
+    const token = world.tokens.find((t) => t.id === id);
+    if (!token) return refuse(404, 1003, "Token not found");
+    if (init.method === "GET") return reply(200, shown(token));
+    if (init.method !== "DELETE") return refuse(405, 10000, "Method not allowed");
+    fake.world.save({ ...world, tokens: world.tokens.filter((t) => t.id !== id) });
+    fake.effect(`cloudflare delete token ${id}`);
+    return reply(200, { id });
+  };
+}
+
+export function memoryTokens(tokens: FakeToken[]) {
+  let world: TokenWorld = { tokens: [...tokens], created: 0 };
+  return { load: () => world, save: (next: TokenWorld) => void (world = next) };
+}

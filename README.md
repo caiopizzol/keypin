@@ -22,12 +22,13 @@ paste in a chat, or leave on a laptop.
 Each project lists its keys in a `keypin.toml`: names, vault items and destinations, never values. keypin runs your
 commands with the dev keys and publishes the prod keys. It reads a value only while a command runs.
 
-| Vaults    | Destinations       | Rotation |
-| --------- | ------------------ | -------- |
-| 1Password | GitHub Actions     | Resend   |
-| Infisical | Cloudflare Workers | Neon     |
-|           | Vercel projects    | OpenAI   |
-|           |                    | Supabase |
+| Vaults    | Destinations       | Rotation   |
+| --------- | ------------------ | ---------- |
+| 1Password | GitHub Actions     | Resend     |
+| Infisical | Cloudflare Workers | Neon       |
+|           | Vercel projects    | OpenAI     |
+|           |                    | Supabase   |
+|           |                    | Cloudflare |
 
 Want another? Vote for it on the [roadmap](https://github.com/caiopizzol/keypin/issues/138).
 

@@ -5,11 +5,10 @@ import {
   type Fetch,
   isRecord,
   objectField,
-  parseObject,
   type Secret,
 } from "@keypin/core";
+import { call, errorCodes, type Reply, returned } from "./api";
 
-const API = "https://api.cloudflare.com/client/v4";
 const ACCOUNT_ID = /^[0-9a-f]{32}$/;
 const WORKER = /^[A-Za-z0-9_-]+$/;
 const DENIED = [401, 403];
@@ -144,47 +143,18 @@ export class WorkerSecretDestination implements Destination {
     return this.#token ? await this.#token.catch(() => "") : "";
   }
 
-  async #request(method: string, path: string, body?: unknown, type = "application/json") {
+  async #request(method: string, path: string, body?: unknown, type?: string): Promise<Reply> {
     this.#token ??= this.#tokenSource();
-    const response = await this.#fetch(`${API}${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${await this.#token}`,
-        ...(body === undefined ? {} : { "Content-Type": type }),
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-    return { status: response.status, body: parseObject(await response.text()) };
+    return call(this.#fetch, await this.#token, method, path, body, type);
   }
 }
 
 const NOT_DEPLOYED = [10214, 10215];
 
-function failure(
-  method: string,
-  path: string,
-  response: { status: number; body: Record<string, unknown> },
-  hidden?: readonly string[],
-): Error {
-  const errors = Array.isArray(response.body.errors) ? response.body.errors.filter(isRecord) : [];
-  const codes = errors.map((e) => e.code).filter((c) => typeof c === "number");
-  const secrets = (hidden ?? []).flatMap((h) => [h, h.trim()]).filter((h) => h);
-  const said = hidden
-    ? errors
-        .map((e) => (typeof e.message === "string" ? e.message : ""))
-        .filter((m) => !secrets.some((h) => m.includes(h)))
-        .map((m) => m.trim())
-        .filter((m) => m)
-    : [];
-  const where = `Cloudflare ${method} ${path.split("?")[0]} returned HTTP ${response.status}`;
-  const detail = [
-    ...(codes.length ? [`codes ${codes.join(", ")}`] : []),
-    ...(said.length ? [`"${said.join("; ")}"`] : []),
-  ];
-  const why = explain(response.status, codes);
-  return new Error(
-    `${why ? `${why} (` : ""}${where}${detail.length ? `, ${detail.join(", ")}` : ""}${why ? ")" : ""}`,
-  );
+function failure(method: string, path: string, response: Reply, hidden?: readonly string[]): Error {
+  const where = returned(method, path, response, hidden);
+  const why = explain(response.status, errorCodes(response));
+  return new Error(why ? `${why} (${where})` : where);
 }
 
 function explain(status: number, codes: readonly number[]): string | null {

@@ -103,7 +103,7 @@ the key is due.
 ## Rotating a key
 
 Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key, at Resend, [Neon](#neon),
-[OpenAI](#openai) or [Supabase](#supabase):
+[OpenAI](#openai), [Supabase](#supabase) or [Cloudflare](#cloudflare):
 
 ```toml
 [keys.RESEND_API_KEY.prod]
@@ -206,3 +206,22 @@ only that key, and a deleted key can't come back. Give each app its own named ke
 gets a new name, so a function that checks `auth: 'secret:<name>'` rejects it. keypin also refuses a legacy
 `service_role` key; move to a secret key with
 [Supabase's guide](https://supabase.com/docs/guides/security/rotate-leaked-api-keys).
+
+### Cloudflare
+
+```toml
+[keys.CLOUDFLARE_API_TOKEN.prod]
+from = "op://Private/deploy cloudflare token/credential"
+
+[keys.CLOUDFLARE_API_TOKEN.prod.issuer]
+kind = "cloudflare"
+admin = "op://Private/cloudflare token maker/credential"
+```
+
+`admin` is a token made with the
+[Create additional tokens](https://developers.cloudflare.com/fundamentals/api/how-to/create-via-api/) template, in
+its own 1Password item. For an account API token (`cfat_`), add `account_id` and use an admin token with
+**Account API Tokens** Edit on that account.
+
+keypin finds the vault's token with Cloudflare's verify endpoint, makes a new token with the same policies, IP
+filter, start date and lifetime, then deletes the old one. It doesn't use Roll, which stops the old token at once.

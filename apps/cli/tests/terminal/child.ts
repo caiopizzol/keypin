@@ -9,7 +9,7 @@ import {
   type SdkClient,
   signInAddress,
 } from "@keypin/connectors/onepassword";
-import { fakeSignIn } from "@keypin/connectors/cloudflare/testing";
+import { fakeSignIn, type TokenWorld, tokensFetch } from "@keypin/connectors/cloudflare/testing";
 import { neonFetch, type NeonWorld } from "@keypin/connectors/neon/testing";
 import { type OpenAIKeys, openaiFetch } from "@keypin/connectors/openai/testing";
 import { resendFetch } from "@keypin/connectors/resend/testing";
@@ -21,6 +21,8 @@ import { onePasswordFrom } from "../../src/sign-in";
 import { destinations, issuer, realDeps } from "../../src/start";
 import { routedVault } from "../../src/vault";
 import {
+  CLOUDFLARE_ADMIN,
+  CLOUDFLARE_PREFIX,
   type FakeItem,
   ISSUED_PREFIX,
   RESEND_ADMIN,
@@ -67,6 +69,7 @@ const RESEND = join(sandbox, "resend.json");
 const NEON = join(sandbox, "neon.json");
 const OPENAI = join(sandbox, "openai.json");
 const SUPABASE = join(sandbox, "supabase.json");
+const CLOUDFLARE = join(sandbox, "cloudflare-tokens.json");
 
 function effect(line: string): void {
   appendFileSync(EFFECTS, `${line}\n`);
@@ -304,7 +307,29 @@ const supabase = supabaseFetch({
   effect,
 });
 
-const issuerFetch: Record<string, Fetch> = { neon, openai, resend, supabase };
+const cloudflare = tokensFetch({
+  admin: CLOUDFLARE_ADMIN,
+  valuePrefix: CLOUDFLARE_PREFIX,
+  loseCreated: run.cloudflareTokens?.loseCreated ?? false,
+  world: {
+    load(): TokenWorld {
+      if (!existsSync(CLOUDFLARE))
+        return { tokens: run.cloudflareTokens?.tokens ?? [], created: 0 };
+      const parsed: unknown = JSON.parse(readFileSync(CLOUDFLARE, "utf8"));
+      if (!isTokenWorld(parsed))
+        throw new Error(`${CLOUDFLARE} isn't the fake Cloudflare's tokens`);
+      return parsed;
+    },
+    save: (world) => writeFileSync(CLOUDFLARE, JSON.stringify(world)),
+  },
+  effect,
+});
+
+const issuerFetch: Record<string, Fetch> = { cloudflare, neon, openai, resend, supabase };
+
+function isTokenWorld(value: unknown): value is TokenWorld {
+  return isRecord(value) && Array.isArray(value.tokens) && typeof value.created === "number";
+}
 
 function isSupabaseWorld(value: unknown): value is SupabaseWorld {
   return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";

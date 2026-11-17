@@ -1,5 +1,6 @@
 import { envValues } from "@keypin/core";
 import { localDay } from "@keypin/core";
+import { accessKeyJson, type FakeAwsKey } from "@keypin/connectors/aws/testing";
 import type { FakeToken } from "@keypin/connectors/cloudflare/testing";
 import type { FakeGoogleKey } from "@keypin/connectors/google/testing";
 import type { FakeInfisical } from "@keypin/connectors/infisical/testing";
@@ -39,6 +40,7 @@ export interface Scenario {
   google?: { keys: FakeGoogleKey[]; pendingPolls?: number };
   openrouter?: { keys: FakeOpenRouterKey[] };
   elevenlabs?: { keys: FakeElevenLabsKey[] };
+  aws?: { keys: FakeAwsKey[]; unready?: number; loseCreated?: boolean };
   paired?: { keys: string[] };
   registered: boolean;
   git: { origin?: string; account?: string };
@@ -755,9 +757,90 @@ const paired: Scenario = {
   paired: { keys: ["AKID-0"] },
 };
 
+const AWS_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.AWS_SECRET_ACCESS_KEY]
+rotate_every = "90d"
+
+[keys.AWS_SECRET_ACCESS_KEY.prod]
+from = "op://Private/app aws secret/credential"
+
+[keys.AWS_SECRET_ACCESS_KEY.prod.issuer]
+kind = "aws"
+admin = "op://Private/aws admin/credential"
+key_id = "AWS_ACCESS_KEY_ID"
+
+[[keys.AWS_SECRET_ACCESS_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+
+[keys.AWS_ACCESS_KEY_ID]
+rotate_every = "never"
+
+[keys.AWS_ACCESS_KEY_ID.prod]
+from = "op://Private/app aws key id/credential"
+
+[[keys.AWS_ACCESS_KEY_ID.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`;
+
+export const AWS_PREFIX = "aws_verify_new_secret_";
+const AWS_ADMIN_ID = "AKIAADMINVERIFY00001";
+const AWS_ADMIN_SECRET = "aws_verify_admin_secret_5c1f";
+const AWS_OLD_ID = "AKIAAPPVERIFY0000001";
+const AWS_OLD_SECRET = "aws_verify_old_secret_9b2e";
+
+const aws: Scenario = {
+  ...ready,
+  about:
+    "AWS_SECRET_ACCESS_KEY has an AWS issuer whose key ID is AWS_ACCESS_KEY_ID; the vault holds access key AKIAAPPVERIFY0000001 of IAM user billing-app, and the admin item holds a key of IAM user keypin-admin",
+  files: { "keypin.toml": AWS_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          { title: "app aws secret", value: AWS_OLD_SECRET, rotated: day(-95) },
+          { title: "app aws key id", value: AWS_OLD_ID, rotated: day(-95), public: true },
+          { title: "aws admin", value: accessKeyJson(AWS_ADMIN_ID, AWS_ADMIN_SECRET) },
+        ],
+      },
+    },
+  },
+  aws: {
+    keys: [
+      { id: AWS_ADMIN_ID, secret: AWS_ADMIN_SECRET, user: "keypin-admin" },
+      { id: AWS_OLD_ID, secret: AWS_OLD_SECRET, user: "billing-app" },
+    ],
+    unready: 1,
+  },
+};
+
 export const scenarios: Record<string, Scenario> = {
   ready,
   paired,
+  aws,
+  "aws-lost": {
+    ...aws,
+    about: "aws, but the reply to CreateAccessKey is lost after AWS made the key",
+    aws: { keys: aws.aws?.keys ?? [], loseCreated: true },
+  },
+  "aws-full": {
+    ...aws,
+    about: "aws, but IAM user billing-app already has a second access key",
+    aws: {
+      keys: [
+        ...(aws.aws?.keys ?? []),
+        {
+          id: "AKIAOTHERVERIFY00001",
+          secret: "aws_verify_other_secret_3d7a",
+          user: "billing-app",
+          created: "2026-03-04T05:06:07Z",
+        },
+      ],
+    },
+  },
   "env-file": {
     ...ready,
     about: "ready, plus a .env with a key keypin.toml doesn't map, to import",
@@ -1244,6 +1327,7 @@ export function valuesOf(scenario: Scenario): string[] {
     ...(scenario.google ? [GOOGLE_PREFIX] : []),
     ...(scenario.openrouter ? [OPENROUTER_PREFIX] : []),
     ...(scenario.elevenlabs ? [ELEVENLABS_PREFIX] : []),
+    ...(scenario.aws ? [AWS_PREFIX, ...scenario.aws.keys.map((key) => key.secret)] : []),
   ];
   return [
     ...items.map((item) => item.value),

@@ -77,7 +77,7 @@ describe("checkAccount", () => {
     assert(check.ok);
     expect(check.currentId).toBe("svc_bot/key_old");
     expect(check.facts).toBe(
-      "project billing lists 2 API keys, with the vault's key key_old of service account billing-bot",
+      "project billing lists 2 API keys; the vault holds key_old of service account billing-bot",
     );
     expect(check.notes?.create).toBe("for service account billing-bot, with all permissions");
     expect(requests.map((r) => `${r.method} ${r.path}`)).toEqual([

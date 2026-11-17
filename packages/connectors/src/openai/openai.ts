@@ -86,7 +86,7 @@ export class OpenAIIssuer implements Issuer {
           fix: `delete that key at ${DASHBOARD} if it's still live, then run this again`,
         };
       const listed = keys.find((key) => key.id === issued.key);
-      if (listed) return this.#pass(listed, `${facts}, with key ${listed.id}`);
+      if (listed) return this.#pass(listed, `${facts}, with ${listed.id}`);
       if (await this.#refusesVaultKey(current)) {
         this.#serviceAccount = issued.serviceAccount;
         this.#lifetime = null;
@@ -121,7 +121,7 @@ export class OpenAIIssuer implements Issuer {
         reason: `${matches.length} keys in project ${this.#project} start and end like the vault's key (${matches.map((key) => key.id).join(", ")}), so keypin can't tell which one it is`,
         fix: `delete the keys nothing uses at ${DASHBOARD}, then run this again`,
       };
-    const passed = this.#pass(match, `${facts}, with the vault's key ${match.id}`);
+    const passed = this.#pass(match, `${facts}; the vault holds ${match.id}`);
     return passed.ok ? { ...passed, currentId: idOf(match.owner.id, match.id) } : passed;
   }
 

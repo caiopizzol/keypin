@@ -45,6 +45,8 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          # model override; set the PULLFROG_MODEL repository variable
+          PULLFROG_MODEL: ${{ vars.PULLFROG_MODEL }}
 
           # for Amazon Bedrock (https://docs.pullfrog.com/bedrock)
           # AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}

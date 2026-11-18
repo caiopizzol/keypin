@@ -101,11 +101,16 @@ describe("rotate --due picks keys", () => {
     expect(choices).toEqual([
       { keyId: "DUE_KEY", action: "rotate", why: "was due 2026-10-30" },
       { keyId: "TODAY_KEY", action: "rotate", why: "due today" },
-      { keyId: "FRESH_KEY", action: "skip", why: "not due until 2027-01-30" },
+      { keyId: "FRESH_KEY", action: "skip", why: "not due until 2027-01-30", date: "later" },
       { keyId: "BY_HAND", action: "skip", why: "no issuer, so keypin can't make a new key" },
       { keyId: "NOWHERE", action: "skip", why: "no destination for the new key" },
-      { keyId: "UNREADABLE", action: "skip", why: "the vault's rotated date couldn't be read" },
-      { keyId: "UNDATED", action: "skip", why: "no rotated date in the vault" },
+      {
+        keyId: "UNREADABLE",
+        action: "skip",
+        why: "the vault's rotated date couldn't be read",
+        date: "missing",
+      },
+      { keyId: "UNDATED", action: "skip", why: "no rotated date in the vault", date: "missing" },
       { keyId: "FOREVER", action: "skip", why: "never rotates" },
     ]);
   });

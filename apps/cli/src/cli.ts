@@ -94,6 +94,15 @@ const COMMAND_USAGE: [string, string][] = [
   ],
   [
     "rotate",
+    `  keypin rotate --check [--env <name>]
+                           check that --due can run here, without a terminal, and change nothing:
+                           for every key --due rotates, due or not, find the item, read the key and
+                           the admin key, check the issuer and each destination, and fail if a write
+                           would need approval
+`,
+  ],
+  [
+    "rotate",
     `  keypin rotate --approve-revoke [<VARIABLE>] [--env <name>]
                            revoke the old key of each rotation waiting for approval, once every
                            destination has the new key; this is the approval, so no y is asked

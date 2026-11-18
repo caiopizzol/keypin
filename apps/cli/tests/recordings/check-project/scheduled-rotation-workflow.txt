@@ -28,6 +28,10 @@ on:
     - cron: "0 6 * * 1"
   workflow_dispatch:
     inputs:
+      check_setup:
+        description: Check the setup, and rotate nothing
+        type: boolean
+        default: false
       approve_revoke:
         description: Revoke the old keys waiting for approval
         type: boolean
@@ -53,12 +57,15 @@ jobs:
         env:
           TOKEN: ${{ secrets.KEYPIN_GITHUB_TOKEN }}
       - run: |
-          if [ "$APPROVE" = true ]; then
+          if [ "$CHECK" = true ]; then
+            keypin rotate --check
+          elif [ "$APPROVE" = true ]; then
             keypin rotate --approve-revoke ${KEY:+"$KEY"}
           else
             keypin rotate --due --yes
           fi
         env:
+          CHECK: ${{ inputs.check_setup }}
           APPROVE: ${{ inputs.approve_revoke }}
           KEY: ${{ inputs.key }}
           KEYPIN_1PASSWORD: service-account

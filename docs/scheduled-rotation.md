@@ -28,6 +28,9 @@ Actions.
 6. A runner starts with no receipts, so a first write would wait for approval. From your laptop, publish each key,
    run `keypin rotate --due`, and commit `.keypin/`. It asks before it rotates a key that's due: answer `n` to only
    record what you published.
+7. Run the workflow with **check setup** checked. `keypin rotate --check` changes nothing, and fails with the next step
+   if a key, an admin key, the GitHub token or a receipt isn't ready. It can't see the token's Secrets permission
+   without writing a secret, so check that one yourself.
 
 ```yaml
 name: rotate keys
@@ -37,6 +40,10 @@ on:
     - cron: "0 6 * * 1"
   workflow_dispatch:
     inputs:
+      check_setup:
+        description: Check the setup, and rotate nothing
+        type: boolean
+        default: false
       approve_revoke:
         description: Revoke the old keys waiting for approval
         type: boolean
@@ -62,12 +69,15 @@ jobs:
         env:
           TOKEN: ${{ secrets.KEYPIN_GITHUB_TOKEN }}
       - run: |
-          if [ "$APPROVE" = true ]; then
+          if [ "$CHECK" = true ]; then
+            keypin rotate --check
+          elif [ "$APPROVE" = true ]; then
             keypin rotate --approve-revoke ${KEY:+"$KEY"}
           else
             keypin rotate --due --yes
           fi
         env:
+          CHECK: ${{ inputs.check_setup }}
           APPROVE: ${{ inputs.approve_revoke }}
           KEY: ${{ inputs.key }}
           KEYPIN_1PASSWORD: service-account

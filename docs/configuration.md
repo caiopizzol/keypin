@@ -142,7 +142,7 @@ it was written; no values or vault references.
 
 Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key, at Resend, [Neon](#neon),
 [OpenAI](#openai), [Supabase](#supabase), [Cloudflare](#cloudflare), [OpenRouter](#openrouter),
-[Google Cloud](#google-cloud), [ElevenLabs](#elevenlabs) or [AWS](#aws):
+[Google Cloud](#google-cloud), [ElevenLabs](#elevenlabs), [AWS](#aws), [SendGrid](#sendgrid) or [xAI](#xai):
 
 ```toml
 [keys.RESEND_API_KEY.prod]
@@ -355,3 +355,39 @@ that may list, create, update and delete access keys.
 keypin checks that the vault's ID and secret work together, then makes a key for the same IAM user. AWS allows two
 keys per user, so keypin stops if the user already has a second one. To revoke, it deactivates the old key, then
 deletes it.
+
+### SendGrid
+
+```toml
+[keys.SENDGRID_API_KEY.prod]
+from = "op://Private/mailer sendgrid key/credential"
+
+[keys.SENDGRID_API_KEY.prod.issuer]
+kind = "sendgrid"
+admin = "op://Private/sendgrid admin key/credential"
+```
+
+`admin` is an API key with **API Keys** Full Access, in its own 1Password item. A key can't give more than it has,
+so it also needs every scope of the key you rotate; a Full Access key has them all. keypin finds the vault's key by
+the ID in its value (`SG.<id>.<secret>`) and gives the new key the same scopes.
+
+For a subuser's key, add `subuser = "<username>"` and use a key from the parent account. For an EU regional
+subuser, add `region = "eu"`.
+
+### xAI
+
+```toml
+[keys.XAI_API_KEY.prod]
+from = "op://Private/app xai key/credential"
+
+[keys.XAI_API_KEY.prod.issuer]
+kind = "xai"
+admin = "op://Private/xai management key/credential"
+```
+
+`admin` is a [management key](https://console.x.ai/team/default/management-keys), not an API key, made by a team
+admin, for the key's team or its organization. It needs to list, create and delete API keys, and to check their
+propagation. keypin asks xAI which key and team the vault's key is, so there's no team ID to set.
+
+The new key gets the old key's ACLs, rate limits and lifetime. keypin waits until xAI reports it on every cluster
+before saving it; if that takes over a minute, keypin deletes it and nothing changes. keypin refuses a disabled key.

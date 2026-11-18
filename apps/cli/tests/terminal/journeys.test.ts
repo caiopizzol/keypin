@@ -789,6 +789,63 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "SendGrid: makes a key with the old key's scopes, publishes it, then deletes the old key after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "sendgrid",
+        args: ["rotate", "SENDGRID_API_KEY"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  + SendGrid              create a new key\n    with the old key's 2 scopes",
+      );
+      expect(result.screen).toMatch(/^✓ SendGrid {2}revoked "mailer" {2}\d+\.\ds$/m);
+      expect(result.effects).toEqual([
+        "sendgrid create NewKey1Id with mail.send,templates.read",
+        "1password update my.1password.com/Private/mailer sendgrid key (32 chars)",
+        "destination write github-actions:acme/billing SENDGRID_API_KEY (32 chars)",
+        "sendgrid revoke OldVerifyId",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "SendGrid: a lost create reply isn't retried, and names the key to delete",
+    async () => {
+      const result = await drive({
+        scenario: "sendgrid-lost",
+        args: ["rotate", "SENDGRID_API_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("SendGrid may have made the key before the reply was lost.");
+      expect(result.effects).toEqual(["sendgrid create NewKey1Id with mail.send,templates.read"]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "SendGrid: a scope the admin key can't grant stops before anything is created",
+    async () => {
+      const result = await drive({
+        scenario: "sendgrid-billing",
+        args: ["rotate", "SENDGRID_API_KEY"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        `key "mailer" has 1 scope the admin key doesn't have, so it can't give them to a new key: billing.read`,
+      );
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "rotating the ID key points to the key that rotates it",
     async () => {
       const result = await drive({ scenario: "paired", args: ["rotate", "API_KEY_ID"] });
@@ -1085,6 +1142,65 @@ describe("keypin rotate in a real terminal", () => {
         `    key "chat" is disabled at OpenRouter, and keypin won't make an active copy of it`,
       );
       expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "xAI: makes a key with the old key's ACLs and rate limits, waits for every cluster, publishes it, then deletes the old key after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "xai",
+        args: ["rotate", "XAI_API_KEY"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  + xAI                   create a new key\n    with ACLs api-key:model:grok-4.7, api-key:endpoint:chat; 100 requests a minute; no expiry",
+      );
+      expect(result.screen).toMatch(/^✓ xAI {2}revoked "chat" {2}\d+\.\ds$/m);
+      expect(result.effects).toEqual([
+        "xai create key_new1 in team_1 with acls api-key:model:grok-4.7 api-key:endpoint:chat, qpm 100",
+        "1password update my.1password.com/Private/chat xai key (21 chars)",
+        "destination write github-actions:acme/billing XAI_API_KEY (21 chars)",
+        "xai revoke key_old",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "xAI: an API key in the admin item stops before anything is created",
+    async () => {
+      const result = await drive({
+        scenario: "xai-api-key-as-admin",
+        args: ["rotate", "XAI_API_KEY"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        "    the admin item holds an xAI API key, not a management key, and API keys can't create or delete keys",
+      );
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "xAI: a lost create reply isn't retried, and names the key to delete",
+    async () => {
+      const result = await drive({
+        scenario: "xai-reply-lost",
+        args: ["rotate", "XAI_API_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("delete a key with that name in team team_1");
+      expect(result.effects).toEqual([
+        "xai create key_new1 in team_1 with acls api-key:model:grok-4.7 api-key:endpoint:chat, qpm 100",
+      ]);
       clean(result);
     },
     SLOW,

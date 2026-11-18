@@ -408,7 +408,7 @@ describe("keypin rotate --check, the setup check a workflow runs before the firs
     expect(run.stderr.text).toContain("Resend  the admin key lists 1 API key");
     expect(run.stderr.text).toContain("RESEND_API_KEY (prod) is ready for keypin rotate --due.");
     expect(run.stderr.text).toContain(
-      "Every key --due rotates passed the checks. Nothing was created or written.",
+      "Every key --due rotates passed the checks. Nothing was created or written, so no destination was asked to take a write.",
     );
     unchanged(w);
     expect(w.inner.log, "only the key and its admin key").toEqual([
@@ -422,13 +422,13 @@ describe("keypin rotate --check, the setup check a workflow runs before the firs
     for (const value of [OLD, ADMIN]) expect(run.stderr.text).not.toContain(value);
   });
 
-  test("fails before reading a value when a first write would wait for approval", async () => {
+  test("fails before reading the key or the admin key when a first write would wait for approval", async () => {
     const w = await world();
     const run = ci(w);
     expect(await run.run("--check")).toBe(1);
     expect(run.stderr.text).toContain(`Needs approval:\n  first write to ${DESTINATION}`);
     expect(run.stderr.text).toContain(
-      "A scheduled run would stop here. Publish RESEND_API_KEY from your laptop, run keypin rotate --due there, and commit .keypin/.",
+      "A scheduled run would stop here. Publish RESEND_API_KEY from your laptop (keypin publish RESEND_API_KEY), run keypin rotate --due there, and commit .keypin/.",
     );
     expect(run.stderr.text).toContain("Fix what failed above, then run the check again.");
     expect(w.inner.log).toEqual(["ids mailer resend key"]);
@@ -458,6 +458,16 @@ describe("keypin rotate --check, the setup check a workflow runs before the firs
       "FAILED RESEND_API_KEY: no rotated date in the vault, so keypin rotate --due never rotates it.",
     );
     unchanged(w);
+  });
+
+  test("the next step keeps the environment it checked", async () => {
+    const run = ci(
+      await world(MAP.replace("[keys.RESEND_API_KEY.prod]", "[keys.RESEND_API_KEY.dev]")),
+    );
+    expect(await run.run("--check", "--env", "dev"), run.stderr.text).toBe(1);
+    expect(run.stderr.text).toContain(
+      "Publish RESEND_API_KEY from your laptop (keypin publish RESEND_API_KEY --env dev), run keypin rotate --due --env dev there",
+    );
   });
 
   test("takes only --env", async () => {

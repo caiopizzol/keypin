@@ -331,7 +331,7 @@ async function checkDue(context: Context, path: string): Promise<number> {
   const code = worst(codes);
   out.line(
     code === 0
-      ? `\n${out.mark(true)} Every key --due rotates passed the checks. Nothing was created or written.`
+      ? `\n${out.mark(true)} Every key --due rotates passed the checks. Nothing was created or written, so no destination was asked to take a write.`
       : "\nFix what failed above, then run the check again. Nothing was created or written.",
   );
   return code;
@@ -342,7 +342,7 @@ async function routineWrites(
   approvals: (ids: readonly (ItemIds | null)[]) => readonly { approval: string }[],
   looked: ItemIds[] | undefined,
 ): Promise<boolean> {
-  const { key, entry, pair, deps, out } = job;
+  const { key, entry, pair, owner, map, deps, out } = job;
   let ids = looked;
   if (ids === undefined || pair) {
     try {
@@ -356,8 +356,9 @@ async function routineWrites(
   if (!needed.length) return true;
   out.line("Needs approval:");
   for (const { approval: what } of needed) out.line(`  ${what}`);
+  const env = envFlag(owner.environment, publishEnvironment(map));
   out.line(
-    `A scheduled run would stop here. Publish ${key.name} from your laptop, run keypin rotate --due there, and commit .keypin/.`,
+    `A scheduled run would stop here. Publish ${key.name} from your laptop (keypin publish ${key.name}${env}), run keypin rotate --due${env} there, and commit .keypin/.`,
   );
   return false;
 }

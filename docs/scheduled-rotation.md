@@ -29,7 +29,8 @@ Actions.
    run `keypin rotate --due`, and commit `.keypin/`. It asks before it rotates a key that's due: answer `n` to only
    record what you published.
 7. Run the workflow with **check setup** checked. `keypin rotate --check` changes nothing, and fails with the next step
-   if a key, an admin key, the GitHub token or a receipt isn't ready.
+   if a key, an admin key, the GitHub token or a receipt isn't ready. It can't see the token's Secrets permission
+   without writing a secret, so check that one yourself.
 
 ```yaml
 name: rotate keys

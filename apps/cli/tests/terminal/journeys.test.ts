@@ -554,6 +554,38 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
+    "with AWS Secrets Manager, run, status and publish read from the account and leak nothing",
+    async () => {
+      const where = "AWS account 123456789012 in eu-west-1";
+      const run = await drive({ scenario: "awssm", args: ["run", "--", "true"] });
+      expect(run.exit).toBe(0);
+      expect(run.screen).toMatch(
+        new RegExp(
+          `^✓ Read 1 dev value from ${where}  awssm://eu-west-1/billing/dev:STRIPE_KEY`,
+          "m",
+        ),
+      );
+      const status = await drive({ scenario: "awssm", args: ["status"] });
+      expect(status.screen).toContain("(rotated 2026-08-01, every 90d)");
+      expect(status.screen).toContain("Tag the AWS secret with keypin-rotated:<JSON key>");
+      const publish = await drive({
+        scenario: "awssm",
+        args: ["publish", "STRIPE_KEY"],
+        answers: ["y"],
+      });
+      expect(publish.exit).toBe(0);
+      expect(publish.effects).toEqual([
+        "destination write github-actions:acme/billing STRIPE_KEY (23 chars)",
+      ]);
+      for (const result of [run, status, publish]) {
+        expect(result.screen).not.toContain("1Password");
+        clean(result);
+      }
+    },
+    SLOW,
+  );
+
+  test(
     "with Bitwarden, run, status and publish read from the organization and leak nothing",
     async () => {
       const where =

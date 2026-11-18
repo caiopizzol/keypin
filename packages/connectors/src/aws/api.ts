@@ -1,4 +1,4 @@
-import type { Fetch } from "@keypin/core";
+import { type Fetch, parseObject } from "@keypin/core";
 import { type Credentials, signing } from "./sigv4";
 
 export const IAM = "https://iam.amazonaws.com/";
@@ -18,6 +18,16 @@ export interface Reply {
   code: string | null;
 }
 
+export interface JsonReply {
+  status: number;
+  body: Record<string, unknown>;
+  code: string | null;
+}
+
+export function endpoint(service: string, region: string): string {
+  return `https://${service}.${region}.amazonaws.com${region.startsWith("cn-") ? ".cn" : ""}/`;
+}
+
 export async function query(
   fetch: Fetch,
   service: Service,
@@ -25,8 +35,10 @@ export async function query(
   action: string,
   params: Readonly<Record<string, string>>,
   now: Date,
+  region?: string,
 ): Promise<Reply> {
-  const { url, version } = SERVICES[service];
+  const { version } = SERVICES[service];
+  const url = region === undefined ? SERVICES[service].url : endpoint(service, region);
   const body = new URLSearchParams({ Action: action, Version: version, ...params }).toString();
   const { headers } = signing(
     {
@@ -36,13 +48,52 @@ export async function query(
       body,
     },
     credentials,
-    { region: REGION, service },
+    { region: region ?? REGION, service },
     now,
   );
   const response = await fetch(url, { method: "POST", headers, body });
   const xml = await response.text();
   const code = response.status === 200 ? null : text(xml, "Code");
-  return { status: response.status, xml, code: code && /^[A-Za-z.]+$/.test(code) ? code : null };
+  return { status: response.status, xml, code: errorCode(code) };
+}
+
+export async function json(
+  fetch: Fetch,
+  service: string,
+  credentials: Credentials,
+  region: string,
+  action: string,
+  params: Readonly<Record<string, unknown>>,
+  now: Date,
+): Promise<JsonReply> {
+  const url = endpoint(service, region);
+  const body = JSON.stringify(params);
+  const { headers } = signing(
+    {
+      method: "POST",
+      url,
+      headers: {
+        "Content-Type": "application/x-amz-json-1.1",
+        "X-Amz-Target": `${service}.${action}`,
+      },
+      body,
+    },
+    credentials,
+    { region, service },
+    now,
+  );
+  const response = await fetch(url, { method: "POST", headers, body });
+  const parsed = parseObject(await response.text());
+  const type = typeof parsed.__type === "string" ? parsed.__type.split("#").pop() : null;
+  return {
+    status: response.status,
+    body: parsed,
+    code: response.status === 200 ? null : errorCode(type ?? null),
+  };
+}
+
+function errorCode(code: string | null): string | null {
+  return code && /^[A-Za-z.]+$/.test(code) ? code : null;
 }
 
 const ENTITIES: Record<string, string> = {
@@ -64,6 +115,6 @@ export function members(xml: string): string[] {
   return [...xml.matchAll(/<member>([\s\S]*?)<\/member>/g)].map((m) => m[1] ?? "");
 }
 
-export function returned(action: string, reply: Reply): string {
+export function returned(action: string, reply: { status: number; code: string | null }): string {
   return `AWS ${action} returned HTTP ${reply.status}${reply.code ? ` ${reply.code}` : ""}`;
 }

@@ -22,17 +22,17 @@ paste in a chat, or leave on a laptop.
 Each project lists its keys in a `keypin.toml`: names, vault items and destinations, never values. keypin runs your
 commands with the dev keys and publishes the prod keys. It reads a value only while a command runs.
 
-| Vaults    | Destinations       | Rotation              |
-| --------- | ------------------ | --------------------- |
-| 1Password | GitHub Actions     | Resend                |
-| Infisical | Cloudflare Workers | Neon                  |
-| Bitwarden | Vercel projects    | OpenAI                |
-| Doppler   | Supabase Functions | Supabase              |
-|           | Netlify projects   | Cloudflare API tokens |
-|           | Railway services   | OpenRouter            |
-|           | Convex deployments | Google Cloud API keys |
-|           | Fly.io apps        | ElevenLabs            |
-|           |                    | AWS IAM access keys   |
+| Vaults              | Destinations       | Rotation              |
+| ------------------- | ------------------ | --------------------- |
+| 1Password           | GitHub Actions     | Resend                |
+| Infisical           | Cloudflare Workers | Neon                  |
+| Bitwarden           | Vercel projects    | OpenAI                |
+| Doppler             | Supabase Functions | Supabase              |
+| AWS Secrets Manager | Netlify projects   | Cloudflare API tokens |
+|                     | Railway services   | OpenRouter            |
+|                     | Convex deployments | Google Cloud API keys |
+|                     | Fly.io apps        | ElevenLabs            |
+|                     |                    | AWS IAM access keys   |
 
 Want another? Vote for it on the [roadmap](https://github.com/caiopizzol/keypin/issues/138).
 
@@ -128,8 +128,10 @@ npx skills add caiopizzol/keypin -g    # all your projects
   `keypin.toml`
 - [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md): moving an env file's values into 1Password
 - [Infisical](https://github.com/caiopizzol/keypin/blob/main/docs/infisical.md),
-  [Bitwarden](https://github.com/caiopizzol/keypin/blob/main/docs/bitwarden.md) and
-  [Doppler](https://github.com/caiopizzol/keypin/blob/main/docs/doppler.md): reading keys from them instead
+  [Bitwarden](https://github.com/caiopizzol/keypin/blob/main/docs/bitwarden.md),
+  [Doppler](https://github.com/caiopizzol/keypin/blob/main/docs/doppler.md) and
+  [AWS Secrets Manager](https://github.com/caiopizzol/keypin/blob/main/docs/aws-secrets-manager.md): reading keys
+  from them instead
 - [Service account](https://github.com/caiopizzol/keypin/blob/main/docs/service-account.md): 1Password on a server or
   in CI
 - [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md): destinations, approvals and

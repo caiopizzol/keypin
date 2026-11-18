@@ -24,7 +24,13 @@ import {
   type GoogleWorld,
   serviceAccountJson,
 } from "@keypin/connectors/google/testing";
-import { type AwsWorld, awsFetch } from "@keypin/connectors/aws/testing";
+import { awsSignIn, secretsManagerBackend } from "@keypin/connectors/aws";
+import {
+  type AwsWorld,
+  awsFetch,
+  fileSecrets,
+  secretsManagerFetch,
+} from "@keypin/connectors/aws/testing";
 import { elevenlabsFetch, type ElevenLabsWorld } from "@keypin/connectors/elevenlabs/testing";
 import { neonFetch, type NeonWorld } from "@keypin/connectors/neon/testing";
 import { type OpenAIKeys, openaiFetch } from "@keypin/connectors/openai/testing";
@@ -283,11 +289,28 @@ const doppler = dopplerBackend(
     ),
   ),
 );
+const AWSSM = join(sandbox, "awssm.json");
+const awssm = secretsManagerBackend(
+  awsSignIn(process.env, homedir(), (path) =>
+    existsSync(path) ? readFileSync(path, "utf8") : null,
+  ),
+  {
+    fetch: secretsManagerFetch(
+      run.awssm ?? { account: "", credentials: [], secrets: {} },
+      fileSecrets(
+        () => (existsSync(AWSSM) ? readFileSync(AWSSM, "utf8") : null),
+        (text) => writeFileSync(AWSSM, text),
+        effect,
+      ),
+    ),
+  },
+);
 const vault = routedVault({
   "1password": () => signedIn().vault,
   infisical: () => infisical,
   bitwarden: () => bitwarden,
   doppler: () => doppler,
+  awssm: () => awssm,
 });
 
 const resend = resendFetch({

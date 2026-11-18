@@ -10,7 +10,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 
 export type Outcome =
   | { kind: "ok" }
@@ -55,7 +55,7 @@ function isFile(path: string): boolean {
   }
 }
 
-const canonical = (path: string) => join(realpathSync(dirname(path)), basename(path));
+const canonical = (path: string) => join(realpathSync.native(dirname(path)), basename(path));
 
 function linkChain(path: string): string[] {
   const chain: string[] = [];
@@ -65,7 +65,8 @@ function linkChain(path: string): string[] {
       if (chain.includes(current)) return chain;
       chain.push(current);
       if (!lstatSync(current).isSymbolicLink()) return chain;
-      current = resolve(dirname(current), readlinkSync(current));
+      const target = readlinkSync(current);
+      current = isAbsolute(target) ? target : `${dirname(current)}/${target}`;
     } catch (error) {
       if (unreachable(error)) return chain;
       throw error;

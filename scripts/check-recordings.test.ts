@@ -194,6 +194,15 @@ describe("check-recordings", () => {
     ]);
   });
 
+  test("follows a link target the way the system does, through a symlinked folder and ..", () => {
+    const cwd = repo({ "tests/a.test.ts": WRITER, "fixtures/recordings/data.txt": "d\n" });
+    mkdirSync(join(cwd, "fixtures/recordings/deep"));
+    mkdirSync(join(cwd, "tests/recordings"));
+    symlinkSync("../../fixtures/recordings/deep", join(cwd, "tests/recordings/sub"));
+    symlinkSync("sub/../data.txt", join(cwd, "tests/recordings/front.txt"));
+    expect(checkRecordings(cwd, uses(cwd, "tests/recordings/front.txt"))).toEqual({ kind: "ok" });
+  });
+
   test("ignores a snapshot a test removed before the run ended", () => {
     const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
     expect(

@@ -1,38 +1,46 @@
 import { spawnSync } from "node:child_process";
-import { copyFileSync, lstatSync, mkdirSync, mkdtempSync, rmSync, utimesSync } from "node:fs";
+import {
+  closeSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-
-export interface TestRun {
-  status: number | null;
-  output: string;
-}
 
 export type Outcome =
   | { kind: "ok" }
   | { kind: "symlinks"; paths: string[] }
   | { kind: "stale"; paths: string[] }
-  | { kind: "tests-failed"; output: string }
+  | { kind: "tests-failed" }
   | { kind: "not-restored"; paths: string[]; aside: string };
 
-function git(cwd: string, args: string[], noMatch = false): string[] {
+function git(cwd: string, args: string[], noMatch = false): Buffer {
   const result = spawnSync("git", args, { cwd, maxBuffer: Number.POSITIVE_INFINITY });
   if (result.status !== 0 && !(noMatch && result.status === 1)) {
     const reason = result.stderr.toString().trim() || `exit ${result.status}`;
     throw new Error(`git ${args[0]} failed: ${reason}`);
   }
-  const paths = new Set<string>();
+  return result.stdout;
+}
+
+function paths(output: Buffer): string[] {
+  const found = new Set<string>();
   let start = 0;
-  for (let end = result.stdout.indexOf(0); end !== -1; end = result.stdout.indexOf(0, start)) {
-    const bytes = result.stdout.subarray(start, end);
+  for (let end = output.indexOf(0); end !== -1; end = output.indexOf(0, start)) {
+    const bytes = output.subarray(start, end);
     const path = bytes.toString("utf8");
     if (!Buffer.from(path, "utf8").equals(bytes)) {
       throw new Error(`Rename this file to valid UTF-8: ${path}`);
     }
-    paths.add(path);
+    found.add(path);
     start = end + 1;
   }
-  return [...paths];
+  return [...found];
 }
 
 const entry = (path: string) => lstatSync(path, { throwIfNoEntry: false });
@@ -44,87 +52,104 @@ function throughSymlink(cwd: string, path: string): boolean {
   return false;
 }
 
-function copyWithTimes(from: string, to: string) {
-  const { atime, mtime } = lstatSync(from);
-  mkdirSync(dirname(to), { recursive: true });
-  copyFileSync(from, to);
-  utimesSync(to, atime, mtime);
-}
-
-function putBack(cwd: string, aside: string, path: string): boolean {
+function move(from: string, to: string): boolean {
   try {
-    copyWithTimes(join(aside, path), join(cwd, path));
+    mkdirSync(dirname(to), { recursive: true });
+    renameSync(from, to);
     return true;
   } catch {
     return false;
   }
 }
 
-export function checkRecordings(cwd: string, runTests: (files: string[]) => TestRun): Outcome {
+export function checkRecordings(
+  cwd: string,
+  runTests: (files: string[]) => number | null,
+): Outcome {
   const listed = (pathspec: string) =>
-    git(cwd, ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", pathspec]);
+    paths(
+      git(cwd, ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", pathspec]),
+    );
   const recordings = listed("*/recordings/*");
   const symlinks = [...listed("*/recordings"), ...recordings].filter((path) =>
     throughSymlink(cwd, path),
   );
   if (symlinks.length > 0) return { kind: "symlinks", paths: symlinks };
-  const saved = recordings.filter((path) => entry(join(cwd, path))?.isFile());
-  if (saved.length === 0) return { kind: "ok" };
-  const writers = git(
-    cwd,
-    [
-      "grep",
-      "-lz",
-      "--untracked",
-      "toMatchFileSnapshot",
-      "--",
-      "*.test.ts",
-      ":(exclude)scripts/check-recordings.test.ts",
-    ],
-    true,
+  const files = recordings.filter((path) => entry(join(cwd, path))?.isFile());
+  if (files.length === 0) return { kind: "ok" };
+  const writers = paths(
+    git(
+      cwd,
+      [
+        "grep",
+        "-lz",
+        "--untracked",
+        "toMatchFileSnapshot",
+        "--",
+        "*.test.ts",
+        ":(exclude)scripts/check-recordings.test.ts",
+      ],
+      true,
+    ),
   );
+  const gitDir = git(cwd, ["rev-parse", "--absolute-git-dir"]).toString().trim();
 
-  const aside = mkdtempSync(join(tmpdir(), "check-recordings-"));
-  try {
-    for (const path of saved) copyWithTimes(join(cwd, path), join(aside, path));
-  } catch (error) {
-    rmSync(aside, { recursive: true, force: true });
-    throw error;
-  }
-
+  const aside = mkdtempSync(join(gitDir, "check-recordings-"));
+  const moved: string[] = [];
   let outcome: Outcome = { kind: "ok" };
   let thrown: { error: unknown } | null = null;
   try {
-    for (const path of saved) rmSync(join(cwd, path));
-    const run = writers.length > 0 ? runTests(writers) : null;
-    const stale = saved.filter((path) => entry(join(cwd, path)) === undefined);
-    if (run && run.status !== 0) outcome = { kind: "tests-failed", output: run.output };
+    for (const path of files) {
+      mkdirSync(dirname(join(aside, path)), { recursive: true });
+      renameSync(join(cwd, path), join(aside, path));
+      moved.push(path);
+    }
+    const status = writers.length > 0 ? runTests(writers) : 0;
+    const stale = moved.filter((path) => entry(join(cwd, path)) === undefined);
+    if (status !== 0) outcome = { kind: "tests-failed" };
     else if (stale.length > 0) outcome = { kind: "stale", paths: stale };
   } catch (error) {
     thrown = { error };
   }
 
-  const failed = saved.filter((path) => !putBack(cwd, aside, path));
+  const failed = moved.filter((path) => !move(join(aside, path), join(cwd, path)));
   if (failed.length > 0) return { kind: "not-restored", paths: failed, aside };
   rmSync(aside, { recursive: true, force: true });
   if (thrown) throw thrown.error;
   return outcome;
 }
 
-function vitest(files: string[]): TestRun {
-  const env = { ...process.env };
-  delete env.CI;
-  const result = spawnSync("bun", ["--bun", "vp", "test", ...files, "--update"], {
-    env,
-    encoding: "utf8",
-    maxBuffer: Number.POSITIVE_INFINITY,
-  });
-  return { status: result.status, output: `${result.stdout ?? ""}${result.stderr ?? ""}` };
+function vitest(log: string) {
+  return (files: string[]): number | null => {
+    const env = { ...process.env };
+    delete env.CI;
+    const out = openSync(log, "w");
+    try {
+      return spawnSync("bun", ["--bun", "vp", "test", ...files, "--update"], {
+        env,
+        stdio: ["ignore", out, out],
+      }).status;
+    } finally {
+      closeSync(out);
+    }
+  };
 }
 
-function report(outcome: Outcome): number {
-  const list = (title: string, paths: string[]) =>
-    process.stderr.write(`${title}\n${paths.join("\n")}\n`);
+function printFile(path: string) {
+  const file = openSync(path, "r");
+  const chunk = Buffer.alloc(64 * 1024);
+  try {
+    for (let read = readSync(file, chunk); read > 0; read = readSync(file, chunk)) {
+      process.stderr.write(chunk.subarray(0, read));
+    }
+  } finally {
+    closeSync(file);
+  }
+}
+
+function report(outcome: Outcome, log: string): number {
+  const list = (title: string, found: string[]) =>
+    process.stderr.write(`${title}\n${found.join("\n")}\n`);
   switch (outcome.kind) {
     case "ok":
       return 0;
@@ -138,7 +163,7 @@ function report(outcome: Outcome): number {
       list("No test writes these recordings anymore. Delete them:", outcome.paths);
       return 1;
     case "tests-failed":
-      process.stderr.write(outcome.output);
+      printFile(log);
       return 1;
     case "not-restored":
       list(
@@ -159,10 +184,14 @@ if (import.meta.main) {
   process.on("SIGTERM", () => {
     process.exitCode = 143;
   });
+  const logs = mkdtempSync(join(tmpdir(), "check-recordings-log-"));
+  const log = join(logs, "test.log");
   try {
-    process.exitCode = report(checkRecordings(process.cwd(), vitest));
+    process.exitCode = report(checkRecordings(process.cwd(), vitest(log)), log);
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;
+  } finally {
+    rmSync(logs, { recursive: true, force: true });
   }
 }

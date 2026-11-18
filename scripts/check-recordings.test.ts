@@ -2,52 +2,54 @@ import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
-  statSync,
   symlinkSync,
-  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
-import { checkRecordings, type TestRun } from "./check-recordings";
+import { checkRecordings } from "./check-recordings";
 
 const repos: string[] = [];
+const ISOLATED = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
 const WRITER = 'await expect(out).toMatchFileSnapshot("recordings/x.txt");\n';
 
 function repo(files: Record<string, string>, commit = true): string {
   const cwd = mkdtempSync(join(tmpdir(), "check-recordings-test-"));
   repos.push(cwd);
-  spawnSync("git", ["init", "-q"], { cwd });
+  spawnSync("git", ["init", "-q"], { cwd, env: ISOLATED });
   for (const [path, text] of Object.entries(files)) {
     mkdirSync(dirname(join(cwd, path)), { recursive: true });
     writeFileSync(join(cwd, path), text);
   }
   if (commit) {
-    spawnSync("git", ["add", "-A"], { cwd });
-    spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"], {
-      cwd,
-    });
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-qm", "init");
   }
   return cwd;
 }
 
-const passing = (cwd: string, writes: Record<string, string>) => (): TestRun => {
+const passing = (cwd: string, writes: Record<string, string>) => (): number => {
   for (const [path, text] of Object.entries(writes)) {
     mkdirSync(dirname(join(cwd, path)), { recursive: true });
     writeFileSync(join(cwd, path), text);
   }
-  return { status: 0, output: "" };
+  return 0;
 };
 
 const read = (cwd: string, path: string) => readFileSync(join(cwd, path), "utf8");
 
-const git = (cwd: string, ...args: string[]) =>
-  spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd });
+function git(cwd: string, ...args: string[]) {
+  return spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], {
+    cwd,
+    env: ISOLATED,
+  });
+}
 
 afterEach(() => {
   for (const cwd of repos.splice(0)) {
@@ -86,7 +88,7 @@ describe("check-recordings", () => {
     let ran = false;
     const outcome = checkRecordings(cwd, () => {
       ran = true;
-      return { status: 0, output: "" };
+      return 0;
     });
     expect(outcome).toEqual({ kind: "stale", paths: ["tests/recordings/a.txt"] });
     expect(ran).toBe(false);
@@ -107,7 +109,7 @@ describe("check-recordings", () => {
     symlinkSync("b.txt", join(cwd, "tests/recordings/link.txt"));
     mkdirSync(join(cwd, "tests/nested"));
     symlinkSync("../../elsewhere", join(cwd, "tests/nested/recordings"));
-    spawnSync("git", ["add", "-A"], { cwd });
+    git(cwd, "add", "-A");
     const outcome = checkRecordings(cwd, passing(cwd, {}));
     expect(outcome).toEqual({
       kind: "symlinks",
@@ -116,10 +118,10 @@ describe("check-recordings", () => {
     expect(read(cwd, "elsewhere/a.txt")).toBe("a\n");
   });
 
-  test("prints the test output when the tests fail, and restores the recordings", () => {
+  test("reports failing tests and restores the recordings", () => {
     const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
-    const outcome = checkRecordings(cwd, () => ({ status: 1, output: "boom\n" }));
-    expect(outcome).toEqual({ kind: "tests-failed", output: "boom\n" });
+    const outcome = checkRecordings(cwd, () => 1);
+    expect(outcome).toEqual({ kind: "tests-failed" });
     expect(read(cwd, "tests/recordings/a.txt")).toBe("a\n");
   });
 
@@ -141,7 +143,7 @@ describe("check-recordings", () => {
     });
     const outcome = checkRecordings(cwd, () => {
       chmodSync(join(cwd, "tests/recordings/a"), 0o555);
-      return { status: 0, output: "" };
+      return 0;
     });
     expect(outcome.kind).toBe("not-restored");
     if (outcome.kind !== "not-restored") return;
@@ -158,14 +160,13 @@ describe("check-recordings", () => {
     expect(existsSync(join(cwd, "tests/recordings/a.txt"))).toBe(true);
   });
 
-  test("keeps each recording's modification time", () => {
+  test("keeps each recording's modification time to the nanosecond", () => {
     const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
-    const old = new Date("2020-01-02T03:04:05Z");
-    utimesSync(join(cwd, "tests/recordings/a.txt"), old, old);
+    const before = lstatSync(join(cwd, "tests/recordings/a.txt"), { bigint: true }).mtimeNs;
     expect(checkRecordings(cwd, passing(cwd, { "tests/recordings/a.txt": "a\n" }))).toEqual({
       kind: "ok",
     });
-    expect(statSync(join(cwd, "tests/recordings/a.txt")).mtime.getTime()).toBe(old.getTime());
+    expect(lstatSync(join(cwd, "tests/recordings/a.txt"), { bigint: true }).mtimeNs).toBe(before);
   });
 
   test("checks a recording once while git lists it for each side of a merge conflict", () => {
@@ -176,7 +177,8 @@ describe("check-recordings", () => {
     git(cwd, "checkout", "-q", "-");
     writeFileSync(join(cwd, "tests/recordings/a.txt"), "main\n");
     git(cwd, "commit", "-qam", "main");
-    git(cwd, "merge", "-q", "other");
+    git(cwd, "merge", "-q", "--no-ff", "other");
+    expect(git(cwd, "ls-files", "-u").stdout.toString()).toContain("tests/recordings/a.txt");
     const outcome = checkRecordings(cwd, passing(cwd, {}));
     expect(outcome).toEqual({ kind: "stale", paths: ["tests/recordings/a.txt"] });
     expect(existsSync(join(cwd, "tests/recordings/a.txt"))).toBe(true);
@@ -184,11 +186,15 @@ describe("check-recordings", () => {
 
   test("refuses a path that isn't valid UTF-8", () => {
     const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
-    const blob = spawnSync("git", ["hash-object", "-w", "--stdin"], { cwd, input: "x\n" });
+    const blob = spawnSync("git", ["hash-object", "-w", "--stdin"], {
+      cwd,
+      env: ISOLATED,
+      input: "x\n",
+    });
     const sha = blob.stdout.toString().trim();
     const name = Buffer.concat([Buffer.from("tests/recordings/bad-"), Buffer.from([0xff])]);
     const line = Buffer.concat([Buffer.from(`100644 ${sha}\t`), name, Buffer.from("\n")]);
-    spawnSync("git", ["update-index", "--index-info"], { cwd, input: line });
+    spawnSync("git", ["update-index", "--index-info"], { cwd, env: ISOLATED, input: line });
     expect(() => checkRecordings(cwd, passing(cwd, {}))).toThrow("valid UTF-8");
     expect(read(cwd, "tests/recordings/a.txt")).toBe("a\n");
   });
@@ -201,7 +207,7 @@ describe("check-recordings", () => {
     let ran = false;
     const outcome = checkRecordings(cwd, () => {
       ran = true;
-      return { status: 0, output: "" };
+      return 0;
     });
     expect(outcome).toEqual({ kind: "stale", paths: ["tests/recordings/a.txt"] });
     expect(ran).toBe(false);

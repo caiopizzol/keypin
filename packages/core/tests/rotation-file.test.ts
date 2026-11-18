@@ -188,7 +188,7 @@ describe(".keypin/rotation.json", () => {
       key: "DUE_KEY",
       environment: "prod",
       destination: DESTINATION,
-      secret: DESTINATION,
+      account: "acme",
       generation: "aaaaaaaaaaaaaaaa",
       at: "2026-11-09T12:00:01.000Z",
       approved: "hash",
@@ -203,6 +203,7 @@ describe(".keypin/rotation.json", () => {
           ? Object.entries(value).flatMap(([k, v]) => [k, ...keys(v)])
           : [];
     expect([...new Set(keys(file))].toSorted()).toEqual([
+      "account",
       "approved",
       "at",
       "destination",
@@ -215,7 +216,6 @@ describe(".keypin/rotation.json", () => {
       "old",
       "published",
       "revoked",
-      "secret",
       "version",
     ]);
   });
@@ -333,21 +333,21 @@ prod = { from = "op://Private/due key/credential", publish = [{ to = "cloudflare
     state = recordReceipt(state, sent(NEW_ACCOUNT, ISSUED.generation, ISSUED.at), KINDS);
 
     const file = await rotationFile(state, map, KINDS, null);
-    expect(file.published.map((p) => [p.destination, p.secret, p.generation])).toEqual([
-      [WEB, `cloudflare-worker:${OLD_ACCOUNT}:web:DUE_KEY`, ISSUED.old.generation],
-      [WEB, `cloudflare-worker:${NEW_ACCOUNT}:web:DUE_KEY`, ISSUED.generation],
+    expect(file.published.map((p) => [p.destination, p.account, p.generation])).toEqual([
+      [WEB, OLD_ACCOUNT, ISSUED.old.generation],
+      [WEB, NEW_ACCOUNT, ISSUED.generation],
     ]);
     const owner = { keyId: "DUE_KEY", environment: "prod", mapFile: FILE };
-    expect(removedBehind(file, map, KINDS, owner, ISSUED.generation).map((p) => p.secret)).toEqual([
-      `cloudflare-worker:${OLD_ACCOUNT}:web:DUE_KEY`,
-    ]);
+    expect(removedBehind(file, map, KINDS, owner, ISSUED.generation).map((p) => p.account)).toEqual(
+      [OLD_ACCOUNT],
+    );
 
     const revoked = recordIssued(state, { ...ISSUED, old: { ...ISSUED.old, revoked: true } });
     const after = await rotationFile(revoked, map, KINDS, file);
     expect(
-      after.published.map((p) => p.secret),
+      after.published.map((p) => p.account),
       "dropped once its key is revoked",
-    ).toEqual([`cloudflare-worker:${NEW_ACCOUNT}:web:DUE_KEY`]);
+    ).toEqual([NEW_ACCOUNT]);
   });
 
   test("a write to the same Worker name in the account the map no longer names doesn't count as published", async () => {
@@ -382,7 +382,39 @@ prod = { from = "op://Private/due key/credential", publish = [{ to = "cloudflare
     });
   });
 
-  test("a case-only edit to a GitHub owner leaves the rotation unfinished, so --due publishes again", async () => {
+  test("a case-only edit to a GitHub repository name keeps the saved write, as the planner does", async () => {
+    const { map, state } = published();
+    const file = await rotationFile(state, map, KINDS, null);
+    const renamed = parseMap(
+      MAP.replaceAll("acme/mailer", "acme/Mailer"),
+      FILE,
+      KINDS,
+      ISSUERS,
+      VAULT_KINDS,
+    );
+    if (!renamed.ok) throw new Error(renamed.errors.join("\n"));
+    expect(rotationRecord(file, renamed.map, KINDS, "DUE_KEY", "prod")).toMatchObject({
+      published: ["github-actions:acme/Mailer"],
+      unpublished: [],
+      old: "waiting for approval",
+    });
+    const owner = { keyId: "DUE_KEY", environment: "prod", mapFile: FILE };
+    const ids = async () => IDS;
+    const restored = await restoreReceipts({
+      state: emptyState(),
+      file,
+      map: renamed.map,
+      kinds: KINDS,
+      owner,
+      ids,
+    });
+    expect(
+      restored.receipts.map((r) => r.generation),
+      "the receipt still validates",
+    ).toEqual([ISSUED.generation]);
+  });
+
+  test("a case-only edit to a GitHub owner is a changed account, as the planner treats it, so --due publishes again", async () => {
     const { map, state } = published();
     const file = await rotationFile(state, map, KINDS, null);
     const edited = parseMap(

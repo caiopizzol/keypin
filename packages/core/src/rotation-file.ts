@@ -1,6 +1,5 @@
 import type { Environment, ItemIds, KeyId, KeyRef, Receipt } from "./contracts";
 import {
-  destinationId,
   type DestinationKinds,
   placeId,
   type PublishTarget,
@@ -31,7 +30,7 @@ export interface CommittedWrite {
   key: KeyId;
   environment: Environment;
   destination: string;
-  secret: string;
+  account: string;
   generation: Generation;
   at: string;
   approved: string;
@@ -70,7 +69,7 @@ export function removedBehind(
       p.key === owner.keyId &&
       p.environment === owner.environment &&
       p.generation !== generation &&
-      !listed.some((target) => secretKey(target, owner.keyId, kinds) === p.secret),
+      !listed.some((target) => secretKey(target, owner.keyId, kinds) === committedSecret(p, kinds)),
   );
 }
 
@@ -86,23 +85,35 @@ export function deliveredTo(
   generation: Generation,
   kinds: DestinationKinds,
 ): boolean {
-  const destination = destinationId(target, owner.keyId, kinds);
   const secret = secretKey(target, owner.keyId, kinds);
-  const same = (key: KeyId, environment: Environment, place: string, made: Generation) =>
+  const same = (
+    key: KeyId,
+    environment: Environment,
+    place: string,
+    account: string,
+    made: Generation,
+  ) =>
     key === owner.keyId &&
     environment === owner.environment &&
-    place === destination &&
+    place === secret &&
+    account === target.account &&
     made === generation;
   return (
-    (file?.published ?? []).some(
-      (p) => same(p.key, p.environment, p.destination, p.generation) && p.secret === secret,
+    (file?.published ?? []).some((p) =>
+      same(p.key, p.environment, committedSecret(p, kinds), p.account, p.generation),
     ) ||
     receipts.some(
       (r) =>
         r.mapFile === owner.mapFile &&
-        same(r.keyId, r.environment, r.destinationId, r.generation) &&
-        receiptSecretKey(r, kinds) === secret,
+        same(r.keyId, r.environment, receiptSecretKey(r, kinds), r.account.pinned, r.generation),
     )
+  );
+}
+
+function committedSecret(write: CommittedWrite, kinds: DestinationKinds): string {
+  return receiptSecretKey(
+    { destinationId: write.destination, account: { pinned: write.account } },
+    kinds,
   );
 }
 
@@ -144,7 +155,7 @@ export async function rotationFile(
     return c.generation === now.old.generation && !now.old.revoked;
   };
   const kept = (c: CommittedWrite) =>
-    listed(c.key, c.environment, c.secret) ||
+    listed(c.key, c.environment, committedSecret(c, kinds)) ||
     (rotates(map, c.key, c.environment) !== null && stillWorks(c));
   const published: CommittedWrite[] = [];
   for (const receipt of latestPerSecret(state.receipts, kinds)) {
@@ -154,7 +165,7 @@ export async function rotationFile(
       key: keyId,
       environment,
       destination: receipt.destinationId,
-      secret: receiptSecretKey(receipt, kinds),
+      account: receipt.account.pinned,
       generation: receipt.generation,
       at: receipt.at,
       approved: await approvalPrint({
@@ -171,7 +182,7 @@ export async function rotationFile(
     published: merged(
       (base?.published ?? []).filter(kept),
       published.filter(kept),
-      (c) => [c.key, c.environment, c.secret],
+      (c) => [c.key, c.environment, committedSecret(c, kinds)],
       (older, newer) => (newer.at >= older.at ? newer : older),
     ),
   };
@@ -241,9 +252,9 @@ export async function restoreReceipts(input: {
   );
   const newer = file.published.flatMap((c) => {
     if (c.key !== owner.keyId || c.environment !== owner.environment) return [];
-    const target = entry.publish.find((t) => secretKey(t, c.key, kinds) === c.secret);
+    const secret = committedSecret(c, kinds);
+    const target = entry.publish.find((t) => secretKey(t, c.key, kinds) === secret);
     if (!target) return [];
-    const secret = c.secret;
     const local = latest.get(secret);
     return local && local.at >= c.at ? [] : [{ c, target, secret }];
   });
@@ -338,8 +349,8 @@ function readIssued(value: unknown): CommittedIssued | null {
 
 function readWrite(value: unknown): CommittedWrite | null {
   if (!isRecord(value)) return null;
-  const { key, environment, destination, secret, generation, at, approved } = value;
-  if (!isText(key) || !isText(environment) || !isText(destination) || !isText(secret)) return null;
+  const { key, environment, destination, account, generation, at, approved } = value;
+  if (!isText(key) || !isText(environment) || !isText(destination) || !isText(account)) return null;
   if (!isText(generation) || !isText(at) || !isText(approved)) return null;
-  return { key, environment, destination, secret, generation, at, approved };
+  return { key, environment, destination, account, generation, at, approved };
 }

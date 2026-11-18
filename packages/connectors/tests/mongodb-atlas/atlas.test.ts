@@ -94,7 +94,7 @@ describe("connection strings", () => {
     );
     assert(uri);
     expect(uri.username).toBe("app@corp");
-    expect(uri.hosts).toEqual(["h1.example.net", "h2.example.net"]);
+    expect(uri.hosts).toEqual(["h1.example.net:27017", "h2.example.net:27018"]);
     expect(withUser(uri, "app@corp-b", "a/b:c@d?e")).toBe(
       "mongodb://app%40corp-b:a%2Fb%3Ac%40d%3Fe@h1.example.net:27017,h2.example.net:27018/appdb?ssl=true&replicaSet=atlas-x&authSource=admin",
     );
@@ -176,6 +176,60 @@ describe("rotation", () => {
       atlas,
       null,
       `mongodb://app:${OLD_PASSWORD}@cluster0-shard-00-00.ab1cd.mongodb.net:27017,cluster0-shard-00-01.ab1cd.mongodb.net:27017/?ssl=true&authSource=admin`,
+    );
+  });
+
+  test("a private endpoint shared by two clusters finds the cluster by its ports", async () => {
+    const endpoint = "pl-0-us-east-1.ab1cd.mongodb.net";
+    const { atlas, requests, sleeps } = setup(
+      {
+        clusters: [
+          {
+            name: "ClusterA",
+            srvHost: "a.ab1cd.mongodb.net",
+            hosts: [`${endpoint}:1024`, `${endpoint}:1025`],
+            applied: true,
+          },
+          {
+            name: "ClusterB",
+            srvHost: "b.ab1cd.mongodb.net",
+            hosts: [`${endpoint}:1027`, `${endpoint}:1028`],
+          },
+        ],
+        pendingPolls: 2,
+      },
+      {},
+      [{ ...APP, scopes: [{ name: "ClusterB", type: "CLUSTER" }] }],
+    );
+    const check = await passed(
+      atlas,
+      null,
+      `mongodb://app:${OLD_PASSWORD}@${endpoint}:1027,${endpoint}:1028/?ssl=true`,
+    );
+    expect(check.facts).toContain("cluster ClusterB");
+    await atlas.create();
+    const polled = requests
+      .filter((r) => r.url.includes("/status"))
+      .map((r) => r.url.split("/").at(-2));
+    expect(polled).toEqual(["ClusterB", "ClusterB", "ClusterB"]);
+    expect(sleeps).toHaveLength(2);
+  });
+
+  test("a connection string that matches two clusters is refused", async () => {
+    const endpoint = "pl-0-us-east-1.ab1cd.mongodb.net";
+    const { atlas } = setup({
+      clusters: [
+        { name: "ClusterA", srvHost: "a.ab1cd.mongodb.net", hosts: [`${endpoint}:1024`] },
+        { name: "ClusterB", srvHost: "b.ab1cd.mongodb.net", hosts: [`${endpoint}:1027`] },
+      ],
+    });
+    const check = await refused(
+      atlas,
+      null,
+      `mongodb://app:pw@${endpoint}:1024,${endpoint}:1027/?ssl=true`,
+    );
+    expect(check.reason).toBe(
+      `the vault's connection string connects to ${endpoint}:1024,${endpoint}:1027, which matches clusters ClusterA, ClusterB in project app`,
     );
   });
 

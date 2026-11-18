@@ -7,6 +7,7 @@ export interface MongoUri {
   options: URLSearchParams;
 }
 
+const DEFAULT_PORT = 27017;
 const SCHEME = /^(mongodb(?:\+srv)?):\/\/([^/?]*)(.*)$/s;
 
 export function parseUri(text: string): MongoUri | null {
@@ -20,7 +21,7 @@ export function parseUri(text: string): MongoUri | null {
   const username = decoded(userinfo.slice(0, colon));
   if (at < 0 || colon < 0 || !username || !decoded(userinfo.slice(colon + 1))) return null;
   const address = authority.slice(at + 1);
-  const hosts = hostList(address);
+  const hosts = hostList(match[1] ?? "", address);
   if (!hosts.length) return null;
   const query = rest.indexOf("?");
   return {
@@ -40,13 +41,20 @@ export function withUser(uri: MongoUri, username: string, password: string): str
 
 export function hostsOf(connectionString: unknown): string[] {
   if (typeof connectionString !== "string") return [];
-  const authority = SCHEME.exec(connectionString.trim())?.[2] ?? "";
-  return hostList(authority.slice(authority.lastIndexOf("@") + 1));
+  const match = SCHEME.exec(connectionString.trim());
+  const authority = match?.[2] ?? "";
+  return hostList(match?.[1] ?? "", authority.slice(authority.lastIndexOf("@") + 1));
 }
 
-function hostList(address: string): string[] {
-  const hosts = address.split(",").map((host) => host.replace(/:\d+$/, "").toLowerCase());
+function hostList(scheme: string, address: string): string[] {
+  const hosts = address
+    .split(",")
+    .map((host) => (scheme === "mongodb+srv" ? host : withPort(host)).toLowerCase());
   return hosts.every(Boolean) ? hosts : [];
+}
+
+function withPort(host: string): string {
+  return !host || /:\d+$/.test(host) ? host : `${host}:${DEFAULT_PORT}`;
 }
 
 function decoded(text: string): string {

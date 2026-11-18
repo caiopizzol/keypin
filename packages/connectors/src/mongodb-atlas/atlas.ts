@@ -111,13 +111,21 @@ export class AtlasIssuer implements Issuer {
         reason: `the vault's connection string signs in with ${mechanism || "an external authSource"}, which has no password keypin can rotate`,
         fix: "keypin rotates only password (SCRAM) users",
       };
-    const cluster = await this.#clusterFor(uri.hosts);
+    const clusters = await this.#clustersFor(uri.hosts);
+    const cluster = clusters[0];
     if (!cluster)
       return {
         ok: false,
         facts,
         reason: `the vault's connection string connects to ${uri.hosts.join(",")}, which isn't a cluster in project ${name}`,
         fix: "check project_id in keypin.toml, or put a connection string for this project's cluster in the vault",
+      };
+    if (clusters.length > 1)
+      return {
+        ok: false,
+        facts,
+        reason: `the vault's connection string connects to ${uri.hosts.join(",")}, which matches clusters ${clusters.map((match) => match.name).join(", ")} in project ${name}`,
+        fix: "put a connection string from one cluster's Connect dialog in the vault",
       };
 
     const source = currentId ?? uri.username;
@@ -255,7 +263,8 @@ export class AtlasIssuer implements Issuer {
     return reply.body;
   }
 
-  async #clusterFor(hosts: string[]): Promise<Copy["cluster"] | null> {
+  async #clustersFor(hosts: string[]): Promise<Copy["cluster"][]> {
+    const matches: Copy["cluster"][] = [];
     const lists = [
       { path: "/clusters", version: VERSIONS.clusters, flex: false },
       { path: "/flexClusters", version: VERSIONS.flex, flex: true },
@@ -271,10 +280,10 @@ export class AtlasIssuer implements Issuer {
       for (const cluster of results) {
         if (!isRecord(cluster) || typeof cluster.name !== "string") continue;
         const known = new Set(connectionStrings(cluster.connectionStrings).flatMap(hostsOf));
-        if (hosts.some((host) => known.has(host))) return { name: cluster.name, flex };
+        if (hosts.some((host) => known.has(host))) matches.push({ name: cluster.name, flex });
       }
     }
-    return null;
+    return matches;
   }
 
   async #signIn(): Promise<Refusal | null> {

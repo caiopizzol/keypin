@@ -17,6 +17,7 @@ export interface FakeAtlasCluster {
   srvHost: string;
   hosts?: string[];
   flex?: boolean;
+  applied?: boolean;
 }
 
 export interface AtlasWorld {
@@ -83,7 +84,7 @@ export function atlasFetch(fake: FakeAtlas): Fetch {
             name: cluster.name,
             connectionStrings: {
               standardSrv: `mongodb+srv://${cluster.srvHost}`,
-              standard: `mongodb://${(cluster.hosts ?? []).map((host) => `${host}:27017`).join(",")}/?ssl=true`,
+              standard: `mongodb://${(cluster.hosts ?? []).map((host) => (/:\d+$/.test(host) ? host : `${host}:27017`)).join(",")}/?ssl=true`,
             },
           })),
         totalCount: fake.clusters.length,
@@ -99,8 +100,9 @@ export function atlasFetch(fake: FakeAtlas): Fetch {
       });
     const status = /^\/clusters\/([^/]+)\/status$/.exec(rest);
     if (init.method === "GET" && status) {
-      if (!fake.clusters.some((cluster) => cluster.name === decodeURIComponent(status[1] ?? "")))
-        return error(404, "CLUSTER_NOT_FOUND", "No cluster with this name exists.");
+      const cluster = fake.clusters.find((one) => one.name === decodeURIComponent(status[1] ?? ""));
+      if (!cluster) return error(404, "CLUSTER_NOT_FOUND", "No cluster with this name exists.");
+      if (cluster.applied) return reply(200, { changeStatus: "APPLIED" });
       const changeStatus = world.pending > 0 ? "PENDING" : "APPLIED";
       if (world.pending > 0) world.pending--;
       fake.world.save(world);

@@ -1,22 +1,19 @@
 import { spawnSync } from "node:child_process";
 import {
-  closeSync,
-  copyFileSync,
   lstatSync,
-  mkdirSync,
   mkdtempSync,
-  openSync,
-  readSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
   rmSync,
-  symlinkSync,
-  writeSync,
+  statSync,
+  writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, isAbsolute, join } from "node:path";
 
 export type Outcome =
   | { kind: "ok" }
-  | { kind: "symlinks"; paths: string[] }
   | { kind: "stale"; paths: string[] }
   | { kind: "tests-failed" };
 
@@ -44,67 +41,56 @@ function paths(output: Buffer): string[] {
   return [...found];
 }
 
-function entry(path: string) {
+function unreachable(error: unknown): boolean {
+  const code = error instanceof Error && "code" in error ? error.code : undefined;
+  return code === "ENOENT" || code === "ENOTDIR" || code === "ELOOP";
+}
+
+function isFile(path: string): boolean {
   try {
-    return lstatSync(path, { throwIfNoEntry: false });
+    return statSync(path).isFile();
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOTDIR") return undefined;
+    if (unreachable(error)) return false;
     throw error;
   }
 }
 
-function throughSymlink(cwd: string, path: string): boolean {
-  for (let part = path; part !== "."; part = dirname(part)) {
-    if (entry(join(cwd, part))?.isSymbolicLink()) return true;
-  }
-  return false;
-}
+const canonical = (path: string) => join(realpathSync.native(dirname(path)), basename(path));
 
-function plainFile(cwd: string, path: string): boolean {
-  if (!entry(join(cwd, path))?.isFile()) return false;
-  for (let dir = dirname(path); dir !== "."; dir = dirname(dir)) {
-    if (!entry(join(cwd, dir))?.isDirectory()) return false;
-  }
-  return true;
-}
-
-function copyCheckout(cwd: string, copy: string, skip: Set<string>) {
-  const files = paths(git(cwd, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"]));
-  for (const path of files) {
-    if (skip.has(path) || !plainFile(cwd, path)) continue;
-    mkdirSync(dirname(join(copy, path)), { recursive: true });
-    copyFileSync(join(cwd, path), join(copy, path));
-  }
-  const ignored = git(cwd, [
-    "ls-files",
-    "-z",
-    "--others",
-    "--ignored",
-    "--exclude-standard",
-    "--directory",
-  ]);
-  for (const path of paths(ignored).map((dir) => dir.replace(/\/$/, ""))) {
-    if (basename(path) !== "node_modules" || entry(join(copy, path))) continue;
-    mkdirSync(dirname(join(copy, path)), { recursive: true });
-    symlinkSync(join(cwd, path), join(copy, path));
+function linkChain(path: string): string[] {
+  const chain: string[] = [];
+  for (let current = path; ;) {
+    try {
+      current = canonical(current);
+      if (chain.includes(current)) return chain;
+      chain.push(current);
+      if (!lstatSync(current).isSymbolicLink()) return chain;
+      const target = readlinkSync(current);
+      current = isAbsolute(target) ? target : `${dirname(current)}/${target}`;
+    } catch (error) {
+      if (unreachable(error)) return chain;
+      throw error;
+    }
   }
 }
 
 export function checkRecordings(
   cwd: string,
-  runTests: (copy: string, files: string[]) => number | null,
+  runTests: (files: string[], log: string) => number | null,
 ): Outcome {
-  const listed = (pathspec: string) =>
-    paths(
-      git(cwd, ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", pathspec]),
-    );
-  const listedRecordings = listed("*/recordings/*");
-  const symlinks = [...listed("*/recordings"), ...listedRecordings].filter((path) =>
-    throughSymlink(cwd, path),
+  const listed = paths(
+    git(cwd, [
+      "ls-files",
+      "-z",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "--",
+      "*/recordings/*",
+    ]),
   );
-  if (symlinks.length > 0) return { kind: "symlinks", paths: symlinks };
-  const recordings = new Set(listedRecordings.filter((path) => plainFile(cwd, path)));
-  if (recordings.size === 0) return { kind: "ok" };
+  const recordings = listed.filter((path) => isFile(join(cwd, path)));
+  if (recordings.length === 0) return { kind: "ok" };
   const writers = paths(
     git(
       cwd,
@@ -121,94 +107,42 @@ export function checkRecordings(
     ),
   );
 
-  const copy = mkdtempSync(join(tmpdir(), "check-recordings-"));
-  try {
-    copyCheckout(cwd, copy, recordings);
-    const status = writers.length > 0 ? runTests(copy, writers) : 0;
-    if (status !== 0) return { kind: "tests-failed" };
-    const stale = [...recordings].filter((path) => entry(join(copy, path)) === undefined);
-    return stale.length > 0 ? { kind: "stale", paths: stale } : { kind: "ok" };
-  } finally {
-    rmSync(copy, { recursive: true, force: true });
-  }
-}
-
-function vitest(log: string) {
-  return (copy: string, files: string[]): number | null => {
-    const env = { ...process.env };
-    delete env.CI;
-    const out = openSync(log, "w");
+  const used = new Set<string>();
+  if (writers.length > 0) {
+    const dir = mkdtempSync(join(tmpdir(), "check-recordings-"));
     try {
-      return spawnSync("bun", ["--bun", "vp", "test", ...files, "--update"], {
-        cwd: copy,
-        env,
-        stdio: ["ignore", out, out],
-      }).status;
+      const log = join(dir, "used");
+      writeFileSync(log, "");
+      if (runTests(writers, log) !== 0) return { kind: "tests-failed" };
+      for (const path of paths(readFileSync(log))) {
+        for (const step of linkChain(path)) used.add(step);
+      }
     } finally {
-      closeSync(out);
-    }
-  };
-}
-
-function writeAll(fd: number, bytes: Buffer) {
-  const pause = new Int32Array(new SharedArrayBuffer(4));
-  for (let done = 0; done < bytes.length;) {
-    try {
-      done += writeSync(fd, bytes, done);
-    } catch (error) {
-      if (!(error instanceof Error && "code" in error && error.code === "EAGAIN")) throw error;
-      Atomics.wait(pause, 0, 0, 10);
+      rmSync(dir, { recursive: true, force: true });
     }
   }
+  const stale = recordings.filter((path) => !used.has(canonical(join(cwd, path))));
+  return stale.length > 0 ? { kind: "stale", paths: stale } : { kind: "ok" };
 }
 
-function printFile(path: string) {
-  const file = openSync(path, "r");
-  const chunk = Buffer.alloc(64 * 1024);
-  try {
-    for (let read = readSync(file, chunk); read > 0; read = readSync(file, chunk)) {
-      writeAll(2, chunk.subarray(0, read));
-    }
-  } finally {
-    closeSync(file);
-  }
-}
-
-function report(outcome: Outcome, log: string): number {
-  switch (outcome.kind) {
-    case "ok":
-      return 0;
-    case "symlinks":
-      writeAll(
-        2,
-        Buffer.from(
-          `Recordings must be plain files outside any symlinked folder. Fix these paths:\n${outcome.paths.join("\n")}\n`,
-        ),
-      );
-      return 1;
-    case "stale":
-      writeAll(
-        2,
-        Buffer.from(
-          `No test writes these recordings anymore. Delete them:\n${outcome.paths.join("\n")}\n`,
-        ),
-      );
-      return 1;
-    case "tests-failed":
-      printFile(log);
-      return 1;
-  }
+function vitest(files: string[], log: string): number | null {
+  return spawnSync("bun", ["--bun", "vp", "test", ...files, "--update=none"], {
+    stdio: "inherit",
+    env: { ...process.env, CI: "true", RECORDINGS_LOG: log },
+  }).status;
 }
 
 if (import.meta.main) {
-  const logs = mkdtempSync(join(tmpdir(), "check-recordings-log-"));
-  const log = join(logs, "test.log");
   try {
-    process.exitCode = report(checkRecordings(process.cwd(), vitest(log)), log);
+    const outcome = checkRecordings(process.cwd(), vitest);
+    if (outcome.kind === "stale") {
+      process.stderr.write(
+        `No test uses these recordings anymore. Delete them:\n${outcome.paths.join("\n")}\n`,
+      );
+    }
+    process.exitCode = outcome.kind === "ok" ? 0 : 1;
   } catch (error) {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;
-  } finally {
-    rmSync(logs, { recursive: true, force: true });
   }
 }

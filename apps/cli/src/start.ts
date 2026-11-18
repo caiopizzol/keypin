@@ -43,6 +43,7 @@ import { supabaseFunctions, supabaseIssuer } from "@keypin/connectors/supabase";
 import { twilioIssuer } from "@keypin/connectors/twilio";
 import { vercelProject } from "@keypin/connectors/vercel";
 import { xaiIssuer } from "@keypin/connectors/xai";
+import { randomIssuer } from "./random";
 import {
   type Connect,
   desktopConnect,
@@ -122,9 +123,10 @@ export const issuers = [
   twilioIssuer,
   xaiIssuer,
   atlasIssuer,
+  randomIssuer,
 ];
 
-export function issuer(spec: IssuerSpec, admin: Secret, fetch?: Fetch): Issuer {
+export function issuer(spec: IssuerSpec, admin: Secret | null, fetch?: Fetch): Issuer {
   return connectIssuer(issuers, spec, admin, fetch);
 }
 

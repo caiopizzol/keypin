@@ -141,6 +141,10 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
     throw new Error(
       `${vaultName(holds, deps.vaults)} may hold a change for approval, which would leave ${keyId} and its ID ${pair.key.name} saved apart, so keypin can't rotate them. Rotate both by hand.`,
     );
+  if (!spec.admin && vaultKindOf(deps.vaults, entry.ref.kind).holdsWrites)
+    throw new Error(
+      `${vaultName(entry.ref, deps.vaults)} may hold a change for approval, and keypin couldn't tell later whether the ${spec.kind} value it made was approved or rejected, so it can't rotate ${keyId}. Make a new value yourself, save it, then run keypin publish ${keyId}${envFlag(environment, publishEnvironment(map))}.`,
+    );
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);
   const owner = { keyId, environment, mapFile: map.file };
   const label = labels(entry.publish, deps.destinations);
@@ -249,7 +253,7 @@ async function rotateLocked(job: Job): Promise<number> {
       : read.pair
         ? keyIdText(read.pair.secret)
         : next.current;
-  const check = await checkIssuer(issuer, inVault, read.secret, out);
+  const check = await checkIssuer(issuer, inVault, read.secret, out, spec.admin !== undefined);
   const checked = await checkAccounts(key, entry, deps, out, job.label);
   if (!check || !checked) {
     say("\nStopped: an account check failed. Nothing was created and nothing was written.");
@@ -284,10 +288,11 @@ async function rotateLocked(job: Job): Promise<number> {
     job.pair && next.abandoned && neverSaved(next.abandoned, spec, generation, state)
       ? next.abandoned
       : null;
-  if (next.abandoned && !orphan)
-    say(
-      `\n${out.dim(abandonedNote(next.abandoned, issuer, spec, vaultName(entry.ref, deps.vaults)))}`,
-    );
+  const note =
+    next.abandoned && !orphan
+      ? abandonedNote(next.abandoned, issuer, spec, vaultName(entry.ref, deps.vaults))
+      : null;
+  if (note !== null) say(`\n${out.dim(note)}`);
   const known = job.pair ? check.currentId : (next.current ?? check.currentId);
   const current = check.gone === undefined ? (known ?? null) : null;
   const steps = planNewValue(input, read.ids);
@@ -311,9 +316,11 @@ async function rotateLocked(job: Job): Promise<number> {
     ),
     ...(job.pair ? [saveIdRow(job, job.pair)] : []),
     ...writeRows(job, steps, pairSteps),
-    check.gone === undefined
-      ? revokeRow(issuer, current, "after a second y", check.notes?.revoke)
-      : row("=", issuer.describe(), `nothing to revoke: ${check.gone}`),
+    !issuer.revoke
+      ? row("=", issuer.describe(), "nothing to revoke: the new value replaces the old one")
+      : check.gone === undefined
+        ? revokeRow(issuer, current, "after a second y", check.notes?.revoke)
+        : row("=", issuer.describe(), `nothing to revoke: ${check.gone}`),
   ]);
   showRemoved(out, ready.removed);
   apartNote(job, checked);
@@ -346,7 +353,9 @@ async function rotateLocked(job: Job): Promise<number> {
     id: created.id,
     generation: await generationOf(created.secret),
     at: deps.now().toISOString(),
-    old: { id: current, generation, revoked: check.gone !== undefined },
+    old: issuer.revoke
+      ? { id: current, generation, revoked: check.gone !== undefined }
+      : { id: null, generation, revoked: true },
   };
   const mayHold = vaultKindOf(deps.vaults, entry.ref.kind).holdsWrites === true;
   try {
@@ -436,10 +445,12 @@ function neverSaved(abandoned: Issued, spec: IssuerSpec, generation: string, sta
 
 async function revokeOrphan(job: Job, issuer: Issuer, id: string): Promise<boolean> {
   const where = issuer.describe();
+  const revoke = issuer.revoke?.bind(issuer);
+  if (!revoke) return true;
   try {
     await job.out.step(
       `${where}  revoking ${shown(issuer, id)}`,
-      () => issuer.revoke(id),
+      () => revoke(id),
       (result) => ({
         ok: true,
         text: `${where}  ${result === "revoked" ? "revoked" : "already gone:"} ${shown(issuer, id)}`,
@@ -657,6 +668,11 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
     showRemoved(out, behind);
   }
   const old = issued.old.id;
+  const revoke = issuer.revoke?.bind(issuer);
+  if (!revoke) {
+    out.line(`Nothing to revoke: the old value stops working once your apps use the new one.`);
+    return 0;
+  }
   if (issued.old.revoked) return 0;
   if (old === null) {
     out.line(
@@ -680,7 +696,7 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
   try {
     await out.step(
       `${where}  revoking ${shown(issuer, old)}`,
-      () => issuer.revoke(old),
+      () => revoke(old),
       (result) => ({
         ok: true,
         text: `${where}  ${result === "revoked" ? "revoked" : "already gone:"} ${shown(issuer, old)}`,
@@ -701,9 +717,15 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
   return 0;
 }
 
-function abandonedNote(old: Issued, issuer: Issuer, spec: IssuerSpec, vault: string): string {
+function abandonedNote(
+  old: Issued,
+  issuer: Issuer,
+  spec: IssuerSpec,
+  vault: string,
+): string | null {
   if (old.issuer !== spec.kind)
     return `keypin created key ${old.id} at ${old.issuer} on ${old.at}, before this key's issuer became ${issuer.describe()}. If nothing uses it, delete it at ${old.issuer}, not ${issuer.describe()}.`;
+  if (!issuer.revoke) return null;
   return `keypin created key ${shown(issuer, old.id)} at ${issuer.describe()} on ${old.at}, but ${vault} doesn't hold it. If nothing uses it, delete it at ${issuer.dashboard()}.`;
 }
 
@@ -726,21 +748,23 @@ type Read =
       ok: true;
       secret: Secret;
       ids: ItemIds;
-      admin: Secret;
+      admin: Secret | null;
       pair: { secret: Secret; ids: ItemIds } | null;
     }
   | { ok: false; failed: string };
 
 function readKeys({ entry, spec, pair, deps, out }: Job): Promise<Read> {
-  const refs = pair ? [entry.ref, pair.entry.ref, spec.admin] : [entry.ref, spec.admin];
+  const { admin: adminRef } = spec;
+  const refs = [entry.ref, ...(pair ? [pair.entry.ref] : []), ...(adminRef ? [adminRef] : [])];
   const account = vaultAccounts(refs, deps.vaults);
+  const what = adminRef ? "the key and the admin key" : "the key";
   return out.step(
-    `Reading the key and the admin key from ${account}`,
+    `Reading ${what} from ${account}`,
     async (): Promise<Read> => {
       try {
         const current = await deps.vault().readItem(entry.ref);
         const id = pair ? await deps.vault().readItem(pair.entry.ref) : null;
-        const admin = await deps.vault().read(spec.admin);
+        const admin = adminRef ? await deps.vault().read(adminRef) : null;
         return { ok: true, ...current, admin, pair: id };
       } catch (error) {
         return { ok: false, failed: messageOf(error) };
@@ -749,7 +773,9 @@ function readKeys({ entry, spec, pair, deps, out }: Job): Promise<Read> {
     (read) => ({
       ok: read.ok,
       text: read.ok
-        ? `Read the key and the admin key ${formatReference(spec.admin, deps.vaults)}`
+        ? adminRef
+          ? `Read the key and the admin key ${formatReference(adminRef, deps.vaults)}`
+          : `Read the key ${formatReference(entry.ref, deps.vaults)}`
         : `Couldn't read from ${account}`,
     }),
     approval(deps, refs),
@@ -761,11 +787,12 @@ async function checkIssuer(
   inVault: string | null,
   current: Secret,
   out: Output,
+  admin: boolean,
 ): Promise<Extract<IssuerCheck, { ok: true }> | null> {
   const where = issuer.describe();
   try {
     const check = await out.step(
-      `${where}  checking the admin key`,
+      `${where}  ${admin ? "checking the admin key" : "checking"}`,
       () => issuer.checkAccount(inVault, current),
       (result) => ({ ok: result.ok, text: `${where}  ${out.dim(result.facts)}` }),
     );
@@ -793,7 +820,10 @@ async function createKey(
     return await out.step(
       `${where}  creating ${name}`,
       () => issuer.create(name),
-      (created) => ({ ok: true, text: `${where}  created ${name} (${shown(issuer, created.id)})` }),
+      (created) => ({
+        ok: true,
+        text: `${where}  created ${name}${created.id === name ? "" : ` (${shown(issuer, created.id)})`}`,
+      }),
     );
   } catch (error) {
     out.line(`    ${messageOf(error)}`);
@@ -819,10 +849,18 @@ async function undoCreate(
   const { out } = job;
   const where = issuer.describe();
   const unrecorded = `Stopped: ${stopped}`;
+  const revoke = issuer.revoke?.bind(issuer);
+  if (!revoke) {
+    out.line(`${unrecorded}. The new value was never saved, so nothing changed.`);
+    await forget().catch((error: unknown) =>
+      out.line(`keypin couldn't update ${job.path}: ${messageOf(error)}.`),
+    );
+    return 1;
+  }
   try {
     await out.step(
       `${where}  revoking the new key ${shown(issuer, id)}`,
-      () => issuer.revoke(id),
+      () => revoke(id),
       () => ({ ok: true, text: `${where}  revoked the new key ${shown(issuer, id)}` }),
     );
   } catch (error) {

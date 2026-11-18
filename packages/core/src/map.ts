@@ -302,7 +302,7 @@ function pairedKeys(
         );
       else if (
         sameRef(pair.ref, entry.ref, vaults) ||
-        sameRef(pair.ref, entry.issuer.admin, vaults)
+        (entry.issuer.admin !== undefined && sameRef(pair.ref, entry.issuer.admin, vaults))
       )
         err(
           `"${name}" ${environment} reads the same field as this key or its admin key; give the ID its own field`,
@@ -379,6 +379,10 @@ function validateKey(
       refused.add(target.to);
       err(` ${name}`, `publish[${index}]: ${target.to} can't take this key, because ${why}`);
     });
+    const issuer = entry.issuer?.kind;
+    const why = context.issuers.find((k) => k.kind === issuer)?.refuses?.(id);
+    if (why !== undefined)
+      err(` ${name}`, `issuer: ${issuer} can't rotate this key, because ${why}`);
   }
   if (!declared.length) {
     err("", `needs at least one of ${environmentNames.map((n) => `"${n}"`).join(", ")}`);
@@ -478,7 +482,7 @@ function validateIssuer(
     return undefined;
   }
   const reader: IssuerReader = {
-    ...tableReader(raw, ["kind", "admin"], kind, err),
+    ...tableReader(raw, found.admin === false ? ["kind"] : ["kind", "admin"], kind, err),
     admin() {
       const admin = reference(raw, "admin", context, err);
       if (!admin || !sameItem(admin, own, vaults)) return admin;

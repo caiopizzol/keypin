@@ -4,7 +4,7 @@ import type { Secret } from "../secret";
 import { caught, expectNoSentinel, SENTINEL } from "./leaks";
 
 export interface IssuerSubject {
-  issuer: Issuer;
+  issuer: Issuer & Required<Pick<Issuer, "revoke">>;
   current: Secret;
   currentId?: string;
   effects: readonly string[];

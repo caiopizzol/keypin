@@ -786,6 +786,48 @@ prod = { from = "op://Private/billing resend key/credential", issuer = { kind = 
   });
 });
 
+describe("an issuer kind without an admin key", () => {
+  const plain: IssuerKind = {
+    kind: "plain",
+    admin: false,
+    parse(read) {
+      read.only([]);
+      return { kind: "plain" };
+    },
+    refuses: (name) => (name === "LEGACY_SECRET" ? "the app reads its old value" : undefined),
+    connect: () => {
+      throw new Error("never connected");
+    },
+  };
+  const parse = (name: string, issuer: string) =>
+    parseMap(
+      `${VAULTS}[keys.${name}]\nprod = { from = "op://Private/i/password", issuer = { ${issuer} } }\n`,
+      MAP_FILE,
+      KINDS,
+      [...ISSUERS, plain],
+      VAULT_KINDS,
+    );
+
+  test("parses without admin, and treats admin as an unknown field", () => {
+    const result = parse("SESSION_SECRET", `kind = "plain"`);
+    assert(result.ok, JSON.stringify(result));
+    expect(result.map.keys[0]?.environments.prod?.issuer).toEqual({ kind: "plain" });
+    const admin = parse("SESSION_SECRET", `kind = "plain", admin = "op://Private/a/password"`);
+    assert(!admin.ok, "admin was accepted");
+    expect(admin.errors).toEqual([
+      `${MAP_FILE}: key "SESSION_SECRET" prod: issuer: unknown field "admin" for plain`,
+    ]);
+  });
+
+  test("a key the kind refuses by name is rejected with the kind's reason", () => {
+    const result = parse("LEGACY_SECRET", `kind = "plain"`);
+    assert(!result.ok, "the refused key was accepted");
+    expect(result.errors).toEqual([
+      `${MAP_FILE}: key "LEGACY_SECRET" prod: issuer: plain can't rotate this key, because the app reads its old value`,
+    ]);
+  });
+});
+
 describe("shared targets from keypin 0.6", () => {
   const CI = `[targets.ci]\nto = "github-actions"\nrepo = "acme/api"\n`;
   const withPublish = (targets: string, publish: string) =>

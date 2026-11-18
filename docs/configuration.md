@@ -150,7 +150,8 @@ it was written; no values or vault references.
 Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key, at Resend, [Neon](#neon),
 [OpenAI](#openai), [Supabase](#supabase), [Cloudflare](#cloudflare), [OpenRouter](#openrouter),
 [Google Cloud](#google-cloud) (API keys and [service account keys](#google-cloud-service-account-keys)), [ElevenLabs](#elevenlabs), [AWS](#aws), [SendGrid](#sendgrid),
-[Twilio](#twilio), [xAI](#xai) or [MongoDB Atlas](#mongodb-atlas):
+[Twilio](#twilio), [xAI](#xai) or [MongoDB Atlas](#mongodb-atlas), or make it yourself with
+[`random`](#random):
 
 ```toml
 [keys.RESEND_API_KEY.prod]
@@ -464,3 +465,23 @@ A changed password stops the old one at once, so keypin makes a second database 
 the vault's connection string keeps its hosts, database and options with the new username and password. keypin
 deletes the old user after the second `y`. It refuses users that sign in with X.509, AWS IAM, LDAP or OIDC, and
 temporary users.
+
+### random
+
+For a secret your app makes itself, such as `AUTH_SECRET` or `SESSION_SECRET`:
+
+```toml
+[keys.AUTH_SECRET.prod]
+from = "op://Private/app auth secret/password"
+
+[keys.AUTH_SECRET.prod.issuer]
+kind = "random"
+```
+
+`rotate` makes 32 random bytes in base64, like `openssl rand -base64 32`; add `encoding = "hex"` for hex. The new
+value replaces the old one, so anything signed with the old one stops working: with JWT sessions, everyone signs in
+again. There's nothing to revoke, so `rotate` asks one `y`. It refuses a vault that holds changes for approval.
+
+keypin refuses `BETTER_AUTH_SECRET` and `BETTER_AUTH_SECRETS`: Better Auth encrypts stored data with them, and a new
+value can't read it. Better Auth also reads `AUTH_SECRET`, so don't rotate that with `random` in a Better Auth app. Add a version to [`BETTER_AUTH_SECRETS`](https://better-auth.com/docs/reference/options#secrets)
+by hand instead.

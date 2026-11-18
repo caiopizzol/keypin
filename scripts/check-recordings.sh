@@ -23,19 +23,22 @@ remove() {
 }
 put_back() {
   [ -f "$aside/$1" ] || return 0
-  mkdir -p "$(dirname "$1")"
-  cp -p "$aside/$1" "$1"
-  cmp -s "$aside/$1" "$1"
+  if mkdir -p "$(dirname "$1")" && cp -p "$aside/$1" "$1" && cmp -s "$aside/$1" "$1"; then return 0; fi
+  printf '%s\n' "$1"
 }
 stale() {
   if [ -f "$aside/$1" ] && [ ! -f "$1" ]; then printf '%s\n' "$1"; fi
 }
 restore() {
-  if each put_back; then
+  code=$?
+  failed=$(each put_back)
+  if [ -z "$failed" ]; then
     rm -rf "$aside"
-  else
-    echo "Couldn't put every recording back. The originals are in $aside" >&2
+    exit "$code"
   fi
+  echo "Couldn't put these recordings back. The originals are in $aside:" >&2
+  printf '%s\n' "$failed" >&2
+  exit 1
 }
 each back_up
 trap restore EXIT

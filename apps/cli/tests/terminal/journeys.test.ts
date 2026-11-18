@@ -858,6 +858,62 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "MongoDB Atlas: creates a second user with the same roles, publishes its URL, then deletes the old user after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "atlas",
+        args: ["rotate", "MONGODB_URI"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  + MongoDB Atlas         create a new key\n    creates database user billing-b with billing's roles and scopes",
+      );
+      expect(result.screen).toMatch(/^✓ MongoDB Atlas {2}revoked billing {2}\d+\.\ds$/m);
+      expect(result.effects).toEqual([
+        "atlas create billing-b with readWrite@billing on Cluster0",
+        "1password update my.1password.com/Private/app mongodb uri (136 chars)",
+        "destination write github-actions:acme/billing MONGODB_URI (136 chars)",
+        "atlas delete billing",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "MongoDB Atlas: a lost create reply isn't retried, and names the user to delete",
+    async () => {
+      const result = await drive({
+        scenario: "atlas-lost",
+        args: ["rotate", "MONGODB_URI"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        "MongoDB Atlas may have created database user billing-b before the reply was lost.",
+      );
+      expect(result.effects).toEqual(["atlas create billing-b with readWrite@billing on Cluster0"]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "MongoDB Atlas: an X.509 user stops before anything is created",
+    async () => {
+      const result = await drive({ scenario: "atlas-x509", args: ["rotate", "MONGODB_URI"] });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        "    user billing signs in with MANAGED (x509Type), which has no password keypin can rotate",
+      );
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "SendGrid: makes a key with the old key's scopes, publishes it, then deletes the old key after a second y",
     async () => {
       const result = await drive({

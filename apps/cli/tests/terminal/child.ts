@@ -33,6 +33,7 @@ import { type OpenAIKeys, openaiFetch } from "@keypin/connectors/openai/testing"
 import { openrouterFetch, type OpenRouterWorld } from "@keypin/connectors/openrouter/testing";
 import { resendFetch } from "@keypin/connectors/resend/testing";
 import { sendgridFetch, type SendGridWorld } from "@keypin/connectors/sendgrid/testing";
+import { atlasFetch, type AtlasWorld } from "@keypin/connectors/mongodb-atlas/testing";
 import { supabaseFetch, type SupabaseWorld } from "@keypin/connectors/supabase/testing";
 import { twilioFetch, type TwilioWorld } from "@keypin/connectors/twilio/testing";
 import { xaiFetch, type XaiWorld } from "@keypin/connectors/xai/testing";
@@ -61,6 +62,10 @@ import {
   ISSUED_PREFIX,
   RESEND_ADMIN,
   SENDGRID_ADMIN,
+  ATLAS_CLIENT,
+  ATLAS_HOST,
+  ATLAS_PROJECT,
+  ATLAS_SECRET,
   SENDGRID_PREFIX,
   TWILIO_ACCOUNT,
   TWILIO_PREFIX,
@@ -125,6 +130,7 @@ const AWS = join(sandbox, "aws.json");
 const SENDGRID = join(sandbox, "sendgrid.json");
 const TWILIO = join(sandbox, "twilio.json");
 const XAI = join(sandbox, "xai.json");
+const ATLAS = join(sandbox, "atlas.json");
 
 function effect(line: string): void {
   appendFileSync(EFFECTS, `${line}\n`);
@@ -555,12 +561,32 @@ const xai = xaiFetch({
   effect,
 });
 
+const atlas = atlasFetch({
+  clientId: ATLAS_CLIENT,
+  secret: ATLAS_SECRET,
+  projectId: ATLAS_PROJECT,
+  clusters: [{ name: "Cluster0", srvHost: ATLAS_HOST }],
+  pendingPolls: 1,
+  loseCreated: run.atlas?.loseCreated === true,
+  world: {
+    load(): AtlasWorld {
+      if (!existsSync(ATLAS)) return { users: run.atlas?.users ?? [], created: 0, pending: 0 };
+      const parsed: unknown = JSON.parse(readFileSync(ATLAS, "utf8"));
+      if (!isAtlasWorld(parsed)) throw new Error(`${ATLAS} isn't the fake Atlas project's users`);
+      return parsed;
+    },
+    save: (world) => writeFileSync(ATLAS, JSON.stringify(world)),
+  },
+  effect,
+});
+
 const issuerFetch: Record<string, Fetch> = {
   aws,
   cloudflare,
   elevenlabs,
   google,
   "google-service-account": googleIam,
+  "mongodb-atlas": atlas,
   neon,
   openai,
   openrouter,
@@ -573,6 +599,10 @@ const issuerFetch: Record<string, Fetch> = {
 
 function isTwilioWorld(value: unknown): value is TwilioWorld {
   return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";
+}
+
+function isAtlasWorld(value: unknown): value is AtlasWorld {
+  return isRecord(value) && Array.isArray(value.users) && typeof value.pending === "number";
 }
 
 function isSendGridWorld(value: unknown): value is SendGridWorld {

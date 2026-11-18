@@ -26,6 +26,7 @@ import { flyApp } from "@keypin/connectors/fly";
 import { ghToken, githubActions, listRepoSecrets, sshHostname } from "@keypin/connectors/github";
 import { gitlabGroup, gitlabProject } from "@keypin/connectors/gitlab";
 import { googleIssuer, googleServiceAccountIssuer } from "@keypin/connectors/google";
+import { atlasIssuer } from "@keypin/connectors/mongodb-atlas";
 import { neonIssuer } from "@keypin/connectors/neon";
 import { netlifyProject } from "@keypin/connectors/netlify";
 import { openaiIssuer } from "@keypin/connectors/openai";
@@ -108,6 +109,7 @@ export const issuers = [
   sendgridIssuer,
   twilioIssuer,
   xaiIssuer,
+  atlasIssuer,
 ];
 
 export function issuer(spec: IssuerSpec, admin: Secret, fetch?: Fetch): Issuer {

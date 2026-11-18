@@ -2,22 +2,22 @@ import { spawnSync } from "node:child_process";
 import {
   closeSync,
   lstatSync,
-  mkdirSync,
   mkdtempSync,
   openSync,
   readSync,
   renameSync,
   rmSync,
+  writeSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 export type Outcome =
   | { kind: "ok" }
   | { kind: "symlinks"; paths: string[] }
   | { kind: "stale"; paths: string[] }
   | { kind: "tests-failed" }
-  | { kind: "not-restored"; paths: string[]; aside: string };
+  | { kind: "not-restored"; paths: string[] };
 
 function git(cwd: string, args: string[], noMatch = false): Buffer {
   const result = spawnSync("git", args, { cwd, maxBuffer: Number.POSITIVE_INFINITY });
@@ -52,10 +52,11 @@ function throughSymlink(cwd: string, path: string): boolean {
   return false;
 }
 
-function move(from: string, to: string): boolean {
+export const aside = (path: string) => join(dirname(path), `.${basename(path)}.check-recordings`);
+
+function putBack(path: string): boolean {
   try {
-    mkdirSync(dirname(to), { recursive: true });
-    renameSync(from, to);
+    renameSync(aside(path), path);
     return true;
   } catch {
     return false;
@@ -92,16 +93,17 @@ export function checkRecordings(
       true,
     ),
   );
-  const gitDir = git(cwd, ["rev-parse", "--absolute-git-dir"]).toString().trim();
+  const leftover = files.filter((path) => entry(aside(join(cwd, path))) !== undefined);
+  if (leftover.length > 0) {
+    throw new Error(`Remove the leftover backups next to: ${leftover.join(", ")}`);
+  }
 
-  const aside = mkdtempSync(join(gitDir, "check-recordings-"));
   const moved: string[] = [];
   let outcome: Outcome = { kind: "ok" };
   let thrown: { error: unknown } | null = null;
   try {
     for (const path of files) {
-      mkdirSync(dirname(join(aside, path)), { recursive: true });
-      renameSync(join(cwd, path), join(aside, path));
+      renameSync(join(cwd, path), aside(join(cwd, path)));
       moved.push(path);
     }
     const status = writers.length > 0 ? runTests(writers) : 0;
@@ -112,9 +114,8 @@ export function checkRecordings(
     thrown = { error };
   }
 
-  const failed = moved.filter((path) => !move(join(aside, path), join(cwd, path)));
-  if (failed.length > 0) return { kind: "not-restored", paths: failed, aside };
-  rmSync(aside, { recursive: true, force: true });
+  const failed = moved.filter((path) => !putBack(join(cwd, path)));
+  if (failed.length > 0) return { kind: "not-restored", paths: failed };
   if (thrown) throw thrown.error;
   return outcome;
 }
@@ -140,7 +141,7 @@ function printFile(path: string) {
   const chunk = Buffer.alloc(64 * 1024);
   try {
     for (let read = readSync(file, chunk); read > 0; read = readSync(file, chunk)) {
-      process.stderr.write(chunk.subarray(0, read));
+      writeSync(2, chunk.subarray(0, read));
     }
   } finally {
     closeSync(file);
@@ -167,7 +168,7 @@ function report(outcome: Outcome, log: string): number {
       return 1;
     case "not-restored":
       list(
-        `Couldn't put these recordings back. The originals are in ${outcome.aside}:`,
+        "Couldn't put these recordings back. Each original is next to it, named .<name>.check-recordings:",
         outcome.paths,
       );
       return 1;

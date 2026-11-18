@@ -13,7 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
-import { checkRecordings } from "./check-recordings";
+import { aside, checkRecordings } from "./check-recordings";
 
 const repos: string[] = [];
 const ISOLATED = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
@@ -145,12 +145,24 @@ describe("check-recordings", () => {
       chmodSync(join(cwd, "tests/recordings/a"), 0o555);
       return 0;
     });
-    expect(outcome.kind).toBe("not-restored");
-    if (outcome.kind !== "not-restored") return;
-    expect(outcome.paths).toEqual(["tests/recordings/a/a.txt"]);
-    expect(readFileSync(join(outcome.aside, "tests/recordings/a/a.txt"), "utf8")).toBe("a\n");
+    expect(outcome).toEqual({ kind: "not-restored", paths: ["tests/recordings/a/a.txt"] });
+    expect(readFileSync(aside(join(cwd, "tests/recordings/a/a.txt")), "utf8")).toBe("a\n");
     expect(read(cwd, "tests/recordings/b/b.txt")).toBe("b\n");
-    rmSync(outcome.aside, { recursive: true, force: true });
+  });
+
+  test("works when the git directory is read-only", () => {
+    const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
+    chmodSync(join(cwd, ".git"), 0o555);
+    const outcome = checkRecordings(cwd, passing(cwd, { "tests/recordings/a.txt": "a\n" }));
+    chmodSync(join(cwd, ".git"), 0o755);
+    expect(outcome).toEqual({ kind: "ok" });
+  });
+
+  test("refuses to start when a backup from an earlier run is still there", () => {
+    const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
+    writeFileSync(aside(join(cwd, "tests/recordings/a.txt")), "old\n");
+    expect(() => checkRecordings(cwd, passing(cwd, {}))).toThrow("leftover backups");
+    expect(read(cwd, "tests/recordings/a.txt")).toBe("a\n");
   });
 
   test("stops when git can't list the files", () => {

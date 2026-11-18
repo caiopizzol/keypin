@@ -1,3 +1,6 @@
+import { mkdtempSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import { type Drive, drive } from "./drive";
 import { FAKE_TOKEN, ready, valuesOf } from "./scenarios";
@@ -260,6 +263,46 @@ describe("keypin in a real terminal", () => {
       expect(result.effects).toEqual([
         "destination write fly-app:billing-api STRIPE_KEY (23 chars)",
       ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "publish to GitLab says the next pipeline uses the value",
+    async () => {
+      const result = await drive({
+        scenario: "gitlab",
+        args: ["publish", "STRIPE_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain("  + GitLab  acme/billing  first write  needs approval");
+      expect(result.screen).toContain(
+        "    GitLab uses the new value from the next pipeline; keypin doesn't start one",
+      );
+      expect(result.effects).toEqual([
+        "destination write gitlab-project:acme/billing STRIPE_KEY (23 chars)",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "check without glab or KEYPIN_GITLAB_TOKEN says how to sign in to GitLab",
+    async () => {
+      const onlyBun = mkdtempSync(join(tmpdir(), "keypin-no-glab-"));
+      symlinkSync(process.execPath, join(onlyBun, "bun"));
+      const result = await drive({
+        scenario: "gitlab-no-login",
+        args: ["check"],
+        env: { PATH: onlyBun },
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("1 Sign in to GitLab");
+      expect(result.screen).toContain("glab auth login");
+      expect(result.effects).toEqual([]);
       clean(result);
     },
     SLOW,
@@ -1166,6 +1209,65 @@ describe("keypin rotate in a real terminal", () => {
         `    key "chat" is disabled at OpenRouter, and keypin won't make an active copy of it`,
       );
       expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "xAI: makes a key with the old key's ACLs and rate limits, waits for every cluster, publishes it, then deletes the old key after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "xai",
+        args: ["rotate", "XAI_API_KEY"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  + xAI                   create a new key\n    with ACLs api-key:model:grok-4.7, api-key:endpoint:chat; 100 requests a minute; no expiry",
+      );
+      expect(result.screen).toMatch(/^✓ xAI {2}revoked "chat" {2}\d+\.\ds$/m);
+      expect(result.effects).toEqual([
+        "xai create key_new1 in team_1 with acls api-key:model:grok-4.7 api-key:endpoint:chat, qpm 100",
+        "1password update my.1password.com/Private/chat xai key (21 chars)",
+        "destination write github-actions:acme/billing XAI_API_KEY (21 chars)",
+        "xai revoke key_old",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "xAI: an API key in the admin item stops before anything is created",
+    async () => {
+      const result = await drive({
+        scenario: "xai-api-key-as-admin",
+        args: ["rotate", "XAI_API_KEY"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        "    the admin item holds an xAI API key, not a management key, and API keys can't create or delete keys",
+      );
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "xAI: a lost create reply isn't retried, and names the key to delete",
+    async () => {
+      const result = await drive({
+        scenario: "xai-reply-lost",
+        args: ["rotate", "XAI_API_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("delete a key with that name in team team_1");
+      expect(result.effects).toEqual([
+        "xai create key_new1 in team_1 with acls api-key:model:grok-4.7 api-key:endpoint:chat, qpm 100",
+      ]);
       clean(result);
     },
     SLOW,

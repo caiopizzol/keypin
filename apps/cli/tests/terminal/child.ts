@@ -33,6 +33,7 @@ import { resendFetch } from "@keypin/connectors/resend/testing";
 import { sendgridFetch, type SendGridWorld } from "@keypin/connectors/sendgrid/testing";
 import { atlasFetch, type AtlasWorld } from "@keypin/connectors/mongodb-atlas/testing";
 import { supabaseFetch, type SupabaseWorld } from "@keypin/connectors/supabase/testing";
+import { xaiFetch, type XaiWorld } from "@keypin/connectors/xai/testing";
 import { credentialsFrom, infisicalBackend } from "@keypin/connectors/infisical";
 import { fileStore, infisicalFetch } from "@keypin/connectors/infisical/testing";
 import { accessTokenFrom, bitwardenBackend } from "@keypin/connectors/bitwarden";
@@ -74,6 +75,8 @@ import {
   SUPABASE_ADMIN,
   SUPABASE_PREFIX,
   SANDBOX_MARKER,
+  XAI_ADMIN,
+  XAI_PREFIX,
   type Scenario,
   scenarios,
 } from "./scenarios";
@@ -117,6 +120,7 @@ const ELEVENLABS = join(sandbox, "elevenlabs.json");
 const PAIRED = join(sandbox, "paired.json");
 const AWS = join(sandbox, "aws.json");
 const SENDGRID = join(sandbox, "sendgrid.json");
+const XAI = join(sandbox, "xai.json");
 const ATLAS = join(sandbox, "atlas.json");
 
 function effect(line: string): void {
@@ -493,6 +497,24 @@ const sendgrid = sendgridFetch({
   effect,
 });
 
+const xai = xaiFetch({
+  admin: XAI_ADMIN,
+  team: "team_1",
+  valuePrefix: XAI_PREFIX,
+  pendingPolls: run.xai?.pendingPolls ?? 0,
+  loseCreated: run.xai?.loseCreated === true,
+  world: {
+    load(): XaiWorld {
+      if (!existsSync(XAI)) return { keys: run.xai?.keys ?? [], created: 0 };
+      const parsed: unknown = JSON.parse(readFileSync(XAI, "utf8"));
+      if (!isXaiWorld(parsed)) throw new Error(`${XAI} isn't the fake xAI team's keys`);
+      return parsed;
+    },
+    save: (world) => writeFileSync(XAI, JSON.stringify(world)),
+  },
+  effect,
+});
+
 const atlas = atlasFetch({
   clientId: ATLAS_CLIENT,
   secret: ATLAS_SECRET,
@@ -524,6 +546,7 @@ const issuerFetch: Record<string, Fetch> = {
   resend,
   sendgrid,
   supabase,
+  xai,
 };
 
 function isAtlasWorld(value: unknown): value is AtlasWorld {
@@ -531,6 +554,10 @@ function isAtlasWorld(value: unknown): value is AtlasWorld {
 }
 
 function isSendGridWorld(value: unknown): value is SendGridWorld {
+  return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";
+}
+
+function isXaiWorld(value: unknown): value is XaiWorld {
   return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";
 }
 

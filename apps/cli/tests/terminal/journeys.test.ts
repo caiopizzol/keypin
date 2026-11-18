@@ -1,3 +1,6 @@
+import { mkdtempSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import { type Drive, drive } from "./drive";
 import { FAKE_TOKEN, ready, valuesOf } from "./scenarios";
@@ -260,6 +263,46 @@ describe("keypin in a real terminal", () => {
       expect(result.effects).toEqual([
         "destination write fly-app:billing-api STRIPE_KEY (23 chars)",
       ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "publish to GitLab says the next pipeline uses the value",
+    async () => {
+      const result = await drive({
+        scenario: "gitlab",
+        args: ["publish", "STRIPE_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain("  + GitLab  acme/billing  first write  needs approval");
+      expect(result.screen).toContain(
+        "    GitLab uses the new value from the next pipeline; keypin doesn't start one",
+      );
+      expect(result.effects).toEqual([
+        "destination write gitlab-project:acme/billing STRIPE_KEY (23 chars)",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "check without glab or KEYPIN_GITLAB_TOKEN says how to sign in to GitLab",
+    async () => {
+      const onlyBun = mkdtempSync(join(tmpdir(), "keypin-no-glab-"));
+      symlinkSync(process.execPath, join(onlyBun, "bun"));
+      const result = await drive({
+        scenario: "gitlab-no-login",
+        args: ["check"],
+        env: { PATH: onlyBun },
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("1 Sign in to GitLab");
+      expect(result.screen).toContain("glab auth login");
+      expect(result.effects).toEqual([]);
       clean(result);
     },
     SLOW,
@@ -783,6 +826,64 @@ describe("keypin rotate in a real terminal", () => {
       expect(result.exit).toBe(1);
       expect(result.screen).toContain("Run aws iam list-access-keys --user-name billing-app");
       expect(result.effects).toEqual(["aws create billing-app/AKIANEWVERIFY0000001"]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "Twilio: replaces an API key and its SID together with the old key's permissions, then deletes the old key after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "twilio",
+        args: ["rotate", "TWILIO_API_SECRET"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  + Twilio                create a new key\n    a Restricted key with the old key's 2 permissions",
+      );
+      expect(result.effects).toEqual([
+        "twilio create SKfeed0000000000000000000000000001 restricted with /twilio/messaging/messages/create,/twilio/phone-numbers/available-numbers/list",
+        "1password update my.1password.com/Private/app twilio secret (27 chars)",
+        "1password update my.1password.com/Private/app twilio key sid (34 chars)",
+        "destination write github-actions:acme/billing TWILIO_API_SECRET (27 chars)",
+        "destination write github-actions:acme/billing TWILIO_API_KEY (34 chars)",
+        "twilio delete SKa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "Twilio: a lost create reply isn't retried, and names the key to delete",
+    async () => {
+      const result = await drive({
+        scenario: "twilio-lost",
+        args: ["rotate", "TWILIO_API_SECRET"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("Twilio may have made the key before the reply was lost.");
+      expect(result.effects).toEqual([
+        "twilio create SKfeed0000000000000000000000000001 restricted with /twilio/messaging/messages/create,/twilio/phone-numbers/available-numbers/list",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "Twilio: a Main key in the vault stops before anything is created",
+    async () => {
+      const result = await drive({
+        scenario: "twilio-main",
+        args: ["rotate", "TWILIO_API_SECRET"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("Twilio's API makes only Standard and Restricted keys");
+      expect(result.effects).toEqual([]);
       clean(result);
     },
     SLOW,

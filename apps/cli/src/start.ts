@@ -24,6 +24,7 @@ import { convexDeployment } from "@keypin/connectors/convex";
 import { elevenlabsIssuer } from "@keypin/connectors/elevenlabs";
 import { flyApp } from "@keypin/connectors/fly";
 import { ghToken, githubActions, listRepoSecrets, sshHostname } from "@keypin/connectors/github";
+import { gitlabGroup, gitlabProject } from "@keypin/connectors/gitlab";
 import { googleIssuer, googleServiceAccountIssuer } from "@keypin/connectors/google";
 import { neonIssuer } from "@keypin/connectors/neon";
 import { netlifyProject } from "@keypin/connectors/netlify";
@@ -33,7 +34,9 @@ import { railwayService } from "@keypin/connectors/railway";
 import { resendIssuer } from "@keypin/connectors/resend";
 import { sendgridIssuer } from "@keypin/connectors/sendgrid";
 import { supabaseFunctions, supabaseIssuer } from "@keypin/connectors/supabase";
+import { twilioIssuer } from "@keypin/connectors/twilio";
 import { vercelProject } from "@keypin/connectors/vercel";
+import { xaiIssuer } from "@keypin/connectors/xai";
 import {
   type Connect,
   desktopConnect,
@@ -81,6 +84,8 @@ export const destinations = [
   railwayService,
   convexDeployment,
   flyApp,
+  gitlabProject,
+  gitlabGroup,
 ];
 export const vaults = [infisicalVault, bitwardenVault, dopplerVault, onePasswordVault];
 export const signInNames = signInVariables([...vaults, ...destinations]);
@@ -101,6 +106,8 @@ export const issuers = [
   elevenlabsIssuer,
   awsIssuer,
   sendgridIssuer,
+  twilioIssuer,
+  xaiIssuer,
 ];
 
 export function issuer(spec: IssuerSpec, admin: Secret, fetch?: Fetch): Issuer {

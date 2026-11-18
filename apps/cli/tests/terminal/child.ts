@@ -34,6 +34,8 @@ import { openrouterFetch, type OpenRouterWorld } from "@keypin/connectors/openro
 import { resendFetch } from "@keypin/connectors/resend/testing";
 import { sendgridFetch, type SendGridWorld } from "@keypin/connectors/sendgrid/testing";
 import { supabaseFetch, type SupabaseWorld } from "@keypin/connectors/supabase/testing";
+import { twilioFetch, type TwilioWorld } from "@keypin/connectors/twilio/testing";
+import { xaiFetch, type XaiWorld } from "@keypin/connectors/xai/testing";
 import { credentialsFrom, infisicalBackend } from "@keypin/connectors/infisical";
 import { fileStore, infisicalFetch } from "@keypin/connectors/infisical/testing";
 import { accessTokenFrom, bitwardenBackend } from "@keypin/connectors/bitwarden";
@@ -60,6 +62,9 @@ import {
   RESEND_ADMIN,
   SENDGRID_ADMIN,
   SENDGRID_PREFIX,
+  TWILIO_ACCOUNT,
+  TWILIO_PREFIX,
+  TWILIO_TOKEN,
   RESEND_KNOWN,
   NEON_HOST,
   NEON_PREFIX,
@@ -72,6 +77,8 @@ import {
   SUPABASE_ADMIN,
   SUPABASE_PREFIX,
   SANDBOX_MARKER,
+  XAI_ADMIN,
+  XAI_PREFIX,
   type Scenario,
   scenarios,
 } from "./scenarios";
@@ -116,6 +123,8 @@ const ELEVENLABS = join(sandbox, "elevenlabs.json");
 const PAIRED = join(sandbox, "paired.json");
 const AWS = join(sandbox, "aws.json");
 const SENDGRID = join(sandbox, "sendgrid.json");
+const TWILIO = join(sandbox, "twilio.json");
+const XAI = join(sandbox, "xai.json");
 
 function effect(line: string): void {
   appendFileSync(EFFECTS, `${line}\n`);
@@ -510,6 +519,42 @@ const sendgrid = sendgridFetch({
   effect,
 });
 
+const twilio = twilioFetch({
+  account: TWILIO_ACCOUNT,
+  authToken: TWILIO_TOKEN,
+  sidPrefix: "SKfeed",
+  valuePrefix: TWILIO_PREFIX,
+  loseCreated: run.twilio?.loseCreated === true,
+  world: {
+    load(): TwilioWorld {
+      if (!existsSync(TWILIO)) return { keys: run.twilio?.keys ?? [], created: 0 };
+      const parsed: unknown = JSON.parse(readFileSync(TWILIO, "utf8"));
+      if (!isTwilioWorld(parsed)) throw new Error(`${TWILIO} isn't the fake Twilio account's keys`);
+      return parsed;
+    },
+    save: (world) => writeFileSync(TWILIO, JSON.stringify(world)),
+  },
+  effect,
+});
+
+const xai = xaiFetch({
+  admin: XAI_ADMIN,
+  team: "team_1",
+  valuePrefix: XAI_PREFIX,
+  pendingPolls: run.xai?.pendingPolls ?? 0,
+  loseCreated: run.xai?.loseCreated === true,
+  world: {
+    load(): XaiWorld {
+      if (!existsSync(XAI)) return { keys: run.xai?.keys ?? [], created: 0 };
+      const parsed: unknown = JSON.parse(readFileSync(XAI, "utf8"));
+      if (!isXaiWorld(parsed)) throw new Error(`${XAI} isn't the fake xAI team's keys`);
+      return parsed;
+    },
+    save: (world) => writeFileSync(XAI, JSON.stringify(world)),
+  },
+  effect,
+});
+
 const issuerFetch: Record<string, Fetch> = {
   aws,
   cloudflare,
@@ -522,9 +567,19 @@ const issuerFetch: Record<string, Fetch> = {
   resend,
   sendgrid,
   supabase,
+  twilio,
+  xai,
 };
 
+function isTwilioWorld(value: unknown): value is TwilioWorld {
+  return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";
+}
+
 function isSendGridWorld(value: unknown): value is SendGridWorld {
+  return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";
+}
+
+function isXaiWorld(value: unknown): value is XaiWorld {
   return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";
 }
 

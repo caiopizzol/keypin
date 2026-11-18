@@ -40,6 +40,12 @@ It writes Convex environment variables with `KEYPIN_CONVEX_DEPLOY_KEY`, a deploy
 It writes Fly.io app secrets with `KEYPIN_FLY_API_TOKEN`. Fly.io stages the new value; Machines use it only after
 `fly secrets deploy` or the app's next deploy, which restarts them. keypin doesn't run either.
 
+It writes GitLab CI/CD variables of a `project` or `group` as masked, with the `glab` login or `KEYPIN_GITLAB_TOKEN`.
+Add `host` for a self-managed instance, and `environment_scope` to write a project variable for one environment
+instead of `*`. A new variable is also hidden. GitLab can't hide a variable that already exists, so keypin masks it
+and leaves its other settings, such as protected, alone. GitLab masks only a value of 8 or more characters without
+spaces or line breaks; keypin refuses any other. The next pipeline uses the new value.
+
 ## Steps
 
 1. **Accounts:** it checks that each login reaches the account the map pins, and stops if one doesn't.

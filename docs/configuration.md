@@ -104,6 +104,10 @@ url = "https://happy-animal-123.convex.cloud"
 [[keys.API_TOKEN.prod.publish]]
 to = "fly-app"
 app = "my-app"
+
+[[keys.API_TOKEN.prod.publish]]
+to = "gitlab-project"
+project = "acme/billing"
 ```
 
 GitHub reserves secret names that start with `GITHUB_`. Add `environment = "production"` to write a secret of that
@@ -126,6 +130,9 @@ The map says where a key goes, not who writes it, so every teammate publishes fr
   keypin doesn't read the `npx convex` login or `CONVEX_DEPLOY_KEY`.
 - **Fly.io:** a deploy token for the `app` or an org token for its organization, in `KEYPIN_FLY_API_TOKEN`. Add
   `org = "<org slug>"` to also pin the organization. keypin doesn't read the `fly` login or `FLY_API_TOKEN`.
+- **GitLab:** the `glab` login for the host, or a personal, project or group access token with the `api` scope in
+  `KEYPIN_GITLAB_TOKEN`. It needs the Maintainer role on a project, or Owner on a group. A CI/CD job token can't
+  change variables. keypin doesn't sign in with `GITLAB_TOKEN`.
 
 ## Vault items
 
@@ -141,7 +148,8 @@ it was written; no values or vault references.
 
 Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key, at Resend, [Neon](#neon),
 [OpenAI](#openai), [Supabase](#supabase), [Cloudflare](#cloudflare), [OpenRouter](#openrouter),
-[Google Cloud](#google-cloud) (API keys and [service account keys](#google-cloud-service-account-keys)), [ElevenLabs](#elevenlabs), [AWS](#aws) or [SendGrid](#sendgrid):
+[Google Cloud](#google-cloud) (API keys and [service account keys](#google-cloud-service-account-keys)), [ElevenLabs](#elevenlabs), [AWS](#aws), [SendGrid](#sendgrid),
+[Twilio](#twilio) or [xAI](#xai):
 
 ```toml
 [keys.RESEND_API_KEY.prod]
@@ -393,3 +401,41 @@ the ID in its value (`SG.<id>.<secret>`) and gives the new key the same scopes.
 
 For a subuser's key, add `subuser = "<username>"` and use a key from the parent account. For an EU regional
 subuser, add `region = "eu"`.
+
+### Twilio
+
+An API key is two keys in the map, like [AWS](#aws): the secret, and its SID (`SK…`). The secret's issuer names the
+SID's key with `key_id`:
+
+```toml
+[keys.TWILIO_API_SECRET.prod.issuer]
+kind = "twilio"
+admin = "op://Private/twilio admin/credential"
+key_id = "TWILIO_API_KEY"
+```
+
+`admin` holds JSON with `TWILIO_ACCOUNT_SID` and either `TWILIO_AUTH_TOKEN`, or `TWILIO_API_KEY` and
+`TWILIO_API_SECRET` of a Main key or a Restricted key that may create, read and delete API keys. A Standard key
+can't manage keys. For a subaccount's key, use the subaccount's own SID and credential.
+
+The new key gets the old key's type, and a Restricted key's permissions. A Restricted key needs `/twilio/phone-numbers/available-numbers/list`, which
+keypin uses to check its secret. keypin refuses a Main key, which Twilio's API can't
+make. It doesn't rotate `TWILIO_AUTH_TOKEN`.
+
+### xAI
+
+```toml
+[keys.XAI_API_KEY.prod]
+from = "op://Private/app xai key/credential"
+
+[keys.XAI_API_KEY.prod.issuer]
+kind = "xai"
+admin = "op://Private/xai management key/credential"
+```
+
+`admin` is a [management key](https://console.x.ai/team/default/management-keys), not an API key, made by a team
+admin, for the key's team or its organization. It needs to list, create and delete API keys, and to check their
+propagation. keypin asks xAI which key and team the vault's key is, so there's no team ID to set.
+
+The new key gets the old key's ACLs, rate limits and lifetime. keypin waits until xAI reports it on every cluster
+before saving it; if that takes over a minute, keypin deletes it and nothing changes. keypin refuses a disabled key.

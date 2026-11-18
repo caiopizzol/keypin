@@ -32,8 +32,10 @@ commands with the dev keys and publishes the prod keys. It reads a value only wh
 |           | Railway services   | OpenRouter                        |
 |           | Convex deployments | Google Cloud API keys             |
 |           | Fly.io apps        | ElevenLabs                        |
-|           |                    | AWS IAM access keys               |
+|           | GitLab CI/CD       | AWS IAM access keys               |
 |           |                    | SendGrid                          |
+|           |                    | Twilio API keys                   |
+|           |                    | xAI                               |
 |           |                    | Google Cloud service account keys |
 
 Want another? Vote for it on the [roadmap](https://github.com/caiopizzol/keypin/issues/138).

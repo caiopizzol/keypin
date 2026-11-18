@@ -356,39 +356,46 @@ const noErrorTextMatching = defineRule({
 const EXACT_MATCHERS = new Set(["toBe", "toEqual", "toStrictEqual", "toContain"]);
 export const COPIED_LINES = 4;
 
-function textLines(text: string): number {
-  return text.split("\n").filter((line) => line.trim() !== "").length;
-}
+const UNKNOWN = "";
 
-function knownText(node: ESTree.Node | null): string | null {
-  if (node?.type === "Literal") return typeof node.value === "string" ? node.value : null;
-  if (node?.type === "TemplateLiteral")
-    return node.quasis.map((quasi) => quasi.value.cooked ?? "").join("${}");
-  return null;
-}
+const isNullLiteral = (node: ESTree.Node) => node.type === "Literal" && node.raw === "null";
 
-function provenText(node: ESTree.Node | null): string {
-  if (node?.type === "TemplateLiteral")
-    return node.quasis.map((quasi) => quasi.value.cooked ?? "").join("");
-  return node ? (knownText(node) ?? "") : "";
+function writtenText(node: ESTree.Node): string {
+  if (node.type === "Literal") {
+    const { value } = node;
+    if (typeof value === "string") return value;
+    if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint")
+      return String(value);
+    return isNullLiteral(node) ? "null" : UNKNOWN;
+  }
+  if (node.type === "TemplateLiteral")
+    return node.quasis
+      .map((quasi, index) => {
+        const value = node.expressions[index];
+        return (quasi.value.cooked ?? "") + (value ? writtenText(value) : "");
+      })
+      .join("");
+  if (node.type === "BinaryExpression" && node.operator === "+")
+    return writtenText(node.left) + writtenText(node.right);
+  if (
+    node.type === "CallExpression" &&
+    node.callee.type === "MemberExpression" &&
+    node.callee.object.type === "ArrayExpression" &&
+    propertyName(node.callee) === "join"
+  ) {
+    const [separator] = node.arguments;
+    return node.callee.object.elements
+      .filter((element) => element?.type !== "SpreadElement")
+      .map((element) => (element && !isNullLiteral(element) ? writtenText(element) : ""))
+      .join(separator ? writtenText(separator) : UNKNOWN);
+  }
+  return UNKNOWN;
 }
 
 function outputLines(node: ESTree.Node): number {
-  const text = knownText(node);
-  if (text !== null) return textLines(text);
-  if (
-    node.type !== "CallExpression" ||
-    node.callee.type !== "MemberExpression" ||
-    node.callee.object.type !== "ArrayExpression" ||
-    propertyName(node.callee) !== "join"
-  )
-    return 0;
-  const separator = provenText(node.arguments[0] ?? null);
-  if (!separator.includes("\n")) return 0;
-  const parts = node.callee.object.elements
-    .filter((element) => element?.type !== "SpreadElement")
-    .map(provenText);
-  return textLines(parts.join(separator));
+  return writtenText(node)
+    .split("\n")
+    .filter((line) => line.trim() !== "").length;
 }
 
 const EXPECT_MODIFIERS = new Set(["not", "resolves", "rejects"]);

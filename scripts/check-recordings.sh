@@ -1,42 +1,60 @@
 #!/bin/sh
 set -eu
-recordings=$(git ls-files --cached --others --exclude-standard -- '*/recordings/*')
+recordings=$(git -c core.quotePath=false ls-files --cached --others --exclude-standard -- '*/recordings/*')
 [ -z "$recordings" ] && exit 0
 status=0
-writers=$(git grep -l --untracked toMatchFileSnapshot -- '*.test.ts') || status=$?
+writers=$(git -c core.quotePath=false grep -l --untracked toMatchFileSnapshot -- '*.test.ts') || status=$?
 [ "$status" -gt 1 ] && exit "$status"
 aside=$(mktemp -d)
-moved="$aside/moved"
-: > "$moved"
-restore() {
-  while IFS= read -r file; do
-    mkdir -p "$(dirname "$file")"
-    mv -f "$aside/files/$file" "$file"
-  done < "$moved"
-  rm -rf "$aside"
+trap 'rm -rf "$aside"' EXIT
+each() {
+  printf '%s\n' "$recordings" | while IFS= read -r file; do
+    "$@" "$file"
+  done
 }
+back_up() {
+  [ -f "$1" ] || return 0
+  mkdir -p "$aside/$(dirname "$1")"
+  cp -p "$1" "$aside/$1"
+}
+remove() {
+  [ -f "$aside/$1" ] || return 0
+  rm -f "$1"
+}
+put_back() {
+  [ -f "$aside/$1" ] || return 0
+  mkdir -p "$(dirname "$1")"
+  cp -p "$aside/$1" "$1"
+  cmp -s "$aside/$1" "$1"
+}
+stale() {
+  if [ -f "$aside/$1" ] && [ ! -f "$1" ]; then printf '%s\n' "$1"; fi
+}
+restore() {
+  if each put_back; then
+    rm -rf "$aside"
+  else
+    echo "Couldn't put every recording back. The originals are in $aside" >&2
+  fi
+}
+each back_up
 trap restore EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
-printf '%s\n' "$recordings" | while IFS= read -r file; do
-  [ -f "$file" ] || continue
-  mkdir -p "$aside/files/$(dirname "$file")"
-  mv "$file" "$aside/files/$file"
-  printf '%s\n' "$file" >> "$moved"
-done
+each remove
 if [ -n "$writers" ]; then
   set --
   while IFS= read -r writer; do set -- "$@" "$writer"; done <<EOF
 $writers
 EOF
-  if ! env -u CI bun --bun vp test "$@" --update > "$aside/log" 2>&1; then
-    cat "$aside/log" >&2
+  if ! env -u CI bun --bun vp test "$@" --update > "$aside/.log" 2>&1; then
+    cat "$aside/.log" >&2
     exit 1
   fi
 fi
-stale=$(while IFS= read -r file; do [ -f "$file" ] || printf '%s\n' "$file"; done < "$moved")
-[ -z "$stale" ] && exit 0
+found=$(each stale)
+[ -z "$found" ] && exit 0
 echo 'No test writes these recordings anymore. Delete them:' >&2
-printf '%s\n' "$stale" >&2
+printf '%s\n' "$found" >&2
 exit 1

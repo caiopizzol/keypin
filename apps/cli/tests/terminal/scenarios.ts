@@ -10,6 +10,7 @@ import type { FakeOpenAIKey } from "@keypin/connectors/openai/testing";
 import type { FakeElevenLabsKey } from "@keypin/connectors/elevenlabs/testing";
 import type { FakeOpenRouterKey } from "@keypin/connectors/openrouter/testing";
 import type { SupabaseKey } from "@keypin/connectors/supabase/testing";
+import type { FakeSendGridKey } from "@keypin/connectors/sendgrid/testing";
 
 export interface FakeItem {
   title: string;
@@ -41,6 +42,7 @@ export interface Scenario {
   openrouter?: { keys: FakeOpenRouterKey[] };
   elevenlabs?: { keys: FakeElevenLabsKey[] };
   aws?: { keys: FakeAwsKey[]; unready?: number; loseCreated?: boolean };
+  sendgrid?: { keys: FakeSendGridKey[]; loseCreated?: boolean };
   paired?: { keys: string[] };
   registered: boolean;
   git: { origin?: string; account?: string };
@@ -817,9 +819,66 @@ const aws: Scenario = {
   },
 };
 
+const SENDGRID_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.SENDGRID_API_KEY]
+rotate_every = "90d"
+
+[keys.SENDGRID_API_KEY.prod]
+from = "op://Private/mailer sendgrid key/credential"
+
+[keys.SENDGRID_API_KEY.prod.issuer]
+kind = "sendgrid"
+admin = "op://Private/sendgrid admin key/credential"
+
+[[keys.SENDGRID_API_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`;
+
+export const SENDGRID_ADMIN = "SG.AdminVerifyId.sg_verify_admin_key_7e2a";
+export const SENDGRID_PREFIX = "sg_verify_new_";
+const SENDGRID_OLD = "SG.OldVerifyId.sg_verify_old_key_3b9d";
+const SENDGRID_KEY: FakeSendGridKey = {
+  id: "OldVerifyId",
+  name: "mailer",
+  value: SENDGRID_OLD,
+  scopes: ["mail.send", "templates.read", "sender_verification_eligible", "2fa_required"],
+};
+
+const sendgrid: Scenario = {
+  ...ready,
+  about:
+    'SENDGRID_API_KEY has a SendGrid issuer; the vault holds key "mailer" with scopes mail.send and templates.read, and keypin has never rotated it',
+  files: { "keypin.toml": SENDGRID_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          { title: "mailer sendgrid key", value: SENDGRID_OLD, rotated: day(-95) },
+          { title: "sendgrid admin key", value: SENDGRID_ADMIN },
+        ],
+      },
+    },
+  },
+  sendgrid: { keys: [SENDGRID_KEY] },
+};
+
 export const scenarios: Record<string, Scenario> = {
   ready,
   paired,
+  sendgrid,
+  "sendgrid-lost": {
+    ...sendgrid,
+    about: "sendgrid, but the reply to the create is lost after SendGrid made the key",
+    sendgrid: { keys: [SENDGRID_KEY], loseCreated: true },
+  },
+  "sendgrid-billing": {
+    ...sendgrid,
+    about: "sendgrid, but the vault's key also has billing.read, which the admin key doesn't have",
+    sendgrid: { keys: [{ ...SENDGRID_KEY, scopes: ["mail.send", "billing.read"] }] },
+  },
   aws,
   "aws-lost": {
     ...aws,
@@ -1327,6 +1386,7 @@ export function valuesOf(scenario: Scenario): string[] {
     ...(scenario.google ? [GOOGLE_PREFIX] : []),
     ...(scenario.openrouter ? [OPENROUTER_PREFIX] : []),
     ...(scenario.elevenlabs ? [ELEVENLABS_PREFIX] : []),
+    ...(scenario.sendgrid ? [SENDGRID_PREFIX] : []),
     ...(scenario.aws ? [AWS_PREFIX, ...scenario.aws.keys.map((key) => key.secret)] : []),
   ];
   return [

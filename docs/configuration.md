@@ -318,7 +318,8 @@ admin = "op://Private/elevenlabs admin key/credential"
 
 `admin` is a workspace admin's API key, in its own 1Password item; a restricted one needs access to service accounts.
 ElevenLabs' API makes keys only for [service accounts](https://elevenlabs.io/docs/overview/administration/workspaces/service-accounts),
-so keypin refuses a key that belongs to a person: replace it once with a service account key.
+so keypin refuses a key that belongs to a person: replace it once with a service account key. The free plan has no
+service accounts, so rotation needs a plan that includes them.
 
 keypin asks ElevenLabs which service account the vault's key belongs to, so the key needs the **User** read
 permission. It refuses a service account with more than one active key, since it can't tell which one the vault holds:

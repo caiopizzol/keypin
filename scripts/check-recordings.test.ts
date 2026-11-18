@@ -176,14 +176,29 @@ describe("check-recordings", () => {
     expect(outcome).toEqual({ kind: "ok" });
   });
 
-  test("counts a symlinked recording and its target as used, but not a link nobody reads", () => {
+  test("counts every link a test reads through, and its target, but not a link nobody reads", () => {
     const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/b.txt": "b\n" });
     symlinkSync("b.txt", join(cwd, "tests/recordings/link.txt"));
-    expect(checkRecordings(cwd, uses(cwd, "tests/recordings/link.txt"))).toEqual({ kind: "ok" });
-    expect(checkRecordings(cwd, uses(cwd, "tests/recordings/b.txt"))).toEqual({
+    symlinkSync("link.txt", join(cwd, "tests/recordings/front.txt"));
+    expect(checkRecordings(cwd, uses(cwd, "tests/recordings/front.txt"))).toEqual({ kind: "ok" });
+    expect(checkRecordings(cwd, uses(cwd, "tests/recordings/link.txt"))).toEqual({
       kind: "stale",
-      paths: ["tests/recordings/link.txt"],
+      paths: ["tests/recordings/front.txt"],
     });
+    const outcome = checkRecordings(cwd, uses(cwd, "tests/recordings/b.txt"));
+    expect(outcome.kind).toBe("stale");
+    if (outcome.kind !== "stale") return;
+    expect([...outcome.paths].sort()).toEqual([
+      "tests/recordings/front.txt",
+      "tests/recordings/link.txt",
+    ]);
+  });
+
+  test("ignores a snapshot a test removed before the run ended", () => {
+    const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
+    expect(
+      checkRecordings(cwd, uses(cwd, "tests/recordings/a.txt", "scratch/gone/recordings/x.txt")),
+    ).toEqual({ kind: "ok" });
   });
 
   test("ignores recordings deleted from disk, or under a folder replaced by a file or a looping link", () => {

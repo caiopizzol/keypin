@@ -1,7 +1,16 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  lstatSync,
+  mkdtempSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 export type Outcome =
   | { kind: "ok" }
@@ -32,17 +41,37 @@ function paths(output: Buffer): string[] {
   return [...found];
 }
 
+function unreachable(error: unknown): boolean {
+  const code = error instanceof Error && "code" in error ? error.code : undefined;
+  return code === "ENOENT" || code === "ENOTDIR" || code === "ELOOP";
+}
+
 function isFile(path: string): boolean {
   try {
-    return statSync(path, { throwIfNoEntry: false })?.isFile() ?? false;
+    return statSync(path).isFile();
   } catch (error) {
-    const code = error instanceof Error && "code" in error ? error.code : undefined;
-    if (code === "ENOTDIR" || code === "ELOOP") return false;
+    if (unreachable(error)) return false;
     throw error;
   }
 }
 
 const canonical = (path: string) => join(realpathSync(dirname(path)), basename(path));
+
+function linkChain(path: string): string[] {
+  const chain: string[] = [];
+  for (let current = path; ;) {
+    try {
+      current = canonical(current);
+      if (chain.includes(current)) return chain;
+      chain.push(current);
+      if (!lstatSync(current).isSymbolicLink()) return chain;
+      current = resolve(dirname(current), readlinkSync(current));
+    } catch (error) {
+      if (unreachable(error)) return chain;
+      throw error;
+    }
+  }
+}
 
 export function checkRecordings(
   cwd: string,
@@ -85,8 +114,7 @@ export function checkRecordings(
       writeFileSync(log, "");
       if (runTests(writers, log) !== 0) return { kind: "tests-failed" };
       for (const path of paths(readFileSync(log))) {
-        used.add(canonical(path));
-        used.add(realpathSync(path));
+        for (const step of linkChain(path)) used.add(step);
       }
     } finally {
       rmSync(dir, { recursive: true, force: true });

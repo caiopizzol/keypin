@@ -192,6 +192,26 @@ describe("checkAccount", () => {
     }
   });
 
+  test("a blocked key keypin issued last time is refused on the next rotation", async () => {
+    const { issuer, effects } = xai([{ ...OLD, blocked: true }]);
+    const check = await issuer.checkAccount("team_1/key_old", new Secret(VAULT));
+    assert(!check.ok);
+    expect(check.reason).toBe(
+      "the vault's key is blocked, and keypin won't make an active copy of it",
+    );
+    await expect(issuer.create("next")).rejects.toThrow("checkAccount hasn't passed");
+    expect(effects).toEqual([]);
+  });
+
+  test("a held save still passes when the vault holds the previous key, not the issued one", async () => {
+    const { issuer } = xai([
+      { ...OLD, blocked: true },
+      { id: "key_new1", name: "prod", value: "xai-new-0001" },
+    ]);
+    const check = await issuer.checkAccount("team_1/key_new1", new Secret(VAULT));
+    expect(check.ok).toBe(true);
+  });
+
   test("a key with no ACLs is refused, since its copy couldn't call anything", async () => {
     const { issuer } = xai([{ ...OLD, acls: [] }]);
     const check = await issuer.checkAccount(null, new Secret(VAULT));

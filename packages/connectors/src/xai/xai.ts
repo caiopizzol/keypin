@@ -155,8 +155,16 @@ export class XaiIssuer implements Issuer {
     const listed = keys.find((key) => key.id === wanted);
 
     if (currentId !== null) {
+      const vault = await this.#vaultKey(current);
+      if (listed && vault?.id === wanted && vault.off)
+        return {
+          ok: false,
+          facts: `${facts}, with ${this.label(currentId)}`,
+          reason: `the vault's key ${vault.off}, and keypin won't make an active copy of it`,
+          fix: `turn it back on at ${DASHBOARD}, or replace it by hand`,
+        };
       if (listed) return this.#pass(team, listed, `${facts}, with ${this.label(currentId)}`);
-      if (!(await this.#vaultKey(current)))
+      if (!vault)
         return {
           ok: false,
           facts: `${facts}; xAI doesn't accept the vault's key`,

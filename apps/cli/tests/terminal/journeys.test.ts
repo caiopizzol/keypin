@@ -1136,6 +1136,78 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "Google Cloud IAM: makes a service account key file, publishes it, then disables and deletes the old key after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "google-iam",
+        args: ["rotate", "GOOGLE_APPLICATION_CREDENTIALS"],
+        answers: ["y", "y"],
+      });
+      const app = "billing@acme-prod.iam.gserviceaccount.com";
+      const old = `${"a".repeat(37)}f00`;
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        `  + Google Cloud IAM      create a new key\n    for ${app}, which has 2 of 10 keys: ${"a".repeat(37)}bee (disabled), created 2026-03-02 and this one`,
+      );
+      expect(result.screen).toContain(
+        "    keypin disables it, then deletes it; a deleted key can't come back",
+      );
+      expect(result.screen).toMatch(
+        new RegExp(`^✓ Google Cloud IAM {2}revoked ${old} {2}\\d+\\.\\ds$`, "m"),
+      );
+      expect(result.effects).toEqual([
+        `google-iam create ${app}/${"a".repeat(39)}1`,
+        expect.stringMatching(
+          /^1password update my\.1password\.com\/Private\/app service account \(\d+ chars\)$/,
+        ),
+        expect.stringMatching(
+          /^destination write github-actions:acme\/billing GOOGLE_APPLICATION_CREDENTIALS \(\d+ chars\)$/,
+        ),
+        `google-iam delete ${app}/${old}`,
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "Google Cloud IAM: the organization policy that blocks keys is named, with what to do, and nothing is created",
+    async () => {
+      const result = await drive({
+        scenario: "google-iam-policy",
+        args: ["rotate", "GOOGLE_APPLICATION_CREDENTIALS"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        "    the organization policy iam.disableServiceAccountKeyCreation stops new service account keys in project acme-prod",
+      );
+      expect(result.screen).toContain("Stopped. Nothing was created.");
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "Google Cloud IAM: a lost create lists the keys to keep, so the rerun doesn't leave a second key",
+    async () => {
+      const result = await drive({
+        scenario: "google-iam-lost",
+        args: ["rotate", "GOOGLE_APPLICATION_CREDENTIALS"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        `keep ${"a".repeat(37)}bee, ${"a".repeat(37)}f00, and delete any other key`,
+      );
+      expect(result.effects).toHaveLength(1);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "Google Cloud: a gcloud user login in the admin item stops before anything is created",
     async () => {
       const result = await drive({

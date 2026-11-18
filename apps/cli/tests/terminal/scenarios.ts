@@ -2,7 +2,12 @@ import { envValues } from "@keypin/core";
 import { localDay } from "@keypin/core";
 import { accessKeyJson, type FakeAwsKey } from "@keypin/connectors/aws/testing";
 import type { FakeToken } from "@keypin/connectors/cloudflare/testing";
-import type { FakeGoogleKey } from "@keypin/connectors/google/testing";
+import {
+  type FakeGoogleKey,
+  type FakeIamAccount,
+  iamKeyFile,
+  serviceAccountKeyId,
+} from "@keypin/connectors/google/testing";
 import type { FakeInfisical } from "@keypin/connectors/infisical/testing";
 import { FAKE_ACCESS_TOKEN, type FakeBitwarden } from "@keypin/connectors/bitwarden/testing";
 import type { FakeDoppler } from "@keypin/connectors/doppler/testing";
@@ -42,6 +47,7 @@ export interface Scenario {
   supabase?: { keys: SupabaseKey[]; loseCreated?: boolean; prefixOnly?: boolean };
   cloudflareTokens?: { tokens: FakeToken[]; loseCreated?: boolean };
   google?: { keys: FakeGoogleKey[]; pendingPolls?: number };
+  googleIam?: { accounts: FakeIamAccount[]; policy?: string; loseCreated?: boolean };
   openrouter?: { keys: FakeOpenRouterKey[] };
   elevenlabs?: { keys: FakeElevenLabsKey[] };
   aws?: { keys: FakeAwsKey[]; unready?: number; loseCreated?: boolean };
@@ -671,6 +677,65 @@ const google: Scenario = {
             allowedReferrers: ["https://acme.example/*", "*.acme.example/*"],
           },
         },
+      },
+    ],
+  },
+};
+
+const GOOGLE_IAM_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.GOOGLE_APPLICATION_CREDENTIALS]
+rotate_every = "90d"
+
+[keys.GOOGLE_APPLICATION_CREDENTIALS.prod]
+from = "op://Private/app service account/credential"
+
+[keys.GOOGLE_APPLICATION_CREDENTIALS.prod.issuer]
+kind = "google-service-account"
+admin = "op://Private/google key maker/credential"
+
+[[keys.GOOGLE_APPLICATION_CREDENTIALS.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`;
+
+export const GOOGLE_IAM_PREFIX = "verify-new-private-key-";
+const GOOGLE_IAM_APP = "billing@acme-prod.iam.gserviceaccount.com";
+const GOOGLE_IAM_OLD = serviceAccountKeyId(0xf00);
+
+const googleIam: Scenario = {
+  ...ready,
+  about: `GOOGLE_APPLICATION_CREDENTIALS has a google-service-account issuer; the vault holds key ${GOOGLE_IAM_OLD} of ${GOOGLE_IAM_APP}, which also has a disabled key`,
+  files: { "keypin.toml": GOOGLE_IAM_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          {
+            title: "app service account",
+            value: iamKeyFile(
+              GOOGLE_IAM_APP,
+              "acme-prod",
+              GOOGLE_IAM_OLD,
+              "verify-old-private-key-4d1c",
+            ),
+            rotated: day(-95),
+          },
+          { title: "google key maker", value: GOOGLE_ADMIN },
+        ],
+      },
+    },
+  },
+  googleIam: {
+    accounts: [
+      {
+        email: GOOGLE_IAM_APP,
+        project: "acme-prod",
+        keys: [
+          { id: serviceAccountKeyId(0xbee), disabled: true, created: "2026-03-02T00:00:00Z" },
+          { id: GOOGLE_IAM_OLD, created: "2026-08-15T00:00:00Z" },
+        ],
       },
     ],
   },
@@ -1502,6 +1567,22 @@ jobs:
     },
   },
   google,
+  "google-iam": googleIam,
+  "google-iam-policy": {
+    ...googleIam,
+    about:
+      "google-iam, but the organization policy iam.disableServiceAccountKeyCreation blocks new keys",
+    googleIam: {
+      ...googleIam.googleIam,
+      accounts: googleIam.googleIam?.accounts ?? [],
+      policy: "iam.disableServiceAccountKeyCreation",
+    },
+  },
+  "google-iam-lost": {
+    ...googleIam,
+    about: "google-iam, but the reply to the create is lost after Google makes the key",
+    googleIam: { accounts: googleIam.googleIam?.accounts ?? [], loseCreated: true },
+  },
   "google-user-login": {
     ...google,
     about: "google, but the admin item holds a gcloud user login, not a service account key",

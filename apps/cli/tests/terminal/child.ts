@@ -22,6 +22,8 @@ import {
   fakePrivateKey,
   googleFetch,
   type GoogleWorld,
+  iamFetch,
+  type IamWorld,
   serviceAccountJson,
 } from "@keypin/connectors/google/testing";
 import { type AwsWorld, awsFetch } from "@keypin/connectors/aws/testing";
@@ -55,6 +57,7 @@ import {
   type FakeItem,
   GOOGLE_ADMIN,
   GOOGLE_EMAIL,
+  GOOGLE_IAM_PREFIX,
   GOOGLE_PREFIX,
   ISSUED_PREFIX,
   RESEND_ADMIN,
@@ -118,7 +121,8 @@ const OPENAI = join(sandbox, "openai.json");
 const SUPABASE = join(sandbox, "supabase.json");
 const CLOUDFLARE = join(sandbox, "cloudflare-tokens.json");
 const GOOGLE = join(sandbox, "google.json");
-const GOOGLE_KEY = scenario.google ? fakePrivateKey() : "";
+const GOOGLE_IAM = join(sandbox, "google-iam.json");
+const GOOGLE_KEY = scenario.google || scenario.googleIam ? fakePrivateKey() : "";
 const OPENROUTER = join(sandbox, "openrouter.json");
 const ELEVENLABS = join(sandbox, "elevenlabs.json");
 const PAIRED = join(sandbox, "paired.json");
@@ -435,6 +439,25 @@ const google = googleFetch({
   effect,
 });
 
+const googleIam = iamFetch({
+  serviceAccount: GOOGLE_EMAIL,
+  privateKey: GOOGLE_KEY,
+  manages: (run.googleIam?.accounts ?? []).map((a) => a.email),
+  keyPrefix: GOOGLE_IAM_PREFIX,
+  ...(run.googleIam?.policy === undefined ? {} : { policy: run.googleIam.policy }),
+  loseCreated: run.googleIam?.loseCreated === true,
+  world: {
+    load(): IamWorld {
+      if (!existsSync(GOOGLE_IAM)) return { accounts: run.googleIam?.accounts ?? [], created: 0 };
+      const parsed: unknown = JSON.parse(readFileSync(GOOGLE_IAM, "utf8"));
+      if (!isIamWorld(parsed)) throw new Error(`${GOOGLE_IAM} isn't the fake Google IAM's keys`);
+      return parsed;
+    },
+    save: (world) => writeFileSync(GOOGLE_IAM, JSON.stringify(world)),
+  },
+  effect,
+});
+
 const openrouter = openrouterFetch({
   admin: OPENROUTER_ADMIN,
   valuePrefix: OPENROUTER_PREFIX,
@@ -562,6 +585,7 @@ const issuerFetch: Record<string, Fetch> = {
   cloudflare,
   elevenlabs,
   google,
+  "google-service-account": googleIam,
   "mongodb-atlas": atlas,
   neon,
   openai,
@@ -599,6 +623,10 @@ function isElevenLabsWorld(value: unknown): value is ElevenLabsWorld {
 
 function isOpenRouterWorld(value: unknown): value is OpenRouterWorld {
   return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";
+}
+
+function isIamWorld(value: unknown): value is IamWorld {
+  return isRecord(value) && Array.isArray(value.accounts) && typeof value.created === "number";
 }
 
 function isGoogleWorld(value: unknown): value is GoogleWorld {

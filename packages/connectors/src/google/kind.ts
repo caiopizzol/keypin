@@ -1,5 +1,6 @@
 import type { IssuerKind, IssuerSpec } from "@keypin/core";
 import { GoogleIssuer } from "./google";
+import { ServiceAccountKeyIssuer } from "./service-account";
 
 export interface GoogleSpec extends IssuerSpec {
   readonly kind: "google";
@@ -27,6 +28,24 @@ export const googleIssuer: IssuerKind<GoogleSpec> = {
     new GoogleIssuer({
       admin: async () => admin,
       projectNumber,
+      ...(fetch === undefined ? {} : { fetch }),
+    }),
+};
+
+export interface GoogleServiceAccountSpec extends IssuerSpec {
+  readonly kind: "google-service-account";
+}
+
+export const googleServiceAccountIssuer: IssuerKind<GoogleServiceAccountSpec> = {
+  kind: "google-service-account",
+  parse(read) {
+    read.only([]);
+    const admin = read.admin();
+    return admin ? { kind: "google-service-account", admin } : undefined;
+  },
+  connect: (_spec, admin, fetch) =>
+    new ServiceAccountKeyIssuer({
+      admin: async () => admin,
       ...(fetch === undefined ? {} : { fetch }),
     }),
 };

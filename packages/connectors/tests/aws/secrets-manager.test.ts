@@ -331,6 +331,25 @@ describe("credentials", () => {
     ).toEqual({ credentials: { id: "AKIACFG", secret: "cfg" }, source: "the AWS profile cfg" });
   });
 
+  test("reads equally indented keys, and skips settings nested under one", () => {
+    const keys = `    aws_access_key_id = ${TEMPORARY.id}\n    aws_secret_access_key = ${TEMPORARY.secret}\n    aws_session_token = ${TEMPORARY.token}\n`;
+    const nested = "    s3 =\n        aws_session_token = nested\n";
+    const read = files({
+      "/home/me/.aws/credentials": `[default]\n${keys}`,
+      "/home/me/.aws/config": `[profile cfg]\n${nested}${keys}[profile only-nested]\naws_access_key_id = AKIA\naws_secret_access_key = s\ns3 =\n  aws_session_token = nested\n`,
+    });
+    const expected = (profile: string) => ({
+      credentials: TEMPORARY,
+      source: `the AWS profile ${profile}`,
+    });
+    expect(awsSignIn({}, "/home/me", read)).toEqual(expected("default"));
+    expect(awsSignIn({ AWS_PROFILE: "cfg" }, "/home/me", read)).toEqual(expected("cfg"));
+    expect(awsSignIn({ AWS_PROFILE: "only-nested" }, "/home/me", read)).toEqual({
+      credentials: { id: "AKIA", secret: "s" },
+      source: "the AWS profile only-nested",
+    });
+  });
+
   test.each([
     ["sso_session = corp", "IAM Identity Center (SSO)"],
     ["credential_process = /bin/get-creds", "credential_process"],

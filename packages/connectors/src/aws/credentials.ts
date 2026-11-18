@@ -88,9 +88,14 @@ export function awsSignIn(
 function sections(text: string): Sections {
   const found: Sections = new Map();
   let current: Map<string, string> | null = null;
+  let assignmentIndent: number | null = null;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line || line.startsWith("#") || line.startsWith(";")) continue;
+    const indent = raw.length - raw.trimStart().length;
+    const nested = assignmentIndent !== null && indent > assignmentIndent;
+    if (nested) continue;
+    assignmentIndent = null;
     const header = /^\[\s*(.+?)\s*\]$/.exec(line);
     if (header) {
       const name = (header[1] ?? "").replace(/\s+/g, " ");
@@ -99,8 +104,9 @@ function sections(text: string): Sections {
       continue;
     }
     const at = line.indexOf("=");
-    if (current === null || at < 0 || /^\s/.test(raw)) continue;
+    if (current === null || at < 0) continue;
     current.set(line.slice(0, at).trim().toLowerCase(), line.slice(at + 1).trim());
+    assignmentIndent = indent;
   }
   return found;
 }

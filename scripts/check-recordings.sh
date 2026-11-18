@@ -2,6 +2,12 @@
 set -eu
 recordings=$(git -c core.quotePath=false ls-files --cached --others --exclude-standard -- '*/recordings/*')
 [ -z "$recordings" ] && exit 0
+links=$(printf '%s\n' "$recordings" | while IFS= read -r file; do if [ -L "$file" ]; then printf '%s\n' "$file"; fi; done)
+if [ -n "$links" ]; then
+  echo 'Recordings must be plain files. Replace these symlinks:' >&2
+  printf '%s\n' "$links" >&2
+  exit 1
+fi
 status=0
 writers=$(git -c core.quotePath=false grep -l --untracked toMatchFileSnapshot -- '*.test.ts') || status=$?
 [ "$status" -gt 1 ] && exit "$status"

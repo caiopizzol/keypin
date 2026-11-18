@@ -16,6 +16,7 @@ import { basename, dirname, join } from "node:path";
 
 export type Outcome =
   | { kind: "ok" }
+  | { kind: "symlinks"; paths: string[] }
   | { kind: "stale"; paths: string[] }
   | { kind: "tests-failed" };
 
@@ -52,6 +53,13 @@ function entry(path: string) {
   }
 }
 
+function throughSymlink(cwd: string, path: string): boolean {
+  for (let part = path; part !== "."; part = dirname(part)) {
+    if (entry(join(cwd, part))?.isSymbolicLink()) return true;
+  }
+  return false;
+}
+
 function plainFile(cwd: string, path: string): boolean {
   if (!entry(join(cwd, path))?.isFile()) return false;
   for (let dir = dirname(path); dir !== "."; dir = dirname(dir)) {
@@ -86,18 +94,16 @@ export function checkRecordings(
   cwd: string,
   runTests: (copy: string, files: string[]) => number | null,
 ): Outcome {
-  const listed = paths(
-    git(cwd, [
-      "ls-files",
-      "-z",
-      "--cached",
-      "--others",
-      "--exclude-standard",
-      "--",
-      "*/recordings/*",
-    ]),
+  const listed = (pathspec: string) =>
+    paths(
+      git(cwd, ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", pathspec]),
+    );
+  const listedRecordings = listed("*/recordings/*");
+  const symlinks = [...listed("*/recordings"), ...listedRecordings].filter((path) =>
+    throughSymlink(cwd, path),
   );
-  const recordings = new Set(listed.filter((path) => plainFile(cwd, path)));
+  if (symlinks.length > 0) return { kind: "symlinks", paths: symlinks };
+  const recordings = new Set(listedRecordings.filter((path) => plainFile(cwd, path)));
   if (recordings.size === 0) return { kind: "ok" };
   const writers = paths(
     git(
@@ -172,6 +178,14 @@ function report(outcome: Outcome, log: string): number {
   switch (outcome.kind) {
     case "ok":
       return 0;
+    case "symlinks":
+      writeAll(
+        2,
+        Buffer.from(
+          `Recordings must be plain files outside any symlinked folder. Fix these paths:\n${outcome.paths.join("\n")}\n`,
+        ),
+      );
+      return 1;
     case "stale":
       writeAll(
         2,

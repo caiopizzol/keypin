@@ -20,7 +20,7 @@
   "scripts": {
     "check": "vp check && ! git grep --untracked -nE '(oxlint|eslint)-(disable|enable)' -- '*.ts' && sh scripts/check-lockfile.sh && sh scripts/check-typescript-only.sh && bun scripts/check-action-pins.ts && bun scripts/check-connectors.ts && bun scripts/check-provider-literals.ts && bun scripts/check-docs-growth.ts",
     "test": "bun --bun vp test",
-    "check-recordings": "sh scripts/check-recordings.sh",
+    "check-recordings": "bun scripts/check-recordings.ts",
     "typecheck": "vp run -r typecheck && tsc -p scripts",
     "prepare": "vp config"
   },

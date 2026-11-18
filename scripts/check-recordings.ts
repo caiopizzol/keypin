@@ -3,17 +3,17 @@ import {
   lstatSync,
   mkdtempSync,
   readFileSync,
-  readlinkSync,
   realpathSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, isAbsolute, join } from "node:path";
+import { join } from "node:path";
 
 export type Outcome =
   | { kind: "ok" }
+  | { kind: "symlinks"; paths: string[] }
   | { kind: "stale"; paths: string[] }
   | { kind: "tests-failed" };
 
@@ -46,6 +46,19 @@ function unreachable(error: unknown): boolean {
   return code === "ENOENT" || code === "ENOTDIR" || code === "ELOOP";
 }
 
+function linkToFile(path: string): boolean {
+  return isSymlink(path) && !isDirectory(path);
+}
+
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch (error) {
+    if (unreachable(error)) return false;
+    throw error;
+  }
+}
+
 function isFile(path: string): boolean {
   try {
     return statSync(path).isFile();
@@ -55,22 +68,21 @@ function isFile(path: string): boolean {
   }
 }
 
-const canonical = (path: string) => join(realpathSync.native(dirname(path)), basename(path));
+function isSymlink(path: string): boolean {
+  try {
+    return lstatSync(path).isSymbolicLink();
+  } catch (error) {
+    if (unreachable(error)) return false;
+    throw error;
+  }
+}
 
-function linkChain(path: string): string[] {
-  const chain: string[] = [];
-  for (let current = path; ;) {
-    try {
-      current = canonical(current);
-      if (chain.includes(current)) return chain;
-      chain.push(current);
-      if (!lstatSync(current).isSymbolicLink()) return chain;
-      const target = readlinkSync(current);
-      current = isAbsolute(target) ? target : `${dirname(current)}/${target}`;
-    } catch (error) {
-      if (unreachable(error)) return chain;
-      throw error;
-    }
+function realPath(path: string): string | undefined {
+  try {
+    return realpathSync.native(path);
+  } catch (error) {
+    if (unreachable(error)) return undefined;
+    throw error;
   }
 }
 
@@ -89,6 +101,8 @@ export function checkRecordings(
       "*/recordings/*",
     ]),
   );
+  const symlinks = listed.filter((path) => linkToFile(join(cwd, path)));
+  if (symlinks.length > 0) return { kind: "symlinks", paths: symlinks };
   const recordings = listed.filter((path) => isFile(join(cwd, path)));
   if (recordings.length === 0) return { kind: "ok" };
   const writers = paths(
@@ -115,13 +129,17 @@ export function checkRecordings(
       writeFileSync(log, "");
       if (runTests(writers, log) !== 0) return { kind: "tests-failed" };
       for (const path of paths(readFileSync(log))) {
-        for (const step of linkChain(path)) used.add(step);
+        const real = realPath(path);
+        if (real) used.add(real);
       }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   }
-  const stale = recordings.filter((path) => !used.has(canonical(join(cwd, path))));
+  const stale = recordings.filter((path) => {
+    const real = realPath(join(cwd, path));
+    return real !== undefined && !used.has(real);
+  });
   return stale.length > 0 ? { kind: "stale", paths: stale } : { kind: "ok" };
 }
 
@@ -135,6 +153,11 @@ function vitest(files: string[], log: string): number | null {
 if (import.meta.main) {
   try {
     const outcome = checkRecordings(process.cwd(), vitest);
+    if (outcome.kind === "symlinks") {
+      process.stderr.write(
+        `Recordings must be plain files, not symlinks. Replace these:\n${outcome.paths.join("\n")}\n`,
+      );
+    }
     if (outcome.kind === "stale") {
       process.stderr.write(
         `No test uses these recordings anymore. Delete them:\n${outcome.paths.join("\n")}\n`,

@@ -1,3 +1,6 @@
+import { mkdtempSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import { type Drive, drive } from "./drive";
 import { FAKE_TOKEN, ready, valuesOf } from "./scenarios";
@@ -260,6 +263,46 @@ describe("keypin in a real terminal", () => {
       expect(result.effects).toEqual([
         "destination write fly-app:billing-api STRIPE_KEY (23 chars)",
       ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "publish to GitLab says the next pipeline uses the value",
+    async () => {
+      const result = await drive({
+        scenario: "gitlab",
+        args: ["publish", "STRIPE_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain("  + GitLab  acme/billing  first write  needs approval");
+      expect(result.screen).toContain(
+        "    GitLab uses the new value from the next pipeline; keypin doesn't start one",
+      );
+      expect(result.effects).toEqual([
+        "destination write gitlab-project:acme/billing STRIPE_KEY (23 chars)",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "check without glab or KEYPIN_GITLAB_TOKEN says how to sign in to GitLab",
+    async () => {
+      const onlyBun = mkdtempSync(join(tmpdir(), "keypin-no-glab-"));
+      symlinkSync(process.execPath, join(onlyBun, "bun"));
+      const result = await drive({
+        scenario: "gitlab-no-login",
+        args: ["check"],
+        env: { PATH: onlyBun },
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("1 Sign in to GitLab");
+      expect(result.screen).toContain("glab auth login");
+      expect(result.effects).toEqual([]);
       clean(result);
     },
     SLOW,

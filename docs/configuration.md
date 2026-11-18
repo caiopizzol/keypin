@@ -104,6 +104,10 @@ url = "https://happy-animal-123.convex.cloud"
 [[keys.API_TOKEN.prod.publish]]
 to = "fly-app"
 app = "my-app"
+
+[[keys.API_TOKEN.prod.publish]]
+to = "gitlab-project"
+project = "acme/billing"
 ```
 
 GitHub reserves secret names that start with `GITHUB_`. Add `environment = "production"` to write a secret of that
@@ -126,6 +130,9 @@ The map says where a key goes, not who writes it, so every teammate publishes fr
   keypin doesn't read the `npx convex` login or `CONVEX_DEPLOY_KEY`.
 - **Fly.io:** a deploy token for the `app` or an org token for its organization, in `KEYPIN_FLY_API_TOKEN`. Add
   `org = "<org slug>"` to also pin the organization. keypin doesn't read the `fly` login or `FLY_API_TOKEN`.
+- **GitLab:** the `glab` login for the host, or a personal, project or group access token with the `api` scope in
+  `KEYPIN_GITLAB_TOKEN`. It needs the Maintainer role on a project, or Owner on a group. A CI/CD job token can't
+  change variables. keypin doesn't sign in with `GITLAB_TOKEN`.
 
 ## Vault items
 

@@ -108,6 +108,11 @@ const FLY_MAP = MAP.replace(
   'to = "fly-app"\napp = "billing-api"',
 );
 
+const GITLAB_MAP = MAP.replace(
+  'to = "github-actions"\nrepo = "acme/billing"',
+  'to = "gitlab-project"\nproject = "acme/billing"',
+);
+
 const RAILWAY_MAP = MAP.replace(
   'to = "github-actions"\nrepo = "acme/billing"',
   'to = "railway-service"\nproject = "1d01c0c0-4554-4747-93b8-34ce3448ab95"\nenvironment = "production"\nservice = "api"',
@@ -1297,6 +1302,27 @@ jobs:
         check: {
           reason:
             "keypin signs in to Fly.io with KEYPIN_FLY_API_TOKEN, which isn't set. Create a deploy token for the app with fly tokens create deploy -a <app>, or an org token with fly tokens create org (https://fly.io/tokens), and set KEYPIN_FLY_API_TOKEN; keypin doesn't read the fly login",
+          publisher: "unknown",
+          destinationAccount: null,
+        },
+      },
+    },
+  },
+  gitlab: {
+    ...ready,
+    about: "ready, but STRIPE_KEY publishes to a GitLab project's CI/CD variables",
+    files: { "keypin.toml": GITLAB_MAP },
+    env: { KEYPIN_GITLAB_TOKEN: "glpat-verify-gitlab-token-6d1e" },
+  },
+  "gitlab-no-login": {
+    ...ready,
+    about: "gitlab, but neither KEYPIN_GITLAB_TOKEN nor glab is there",
+    files: { "keypin.toml": GITLAB_MAP },
+    places: {
+      "gitlab-project:acme/billing": {
+        check: {
+          reason:
+            "keypin can't find glab, and KEYPIN_GITLAB_TOKEN isn't set. Run glab auth login --hostname gitlab.com, or create a personal, project or group access token with the api scope (https://gitlab.com/-/user_settings/personal_access_tokens) and set KEYPIN_GITLAB_TOKEN",
           publisher: "unknown",
           destinationAccount: null,
         },

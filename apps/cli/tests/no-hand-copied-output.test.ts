@@ -15,6 +15,8 @@ const allowed: Record<string, string> = {
   "three-lines.ts": 'expect("x").toContain("first\\nsecond\\nthird\\n");',
   "three-joined.ts": 'expect("x").toBe(["a", "b", "c"].join("\\n"));',
   "trailing-empty-entry.ts": 'expect("x").toBe(["one", "two", "three", ""].join("\\n"));',
+  "interpolated-separator.ts":
+    'const indent = "  ";\nexpect("x").toBe(["one", "two", "three"].join(`\\n${indent}\\n`));',
   "array-value.ts": 'expect(["a", "b", "c", "d"]).toEqual(["a", "b", "c", "d"]);',
   "number.ts": "expect(1).toBe(1);",
 };

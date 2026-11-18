@@ -367,6 +367,11 @@ function knownText(node: ESTree.Node | null): string | null {
   return null;
 }
 
+function exactText(node: ESTree.Node | null): string | null {
+  if (node?.type === "TemplateLiteral" && node.expressions.length > 0) return null;
+  return knownText(node);
+}
+
 function outputLines(node: ESTree.Node): number {
   const text = knownText(node);
   if (text !== null) return textLines(text);
@@ -377,13 +382,14 @@ function outputLines(node: ESTree.Node): number {
     propertyName(node.callee) !== "join"
   )
     return 0;
-  const separator = knownText(node.arguments[0] ?? null);
-  if (separator === null || !separator.includes("\n")) return 0;
+  const [separator] = node.arguments;
+  if (!separator || !knownText(separator)?.includes("\n")) return 0;
+  const exact = exactText(separator);
   const parts = node.callee.object.elements.map((element) =>
-    element?.type === "SpreadElement" ? null : knownText(element),
+    element?.type === "SpreadElement" ? null : exactText(element),
   );
-  return parts.every((part) => part !== null)
-    ? textLines(parts.join(separator))
+  return exact !== null && parts.every((part) => part !== null)
+    ? textLines(parts.join(exact))
     : node.callee.object.elements.length;
 }
 

@@ -34,6 +34,7 @@ import { resendIssuer } from "@keypin/connectors/resend";
 import { sendgridIssuer } from "@keypin/connectors/sendgrid";
 import { supabaseFunctions, supabaseIssuer } from "@keypin/connectors/supabase";
 import { vercelProject } from "@keypin/connectors/vercel";
+import { xaiIssuer } from "@keypin/connectors/xai";
 import {
   type Connect,
   desktopConnect,
@@ -100,6 +101,7 @@ export const issuers = [
   elevenlabsIssuer,
   awsIssuer,
   sendgridIssuer,
+  xaiIssuer,
 ];
 
 export function issuer(spec: IssuerSpec, admin: Secret, fetch?: Fetch): Issuer {

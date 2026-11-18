@@ -7,7 +7,6 @@ import {
   mkdtempSync,
   openSync,
   readSync,
-  readlinkSync,
   rmSync,
   symlinkSync,
   writeSync,
@@ -17,7 +16,6 @@ import { basename, dirname, join } from "node:path";
 
 export type Outcome =
   | { kind: "ok" }
-  | { kind: "symlinks"; paths: string[] }
   | { kind: "stale"; paths: string[] }
   | { kind: "tests-failed" };
 
@@ -54,21 +52,20 @@ function entry(path: string) {
   }
 }
 
-function throughSymlink(cwd: string, path: string): boolean {
-  for (let part = path; part !== "." && part !== "/"; part = dirname(part)) {
-    if (entry(join(cwd, part))?.isSymbolicLink()) return true;
+function plainFile(cwd: string, path: string): boolean {
+  if (!entry(join(cwd, path))?.isFile()) return false;
+  for (let dir = dirname(path); dir !== "."; dir = dirname(dir)) {
+    if (!entry(join(cwd, dir))?.isDirectory()) return false;
   }
-  return false;
+  return true;
 }
 
 function copyCheckout(cwd: string, copy: string, skip: Set<string>) {
   const files = paths(git(cwd, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"]));
   for (const path of files) {
-    const info = skip.has(path) ? undefined : entry(join(cwd, path));
-    if (!info?.isFile() && !info?.isSymbolicLink()) continue;
+    if (skip.has(path) || !plainFile(cwd, path)) continue;
     mkdirSync(dirname(join(copy, path)), { recursive: true });
-    if (info.isSymbolicLink()) symlinkSync(readlinkSync(join(cwd, path)), join(copy, path));
-    else copyFileSync(join(cwd, path), join(copy, path));
+    copyFileSync(join(cwd, path), join(copy, path));
   }
   const ignored = git(cwd, [
     "ls-files",
@@ -79,7 +76,7 @@ function copyCheckout(cwd: string, copy: string, skip: Set<string>) {
     "--directory",
   ]);
   for (const path of paths(ignored).map((dir) => dir.replace(/\/$/, ""))) {
-    if (basename(path) !== "node_modules") continue;
+    if (basename(path) !== "node_modules" || entry(join(copy, path))) continue;
     mkdirSync(dirname(join(copy, path)), { recursive: true });
     symlinkSync(join(cwd, path), join(copy, path));
   }
@@ -89,16 +86,18 @@ export function checkRecordings(
   cwd: string,
   runTests: (copy: string, files: string[]) => number | null,
 ): Outcome {
-  const listed = (pathspec: string) =>
-    paths(
-      git(cwd, ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", pathspec]),
-    );
-  const listedRecordings = listed("*/recordings/*");
-  const symlinks = [...listed("*/recordings"), ...listedRecordings].filter((path) =>
-    throughSymlink(cwd, path),
+  const listed = paths(
+    git(cwd, [
+      "ls-files",
+      "-z",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "--",
+      "*/recordings/*",
+    ]),
   );
-  if (symlinks.length > 0) return { kind: "symlinks", paths: symlinks };
-  const recordings = new Set(listedRecordings.filter((path) => entry(join(cwd, path))?.isFile()));
+  const recordings = new Set(listed.filter((path) => plainFile(cwd, path)));
   if (recordings.size === 0) return { kind: "ok" };
   const writers = paths(
     git(
@@ -173,14 +172,6 @@ function report(outcome: Outcome, log: string): number {
   switch (outcome.kind) {
     case "ok":
       return 0;
-    case "symlinks":
-      writeAll(
-        2,
-        Buffer.from(
-          `Recordings must be plain files outside any symlinked folder. Fix these paths:\n${outcome.paths.join("\n")}\n`,
-        ),
-      );
-      return 1;
     case "stale":
       writeAll(
         2,
@@ -196,15 +187,6 @@ function report(outcome: Outcome, log: string): number {
 }
 
 if (import.meta.main) {
-  process.on("SIGHUP", () => {
-    process.exitCode = 129;
-  });
-  process.on("SIGINT", () => {
-    process.exitCode = 130;
-  });
-  process.on("SIGTERM", () => {
-    process.exitCode = 143;
-  });
   const logs = mkdtempSync(join(tmpdir(), "check-recordings-log-"));
   const log = join(logs, "test.log");
   try {

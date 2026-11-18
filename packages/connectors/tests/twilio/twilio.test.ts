@@ -107,7 +107,7 @@ describe("Twilio issuer", () => {
   });
 
   test("gives a Restricted key's permissions to the new key", async () => {
-    const allow = ["/twilio/messaging/messages/create", "/twilio/messaging/messages/read"];
+    const allow = ["/twilio/messaging/messages/create", "/twilio/phone-numbers/available/read"];
     const subject = twilio([{ ...APP, type: "restricted", policy: allow }]);
     const check = await checked(subject);
     expect(check.facts).toContain("the vault holds Restricted key");
@@ -119,9 +119,26 @@ describe("Twilio issuer", () => {
     expect(subject.calls.some((c) => c.path.startsWith("/v1/Keys?"))).toBe(false);
   });
 
-  test("a Restricted key outside the phone-numbers permissions still proves its secret", async () => {
+  test("a Restricted key Twilio answers 70051 for is refused, and create and revoke stay gated", async () => {
     const subject = twilio([
       { ...APP, type: "restricted", policy: ["/twilio/messaging/messages/create"] },
+    ]);
+    const check = await subject.issuer.checkAccount(APP_SID, new Secret(APP_SECRET));
+    assert(!check.ok);
+    expect(check.reason).toContain("keypin can't confirm the vault's secret works");
+    expect(check.reason).toContain("suspended");
+    await expect(subject.issuer.create("app")).rejects.toThrow("checkAccount hasn't passed");
+    await expect(subject.issuer.revoke(APP_SID)).rejects.toThrow("checkAccount hasn't passed");
+    expect(subject.effects).toEqual([]);
+  });
+
+  test("a Restricted key that may read phone numbers proves its secret", async () => {
+    const subject = twilio([
+      {
+        ...APP,
+        type: "restricted",
+        policy: ["/twilio/messaging/messages/create", "/twilio/phone-numbers/available/read"],
+      },
     ]);
     await checked(subject);
   });

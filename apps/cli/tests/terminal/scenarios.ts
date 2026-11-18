@@ -956,12 +956,12 @@ const TWILIO_KEY: FakeTwilioKey = {
   secret: TWILIO_OLD_SECRET,
   name: "billing sms",
   type: "restricted",
-  policy: ["/twilio/messaging/messages/create", "/twilio/messaging/messages/read"],
+  policy: ["/twilio/messaging/messages/create", "/twilio/phone-numbers/available/read"],
 };
 
 const twilio: Scenario = {
   ...ready,
-  about: `TWILIO_API_SECRET has a Twilio issuer whose key ID is TWILIO_API_KEY; the vault holds Restricted key ${TWILIO_OLD_SID} with two messaging permissions, and the admin item holds the account's auth token`,
+  about: `TWILIO_API_SECRET has a Twilio issuer whose key ID is TWILIO_API_KEY; the vault holds Restricted key ${TWILIO_OLD_SID} with a messaging and a phone-numbers permission, and the admin item holds the account's auth token`,
   files: { "keypin.toml": TWILIO_MAP },
   onePassword: {
     accounts: {

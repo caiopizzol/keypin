@@ -1,7 +1,19 @@
 #!/bin/sh
 set -eu
-recordings=$(git -c core.quotePath=false ls-files --cached --others --exclude-standard -- '*/recordings/*')
-roots=$(git -c core.quotePath=false ls-files --cached --others --exclude-standard -- '*/recordings')
+lists=$(mktemp -d)
+trap 'rm -rf "$lists"' EXIT
+paths() {
+  git "$@" > "$lists/out"
+  if [ "$(tr -cd '\0' < "$lists/out" | wc -c)" -ne "$(tr '\0' '\n' < "$lists/out" | grep -c '')" ]; then
+    echo 'Recording and test paths must not contain line breaks. Rename them.' >&2
+    exit 1
+  fi
+  tr '\0' '\n' < "$lists/out" > "$lists/$1"
+}
+paths ls-files -z --cached --others --exclude-standard -- '*/recordings/*'
+recordings=$(cat "$lists/ls-files")
+paths ls-files -z --cached --others --exclude-standard -- '*/recordings'
+roots=$(cat "$lists/ls-files")
 through_link() {
   path=$1
   while [ "$path" != . ]; do
@@ -18,10 +30,15 @@ if [ -n "$links" ]; then
 fi
 [ -z "$recordings" ] && exit 0
 status=0
-writers=$(git -c core.quotePath=false grep -l --untracked toMatchFileSnapshot -- '*.test.ts') || status=$?
+git grep -q --untracked toMatchFileSnapshot -- '*.test.ts' || status=$?
 [ "$status" -gt 1 ] && exit "$status"
+writers=""
+if [ "$status" -eq 0 ]; then
+  paths grep -lz --untracked toMatchFileSnapshot -- '*.test.ts'
+  writers=$(cat "$lists/grep")
+fi
 aside=$(mktemp -d)
-trap 'rm -rf "$aside"' EXIT
+trap 'rm -rf "$lists" "$aside"' EXIT
 each() {
   printf '%s\n' "$recordings" | while IFS= read -r file; do
     "$@" "$file"
@@ -47,6 +64,7 @@ stale() {
 restore() {
   code=$?
   failed=$(each put_back)
+  rm -rf "$lists"
   if [ -z "$failed" ]; then
     rm -rf "$aside"
     exit "$code"

@@ -1,12 +1,15 @@
 import { spawnSync } from "node:child_process";
 import {
   closeSync,
+  copyFileSync,
   lstatSync,
+  mkdirSync,
   mkdtempSync,
   openSync,
   readSync,
-  renameSync,
+  readlinkSync,
   rmSync,
+  symlinkSync,
   writeSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,10 +17,8 @@ import { basename, dirname, join } from "node:path";
 
 export type Outcome =
   | { kind: "ok" }
-  | { kind: "symlinks"; paths: string[] }
   | { kind: "stale"; paths: string[] }
-  | { kind: "tests-failed" }
-  | { kind: "not-restored"; paths: string[] };
+  | { kind: "tests-failed" };
 
 function git(cwd: string, args: string[], noMatch = false): Buffer {
   const result = spawnSync("git", args, { cwd, maxBuffer: Number.POSITIVE_INFINITY });
@@ -45,50 +46,48 @@ function paths(output: Buffer): string[] {
 
 const entry = (path: string) => lstatSync(path, { throwIfNoEntry: false });
 
-function throughSymlink(cwd: string, path: string): boolean {
-  for (let part = path; part !== "." && part !== "/"; part = dirname(part)) {
-    if (entry(join(cwd, part))?.isSymbolicLink()) return true;
+function copyCheckout(cwd: string, copy: string, skip: Set<string>) {
+  const files = paths(git(cwd, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"]));
+  for (const path of files) {
+    const info = skip.has(path) ? undefined : entry(join(cwd, path));
+    if (!info?.isFile() && !info?.isSymbolicLink()) continue;
+    mkdirSync(dirname(join(copy, path)), { recursive: true });
+    if (info.isSymbolicLink()) symlinkSync(readlinkSync(join(cwd, path)), join(copy, path));
+    else copyFileSync(join(cwd, path), join(copy, path));
   }
-  return false;
-}
-
-export const aside = (path: string) => join(dirname(path), `.${basename(path)}.check-recordings`);
-const isBackup = (path: string) => /^\..+\.check-recordings$/.test(basename(path));
-
-function putBack(path: string): boolean {
-  try {
-    renameSync(aside(path), path);
-    return true;
-  } catch {
-    return false;
+  const ignored = git(cwd, [
+    "ls-files",
+    "-z",
+    "--others",
+    "--ignored",
+    "--exclude-standard",
+    "--directory",
+  ]);
+  for (const path of paths(ignored).map((dir) => dir.replace(/\/$/, ""))) {
+    if (basename(path) !== "node_modules") continue;
+    mkdirSync(dirname(join(copy, path)), { recursive: true });
+    symlinkSync(join(cwd, path), join(copy, path));
   }
 }
 
 export function checkRecordings(
   cwd: string,
-  runTests: (files: string[]) => number | null,
+  runTests: (copy: string, files: string[]) => number | null,
 ): Outcome {
-  const listed = (pathspec: string) =>
+  const recordings = new Set(
     paths(
-      git(cwd, ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", pathspec]),
-    );
-  const listedRecordings = listed("*/recordings/*");
-  const recordings = listedRecordings.filter((path) => !isBackup(path));
-  const symlinks = [...listed("*/recordings"), ...recordings].filter((path) =>
-    throughSymlink(cwd, path),
+      git(cwd, [
+        "ls-files",
+        "-z",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "--",
+        "*/recordings/*",
+      ]),
+    ),
   );
-  if (symlinks.length > 0) return { kind: "symlinks", paths: symlinks };
-  const files = recordings.filter((path) => entry(join(cwd, path))?.isFile());
-  const leftover = [
-    ...listedRecordings.filter(isBackup),
-    ...files.filter((path) => entry(aside(join(cwd, path))) !== undefined).map(aside),
-  ];
-  if (leftover.length > 0) {
-    throw new Error(
-      `An earlier run was interrupted. Each file below is an original recording: rename it back (drop the leading dot and the .check-recordings ending), then run the check again.\n${[...new Set(leftover)].join("\n")}`,
-    );
-  }
-  if (files.length === 0) return { kind: "ok" };
+  if (recordings.size === 0) return { kind: "ok" };
   const writers = paths(
     git(
       cwd,
@@ -105,35 +104,26 @@ export function checkRecordings(
     ),
   );
 
-  const moved: string[] = [];
-  let outcome: Outcome = { kind: "ok" };
-  let thrown: { error: unknown } | null = null;
+  const copy = mkdtempSync(join(tmpdir(), "check-recordings-"));
   try {
-    for (const path of files) {
-      renameSync(join(cwd, path), aside(join(cwd, path)));
-      moved.push(path);
-    }
-    const status = writers.length > 0 ? runTests(writers) : 0;
-    const stale = moved.filter((path) => entry(join(cwd, path)) === undefined);
-    if (status !== 0) outcome = { kind: "tests-failed" };
-    else if (stale.length > 0) outcome = { kind: "stale", paths: stale };
-  } catch (error) {
-    thrown = { error };
+    copyCheckout(cwd, copy, recordings);
+    const status = writers.length > 0 ? runTests(copy, writers) : 0;
+    if (status !== 0) return { kind: "tests-failed" };
+    const stale = [...recordings].filter((path) => entry(join(copy, path)) === undefined);
+    return stale.length > 0 ? { kind: "stale", paths: stale } : { kind: "ok" };
+  } finally {
+    rmSync(copy, { recursive: true, force: true });
   }
-
-  const failed = moved.filter((path) => !putBack(join(cwd, path)));
-  if (failed.length > 0) return { kind: "not-restored", paths: failed };
-  if (thrown) throw thrown.error;
-  return outcome;
 }
 
 function vitest(log: string) {
-  return (files: string[]): number | null => {
+  return (copy: string, files: string[]): number | null => {
     const env = { ...process.env };
     delete env.CI;
     const out = openSync(log, "w");
     try {
       return spawnSync("bun", ["--bun", "vp", "test", ...files, "--update"], {
+        cwd: copy,
         env,
         stdio: ["ignore", out, out],
       }).status;
@@ -168,28 +158,19 @@ function printFile(path: string) {
 }
 
 function report(outcome: Outcome, log: string): number {
-  const list = (title: string, found: string[]) =>
-    process.stderr.write(`${title}\n${found.join("\n")}\n`);
   switch (outcome.kind) {
     case "ok":
       return 0;
-    case "symlinks":
-      list(
-        "Recordings must be plain files outside any symlinked folder. Fix these paths:",
-        outcome.paths,
-      );
-      return 1;
     case "stale":
-      list("No test writes these recordings anymore. Delete them:", outcome.paths);
+      writeAll(
+        2,
+        Buffer.from(
+          `No test writes these recordings anymore. Delete them:\n${outcome.paths.join("\n")}\n`,
+        ),
+      );
       return 1;
     case "tests-failed":
       printFile(log);
-      return 1;
-    case "not-restored":
-      list(
-        "Couldn't put these recordings back. Each original is next to it, named .<name>.check-recordings:",
-        outcome.paths,
-      );
       return 1;
   }
 }

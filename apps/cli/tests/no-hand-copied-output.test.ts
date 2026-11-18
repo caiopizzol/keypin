@@ -32,6 +32,8 @@ const rejected: Record<string, string> = {
   "template.ts": 'expect("x").toEqual(`one\ntwo\nthree\nfour`);',
   "negated.ts": 'expect("x").not.toBe("one\\ntwo\\nthree\\nfour\\n");',
   "soft.ts": 'expect.soft("x").toEqual("one\\ntwo\\nthree\\nfour\\n");',
+  "interpolated-entry.ts":
+    'declare const name: string;\nexpect("x").toBe([`one\\ntwo ${name}`, "three", "four"].join("\\n"));',
   "template-with-value.ts": 'expect("x").toStrictEqual(`one\n${"two"}\nthree\nfour`);',
 };
 

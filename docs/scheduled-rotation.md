@@ -15,8 +15,9 @@ Actions.
 3. Create a fine-grained GitHub token for this repository only, with the Secrets permission set to Read and write,
    and save it as the Actions secret `KEYPIN_GITHUB_TOKEN`. Keys published to an environment also need Environments
    set to Read and write. The workflow's own `GITHUB_TOKEN` can't write secrets.
-4. Add the workflow below as `.github/workflows/rotate-keys.yml`. It runs only on the default branch and pushes
-   `.keypin/` there, so the workflow must be allowed to push to it. Pin the keypin version you run on your laptop, and bump both together.
+4. Add the workflow below as `.github/workflows/rotate-keys.yml`. Every run, manual ones too, reads and pushes
+   `.keypin/` on the default branch, so the workflow must be allowed to push to it. Pin the keypin version you run on
+   your laptop, and bump both together.
 5. [Ignore](configuration.md#ignored-keys) the two secrets at the top of `keypin.toml`, or `keypin check` asks you to
    add them:
 
@@ -51,10 +52,11 @@ concurrency: rotate-keys
 
 jobs:
   rotate:
-    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
       - run: npm install -g keypin@0.31.1 # x-release-please-version
       - run: gh auth login --hostname github.com --with-token <<< "$TOKEN"
         env:

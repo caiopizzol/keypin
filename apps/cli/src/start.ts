@@ -24,6 +24,7 @@ import { convexDeployment } from "@keypin/connectors/convex";
 import { elevenlabsIssuer } from "@keypin/connectors/elevenlabs";
 import { flyApp } from "@keypin/connectors/fly";
 import { ghToken, githubActions, listRepoSecrets, sshHostname } from "@keypin/connectors/github";
+import { gitlabGroup, gitlabProject } from "@keypin/connectors/gitlab";
 import { googleIssuer } from "@keypin/connectors/google";
 import { neonIssuer } from "@keypin/connectors/neon";
 import { netlifyProject } from "@keypin/connectors/netlify";
@@ -81,6 +82,8 @@ export const destinations = [
   railwayService,
   convexDeployment,
   flyApp,
+  gitlabProject,
+  gitlabGroup,
 ];
 export const vaults = [infisicalVault, bitwardenVault, dopplerVault, onePasswordVault];
 export const signInNames = signInVariables([...vaults, ...destinations]);

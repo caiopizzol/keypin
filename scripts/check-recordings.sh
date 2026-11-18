@@ -1,7 +1,8 @@
 #!/bin/sh
 set -eu
-recordings=$(git -c core.quotePath=false ls-files --cached --others --exclude-standard -- '*/recordings/*')
-roots=$(git -c core.quotePath=false ls-files --cached --others --exclude-standard -- '*/recordings')
+git rev-parse --git-dir > /dev/null
+recordings=$(git ls-files -z --cached --others --exclude-standard -- '*/recordings/*' | tr '\0' '\n')
+roots=$(git ls-files -z --cached --others --exclude-standard -- '*/recordings' | tr '\0' '\n')
 through_link() {
   path=$1
   while [ "$path" != . ]; do
@@ -18,8 +19,9 @@ if [ -n "$links" ]; then
 fi
 [ -z "$recordings" ] && exit 0
 status=0
-writers=$(git -c core.quotePath=false grep -l --untracked toMatchFileSnapshot -- '*.test.ts') || status=$?
+git grep -q --untracked toMatchFileSnapshot -- '*.test.ts' || status=$?
 [ "$status" -gt 1 ] && exit "$status"
+writers=$(git grep -lz --untracked toMatchFileSnapshot -- '*.test.ts' | tr '\0' '\n')
 aside=$(mktemp -d)
 trap 'rm -rf "$aside"' EXIT
 each() {

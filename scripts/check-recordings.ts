@@ -45,7 +45,14 @@ function paths(output: Buffer): string[] {
   return [...found];
 }
 
-const entry = (path: string) => lstatSync(path, { throwIfNoEntry: false });
+function entry(path: string) {
+  try {
+    return lstatSync(path, { throwIfNoEntry: false });
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOTDIR") return undefined;
+    throw error;
+  }
+}
 
 function throughSymlink(cwd: string, path: string): boolean {
   for (let part = path; part !== "." && part !== "/"; part = dirname(part)) {

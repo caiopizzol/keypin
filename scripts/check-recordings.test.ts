@@ -241,4 +241,25 @@ describe("check-recordings", () => {
       kind: "ok",
     });
   });
+
+  test("treats recordings under a folder replaced by a file as deleted", () => {
+    const cwd = repo({
+      "tests/a.test.ts": WRITER,
+      "tests/recordings/gone.txt": "g\n",
+      "other/recordings/b.txt": "b\n",
+    });
+    rmSync(join(cwd, "tests/recordings"), { recursive: true });
+    writeFileSync(join(cwd, "tests/recordings"), "now a file\n");
+    expect(checkRecordings(cwd, writes({ "other/recordings/b.txt": "b\n" }))).toEqual({
+      kind: "ok",
+    });
+  });
+
+  test("refuses a recordings folder replaced by a symlink to a file", () => {
+    const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
+    rmSync(join(cwd, "tests/recordings"), { recursive: true });
+    symlinkSync("a.test.ts", join(cwd, "tests/recordings"));
+    const outcome = checkRecordings(cwd, writes({}));
+    expect(outcome.kind).toBe("symlinks");
+  });
 });

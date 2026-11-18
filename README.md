@@ -38,6 +38,7 @@ commands with the dev keys and publishes the prod keys. It reads a value only wh
 |           |                    | xAI                               |
 |           |                    | Google Cloud service account keys |
 |           |                    | MongoDB Atlas                     |
+|           |                    | Secrets you generate              |
 
 Want another? Vote for it on the [roadmap](https://github.com/caiopizzol/keypin/issues/138).
 

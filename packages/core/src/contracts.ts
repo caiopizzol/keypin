@@ -95,7 +95,7 @@ export interface Issuer {
   checkAccount(currentId: string | null, current: Secret): Promise<IssuerCheck>;
   create(name: string): Promise<IssuedKey>;
   lostCreate?(name: string): string;
-  revoke(id: string): Promise<"revoked" | "already gone">;
+  revoke?(id: string): Promise<"revoked" | "already gone">;
   label?(id: string): string;
 }
 

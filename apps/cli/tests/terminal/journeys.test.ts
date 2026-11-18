@@ -1012,6 +1012,35 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "random: makes a new value, says everyone signs in again, and has nothing to revoke",
+    async () => {
+      const result = await drive({
+        scenario: "random",
+        args: ["rotate", "AUTH_SECRET"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "    replaces the old value: anything signed with it stops working, so everyone signs in again. Don't use it for Better Auth, which also reads AUTH_SECRET: its stored two-factor secrets would become unreadable",
+      );
+      expect(result.screen).toContain(
+        "  = random            nothing to revoke: the new value replaces the old one",
+      );
+      expect(result.screen).toContain("Rotate AUTH_SECRET? [y/N] y");
+      expect(result.screen).not.toContain("Revoke");
+      expect(result.screen).toContain(
+        "Nothing to revoke: the old value stops working once your apps use the new one.",
+      );
+      expect(result.effects).toEqual([
+        "1password update my.1password.com/Private/app auth secret (44 chars)",
+        "destination write github-actions:acme/app AUTH_SECRET (44 chars)",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "Neon: resets the idle role, publishes its URL, then resets the old role after a second y",
     async () => {
       const result = await drive({

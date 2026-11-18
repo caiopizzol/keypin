@@ -1,5 +1,12 @@
 import type { Environment, ItemIds, KeyId, KeyRef, Receipt } from "./contracts";
-import { type DestinationKinds, placeId, receiptSecretKey, secretKey } from "./destination";
+import {
+  destinationId,
+  type DestinationKinds,
+  placeId,
+  type PublishTarget,
+  receiptSecretKey,
+  secretKey,
+} from "./destination";
 import { type Files, readVersionedJson, writeJsonAtomic } from "./files";
 import { type EnvEntry, type KeysMap, pairedWith } from "./map";
 import { latestPerSecret } from "./plan";
@@ -75,21 +82,26 @@ export function deliveredTo(
   file: RotationFile | null,
   receipts: readonly Receipt[],
   owner: KeyOwner,
-  secret: string,
+  target: PublishTarget,
   generation: Generation,
   kinds: DestinationKinds,
 ): boolean {
+  const destination = destinationId(target, owner.keyId, kinds);
+  const secret = secretKey(target, owner.keyId, kinds);
   const same = (key: KeyId, environment: Environment, place: string, made: Generation) =>
     key === owner.keyId &&
     environment === owner.environment &&
-    place === secret &&
+    place === destination &&
     made === generation;
   return (
-    (file?.published ?? []).some((p) => same(p.key, p.environment, p.secret, p.generation)) ||
+    (file?.published ?? []).some(
+      (p) => same(p.key, p.environment, p.destination, p.generation) && p.secret === secret,
+    ) ||
     receipts.some(
       (r) =>
         r.mapFile === owner.mapFile &&
-        same(r.keyId, r.environment, receiptSecretKey(r, kinds), r.generation),
+        same(r.keyId, r.environment, r.destinationId, r.generation) &&
+        receiptSecretKey(r, kinds) === secret,
     )
   );
 }
@@ -268,7 +280,7 @@ export function rotationRecord(
   const owner = { keyId, environment, mapFile: map.file };
   const got = entry.publish.map((target) => ({
     place: placeId(target, kinds),
-    done: deliveredTo(file, [], owner, secretKey(target, keyId, kinds), issued.generation, kinds),
+    done: deliveredTo(file, [], owner, target, issued.generation, kinds),
   }));
   const unpublished = got.filter((g) => !g.done).map((g) => g.place);
   return {

@@ -381,4 +381,22 @@ prod = { from = "op://Private/due key/credential", publish = [{ to = "cloudflare
       old: "still in use",
     });
   });
+
+  test("a case-only edit to a GitHub owner leaves the rotation unfinished, so --due publishes again", async () => {
+    const { map, state } = published();
+    const file = await rotationFile(state, map, KINDS, null);
+    const edited = parseMap(
+      MAP.replaceAll("acme/mailer", "Acme/mailer"),
+      FILE,
+      KINDS,
+      ISSUERS,
+      VAULT_KINDS,
+    );
+    if (!edited.ok) throw new Error(edited.errors.join("\n"));
+    expect(rotationRecord(file, map, KINDS, "DUE_KEY", "prod")?.unpublished).toEqual([]);
+    expect(rotationRecord(file, edited.map, KINDS, "DUE_KEY", "prod")).toMatchObject({
+      published: [],
+      unpublished: ["github-actions:Acme/mailer"],
+    });
+  });
 });

@@ -48,7 +48,6 @@ import {
   type PlanInput,
   planPublish,
   type PlanStep,
-  secretKey,
   publishEnvironment,
   recordIssued,
   type RemovedDestination,
@@ -229,14 +228,7 @@ async function progressOf(context: Context, path: string) {
     if (!entry || !issued) return null;
     const owner = { keyId, environment, mapFile: map.file };
     const everywhere = entry.publish.every((target) =>
-      deliveredTo(
-        committed,
-        state.receipts,
-        owner,
-        secretKey(target, keyId, deps.destinations),
-        issued.generation,
-        deps.destinations,
-      ),
+      deliveredTo(committed, state.receipts, owner, target, issued.generation, deps.destinations),
     );
     const since = issued.at.slice(0, 10);
     const revokes = waitsForRevoke(issued);

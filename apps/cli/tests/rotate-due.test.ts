@@ -82,7 +82,10 @@ async function world(map = MAP) {
 
 type World = Awaited<ReturnType<typeof world>>;
 
-function machine(w: World, options: { terminal?: boolean; answers?: string[] } = {}) {
+function machine(
+  w: World,
+  options: { terminal?: boolean; answers?: string[]; runner?: boolean } = {},
+) {
   const disk = memoryFiles();
   const answers = [...(options.answers ?? [])];
   const fake = fakeDeps({
@@ -90,6 +93,7 @@ function machine(w: World, options: { terminal?: boolean; answers?: string[] } =
     backend: w.vault,
     deps: {
       isTerminal: options.terminal ?? false,
+      ...(options.runner === false ? { warnRunner: () => false } : {}),
       ask: async () => answers.shift() ?? "",
       issuer: (spec, admin) => connect(spec, admin, w.resend),
       destination: (target) =>
@@ -114,7 +118,7 @@ function machine(w: World, options: { terminal?: boolean; answers?: string[] } =
 
 const ci = (w: World) => machine(w);
 const WARNING =
-  "An old key waits for approval: The old RESEND_API_KEY (prod) still works. Once nothing uses it, run this workflow with approve revoke.";
+  "An old key waits for approval: The old RESEND_API_KEY (prod) still works. Once nothing uses it, run this workflow with approve revoke, or run this in your checkout: keypin rotate RESEND_API_KEY --approve-revoke";
 const json = (w: World, path: string) => parseJson(w.repo.contents.get(path) ?? "null");
 
 async function rotatedOnceOnALaptop(map = MAP) {
@@ -141,7 +145,13 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
       "STRIPE_KEY      skip    no issuer, so keypin can't make a new key",
     );
     expect(first.stderr.text).toContain(
-      `The old key re-new-1 still works, and waits for approval. Once nothing uses it, run:\n  ${RERUN} rotate RESEND_API_KEY --approve-revoke`,
+      "- Resend               revoke the old key re-new-1, after approval",
+    );
+    expect(first.stderr.text).toContain(
+      "The old key re-new-1 still works, and waits for approval.\n",
+    );
+    expect(first.stderr.text, "the runner warning says how to approve").not.toContain(
+      "--approve-revoke",
     );
     expect(json(w, ROTATION)).toMatchObject({
       version: 1,
@@ -209,6 +219,22 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
     );
     const printed = [first.stderr.text, approve.stderr.text, committed].join("\n");
     for (const value of [OLD, ADMIN, w.value()]) expect(printed).not.toContain(value);
+  });
+
+  test("outside GitHub Actions, the waiting old key comes with the command that approves it", async () => {
+    const w = await rotatedOnceOnALaptop();
+    const cron = machine(w, { runner: false });
+    expect(await cron.run("--due", "--yes")).toBe(0);
+    const approve = `Once nothing uses the old RESEND_API_KEY (prod), run:\n  ${RERUN} rotate RESEND_API_KEY --approve-revoke`;
+    expect(cron.stderr.text).toContain(
+      `The old key re-new-1 still works, and waits for approval.\n${approve}`,
+    );
+
+    const again = machine(w, { runner: false });
+    expect(await again.run("--due", "--yes")).toBe(0);
+    expect(again.stderr.text).toContain(
+      `Nothing is due. An old key waits for approval.\n${approve}`,
+    );
   });
 
   test("--approve-revoke refuses while a destination lacks the new key; the next --due finishes from .keypin/ alone", async () => {

@@ -70,6 +70,7 @@ import {
   confirmed,
   NEEDS_APPROVAL,
   planOnly,
+  shellWord,
   unattendedApproval,
   withoutPlan,
 } from "../approval";
@@ -252,12 +253,11 @@ async function rotateDue(context: Context, flags: Flags, path: string): Promise<
   const rows = columns(choices.map((c) => [c.keyId, shown[c.action]]));
   choices.forEach((c, i) => out.line(`  ${(rows[i] ?? []).join("  ")}  ${out.dim(c.why)}`));
   const picked = choices.filter((c) => c.action === "rotate" || c.action === "finish");
-  const waits = choices.some((c) => c.action === "waiting");
-  for (const c of choices) if (c.action === "waiting") waitsNotice(deps, c.keyId, environment);
-  if (!picked.length) {
-    out.line(waits ? "Nothing is due. An old key waits for approval." : "Nothing is due.");
-    return 0;
-  }
+  const waiting = choices.filter((c) => c.action === "waiting");
+  if (!picked.length)
+    out.line(waiting.length ? "Nothing is due. An old key waits for approval." : "Nothing is due.");
+  for (const c of waiting) waitsNotice(context, c.keyId);
+  if (!picked.length) return 0;
   const codes: number[] = [];
   for (const choice of picked) {
     out.line("");
@@ -274,11 +274,20 @@ async function rotateDue(context: Context, flags: Flags, path: string): Promise<
   return worst(codes);
 }
 
-function waitsNotice(deps: Deps, keyId: string, environment: string): void {
-  deps.warnRunner(
+function waitsNotice(
+  { deps, out, envArgs, environment }: Pick<Context, "deps" | "out" | "envArgs" | "environment">,
+  keyId: string,
+): void {
+  const args = [keyId, ...envArgs, "--approve-revoke"];
+  const local = ["keypin", "rotate", ...args].map(shellWord).join(" ");
+  const warned = deps.warnRunner(
     "An old key waits for approval",
-    `The old ${keyId} (${environment}) still works. Once nothing uses it, run this workflow with approve revoke.`,
+    `The old ${keyId} (${environment}) still works. Once nothing uses it, run this workflow with approve revoke, or run this in your checkout: ${local}`,
   );
+  if (!warned)
+    out.line(
+      `Once nothing uses the old ${keyId} (${environment}), run:\n  ${commandLine(deps, "rotate", args)}`,
+    );
 }
 
 async function approveAll(
@@ -522,7 +531,7 @@ async function rotateLocked(job: Job): Promise<number> {
     !issuer.revoke
       ? row("=", issuer.describe(), "nothing to revoke: the new value replaces the old one")
       : check.gone === undefined
-        ? revokeRow(issuer, current, "after a second y", check.notes?.revoke)
+        ? revokeRow(issuer, current, revokeWhen(job, "after a second y"), check.notes?.revoke)
         : row("=", issuer.describe(), `nothing to revoke: ${check.gone}`),
   ]);
   showRemoved(out, ready.removed);
@@ -794,7 +803,13 @@ async function resume(
     ...writeRows(job, steps, pairSteps),
     ...(old === null
       ? []
-      : [revokeRow(ready.issuer, old, published ? "after a y" : "after a second y")]),
+      : [
+          revokeRow(
+            ready.issuer,
+            old,
+            revokeWhen(job, published ? "after a y" : "after a second y"),
+          ),
+        ]),
   ]);
   showRemoved(out, ready.removed);
   apartNote(job, ready.checked);
@@ -911,11 +926,8 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
   const asked = job.args.filter((arg) => arg !== "--yes");
   const later = `To revoke it later, run this in a terminal:\n  ${commandLine(deps, "rotate", asked)}`;
   if (job.due && !deps.isTerminal) {
-    const approve = [key.name, ...job.envArgs, "--approve-revoke"];
-    out.line(
-      `The old key ${shown(issuer, old)} still works, and waits for approval. Once nothing uses it, run:\n  ${commandLine(deps, "rotate", approve)}`,
-    );
-    waitsNotice(deps, key.name, owner.environment);
+    out.line(`The old key ${shown(issuer, old)} still works, and waits for approval.`);
+    waitsNotice({ ...job, environment: owner.environment }, key.name);
     return 0;
   }
   if (job.approve && !deps.isTerminal && behind.length) {
@@ -971,6 +983,10 @@ function abandonedNote(
     return `keypin created key ${old.id} at ${old.issuer} on ${old.at}, before this key's issuer became ${issuer.describe()}. If nothing uses it, delete it at ${old.issuer}, not ${issuer.describe()}.`;
   if (!issuer.revoke) return null;
   return `keypin created key ${shown(issuer, old.id)} at ${issuer.describe()} on ${old.at}, but ${vault} doesn't hold it. If nothing uses it, delete it at ${issuer.dashboard()}.`;
+}
+
+function revokeWhen(job: Job, interactive: string): string {
+  return job.due && !job.deps.isTerminal ? "after approval" : interactive;
 }
 
 function revokeRow(issuer: Issuer, old: string | null, when: string, detail?: string): PlanRow {

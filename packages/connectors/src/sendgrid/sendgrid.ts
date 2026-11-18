@@ -55,7 +55,9 @@ export class SendGridIssuer implements Issuer {
 
   async checkAccount(currentId: string | null, current: Secret): Promise<IssuerCheck> {
     this.#scopes = null;
-    if ((await this.#adminKey()).equals(current))
+    const admin = await this.#adminKey();
+    const adminId = idIn(admin);
+    if (admin.equals(current) || (adminId !== null && adminId === (currentId ?? idIn(current))))
       return {
         ok: false,
         facts: "the admin item and the key's item hold the same key",

@@ -157,6 +157,29 @@ describe("checkAccount", () => {
     expect(requests).toEqual([]);
   });
 
+  test("a whitespace-padded copy of the admin key is refused, and create and revoke stay gated", async () => {
+    const { sendgrid, requests } = setup();
+    const check = await sendgrid.checkAccount(null, new Secret(`${ADMIN}\n`));
+    expect(check).toMatchObject({
+      ok: false,
+      reason: "the vault's key is the admin key keypin signs in with",
+    });
+    expect(requests).toEqual([]);
+    await expect(sendgrid.create("next")).rejects.toThrow("checkAccount hasn't passed");
+    await expect(sendgrid.revoke("AdminKeyId")).rejects.toThrow("checkAccount hasn't passed");
+    expect(requests).toEqual([]);
+  });
+
+  test("an issued key ID that is the admin key's is refused", async () => {
+    const { sendgrid, requests } = setup();
+    const check = await sendgrid.checkAccount("AdminKeyId", VAULT);
+    expect(check).toMatchObject({
+      ok: false,
+      reason: "the vault's key is the admin key keypin signs in with",
+    });
+    expect(requests).toEqual([]);
+  });
+
   test("a vault value that isn't SG.<id>.<secret> is refused", async () => {
     const { sendgrid } = setup();
     const check = await sendgrid.checkAccount(null, new Secret("re_not_sendgrid"));

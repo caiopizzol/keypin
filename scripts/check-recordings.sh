@@ -1,0 +1,69 @@
+#!/bin/sh
+set -eu
+recordings=$(git -c core.quotePath=false ls-files --cached --others --exclude-standard -- '*/recordings/*')
+[ -z "$recordings" ] && exit 0
+links=$(printf '%s\n' "$recordings" | while IFS= read -r file; do if [ -L "$file" ]; then printf '%s\n' "$file"; fi; done)
+if [ -n "$links" ]; then
+  echo 'Recordings must be plain files. Replace these symlinks:' >&2
+  printf '%s\n' "$links" >&2
+  exit 1
+fi
+status=0
+writers=$(git -c core.quotePath=false grep -l --untracked toMatchFileSnapshot -- '*.test.ts') || status=$?
+[ "$status" -gt 1 ] && exit "$status"
+aside=$(mktemp -d)
+trap 'rm -rf "$aside"' EXIT
+each() {
+  printf '%s\n' "$recordings" | while IFS= read -r file; do
+    "$@" "$file"
+  done
+}
+back_up() {
+  [ -f "$1" ] || return 0
+  mkdir -p "$aside/$(dirname "$1")"
+  cp -p "$1" "$aside/$1"
+}
+remove() {
+  [ -f "$aside/$1" ] || return 0
+  rm -f "$1"
+}
+put_back() {
+  [ -f "$aside/$1" ] || return 0
+  if mkdir -p "$(dirname "$1")" && cp -p "$aside/$1" "$1" && cmp -s "$aside/$1" "$1"; then return 0; fi
+  printf '%s\n' "$1"
+}
+stale() {
+  if [ -f "$aside/$1" ] && [ ! -f "$1" ]; then printf '%s\n' "$1"; fi
+}
+restore() {
+  code=$?
+  failed=$(each put_back)
+  if [ -z "$failed" ]; then
+    rm -rf "$aside"
+    exit "$code"
+  fi
+  echo "Couldn't put these recordings back. The originals are in $aside:" >&2
+  printf '%s\n' "$failed" >&2
+  exit 1
+}
+each back_up
+trap restore EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+each remove
+if [ -n "$writers" ]; then
+  set --
+  while IFS= read -r writer; do set -- "$@" "$writer"; done <<EOF
+$writers
+EOF
+  if ! env -u CI bun --bun vp test "$@" --update > "$aside/.log" 2>&1; then
+    cat "$aside/.log" >&2
+    exit 1
+  fi
+fi
+found=$(each stale)
+[ -z "$found" ] && exit 0
+echo 'No test writes these recordings anymore. Delete them:' >&2
+printf '%s\n' "$found" >&2
+exit 1

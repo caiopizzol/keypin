@@ -63,7 +63,8 @@ find_binary() {
     done
   done
 
-  echo "keypin: the package @keypin/cli-$os-$arch isn't installed next to $keypin, so there's no keypin binary to run. npm installs it with keypin as an optional dependency: reinstall keypin without --omit=optional or --no-optional." >&2
+  version=$(command sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$keypin/package.json" 2>/dev/null) || version=
+  echo "keypin: the package @keypin/cli-$os-$arch isn't installed next to $keypin, so there's no keypin binary to run. npm installs it with keypin as an optional dependency, but skips it with --omit=optional or --no-optional, or when npm's cache is older than this keypin. Reinstall with: npm install -g keypin${version:+@$version} --prefer-online --no-prefer-offline" >&2
   return 1
 }
 

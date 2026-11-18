@@ -33,6 +33,7 @@ import { railwayService } from "@keypin/connectors/railway";
 import { resendIssuer } from "@keypin/connectors/resend";
 import { sendgridIssuer } from "@keypin/connectors/sendgrid";
 import { supabaseFunctions, supabaseIssuer } from "@keypin/connectors/supabase";
+import { twilioIssuer } from "@keypin/connectors/twilio";
 import { vercelProject } from "@keypin/connectors/vercel";
 import {
   type Connect,
@@ -100,6 +101,7 @@ export const issuers = [
   elevenlabsIssuer,
   awsIssuer,
   sendgridIssuer,
+  twilioIssuer,
 ];
 
 export function issuer(spec: IssuerSpec, admin: Secret, fetch?: Fetch): Issuer {

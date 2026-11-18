@@ -21,6 +21,7 @@ import {
   SENTINEL,
 } from "./fakes";
 import { recording } from "./recording";
+import { version } from "../../../package.json";
 
 const ACCOUNT = "11111111111111111111111111111111";
 const ROOT = "/work/billing";
@@ -447,8 +448,13 @@ describe("keypin check on a whole project", () => {
       join(import.meta.dirname, "../../../docs/scheduled-rotation.md"),
       "utf8",
     );
-    const workflow = /^```yaml\n([\s\S]*?)^```/m.exec(docs)?.[1];
-    const ignore = /^```toml\n(ignore = [^\n]*\n)```/m.exec(docs)?.[1];
+    const workflow = /^```yaml\n([\s\S]*?)^```/m
+      .exec(docs)?.[1]
+      ?.replace(/keypin@\S+/, "keypin@<version>");
+    const ignore = /^ *```toml\n *(ignore = [^\n]*\n) *```/m.exec(docs)?.[1];
+    expect(docs, "release-please bumps the pin with each release").toContain(
+      `keypin@${version} # x-release-please-version`,
+    );
     assert(workflow !== undefined && workflow.includes("keypin rotate"));
     assert(ignore !== undefined);
     const run = setup({

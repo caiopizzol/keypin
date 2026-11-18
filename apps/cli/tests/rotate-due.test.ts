@@ -293,6 +293,24 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
     expect(w.effects).toEqual([]);
   });
 
+  test("the docs' bootstrap: publish on a laptop, answer n to the due key, and a fresh runner rotates it", async () => {
+    const w = await world();
+    const laptop = machine(w, { terminal: true, answers: ["y", "n"] });
+    laptop.disk.contents.set(MAP_FILE, MAP);
+    expect(await cli(["publish", "RESEND_API_KEY"], laptop.deps), laptop.stderr.text).toBe(0);
+    expect(await laptop.run("--due")).toBe(NEEDS_APPROVAL);
+    expect(laptop.stderr.text).toContain("Not confirmed. Nothing was created.");
+    expect(w.effects, "answering n rotates nothing").toEqual([]);
+    expect(json(w, ROTATION)).toMatchObject({
+      issued: [],
+      published: [{ key: "RESEND_API_KEY", destination: DESTINATION }],
+    });
+
+    expect(await ci(w).run("--due", "--yes")).toBe(0);
+    expect(w.effects).toEqual(["resend create re-new-1"]);
+    expect(w.github.value("acme/mailer", "RESEND_API_KEY")).toBe(w.value());
+  });
+
   test("--approve-revoke for a key with nothing waiting revokes nothing", async () => {
     const w = await world();
     const run = ci(w);

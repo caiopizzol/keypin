@@ -42,9 +42,14 @@ function iam(keys: FakeIamKey[] = [{ id: OLD_ID }], options: Partial<FakeIam> = 
     requests.push({ method: init.method, path: pathname + search, body: init.body ?? "" });
     return inner(url, init);
   };
-  const issuer = new ServiceAccountKeyIssuer({ admin: async () => new Secret(admin), fetch });
+  const sleeps: number[] = [];
+  const issuer = new ServiceAccountKeyIssuer({
+    admin: async () => new Secret(admin),
+    fetch,
+    sleep: async (ms) => void sleeps.push(ms),
+  });
   const writes = () => requests.filter((r) => r.method !== "GET" && !r.path.endsWith("/token"));
-  return { issuer, fake, world, effects, requests, writes };
+  return { issuer, fake, world, effects, requests, writes, sleeps };
 }
 
 async function checked(subject: ReturnType<typeof iam>, current = VAULT) {
@@ -75,12 +80,14 @@ describe("Google Cloud service account key issuer", () => {
     );
     const created = await subject.issuer.create();
     expect(created.id).toBe(FIRST_NAME);
-    expect(JSON.parse(created.secret.reveal())).toMatchObject({
+    const file = parseObject(created.secret.reveal());
+    expect(file).toMatchObject({
       type: "service_account",
       client_email: APP,
       private_key_id: FIRST,
-      private_key: "new-pem-1",
     });
+    expect(file.private_key).toMatch(/^new-pem-1\n-----BEGIN PRIVATE KEY-----\n/);
+    expect(subject.sleeps).toEqual([]);
     expect(JSON.parse(subject.writes()[0]?.body ?? "")).toEqual({
       privateKeyType: "TYPE_GOOGLE_CREDENTIALS_FILE",
     });
@@ -247,6 +254,43 @@ describe("Google Cloud service account key issuer", () => {
       `the organization policy ${policy} stops new service account keys in project acme-prod; organizations created since May 2024 have it on by default. An organization policy admin can turn it off for this project at https://console.cloud.google.com/iam-admin/orgpolicies?project=acme-prod, or move the app to workload identity federation, which needs no key`,
     );
     expect(subject.effects).toEqual([]);
+  });
+
+  test("waits with backoff until Google accepts the new key, since new keys take a while to work", async () => {
+    const subject = iam([{ id: OLD_ID }], { unready: 3 });
+    await checked(subject);
+    const created = await subject.issuer.create();
+    expect(created.id).toBe(FIRST_NAME);
+    expect(subject.sleeps).toEqual([1000, 2000, 4000]);
+    expect(subject.requests.filter((r) => r.path === "/token")).toHaveLength(5);
+    expect(subject.effects).toEqual([`google-iam create ${APP}/${FIRST}`]);
+  });
+
+  test("deletes a new key Google never accepts, and says nothing changed", async () => {
+    const subject = iam([{ id: OLD_ID }], { unready: 100 });
+    await checked(subject);
+    const failed = await subject.issuer.create().catch((error: unknown) => error);
+    expect(failed).toBeInstanceOf(NothingChanged);
+    expect(String(failed)).toContain(
+      `Google didn't accept the new key ${FIRST} of ${APP} within 120 seconds, so keypin deleted it. Run this again`,
+    );
+    expect(subject.sleeps).toEqual([1000, 2000, 4000, 8000, 15000, 30000, 30000, 30000]);
+    expect(subject.effects).toEqual([
+      `google-iam create ${APP}/${FIRST}`,
+      `google-iam delete ${APP}/${FIRST}`,
+    ]);
+    expect(subject.world.load().accounts[0]?.keys.map((k) => k.id)).toEqual([OLD_ID]);
+  });
+
+  test("a new key Google never accepts and keypin can't delete is named, with the gcloud command", async () => {
+    const subject = iam([{ id: OLD_ID }], { unready: 100, failDelete: true });
+    await checked(subject);
+    const failed = await subject.issuer.create().catch((error: unknown) => error);
+    assert(failed instanceof Error);
+    expect(failed).not.toBeInstanceOf(NothingChanged);
+    expect(failed.message).toBe(
+      `Google didn't accept the new key ${FIRST} of ${APP} within 120 seconds, and keypin couldn't delete it: run gcloud iam service-accounts keys delete ${FIRST} --iam-account=${APP}, then run this again`,
+    );
   });
 
   test("a create Google refuses changes nothing", async () => {

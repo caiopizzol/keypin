@@ -10,7 +10,16 @@ import {
   Secret,
 } from "@keypin/core";
 import { apiDisabled, call, disabledIn, type Reply, returned } from "./api";
-import { adminFix, OTHER_LOGINS, type Refusal, SERVICE_ACCOUNTS, Session } from "./auth";
+import {
+  accessToken,
+  adminFix,
+  OTHER_LOGINS,
+  type Refusal,
+  SERVICE_ACCOUNTS,
+  type ServiceAccount,
+  Session,
+  serviceAccount,
+} from "./auth";
 
 const IAM = "https://iam.googleapis.com/v1";
 const SCOPE = "https://www.googleapis.com/auth/iam";
@@ -24,11 +33,14 @@ const POLICIES = new Set([
   "constraints/iam.managed.disableServiceAccountKeyCreation",
 ]);
 const KEY_FILE = "put the service account's whole JSON key file in the vault";
+const WAITS_MS = [1000, 2000, 4000, 8000, 15000, 30000, 30000, 30000];
+const WAITED_MS = WAITS_MS.reduce((sum, ms) => sum + ms, 0);
 
 export interface ServiceAccountKeyIssuerOptions {
   admin: () => Promise<Secret>;
   fetch?: Fetch;
   now?: () => Date;
+  sleep?: (ms: number) => Promise<void>;
 }
 
 interface KeyName {
@@ -53,15 +65,19 @@ interface Target {
 export class ServiceAccountKeyIssuer implements Issuer {
   readonly #session: Session;
   readonly #fetch: Fetch;
+  readonly #now: () => Date;
+  readonly #sleep: (ms: number) => Promise<void>;
   #target: Target | null = null;
   #project: string | null = null;
 
   constructor(options: ServiceAccountKeyIssuerOptions) {
     this.#fetch = options.fetch ?? globalThis.fetch;
+    this.#now = options.now ?? (() => new Date());
+    this.#sleep = options.sleep ?? ((ms) => new Promise((done) => setTimeout(done, ms)));
     this.#session = new Session({
       admin: options.admin,
       fetch: this.#fetch,
-      now: options.now ?? (() => new Date()),
+      now: this.#now,
       scope: SCOPE,
       fix: ADMIN_FIX,
     });
@@ -168,8 +184,36 @@ export class ServiceAccountKeyIssuer implements Issuer {
     const id = json.private_key_id;
     if (json.client_email !== target.email || typeof id !== "string" || !/^[0-9a-f]+$/.test(id))
       throw new Error(`Google's create reply has no key file for ${target.email}`);
+    const secret = new Secret(file);
+    const key = { ...target, id };
+    const account = serviceAccount(secret, KEY_FILE);
+    if ("facts" in account || !(await this.#authenticates(account)))
+      await this.#discard(
+        key,
+        `Google didn't accept the new key ${id} of ${target.email} within ${WAITED_MS / 1000} seconds`,
+      );
     target.ids = [...target.ids, id];
-    return { id: nameOf({ ...target, id }), secret: new Secret(file) };
+    return { id: nameOf(key), secret };
+  }
+
+  async #authenticates(account: ServiceAccount): Promise<boolean> {
+    for (let poll = 0; poll <= WAITS_MS.length; poll++) {
+      if (poll) await this.#sleep(WAITS_MS[poll - 1] ?? 0);
+      const token = await accessToken(this.#fetch, account, SCOPE, this.#now()).catch(() => null);
+      if (token !== null && !("facts" in token)) return true;
+    }
+    return false;
+  }
+
+  async #discard(key: KeyName, why: string): Promise<never> {
+    try {
+      await this.revoke(nameOf(key));
+    } catch {
+      throw new Error(
+        `${why}, and keypin couldn't delete it: run gcloud iam service-accounts keys delete ${key.id} --iam-account=${key.email}, then run this again`,
+      );
+    }
+    throw new NothingChanged(`${why}, so keypin deleted it. Run this again`);
   }
 
   label(id: string): string {

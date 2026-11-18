@@ -1000,8 +1000,12 @@ describe("keypin rotate in a real terminal", () => {
       );
       expect(result.effects).toEqual([
         `google-iam create ${app}/${"a".repeat(39)}1`,
-        "1password update my.1password.com/Private/app service account (297 chars)",
-        "destination write github-actions:acme/billing GOOGLE_APPLICATION_CREDENTIALS (297 chars)",
+        expect.stringMatching(
+          /^1password update my\.1password\.com\/Private\/app service account \(\d+ chars\)$/,
+        ),
+        expect.stringMatching(
+          /^destination write github-actions:acme\/billing GOOGLE_APPLICATION_CREDENTIALS \(\d+ chars\)$/,
+        ),
         `google-iam delete ${app}/${old}`,
       ]);
       clean(result);

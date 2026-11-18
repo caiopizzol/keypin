@@ -219,6 +219,7 @@ export interface FakeIamKey {
   origin?: "GOOGLE_PROVIDED" | "USER_PROVIDED";
   disabled?: boolean;
   created?: string;
+  made?: boolean;
 }
 
 export interface FakeIamAccount {
@@ -237,7 +238,9 @@ export interface FakeIam extends TokenSigner {
   keyPrefix: string;
   apiDisabledIn?: string;
   policy?: string;
+  unready?: number;
   failCreate?: number;
+  failDelete?: boolean;
   loseCreated?: boolean;
   world: { load(): IamWorld; save(world: IamWorld): void };
   effect(line: string): void;
@@ -264,9 +267,32 @@ export function iamKeyFile(email: string, project: string, id: string, privateKe
 
 export function iamFetch(fake: FakeIam): Fetch {
   const issued = new Set<string>();
+  let unready = 0;
+  let madePem: string | undefined;
+  const madeKey = () => (madePem ??= fakePrivateKey());
+  const signer = (body: string | undefined): TokenSigner => {
+    const [header, claims] = (new URLSearchParams(body ?? "").get("assertion") ?? "")
+      .split(".")
+      .map((part) => parseObject(Buffer.from(part, "base64url").toString()));
+    const email = claims?.iss;
+    if (typeof email !== "string") return fake;
+    const made = fake.world
+      .load()
+      .accounts.find((a) => a.email === email)
+      ?.keys.some((k) => k.id === header?.kid && k.made && !k.disabled);
+    return made ? { serviceAccount: email, privateKey: madeKey() } : fake;
+  };
   return async (url, init) => {
     const { pathname, searchParams } = new URL(url);
-    if (url === TOKEN_URL) return token(fake, init.body, issued);
+    if (url === TOKEN_URL) {
+      const by = signer(init.body);
+      if (by === fake) return token(fake, init.body, issued);
+      if (unready > 0) {
+        unready--;
+        return reply(400, { error: "invalid_grant", error_description: "Invalid JWT Signature." });
+      }
+      return token(by, init.body, new Set());
+    }
     const bearer = (init.headers.Authorization ?? "").replace(/^Bearer /, "");
     if (!issued.has(bearer))
       return refuse(401, "UNAUTHENTICATED", `Request had invalid credentials ${bearer}`);
@@ -335,11 +361,17 @@ export function iamFetch(fake: FakeIam): Fetch {
       if (account.keys.filter((k) => (k.type ?? "USER_MANAGED") === "USER_MANAGED").length >= 10)
         return refuse(429, "RESOURCE_EXHAUSTED", "Maximum number of keys on account reached.");
       const made = world.created + 1;
-      const key: FakeIamKey = { id: serviceAccountKeyId(made), created: "2026-11-18T12:00:00Z" };
+      const key: FakeIamKey = {
+        id: serviceAccountKeyId(made),
+        created: "2026-11-18T12:00:00Z",
+        made: true,
+      };
       save([...account.keys, key], made);
+      unready = fake.unready ?? 0;
       fake.effect(`google-iam create ${email}/${key.id}`);
       if (fake.loseCreated) throw new TypeError("fetch failed");
-      const file = iamKeyFile(email, account.project, key.id, `${fake.keyPrefix}${made}`);
+      const pem = `${fake.keyPrefix}${made}\n${madeKey()}`;
+      const file = iamKeyFile(email, account.project, key.id, pem);
       return reply(200, {
         ...shown(key),
         privateKeyType: "TYPE_GOOGLE_CREDENTIALS_FILE",
@@ -354,6 +386,7 @@ export function iamFetch(fake: FakeIam): Fetch {
       return reply(200, {});
     }
     if (init.method === "DELETE" && !disable) {
+      if (fake.failDelete) return refuse(500, "INTERNAL", "internal error");
       save(account.keys.filter((k) => k !== key));
       fake.effect(`google-iam delete ${email}/${key.id}`);
       return reply(200, {});

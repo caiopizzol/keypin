@@ -102,7 +102,7 @@ describe("state", () => {
       [STATE]: JSON.stringify({ version: 6, receipts: [], operations: [] }),
     });
     await expect(loadState(fake.files, STATE, VAULT_KINDS)).rejects.toThrow(
-      `${STATE}: the state file has schema version 6, from a newer keypin, and this keypin reads version 1 or 2 or 3 or 4 or 5. Upgrade keypin: npm install -g keypin@latest`,
+      `${STATE}: the state file has schema version 6, from a newer keypin, and this keypin reads version 1 or 2 or 3 or 4 or 5. Upgrade this keypin (command -v keypin shows where it is); if npm installed it: npm install -g keypin@latest`,
     );
   });
 
@@ -113,7 +113,7 @@ describe("state", () => {
       [STATE]: JSON.stringify({ version: 5, receipts: [known, newer], issued: [] }),
     });
     await expect(loadState(fake.files, STATE, VAULT_KINDS)).rejects.toThrow(
-      `${STATE}: the state file has a receipt from a "future-vault" vault, which this keypin doesn't know; a newer keypin likely wrote it. Upgrade keypin: npm install -g keypin@latest`,
+      `${STATE}: the state file has a receipt from a "future-vault" vault, which this keypin doesn't know; a newer keypin likely wrote it. Upgrade this keypin (command -v keypin shows where it is); if npm installed it: npm install -g keypin@latest`,
     );
   });
 

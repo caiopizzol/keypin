@@ -7,7 +7,8 @@ export interface Files {
   remove(path: string): Promise<void>;
 }
 
-export const UPGRADE = "Upgrade keypin: npm install -g keypin@latest";
+export const UPGRADE =
+  "Upgrade this keypin (command -v keypin shows where it is); if npm installed it: npm install -g keypin@latest";
 
 export async function writeJsonAtomic(files: Files, path: string, data: unknown): Promise<void> {
   const temporary = `${path}.${crypto.randomUUID()}.tmp`;

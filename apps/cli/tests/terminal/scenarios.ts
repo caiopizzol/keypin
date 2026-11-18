@@ -17,6 +17,7 @@ import type { FakeXaiKey } from "@keypin/connectors/xai/testing";
 import type { SupabaseKey } from "@keypin/connectors/supabase/testing";
 import type { FakeSendGridKey } from "@keypin/connectors/sendgrid/testing";
 import { adminJson, type FakeTwilioKey } from "@keypin/connectors/twilio/testing";
+import type { FakeAtlasUser } from "@keypin/connectors/mongodb-atlas/testing";
 
 export interface FakeItem {
   title: string;
@@ -51,6 +52,7 @@ export interface Scenario {
   sendgrid?: { keys: FakeSendGridKey[]; loseCreated?: boolean };
   twilio?: { keys: FakeTwilioKey[]; loseCreated?: boolean };
   xai?: { keys: FakeXaiKey[]; pendingPolls?: number; loseCreated?: boolean };
+  atlas?: { users: FakeAtlasUser[]; loseCreated?: boolean };
   paired?: { keys: string[] };
   registered: boolean;
   git: { origin?: string; account?: string };
@@ -1031,6 +1033,61 @@ const twilio: Scenario = {
   twilio: { keys: [TWILIO_KEY] },
 };
 
+export const ATLAS_CLIENT = "mdb_sa_id_verify_6745";
+export const ATLAS_SECRET = "mdb_sa_sk_verify_admin_secret_5c1f";
+export const ATLAS_PROJECT = "5f1a2b3c4d5e6f7a8b9c0d1e";
+
+const ATLAS_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.MONGODB_URI]
+rotate_every = "90d"
+
+[keys.MONGODB_URI.prod]
+from = "op://Private/app mongodb uri/password"
+
+[keys.MONGODB_URI.prod.issuer]
+kind = "mongodb-atlas"
+admin = "op://Private/atlas service account/credential"
+client_id = "${ATLAS_CLIENT}"
+project_id = "${ATLAS_PROJECT}"
+
+[[keys.MONGODB_URI.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`;
+
+export const ATLAS_HOST = "cluster0.ab1cd.mongodb.net";
+const ATLAS_OLD = "atlas_verify_old_password_3b9d";
+const ATLAS_USER: FakeAtlasUser = {
+  username: "billing",
+  password: ATLAS_OLD,
+  roles: [{ roleName: "readWrite", databaseName: "billing" }],
+  scopes: [{ name: "Cluster0", type: "CLUSTER" }],
+};
+
+const atlas: Scenario = {
+  ...ready,
+  about:
+    "MONGODB_URI has a MongoDB Atlas issuer; the vault holds database user billing's connection string for Cluster0, and keypin has never rotated it",
+  files: { "keypin.toml": ATLAS_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          {
+            title: "app mongodb uri",
+            value: `mongodb+srv://billing:${ATLAS_OLD}@${ATLAS_HOST}/billing?retryWrites=true&w=majority&appName=Cluster0`,
+            rotated: day(-95),
+          },
+          { title: "atlas service account", value: ATLAS_SECRET },
+        ],
+      },
+    },
+  },
+  atlas: { users: [ATLAS_USER] },
+};
+
 export const scenarios: Record<string, Scenario> = {
   twilio,
   "twilio-lost": {
@@ -1046,6 +1103,17 @@ export const scenarios: Record<string, Scenario> = {
   ready,
   paired,
   sendgrid,
+  atlas,
+  "atlas-lost": {
+    ...atlas,
+    about: "atlas, but the reply to the create is lost after Atlas made user billing-b",
+    atlas: { users: [ATLAS_USER], loseCreated: true },
+  },
+  "atlas-x509": {
+    ...atlas,
+    about: "atlas, but database user billing signs in with an X.509 certificate",
+    atlas: { users: [{ ...ATLAS_USER, x509Type: "MANAGED" }] },
+  },
   "sendgrid-lost": {
     ...sendgrid,
     about: "sendgrid, but the reply to the create is lost after SendGrid made the key",
@@ -1620,6 +1688,7 @@ export function valuesOf(scenario: Scenario): string[] {
       ? [TWILIO_PREFIX, TWILIO_TOKEN, ...scenario.twilio.keys.map((key) => key.secret)]
       : []),
     ...(scenario.xai ? [XAI_PREFIX] : []),
+    ...(scenario.atlas ? scenario.atlas.users.map((user) => user.password) : []),
     ...(scenario.aws ? [AWS_PREFIX, ...scenario.aws.keys.map((key) => key.secret)] : []),
   ];
   return [

@@ -36,6 +36,7 @@ commands with the dev keys and publishes the prod keys. It reads a value only wh
 |                     |                    | SendGrid              |
 |                     |                    | Twilio API keys       |
 |                     |                    | xAI                   |
+|                     |                    | MongoDB Atlas         |
 
 Want another? Vote for it on the [roadmap](https://github.com/caiopizzol/keypin/issues/138).
 

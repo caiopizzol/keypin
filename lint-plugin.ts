@@ -358,13 +358,15 @@ export const COPIED_LINES = 4;
 
 const UNKNOWN = "";
 
+const isNullLiteral = (node: ESTree.Node) => node.type === "Literal" && node.raw === "null";
+
 function writtenText(node: ESTree.Node): string {
   if (node.type === "Literal") {
     const { value } = node;
     if (typeof value === "string") return value;
     if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint")
       return String(value);
-    return node.raw === "null" ? "null" : UNKNOWN;
+    return isNullLiteral(node) ? "null" : UNKNOWN;
   }
   if (node.type === "TemplateLiteral")
     return node.quasis
@@ -384,7 +386,7 @@ function writtenText(node: ESTree.Node): string {
     const [separator] = node.arguments;
     return node.callee.object.elements
       .filter((element) => element?.type !== "SpreadElement")
-      .map((element) => (element ? writtenText(element) : ""))
+      .map((element) => (element && !isNullLiteral(element) ? writtenText(element) : ""))
       .join(separator ? writtenText(separator) : UNKNOWN);
   }
   return UNKNOWN;

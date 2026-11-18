@@ -25,6 +25,7 @@ const allowed: Record<string, string> = {
     'declare const fixture: { toContain(text: string): void };\nfixture.toContain("one\\ntwo\\nthree\\nfour\\n");',
   "array-value.ts": 'expect(["a", "b", "c", "d"]).toEqual(["a", "b", "c", "d"]);',
   "number.ts": "expect(1).toBe(1);",
+  "null-entry.ts": 'expect("x").toBe(["one", null, "three", "four"].join("\\n"));',
   "template-value-line.ts":
     'declare const middle: string;\nexpect("x").toBe(`one\\n${middle}\\nthree\\nfour`);',
   "joined-value-line.ts":

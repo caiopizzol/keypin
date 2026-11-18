@@ -117,7 +117,8 @@ function machine(
 }
 
 const ci = (w: World) => machine(w);
-const WARNING = `An old key waits for approval: The old RESEND_API_KEY (prod) still works. Once nothing uses it, run this workflow with approve revoke, or run ${RERUN} rotate RESEND_API_KEY --approve-revoke.`;
+const WARNING =
+  "An old key waits for approval: The old RESEND_API_KEY (prod) still works. Once nothing uses it, run this workflow with approve revoke, or run this in your checkout: keypin rotate RESEND_API_KEY --approve-revoke";
 const json = (w: World, path: string) => parseJson(w.repo.contents.get(path) ?? "null");
 
 async function rotatedOnceOnALaptop(map = MAP) {

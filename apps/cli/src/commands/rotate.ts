@@ -70,6 +70,7 @@ import {
   confirmed,
   NEEDS_APPROVAL,
   planOnly,
+  shellWord,
   unattendedApproval,
   withoutPlan,
 } from "../approval";
@@ -277,12 +278,16 @@ function waitsNotice(
   { deps, out, envArgs, environment }: Pick<Context, "deps" | "out" | "envArgs" | "environment">,
   keyId: string,
 ): void {
-  const approve = commandLine(deps, "rotate", [keyId, ...envArgs, "--approve-revoke"]);
+  const args = [keyId, ...envArgs, "--approve-revoke"];
+  const local = ["keypin", "rotate", ...args].map(shellWord).join(" ");
   const warned = deps.warnRunner(
     "An old key waits for approval",
-    `The old ${keyId} (${environment}) still works. Once nothing uses it, run this workflow with approve revoke, or run ${approve}.`,
+    `The old ${keyId} (${environment}) still works. Once nothing uses it, run this workflow with approve revoke, or run this in your checkout: ${local}`,
   );
-  if (!warned) out.line(`Once nothing uses the old ${keyId} (${environment}), run:\n  ${approve}`);
+  if (!warned)
+    out.line(
+      `Once nothing uses the old ${keyId} (${environment}), run:\n  ${commandLine(deps, "rotate", args)}`,
+    );
 }
 
 async function approveAll(

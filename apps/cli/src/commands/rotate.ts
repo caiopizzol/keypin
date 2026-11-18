@@ -48,6 +48,7 @@ import {
   type PlanInput,
   planPublish,
   type PlanStep,
+  secretKey,
   publishEnvironment,
   recordIssued,
   type RemovedDestination,
@@ -232,8 +233,9 @@ async function progressOf(context: Context, path: string) {
         committed,
         state.receipts,
         owner,
-        destinationId(target, keyId, deps.destinations),
+        secretKey(target, keyId, deps.destinations),
         issued.generation,
+        deps.destinations,
       ),
     );
     const since = issued.at.slice(0, 10);

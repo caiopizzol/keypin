@@ -9,6 +9,7 @@ import {
   type Progress,
   restoreIssued,
   restoreReceipts,
+  removedBehind,
   rotationFile,
   rotationRecord,
   recordIssued,
@@ -187,6 +188,7 @@ describe(".keypin/rotation.json", () => {
       key: "DUE_KEY",
       environment: "prod",
       destination: DESTINATION,
+      secret: DESTINATION,
       generation: "aaaaaaaaaaaaaaaa",
       at: "2026-11-09T12:00:01.000Z",
       approved: "hash",
@@ -213,6 +215,7 @@ describe(".keypin/rotation.json", () => {
       "old",
       "published",
       "revoked",
+      "secret",
       "version",
     ]);
   });
@@ -290,5 +293,60 @@ describe(".keypin/rotation.json", () => {
     await expect(loadRotationFile(disk.files, path)).rejects.toThrow(
       `${path}: the rotation file's "issued" must be a list of issued keys`,
     );
+  });
+});
+
+describe("destinations taken out of the map", () => {
+  const OLD_ACCOUNT = "a".repeat(32);
+  const NEW_ACCOUNT = "b".repeat(32);
+  const WEB = "cloudflare-worker:web:DUE_KEY";
+  const worker = (account: string) =>
+    `
+[1password]
+account = "my.1password.com"
+
+[keys.DUE_KEY]
+rotate_every = "90d"
+prod = { from = "op://Private/due key/credential", publish = [{ to = "cloudflare-worker", account = "${account}", worker = "web" }], ${RESEND} }
+`;
+
+  test("a Worker of the same name in another account counts as taken out while it may hold the old key", async () => {
+    const result = parseMap(worker(NEW_ACCOUNT), FILE, KINDS, ISSUERS, VAULT_KINDS);
+    if (!result.ok) throw new Error(result.errors.join("\n"));
+    const map = result.map;
+    const ref = map.keys[0]?.environments.prod?.ref ?? null;
+    const sent = (account: string, generation: string, at: string) =>
+      receipt(WEB, generation, {
+        keyId: "DUE_KEY",
+        mapFile: FILE,
+        source: ref,
+        sourceIds: IDS,
+        account: { pinned: account, publisher: "me@example.com", destinationAccount: account },
+        at,
+      });
+    let state = recordIssued(emptyState(), ISSUED);
+    state = recordReceipt(
+      state,
+      sent(OLD_ACCOUNT, ISSUED.old.generation, "2026-08-01T00:00:00.000Z"),
+      KINDS,
+    );
+    state = recordReceipt(state, sent(NEW_ACCOUNT, ISSUED.generation, ISSUED.at), KINDS);
+
+    const file = await rotationFile(state, map, KINDS, null);
+    expect(file.published.map((p) => [p.destination, p.secret, p.generation])).toEqual([
+      [WEB, `cloudflare-worker:${OLD_ACCOUNT}:web:DUE_KEY`, ISSUED.old.generation],
+      [WEB, `cloudflare-worker:${NEW_ACCOUNT}:web:DUE_KEY`, ISSUED.generation],
+    ]);
+    const owner = { keyId: "DUE_KEY", environment: "prod", mapFile: FILE };
+    expect(removedBehind(file, map, KINDS, owner, ISSUED.generation).map((p) => p.secret)).toEqual([
+      `cloudflare-worker:${OLD_ACCOUNT}:web:DUE_KEY`,
+    ]);
+
+    const revoked = recordIssued(state, { ...ISSUED, old: { ...ISSUED.old, revoked: true } });
+    const after = await rotationFile(revoked, map, KINDS, file);
+    expect(
+      after.published.map((p) => p.secret),
+      "dropped once its key is revoked",
+    ).toEqual([`cloudflare-worker:${NEW_ACCOUNT}:web:DUE_KEY`]);
   });
 });

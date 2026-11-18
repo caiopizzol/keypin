@@ -313,4 +313,25 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
     });
     expect(JSON.stringify(json(w, ROTATION))).not.toContain(WEB);
   });
+
+  test("a destination only the laptop's receipts know was taken out of the map still stops a fresh runner's revoke", async () => {
+    const w = await world(TWO_REPOS);
+    const laptop = machine(w, { terminal: true, answers: ["y", "y", "n"] });
+    expect(await laptop.run("--due")).toBe(0);
+    w.dates.set(ITEM, "2026-08-01");
+    w.repo.contents.set(MAP_FILE, MAP);
+    w.repo.contents.delete(ROTATION);
+    laptop.disk.contents.delete(ROTATION);
+
+    expect(await laptop.run("--due")).toBe(0);
+    expect(w.effects).toEqual(["resend create re-new-1", "resend create re-new-2"]);
+    expect(json(w, ROTATION)).toMatchObject({
+      published: [{ destination: DESTINATION }, { destination: WEB }],
+    });
+
+    const refused = ci(w);
+    expect(await refused.run("--approve-revoke")).toBe(1);
+    expect(refused.stderr.text).toContain("Stopped: something no longer in the map may still use");
+    expect(w.effects, "nothing revoked").toHaveLength(2);
+  });
 });

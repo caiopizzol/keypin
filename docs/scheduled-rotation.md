@@ -41,7 +41,7 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
       - if: always()
         run: |
-          git add .keypin/rotation.json .keypin/status.json
+          git add -- $(git ls-files --others --modified -- .keypin/rotation.json .keypin/status.json)
           git diff --cached --quiet && exit 0
           git config user.name keypin
           git config user.email keypin@users.noreply.github.com

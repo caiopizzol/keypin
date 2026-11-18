@@ -1,11 +1,5 @@
 import type { Environment, ItemIds, KeyId, KeyRef, Receipt } from "./contracts";
-import {
-  destinationId,
-  type DestinationKinds,
-  placeId,
-  receiptSecretKey,
-  secretKey,
-} from "./destination";
+import { type DestinationKinds, placeId, receiptSecretKey, secretKey } from "./destination";
 import { type Files, readVersionedJson, writeJsonAtomic } from "./files";
 import { type EnvEntry, type KeysMap, pairedWith } from "./map";
 import { latestPerSecret } from "./plan";
@@ -30,6 +24,7 @@ export interface CommittedWrite {
   key: KeyId;
   environment: Environment;
   destination: string;
+  secret: string;
   generation: Generation;
   at: string;
   approved: string;
@@ -68,7 +63,7 @@ export function removedBehind(
       p.key === owner.keyId &&
       p.environment === owner.environment &&
       p.generation !== generation &&
-      !listed.some((target) => destinationId(target, owner.keyId, kinds) === p.destination),
+      !listed.some((target) => secretKey(target, owner.keyId, kinds) === p.secret),
   );
 }
 
@@ -80,19 +75,21 @@ export function deliveredTo(
   file: RotationFile | null,
   receipts: readonly Receipt[],
   owner: KeyOwner,
-  destination: string,
+  secret: string,
   generation: Generation,
+  kinds: DestinationKinds,
 ): boolean {
   const same = (key: KeyId, environment: Environment, place: string, made: Generation) =>
     key === owner.keyId &&
     environment === owner.environment &&
-    place === destination &&
+    place === secret &&
     made === generation;
   return (
-    (file?.published ?? []).some((p) => same(p.key, p.environment, p.destination, p.generation)) ||
+    (file?.published ?? []).some((p) => same(p.key, p.environment, p.secret, p.generation)) ||
     receipts.some(
       (r) =>
-        r.mapFile === owner.mapFile && same(r.keyId, r.environment, r.destinationId, r.generation),
+        r.mapFile === owner.mapFile &&
+        same(r.keyId, r.environment, receiptSecretKey(r, kinds), r.generation),
     )
   );
 }
@@ -117,22 +114,35 @@ export async function rotationFile(
   kinds: DestinationKinds,
   base: RotationFile | null,
 ): Promise<RotationFile> {
-  const listed = (key: KeyId, environment: Environment, destination: string) =>
+  const listed = (key: KeyId, environment: Environment, secret: string) =>
     rotates(map, key, environment)?.publish.some(
-      (target) => destinationId(target, key, kinds) === destination,
+      (target) => secretKey(target, key, kinds) === secret,
     ) === true;
-  const issued = state.issued
-    .filter((i) => i.mapFile === map.file && rotates(map, i.keyId, i.environment))
-    .map(committedIssued);
+  const issued = merged(
+    (base?.issued ?? []).filter((c) => rotates(map, c.key, c.environment)),
+    state.issued
+      .filter((i) => i.mapFile === map.file && rotates(map, i.keyId, i.environment))
+      .map(committedIssued),
+    (c) => [c.key, c.environment],
+    mergeIssued,
+  );
+  const stillWorks = (c: CommittedWrite) => {
+    const now = issued.find((i) => i.key === c.key && i.environment === c.environment);
+    if (!now || c.generation === now.generation) return true;
+    return c.generation === now.old.generation && !now.old.revoked;
+  };
+  const kept = (c: CommittedWrite) =>
+    listed(c.key, c.environment, c.secret) ||
+    (rotates(map, c.key, c.environment) !== null && stillWorks(c));
   const published: CommittedWrite[] = [];
   for (const receipt of latestPerSecret(state.receipts, kinds)) {
     const { keyId, environment, source, sourceIds } = receipt;
     if (receipt.mapFile !== map.file || !source || !sourceIds) continue;
-    if (!listed(keyId, environment, receipt.destinationId)) continue;
     published.push({
       key: keyId,
       environment,
       destination: receipt.destinationId,
+      secret: receiptSecretKey(receipt, kinds),
       generation: receipt.generation,
       at: receipt.at,
       approved: await approvalPrint({
@@ -143,28 +153,13 @@ export async function rotationFile(
       }),
     });
   }
-  const allIssued = merged(
-    (base?.issued ?? []).filter((c) => rotates(map, c.key, c.environment)),
-    issued,
-    (c) => [c.key, c.environment],
-    mergeIssued,
-  );
-  const stillWorks = (c: CommittedWrite) => {
-    const now = allIssued.find((i) => i.key === c.key && i.environment === c.environment);
-    if (!now || c.generation === now.generation) return true;
-    return c.generation === now.old.generation && !now.old.revoked;
-  };
   return {
     version: ROTATION_FILE_VERSION,
-    issued: allIssued,
+    issued,
     published: merged(
-      (base?.published ?? []).filter(
-        (c) =>
-          listed(c.key, c.environment, c.destination) ||
-          (rotates(map, c.key, c.environment) !== null && stillWorks(c)),
-      ),
-      published,
-      (c) => [c.key, c.environment, c.destination],
+      (base?.published ?? []).filter(kept),
+      published.filter(kept),
+      (c) => [c.key, c.environment, c.secret],
       (older, newer) => (newer.at >= older.at ? newer : older),
     ),
   };
@@ -234,9 +229,9 @@ export async function restoreReceipts(input: {
   );
   const newer = file.published.flatMap((c) => {
     if (c.key !== owner.keyId || c.environment !== owner.environment) return [];
-    const target = entry.publish.find((t) => destinationId(t, c.key, kinds) === c.destination);
+    const target = entry.publish.find((t) => secretKey(t, c.key, kinds) === c.secret);
     if (!target) return [];
-    const secret = secretKey(target, c.key, kinds);
+    const secret = c.secret;
     const local = latest.get(secret);
     return local && local.at >= c.at ? [] : [{ c, target, secret }];
   });
@@ -273,7 +268,7 @@ export function rotationRecord(
   const owner = { keyId, environment, mapFile: map.file };
   const got = entry.publish.map((target) => ({
     place: placeId(target, kinds),
-    done: deliveredTo(file, [], owner, destinationId(target, keyId, kinds), issued.generation),
+    done: deliveredTo(file, [], owner, secretKey(target, keyId, kinds), issued.generation, kinds),
   }));
   const unpublished = got.filter((g) => !g.done).map((g) => g.place);
   return {
@@ -331,8 +326,8 @@ function readIssued(value: unknown): CommittedIssued | null {
 
 function readWrite(value: unknown): CommittedWrite | null {
   if (!isRecord(value)) return null;
-  const { key, environment, destination, generation, at, approved } = value;
-  if (!isText(key) || !isText(environment) || !isText(destination)) return null;
+  const { key, environment, destination, secret, generation, at, approved } = value;
+  if (!isText(key) || !isText(environment) || !isText(destination) || !isText(secret)) return null;
   if (!isText(generation) || !isText(at) || !isText(approved)) return null;
-  return { key, environment, destination, generation, at, approved };
+  return { key, environment, destination, secret, generation, at, approved };
 }

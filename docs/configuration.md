@@ -141,7 +141,7 @@ it was written; no values or vault references.
 
 Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key, at Resend, [Neon](#neon),
 [OpenAI](#openai), [Supabase](#supabase), [Cloudflare](#cloudflare), [OpenRouter](#openrouter),
-[Google Cloud](#google-cloud), [ElevenLabs](#elevenlabs), [AWS](#aws) or [SendGrid](#sendgrid):
+[Google Cloud](#google-cloud), [ElevenLabs](#elevenlabs), [AWS](#aws), [SendGrid](#sendgrid) or [MongoDB Atlas](#mongodb-atlas):
 
 ```toml
 [keys.RESEND_API_KEY.prod]
@@ -372,3 +372,27 @@ the ID in its value (`SG.<id>.<secret>`) and gives the new key the same scopes.
 
 For a subuser's key, add `subuser = "<username>"` and use a key from the parent account. For an EU regional
 subuser, add `region = "eu"`.
+
+### MongoDB Atlas
+
+```toml
+[keys.MONGODB_URI.prod]
+from = "op://Private/app mongodb uri/password"
+
+[keys.MONGODB_URI.prod.issuer]
+kind = "mongodb-atlas"
+admin = "op://Private/atlas service account/credential"
+client_id = "mdb_sa_id_..."
+project_id = "5f1a2b3c4d5e6f7a8b9c0d1e"
+```
+
+`admin` holds the client secret (`mdb_sa_sk_...`) of an Atlas
+[service account](https://www.mongodb.com/docs/atlas/configure-api-access/) with **Project Database Access Admin** on
+the project, and `client_id` is its client ID. keypin doesn't take API keys, which Atlas calls legacy.
+`project_id` is the 24-character ID in the project's settings.
+
+A changed password stops the old one at once, so keypin makes a second database user instead: user `app` becomes
+`app-b`, then `app-a`, then `app-b` again. The new user gets the old user's roles, scopes, labels and description, and
+the vault's connection string keeps its hosts, database and options with the new username and password. keypin
+deletes the old user after the second `y`. It refuses users that sign in with X.509, AWS IAM, LDAP or OIDC, and
+temporary users.

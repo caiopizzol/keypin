@@ -31,6 +31,7 @@ import { type OpenAIKeys, openaiFetch } from "@keypin/connectors/openai/testing"
 import { openrouterFetch, type OpenRouterWorld } from "@keypin/connectors/openrouter/testing";
 import { resendFetch } from "@keypin/connectors/resend/testing";
 import { sendgridFetch, type SendGridWorld } from "@keypin/connectors/sendgrid/testing";
+import { atlasFetch, type AtlasWorld } from "@keypin/connectors/mongodb-atlas/testing";
 import { supabaseFetch, type SupabaseWorld } from "@keypin/connectors/supabase/testing";
 import { credentialsFrom, infisicalBackend } from "@keypin/connectors/infisical";
 import { fileStore, infisicalFetch } from "@keypin/connectors/infisical/testing";
@@ -56,6 +57,10 @@ import {
   ISSUED_PREFIX,
   RESEND_ADMIN,
   SENDGRID_ADMIN,
+  ATLAS_CLIENT,
+  ATLAS_HOST,
+  ATLAS_PROJECT,
+  ATLAS_SECRET,
   SENDGRID_PREFIX,
   RESEND_KNOWN,
   NEON_HOST,
@@ -112,6 +117,7 @@ const ELEVENLABS = join(sandbox, "elevenlabs.json");
 const PAIRED = join(sandbox, "paired.json");
 const AWS = join(sandbox, "aws.json");
 const SENDGRID = join(sandbox, "sendgrid.json");
+const ATLAS = join(sandbox, "atlas.json");
 
 function effect(line: string): void {
   appendFileSync(EFFECTS, `${line}\n`);
@@ -487,11 +493,31 @@ const sendgrid = sendgridFetch({
   effect,
 });
 
+const atlas = atlasFetch({
+  clientId: ATLAS_CLIENT,
+  secret: ATLAS_SECRET,
+  projectId: ATLAS_PROJECT,
+  clusters: [{ name: "Cluster0", srvHost: ATLAS_HOST }],
+  pendingPolls: 1,
+  loseCreated: run.atlas?.loseCreated === true,
+  world: {
+    load(): AtlasWorld {
+      if (!existsSync(ATLAS)) return { users: run.atlas?.users ?? [], created: 0, pending: 0 };
+      const parsed: unknown = JSON.parse(readFileSync(ATLAS, "utf8"));
+      if (!isAtlasWorld(parsed)) throw new Error(`${ATLAS} isn't the fake Atlas project's users`);
+      return parsed;
+    },
+    save: (world) => writeFileSync(ATLAS, JSON.stringify(world)),
+  },
+  effect,
+});
+
 const issuerFetch: Record<string, Fetch> = {
   aws,
   cloudflare,
   elevenlabs,
   google,
+  "mongodb-atlas": atlas,
   neon,
   openai,
   openrouter,
@@ -499,6 +525,10 @@ const issuerFetch: Record<string, Fetch> = {
   sendgrid,
   supabase,
 };
+
+function isAtlasWorld(value: unknown): value is AtlasWorld {
+  return isRecord(value) && Array.isArray(value.users) && typeof value.pending === "number";
+}
 
 function isSendGridWorld(value: unknown): value is SendGridWorld {
   return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";

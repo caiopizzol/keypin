@@ -25,6 +25,7 @@ import { elevenlabsIssuer } from "@keypin/connectors/elevenlabs";
 import { flyApp } from "@keypin/connectors/fly";
 import { ghToken, githubActions, listRepoSecrets, sshHostname } from "@keypin/connectors/github";
 import { googleIssuer } from "@keypin/connectors/google";
+import { atlasIssuer } from "@keypin/connectors/mongodb-atlas";
 import { neonIssuer } from "@keypin/connectors/neon";
 import { netlifyProject } from "@keypin/connectors/netlify";
 import { openaiIssuer } from "@keypin/connectors/openai";
@@ -100,6 +101,7 @@ export const issuers = [
   elevenlabsIssuer,
   awsIssuer,
   sendgridIssuer,
+  atlasIssuer,
 ];
 
 export function issuer(spec: IssuerSpec, admin: Secret, fetch?: Fetch): Issuer {

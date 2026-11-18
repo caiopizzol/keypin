@@ -97,12 +97,34 @@ describe("state", () => {
     expect((await loadState(fake.files, STATE, VAULT_KINDS)).receipts[0]?.source).toEqual(source);
   });
 
-  test("another schema version gives a clear error", async () => {
+  test("a newer schema version says to upgrade keypin", async () => {
     const fake = fakeFiles({
       [STATE]: JSON.stringify({ version: 6, receipts: [], operations: [] }),
     });
     await expect(loadState(fake.files, STATE, VAULT_KINDS)).rejects.toThrow(
-      `${STATE}: the state file has schema version 6, and this keypin reads version 1 or 2 or 3 or 4 or 5`,
+      `${STATE}: the state file has schema version 6, from a newer keypin, and this keypin reads version 1 or 2 or 3 or 4 or 5. Upgrade this keypin (command -v keypin shows where it is); if npm installed it: npm install -g keypin@latest`,
+    );
+  });
+
+  test("a receipt from a vault this keypin doesn't know says to upgrade keypin", async () => {
+    const known = receipt(WORKER, "aaaaaaaaaaaaaaaa");
+    const newer = { ...known, source: { kind: "future-vault", project: "billing" } };
+    const fake = fakeFiles({
+      [STATE]: JSON.stringify({ version: 5, receipts: [known, newer], issued: [] }),
+    });
+    await expect(loadState(fake.files, STATE, VAULT_KINDS)).rejects.toThrow(
+      `${STATE}: the state file has a receipt from a "future-vault" vault, which this keypin doesn't know; a newer keypin likely wrote it. Upgrade this keypin (command -v keypin shows where it is); if npm installed it: npm install -g keypin@latest`,
+    );
+  });
+
+  test("a receipt from a known vault with a bad source is still a malformed file", async () => {
+    const known = receipt(WORKER, "aaaaaaaaaaaaaaaa");
+    const bad = { ...known, source: { kind: "infisical" } };
+    const fake = fakeFiles({
+      [STATE]: JSON.stringify({ version: 5, receipts: [bad], issued: [] }),
+    });
+    await expect(loadState(fake.files, STATE, VAULT_KINDS)).rejects.toThrow(
+      `${STATE}: the state file's "receipts" must be a list of receipts`,
     );
   });
 

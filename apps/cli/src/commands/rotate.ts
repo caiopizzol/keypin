@@ -2,6 +2,7 @@ import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 import {
   deliveredTo,
+  type DueChoice,
   dueKeys,
   dueRefs,
   type KeysMap,
@@ -104,6 +105,7 @@ interface Job {
   plan: boolean;
   due: boolean;
   approve: boolean;
+  check: boolean;
   args: string[];
   envArgs: string[];
   map: KeysMap;
@@ -114,7 +116,7 @@ interface Job {
   path: string;
 }
 
-type Flags = Pick<Job, "yes" | "plan" | "due" | "approve" | "args">;
+type Flags = Pick<Job, "yes" | "plan" | "due" | "approve" | "check" | "args">;
 
 interface Ready {
   ids: ItemIds;
@@ -134,6 +136,7 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
       plan: { type: "boolean", default: false },
       due: { type: "boolean", default: false },
       "approve-revoke": { type: "boolean", default: false },
+      check: { type: "boolean", default: false },
     },
     allowPositionals: true,
   });
@@ -144,7 +147,9 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
   if (values.due && positionals.length)
     throw new UsageError("--due takes no key: it rotates every key that is due");
   if (approve && values.plan) throw new UsageError("--approve-revoke takes no --plan");
-  if (extra.length || (keyId === undefined && !values.due && !approve))
+  if (values.check && (positionals.length || values.due || approve || values.plan || values.yes))
+    throw new UsageError("--check takes only --env: it checks every key --due rotates");
+  if (extra.length || (keyId === undefined && !values.due && !approve && !values.check))
     throw new UsageError("keypin rotate takes one key: the variable name");
   const map = await findMap(deps);
   const environment = pickEnvironment(map, values.env, publishEnvironment(map));
@@ -152,15 +157,24 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);
   const file = join(dirname(map.file), ROTATION_FILE);
   const committed = await loadRotationFile(deps.files, file);
-  const flags = { yes: values.yes, plan: values.plan, due: values.due, approve, args };
+  const flags = {
+    yes: values.yes,
+    plan: values.plan,
+    due: values.due,
+    approve,
+    check: values.check,
+    args,
+  };
   const context = { map, environment, envArgs, committed, deps, out };
   return locked(deps, async (path) => {
-    const code = approve
-      ? await approveAll(context, keyId, path)
-      : values.due
-        ? await rotateDue(context, flags, path)
-        : await rotateLocked({ ...jobFor(context, keyId ?? "", flags), path });
-    if (values.plan || (!approve && !values.due && committed === null)) return code;
+    const code = values.check
+      ? await checkDue(context, path)
+      : approve
+        ? await approveAll(context, keyId, path)
+        : values.due
+          ? await rotateDue(context, flags, path)
+          : await rotateLocked({ ...jobFor(context, keyId ?? "", flags), path });
+    if (values.plan || values.check || (!approve && !values.due && committed === null)) return code;
     return (await commitState(context, file, path)) ? code : 1;
   });
 }
@@ -274,6 +288,80 @@ async function rotateDue(context: Context, flags: Flags, path: string): Promise<
   return worst(codes);
 }
 
+async function checkDue(context: Context, path: string): Promise<number> {
+  const { map, environment, deps, out } = context;
+  const metadata = await readDates(deps, dueRefs(map, environment));
+  const choices = dueKeys({
+    map,
+    environment,
+    today: localDay(deps.now()),
+    metadata: (ref) => metadata.dates.get(refKey(ref)) ?? null,
+    progress: await progressOf(context, path),
+  });
+  const checks = (c: DueChoice) => c.action !== "skip" || c.date !== undefined;
+  out.line(`\nKeys in ${environment}`);
+  const rows = columns(choices.map((c) => [c.keyId, checks(c) ? "check" : "skip"]));
+  choices.forEach((c, i) => out.line(`  ${(rows[i] ?? []).join("  ")}  ${out.dim(c.why)}`));
+  const picked = choices.filter(checks);
+  if (!picked.length) {
+    out.line(
+      `\nNothing to check: no key in ${environment} has an issuer, destinations and rotate_every. See docs/configuration.md.`,
+    );
+    return 1;
+  }
+  const codes: number[] = [];
+  for (const choice of picked) {
+    out.line("");
+    if (choice.action === "skip" && choice.date === "missing") {
+      out.line(
+        `${out.mark(false)} ${choice.keyId}: ${choice.why}, so keypin rotate --due never rotates it. Give its vault item a rotated date: the day the key last changed.`,
+      );
+      codes.push(1);
+      continue;
+    }
+    try {
+      const args = [choice.keyId, ...context.envArgs];
+      const flags = { ...NO_FLAGS, plan: true, check: true, args };
+      codes.push(await rotateLocked({ ...jobFor(context, choice.keyId, flags), path }));
+    } catch (error) {
+      out.line(`${out.mark(false)} ${choice.keyId}: ${messageOf(error)}`);
+      codes.push(1);
+    }
+  }
+  const code = worst(codes);
+  out.line(
+    code === 0
+      ? `\n${out.mark(true)} Every key --due rotates passed the checks. Nothing was created or written.`
+      : "\nFix what failed above, then run the check again. Nothing was created or written.",
+  );
+  return code;
+}
+
+async function routineWrites(
+  job: Job,
+  approvals: (ids: readonly (ItemIds | null)[]) => readonly { approval: string }[],
+  looked: ItemIds[] | undefined,
+): Promise<boolean> {
+  const { key, entry, pair, deps, out } = job;
+  let ids = looked;
+  if (ids === undefined || pair) {
+    try {
+      ids = await lookUpIds(pair ? [entry.ref, pair.entry.ref] : [entry.ref], deps, out);
+    } catch (error) {
+      out.line(`Couldn't find the item: ${messageOf(error)}.`);
+      return false;
+    }
+  }
+  const needed = approvals(ids);
+  if (!needed.length) return true;
+  out.line("Needs approval:");
+  for (const { approval: what } of needed) out.line(`  ${what}`);
+  out.line(
+    `A scheduled run would stop here. Publish ${key.name} from your laptop, run keypin rotate --due there, and commit .keypin/.`,
+  );
+  return false;
+}
+
 function waitsNotice(
   { deps, out, envArgs, environment }: Pick<Context, "deps" | "out" | "envArgs" | "environment">,
   keyId: string,
@@ -326,7 +414,14 @@ async function approveAll(
   return worst(codes);
 }
 
-const NO_FLAGS: Flags = { yes: false, plan: false, due: false, approve: false, args: [] };
+const NO_FLAGS: Flags = {
+  yes: false,
+  plan: false,
+  due: false,
+  approve: false,
+  check: false,
+  args: [],
+};
 
 function worst(codes: readonly number[]): number {
   return codes.includes(1) ? 1 : codes.includes(NEEDS_APPROVAL) ? NEEDS_APPROVAL : 0;
@@ -381,15 +476,17 @@ async function rotateLocked(job: Job): Promise<number> {
   say(
     `${out.bold(key.name)} ${owner.environment}  ${out.dim(`from ${formatReference(entry.ref, deps.vaults)} in ${vaultAccount(entry.ref, deps.vaults)}`)}`,
   );
+  const approvals = ([ids = null, pairIds = null]: readonly (ItemIds | null)[]) => [
+    ...approvalsFor(input, ids),
+    ...(pairInput ? approvalsFor(pairInput, pairIds) : []),
+  ];
+  if (job.check && !(await routineWrites(job, approvals, looked))) return 1;
   const stopped = await unattendedApproval(deps, out, {
     plan: job.plan,
     command: "rotate",
     args: job.args,
     refs: job.pair ? [entry.ref, job.pair.entry.ref] : [entry.ref],
-    approvals: ([ids = null, pairIds = null]) => [
-      ...approvalsFor(input, ids),
-      ...(pairInput ? approvalsFor(pairInput, pairIds) : []),
-    ],
+    approvals,
     nothing: "Nothing was created.",
     stopped:
       "Stopped before reading the key: this rotation needs approval, and --yes can't give it. Nothing was read and nothing was created.",
@@ -466,6 +563,10 @@ async function rotateLocked(job: Job): Promise<number> {
   if (!check || !checked) {
     say("\nStopped: an account check failed. Nothing was created and nothing was written.");
     return 1;
+  }
+  if (job.check) {
+    say(`${out.mark(true)} ${key.name} (${owner.environment}) is ready for keypin rotate --due.`);
+    return 0;
   }
   const ready: Ready = {
     ids: read.ids,

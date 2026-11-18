@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vite-plus/test";
+import { assert, describe, expect, test } from "vite-plus/test";
 import type { KeyRef, VaultBackend } from "@keypin/core";
 import { day } from "@keypin/core/testing";
 import { GitHubSecretDestination } from "@keypin/connectors/github";
@@ -77,7 +77,7 @@ async function world(map = MAP) {
   };
   const repo = memoryFiles({ [MAP_FILE]: map });
   const value = () => inner.values.get(ITEM) ?? "";
-  return { keys, effects, resend, gh, github, vault, dates, value, repo };
+  return { keys, effects, resend, gh, github, vault, dates, value, repo, inner };
 }
 
 type World = Awaited<ReturnType<typeof world>>;
@@ -377,5 +377,98 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
     expect(await refused.run("--approve-revoke")).toBe(1);
     expect(refused.stderr.text).toContain("Stopped: something no longer in the map may still use");
     expect(w.effects, "nothing revoked").toHaveLength(2);
+  });
+});
+
+describe("keypin rotate --check, the setup check a workflow runs before the first rotation", () => {
+  const published = async () => {
+    const w = await world();
+    const laptop = machine(w, { terminal: true, answers: ["y", "n"] });
+    laptop.disk.contents.set(MAP_FILE, MAP);
+    expect(await cli(["publish", "RESEND_API_KEY"], laptop.deps)).toBe(0);
+    expect(await laptop.run("--due")).toBe(NEEDS_APPROVAL);
+    w.inner.log.length = 0;
+    return w;
+  };
+  const unchanged = (w: World) => {
+    expect(w.effects).toEqual([]);
+    expect(w.inner.log.filter((line) => !/^(read|ids) /.test(line))).toEqual([]);
+  };
+
+  test("passes once .keypin/ holds the receipts, for a key that isn't due yet too, and changes nothing", async () => {
+    const w = await published();
+    w.dates.set(ITEM, "2026-11-01");
+    const rotation = w.repo.contents.get(ROTATION);
+    const status = w.repo.contents.get(STATUS);
+    const github = w.github.value("acme/mailer", "RESEND_API_KEY");
+    const run = ci(w);
+    expect(await run.run("--check"), run.stderr.text).toBe(0);
+    expect(run.stderr.text).toContain("RESEND_API_KEY  check  not due until 2027-01-30");
+    expect(run.stderr.text).toContain("STRIPE_KEY      skip   no issuer");
+    expect(run.stderr.text).toContain("Resend  the admin key lists 1 API key");
+    expect(run.stderr.text).toContain("RESEND_API_KEY (prod) is ready for keypin rotate --due.");
+    expect(run.stderr.text).toContain(
+      "Every key --due rotates passed the checks. Nothing was created or written.",
+    );
+    unchanged(w);
+    expect(w.inner.log, "only the key and its admin key").toEqual([
+      "ids mailer resend key",
+      "read mailer resend key",
+      "read resend admin key",
+    ]);
+    expect(w.repo.contents.get(ROTATION)).toBe(rotation);
+    expect(w.github.value("acme/mailer", "RESEND_API_KEY")).toBe(github);
+    expect(w.repo.contents.get(STATUS)).toBe(status);
+    for (const value of [OLD, ADMIN]) expect(run.stderr.text).not.toContain(value);
+  });
+
+  test("fails before reading a value when a first write would wait for approval", async () => {
+    const w = await world();
+    const run = ci(w);
+    expect(await run.run("--check")).toBe(1);
+    expect(run.stderr.text).toContain(`Needs approval:\n  first write to ${DESTINATION}`);
+    expect(run.stderr.text).toContain(
+      "A scheduled run would stop here. Publish RESEND_API_KEY from your laptop, run keypin rotate --due there, and commit .keypin/.",
+    );
+    expect(run.stderr.text).toContain("Fix what failed above, then run the check again.");
+    expect(w.inner.log).toEqual(["ids mailer resend key"]);
+    unchanged(w);
+  });
+
+  test("fails when the admin key, the GitHub token or the rotated date isn't right", async () => {
+    const w = await published();
+    w.inner.values.set("resend admin key", "re_other_admin");
+    const admin = ci(w);
+    expect(await admin.run("--check")).toBe(1);
+    expect(admin.stderr.text).toContain("Stopped: an account check failed.");
+
+    w.inner.values.set("resend admin key", ADMIN);
+    const repo = w.gh.repos["acme/mailer"];
+    assert(repo);
+    repo.push = false;
+    const token = ci(w);
+    expect(await token.run("--check")).toBe(1);
+    expect(token.stderr.text).toContain("has no write access to acme/mailer");
+
+    repo.push = true;
+    w.dates.delete(ITEM);
+    const undated = ci(w);
+    expect(await undated.run("--check")).toBe(1);
+    expect(undated.stderr.text).toContain(
+      "FAILED RESEND_API_KEY: no rotated date in the vault, so keypin rotate --due never rotates it.",
+    );
+    unchanged(w);
+  });
+
+  test("takes only --env", async () => {
+    const run = ci(await world());
+    for (const extra of [
+      ["--due"],
+      ["--plan"],
+      ["--yes"],
+      ["--approve-revoke"],
+      ["RESEND_API_KEY"],
+    ])
+      expect(await run.run("--check", ...extra)).toBe(2);
   });
 });

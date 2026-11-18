@@ -9,13 +9,14 @@ Actions.
 
 1. Move each key and its issuer's `admin` item into a vault you create, and update the references in `keypin.toml`.
    A [service account](service-account.md) can't open the Private, Personal or Employee vaults, or the default
-   Shared vault. Give each key's item a `rotated` date: `rotate --due` skips a key without one.
+   Shared vault. `rotate --due` skips a key without `rotate_every` in the map or a `rotated` date on its item.
 2. Create a service account with write access to that vault, and save its token as the Actions secret
    `OP_SERVICE_ACCOUNT_TOKEN`. keypin reads each admin key from the vault, so it isn't a secret of its own.
 3. Create a fine-grained GitHub token for this repository only, with the Secrets permission set to Read and write,
-   and save it as the Actions secret `KEYPIN_GITHUB_TOKEN`. The workflow's own `GITHUB_TOKEN` can't write secrets.
-4. Add the workflow below as `.github/workflows/rotate-keys.yml`. Each run pushes `.keypin/` to the default branch, so
-   the workflow must be allowed to push there. Pin the keypin version you run on your laptop, and bump both together.
+   and save it as the Actions secret `KEYPIN_GITHUB_TOKEN`. Keys published to an environment also need Environments
+   set to Read and write. The workflow's own `GITHUB_TOKEN` can't write secrets.
+4. Add the workflow below as `.github/workflows/rotate-keys.yml`. It runs only on the default branch and pushes
+   `.keypin/` there, so the workflow must be allowed to push to it. Pin the keypin version you run on your laptop, and bump both together.
 5. [Ignore](configuration.md#ignored-keys) the two secrets at the top of `keypin.toml`, or `keypin check` asks you to
    add them:
 
@@ -50,6 +51,7 @@ concurrency: rotate-keys
 
 jobs:
   rotate:
+    if: github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

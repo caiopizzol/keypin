@@ -3,6 +3,7 @@ import { createHash, createHmac } from "node:crypto";
 export interface Credentials {
   readonly id: string;
   readonly secret: string;
+  readonly token?: string;
 }
 
 export interface Unsigned {
@@ -70,6 +71,7 @@ export function signing(
     lowered.set(name.toLowerCase(), value.trim().replace(/\s+/g, " "));
   lowered.set("host", url.host);
   lowered.set("x-amz-date", date);
+  if (credentials.token) lowered.set("x-amz-security-token", credentials.token);
   const names = [...lowered.keys()].sort();
   const signedHeaders = names.join(";");
   const canonicalRequest = [
@@ -90,6 +92,7 @@ export function signing(
   const headers: Record<string, string> = {
     ...request.headers,
     "X-Amz-Date": date,
+    ...(credentials.token ? { "X-Amz-Security-Token": credentials.token } : {}),
     Authorization: `${ALGORITHM} Credential=${credentials.id}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
   };
   return { canonicalRequest, stringToSign, signature, headers };

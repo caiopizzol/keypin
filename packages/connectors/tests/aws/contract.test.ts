@@ -1,8 +1,16 @@
 import { describe } from "vite-plus/test";
 import { Secret } from "@keypin/core";
-import { issuerContract } from "@keypin/core/testing";
-import { AwsIssuer } from "../../src/aws/index";
-import { accessKeyJson, awsFetch, type FakeAws, memoryWorld } from "../../src/aws/testing";
+import { issuerContract, vaultContract } from "@keypin/core/testing";
+import { AwsIssuer, secretsManagerBackend } from "../../src/aws/index";
+import {
+  accessKeyJson,
+  awsFetch,
+  type FakeAws,
+  type FakeSecretsManager,
+  memorySecrets,
+  memoryWorld,
+  secretsManagerFetch,
+} from "../../src/aws/testing";
 
 const APP_ID = "AKIAAPPAPPAPPAPP0001";
 const APP_SECRET = "app/secret/value/0001";
@@ -36,3 +44,38 @@ describe("the issuer contract", () => {
     };
   });
 });
+
+const SIGN_IN = { id: "ASIAAPPAPPAPPAPP0001", secret: "sm/secret/0001", token: "session-token-1" };
+
+for (const field of [null, "api_key"]) {
+  describe(`the vault contract, ${field === null ? "a plain secret" : "one key of a JSON secret"}`, () => {
+    vaultContract((sentinel) => {
+      const fake: FakeSecretsManager = {
+        account: "123456789012",
+        credentials: [SIGN_IN],
+        secrets: {
+          "us-east-1/prod/stripe": {
+            value: field === null ? sentinel : JSON.stringify({ [field]: sentinel, other: "x" }),
+          },
+        },
+      };
+      const store = memorySecrets();
+      const scope = { kind: "awssm" as const, account: "123456789012", region: "us-east-1" };
+      return {
+        vault: secretsManagerBackend(
+          { credentials: SIGN_IN, source: "the test credentials" },
+          { fetch: secretsManagerFetch(fake, store), now: () => new Date("2026-11-14T12:00:00Z") },
+        ),
+        ref: { ...scope, name: "prod/stripe", field },
+        scope,
+        effects: store.effects,
+        refuseWrites: () => {
+          fake.denied = ["PutSecretValue"];
+        },
+        failSignIn: () => {
+          fake.credentials = [];
+        },
+      };
+    });
+  });
+}

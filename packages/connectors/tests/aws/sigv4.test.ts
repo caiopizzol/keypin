@@ -89,4 +89,22 @@ describe(`AWS Signature Version 4, against AWS's test suite at ${SUITE}`, () => 
       "328d1b9eaadca9f5818ef05e8392801e091653bafec24fcab71e7344e7f51422",
     );
   });
+
+  test("post-sts-header-before", () => {
+    const token =
+      "AQoDYXdzEPT//////////wEXAMPLEtc764bNrC9SAPBSM22wDOk4x4HIZ8j4FZTwdQWLWsKWHGBuFqwAeMicRXmxfpSPfIeoIYRqTflfKD8YUuwthAx7mSEI/qkPpKPi/kMcGdQrmGdeehM4IC1NtBmUpp2wUE8phUZampKsburEDy0KPkyQDYwT7WZ0wq5VSXDvp75YU9HFvlRd8Tx6q6fE8YQcHNVXAkiY9q6d+xo0rKwT38xVqr7ZD0u0iPPkUL64lIZbqBAz+scqKmlzm8FDrypNC9Yjc8fPOLn9FX9KSYvKTr4rvx3iSIlTJabIQwj2ICCR/oLxBA==";
+    const signed = signing(
+      { method: "POST", url: "https://example.amazonaws.com/", headers: {}, body: "" },
+      { ...CREDENTIALS, token },
+      SCOPE,
+      AT,
+    );
+    expect(signed.stringToSign.split("\n")[3]).toBe(
+      "c237e1b440d4c63c32ca95b5b99481081cb7b13c7e40434868e71567c1a882f6",
+    );
+    expect(signed.signature).toBe(
+      "85d96828115b5dc0cfc3bd16ad9e210dd772bbebba041836c64533a82be05ead",
+    );
+    expect(signed.headers["X-Amz-Security-Token"]).toBe(token);
+  });
 });

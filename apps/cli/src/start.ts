@@ -12,7 +12,12 @@ import {
   type Secret,
   signInVariables,
 } from "@keypin/core";
-import { awsIssuer } from "@keypin/connectors/aws";
+import {
+  awsIssuer,
+  awsSignIn,
+  secretsManagerBackend,
+  secretsManagerVault,
+} from "@keypin/connectors/aws";
 import {
   cloudflareIssuer,
   cloudflareWorker,
@@ -76,6 +81,7 @@ const cloudflareReaders = new Map<string, CloudflareReader>();
 let infisical: ReturnType<typeof infisicalBackend> | undefined;
 let bitwarden: ReturnType<typeof bitwardenBackend> | undefined;
 let doppler: ReturnType<typeof dopplerBackend> | undefined;
+let secretsManager: ReturnType<typeof secretsManagerBackend> | undefined;
 
 export const destinations = [
   githubActions,
@@ -89,7 +95,13 @@ export const destinations = [
   gitlabProject,
   gitlabGroup,
 ];
-export const vaults = [infisicalVault, bitwardenVault, dopplerVault, onePasswordVault];
+export const vaults = [
+  infisicalVault,
+  bitwardenVault,
+  dopplerVault,
+  secretsManagerVault,
+  onePasswordVault,
+];
 export const signInNames = signInVariables([...vaults, ...destinations]);
 
 export function destination(target: PublishTarget, publisher: Publisher): Destination {
@@ -149,6 +161,8 @@ const vault = routedVault({
   infisical: () => (infisical ??= infisicalBackend(credentialsFrom(process.env))),
   bitwarden: () => (bitwarden ??= bitwardenBackend(accessTokenFrom(process.env))),
   doppler: () => (doppler ??= dopplerBackend(tokenFrom(process.env))),
+  awssm: () =>
+    (secretsManager ??= secretsManagerBackend(awsSignIn(process.env, homedir(), readText))),
 });
 
 async function ask(question: string): Promise<string> {

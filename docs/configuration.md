@@ -23,7 +23,8 @@ repo = "me/my-project"
 
 `account` is the account's sign-in address, such as `my.1password.com`, its name as shown at the top left of the
 1Password app, or its account ID. A team shares one account, and each member signs in to it. For other vaults,
-see [Infisical](infisical.md), [Bitwarden](bitwarden.md) or [Doppler](doppler.md).
+see [Infisical](infisical.md), [Bitwarden](bitwarden.md), [Doppler](doppler.md) or
+[AWS Secrets Manager](aws-secrets-manager.md).
 
 ## Keys
 

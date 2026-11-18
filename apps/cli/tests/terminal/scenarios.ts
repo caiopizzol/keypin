@@ -1,6 +1,10 @@
-import { envValues } from "@keypin/core";
+import { envValues, parseObject } from "@keypin/core";
 import { localDay } from "@keypin/core";
-import { accessKeyJson, type FakeAwsKey } from "@keypin/connectors/aws/testing";
+import {
+  accessKeyJson,
+  type FakeAwsKey,
+  type FakeSecretsManager,
+} from "@keypin/connectors/aws/testing";
 import type { FakeToken } from "@keypin/connectors/cloudflare/testing";
 import {
   type FakeGoogleKey,
@@ -73,6 +77,7 @@ export interface Scenario {
   infisical?: FakeInfisical;
   bitwarden?: FakeBitwarden;
   doppler?: FakeDoppler;
+  awssm?: FakeSecretsManager;
 }
 
 export const FAKE_TOKEN = `ops_${Buffer.from(JSON.stringify({ signInAddress: "https://my.1password.com/" })).toString("base64url")}`;
@@ -791,6 +796,44 @@ const doppler: Scenario = {
   env: { DOPPLER_TOKEN: "dp.sa.verify-account-token-1a9f" },
 };
 
+const AWSSM_KEY = {
+  id: "ASIAVERIFYVERIFY0001",
+  secret: "verify-aws-secret-key-4b8e",
+  token: "verify-aws-session-token-9d1c",
+};
+
+const awssm: Scenario = {
+  ...ready,
+  about:
+    "ready, but keypin.toml reads from fake AWS Secrets Manager in account 123456789012, signed in with temporary credentials",
+  files: {
+    ...ready.files,
+    "keypin.toml": INFISICAL_MAP.replace(
+      '[infisical]\norganization = "acme"',
+      '[awssm]\naccount = "123456789012"',
+    )
+      .replace("infisical://billing/dev/STRIPE_KEY", "awssm://eu-west-1/billing/dev:STRIPE_KEY")
+      .replace("infisical://billing/prod/STRIPE_KEY", "awssm://eu-west-1/billing/prod/stripe"),
+  },
+  onePassword: { accounts: {} },
+  awssm: {
+    account: "123456789012",
+    credentials: [AWSSM_KEY],
+    secrets: {
+      "eu-west-1/billing/dev": { value: JSON.stringify({ STRIPE_KEY: "verify-dev-stripe-2c7d" }) },
+      "eu-west-1/billing/prod/stripe": {
+        value: "verify-prod-stripe-5e8b",
+        created: "2026-08-01T10:00:00Z",
+      },
+    },
+  },
+  env: {
+    AWS_ACCESS_KEY_ID: AWSSM_KEY.id,
+    AWS_SECRET_ACCESS_KEY: AWSSM_KEY.secret,
+    AWS_SESSION_TOKEN: AWSSM_KEY.token,
+  },
+};
+
 const bitwarden: Scenario = {
   ...ready,
   about: "ready, but keypin.toml reads from a fake Bitwarden Secrets Manager organization",
@@ -1285,6 +1328,7 @@ jobs:
   infisical,
   bitwarden,
   doppler,
+  awssm,
   "infisical-token": {
     ...infisical,
     about: "infisical, but signed in with a machine identity's access token in INFISICAL_TOKEN",
@@ -1728,6 +1772,13 @@ export function valuesOf(scenario: Scenario): string[] {
     .flatMap((secrets) => Object.values(secrets));
   if (doppler.some((secret) => secret.value.length < SHORTEST_VALUE))
     throw new Error(`Doppler values need ${SHORTEST_VALUE} characters or more`);
+  const awssm = Object.values(scenario.awssm?.secrets ?? {}).flatMap((secret) => {
+    const parsed = parseObject(secret.value ?? "");
+    const inner = Object.values(parsed).filter((value) => typeof value === "string");
+    return inner.length ? inner : secret.value ? [secret.value] : [];
+  });
+  if (awssm.some((value) => value.length < SHORTEST_VALUE))
+    throw new Error(`AWS Secrets Manager values need ${SHORTEST_VALUE} characters or more`);
   const tokens = [
     scenario.env?.OP_SERVICE_ACCOUNT_TOKEN,
     scenario.env?.INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET,
@@ -1735,6 +1786,8 @@ export function valuesOf(scenario: Scenario): string[] {
     scenario.env?.INFISICAL_TOKEN,
     scenario.env?.BWS_ACCESS_TOKEN,
     scenario.env?.DOPPLER_TOKEN,
+    scenario.env?.AWS_SECRET_ACCESS_KEY,
+    scenario.env?.AWS_SESSION_TOKEN,
   ].flatMap((token) => (token ? [token] : []));
   const issued = [
     ...(scenario.resend ? [ISSUED_PREFIX] : []),
@@ -1757,6 +1810,7 @@ export function valuesOf(scenario: Scenario): string[] {
     ...infisical.map((secret) => secret.value),
     ...bitwarden.map((secret) => secret.value),
     ...doppler.map((secret) => secret.value),
+    ...awssm,
     ...env,
     ...tokens,
     ...issued,

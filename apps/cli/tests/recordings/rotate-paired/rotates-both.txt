@@ -112,7 +112,7 @@ ok     Keys  revoked AKID-0
         "publisher": "me@example.com",
         "destinationAccount": "11111111111111111111111111111111"
       },
-      "at": "2026-11-09T15:00:00.000Z",
+      "at": "2026-11-09T12:00:00.000Z",
       "evidence": {
         "destination": "cloudflare-worker:api",
         "version": "v-3"
@@ -141,7 +141,7 @@ ok     Keys  revoked AKID-0
         "publisher": "me@example.com",
         "destinationAccount": "11111111111111111111111111111111"
       },
-      "at": "2026-11-09T15:00:00.000Z",
+      "at": "2026-11-09T12:00:00.000Z",
       "evidence": {
         "destination": "cloudflare-worker:api",
         "version": "v-3"
@@ -170,7 +170,7 @@ ok     Keys  revoked AKID-0
         "publisher": "acme",
         "destinationAccount": "acme"
       },
-      "at": "2026-11-09T15:00:00.000Z",
+      "at": "2026-11-09T12:00:00.000Z",
       "evidence": {
         "destination": "github-actions:acme/api",
         "version": "v-4"
@@ -199,7 +199,7 @@ ok     Keys  revoked AKID-0
         "publisher": "acme",
         "destinationAccount": "acme"
       },
-      "at": "2026-11-09T15:00:00.000Z",
+      "at": "2026-11-09T12:00:00.000Z",
       "evidence": {
         "destination": "github-actions:acme/api",
         "version": "v-5"
@@ -214,7 +214,7 @@ ok     Keys  revoked AKID-0
       "issuer": "paired",
       "id": "AKID-1",
       "generation": "7bc5b45e3f63f027",
-      "at": "2026-11-09T15:00:00.000Z",
+      "at": "2026-11-09T12:00:00.000Z",
       "old": {
         "id": "AKID-0",
         "generation": "181f27923457c4e2",

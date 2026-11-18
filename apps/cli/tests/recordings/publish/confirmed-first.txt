@@ -75,7 +75,7 @@ Published STRIPE_API_KEY (prod) to 2 destinations.
         "publisher": "me@example.com",
         "destinationAccount": "11111111111111111111111111111111"
       },
-      "at": "2026-11-09T15:00:00.000Z",
+      "at": "2026-11-09T12:00:00.000Z",
       "evidence": {
         "destination": "cloudflare-worker:billing-worker",
         "version": "v-3"
@@ -104,7 +104,7 @@ Published STRIPE_API_KEY (prod) to 2 destinations.
         "publisher": "acme",
         "destinationAccount": "acme"
       },
-      "at": "2026-11-09T15:00:00.000Z",
+      "at": "2026-11-09T12:00:00.000Z",
       "evidence": {
         "destination": "github-actions:acme/billing",
         "version": "v-4"

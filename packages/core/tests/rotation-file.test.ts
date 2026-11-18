@@ -1,0 +1,294 @@
+import { describe, expect, test } from "vite-plus/test";
+import {
+  dueKeys,
+  emptyState,
+  type Issued,
+  type KeyRef,
+  loadRotationFile,
+  parseMap,
+  type Progress,
+  restoreIssued,
+  restoreReceipts,
+  rotationFile,
+  rotationRecord,
+  recordIssued,
+  recordReceipt,
+  type VaultMetadata,
+  writeRotationFile,
+} from "../src/index";
+import { day } from "../src/testing/day";
+import { fakeFiles, ISSUERS, KINDS, receipt, VAULT_KINDS } from "./fixtures";
+
+const FILE = "/work/mailer/keypin.toml";
+const TODAY = day("2026-11-09");
+const RESEND = `issuer = { kind = "resend", admin = "op://Private/resend admin key/credential", permission = "sending_access" }`;
+const GITHUB = `publish = [{ to = "github-actions", repo = "acme/mailer" }]`;
+
+const MAP = `
+[1password]
+account = "my.1password.com"
+
+[keys.DUE_KEY]
+rotate_every = "90d"
+prod = { from = "op://Private/due key/credential", ${GITHUB}, ${RESEND} }
+
+[keys.TODAY_KEY]
+rotate_every = "90d"
+prod = { from = "op://Private/today key/credential", ${GITHUB}, ${RESEND} }
+
+[keys.FRESH_KEY]
+rotate_every = "90d"
+prod = { from = "op://Private/fresh key/credential", ${GITHUB}, ${RESEND} }
+
+[keys.BY_HAND]
+rotate_every = "90d"
+prod = { from = "op://Private/by hand/credential", ${GITHUB} }
+
+[keys.NOWHERE]
+rotate_every = "90d"
+prod = { from = "op://Private/nowhere/credential", ${RESEND} }
+
+[keys.UNREADABLE]
+rotate_every = "90d"
+prod = { from = "op://Private/unreadable/credential", ${GITHUB}, ${RESEND} }
+
+[keys.UNDATED]
+rotate_every = "90d"
+prod = { from = "op://Private/undated/credential", ${GITHUB}, ${RESEND} }
+
+[keys.FOREVER]
+rotate_every = "never"
+prod = { from = "op://Private/forever/credential", ${GITHUB}, ${RESEND} }
+
+[keys.DEV_ONLY]
+rotate_every = "90d"
+dev = "op://Private/dev only/credential"
+`;
+
+function parsed() {
+  const result = parseMap(MAP, FILE, KINDS, ISSUERS, VAULT_KINDS);
+  if (!result.ok) throw new Error(result.errors.join("\n"));
+  return result.map;
+}
+
+const ROTATED: Record<string, string | null> = {
+  "due key": "2026-08-01",
+  "today key": "2026-08-11",
+  "fresh key": "2026-11-01",
+  nowhere: "2026-01-01",
+  "by hand": "2026-01-01",
+  undated: null,
+  forever: "2020-01-01",
+};
+
+function metadata(ref: KeyRef): VaultMetadata | null {
+  const item = typeof ref.item === "string" ? ref.item : "";
+  if (!(item in ROTATED)) return null;
+  const rotated = ROTATED[item] ?? null;
+  return { rotated: rotated === null ? null : day(rotated) };
+}
+
+describe("rotate --due picks keys", () => {
+  test("rotates the keys that are due and have an issuer and a destination, and says why it skips the rest", () => {
+    const choices = dueKeys({
+      map: parsed(),
+      environment: "prod",
+      today: TODAY,
+      metadata,
+      progress: () => null,
+    });
+    expect(choices).toEqual([
+      { keyId: "DUE_KEY", action: "rotate", why: "was due 2026-10-30" },
+      { keyId: "TODAY_KEY", action: "rotate", why: "due today" },
+      { keyId: "FRESH_KEY", action: "skip", why: "not due until 2027-01-30" },
+      { keyId: "BY_HAND", action: "skip", why: "no issuer, so keypin can't make a new key" },
+      { keyId: "NOWHERE", action: "skip", why: "no destination for the new key" },
+      { keyId: "UNREADABLE", action: "skip", why: "the vault's rotated date couldn't be read" },
+      { keyId: "UNDATED", action: "skip", why: "no rotated date in the vault" },
+      { keyId: "FOREVER", action: "skip", why: "never rotates" },
+    ]);
+  });
+
+  test("finishes a rotation that stopped, and leaves one that waits for approval, whatever the date", () => {
+    const progress = (keyId: string): Progress =>
+      keyId === "FRESH_KEY"
+        ? { kind: "unfinished", since: "2026-11-01", revokes: true }
+        : keyId === "DUE_KEY"
+          ? { kind: "waiting", since: "2026-11-02", revokes: true }
+          : null;
+    const choices = dueKeys({
+      map: parsed(),
+      environment: "prod",
+      today: TODAY,
+      metadata,
+      progress,
+    });
+    expect(choices.slice(0, 3)).toEqual([
+      { keyId: "DUE_KEY", action: "waiting", why: "rotated 2026-11-02, the old key waits" },
+      { keyId: "TODAY_KEY", action: "rotate", why: "due today" },
+      { keyId: "FRESH_KEY", action: "finish", why: "finishing the rotation from 2026-11-01" },
+    ]);
+  });
+});
+
+const ISSUED: Issued = {
+  keyId: "DUE_KEY",
+  environment: "prod",
+  mapFile: FILE,
+  issuer: "resend",
+  id: "re-new-1",
+  generation: "aaaaaaaaaaaaaaaa",
+  at: "2026-11-09T12:00:00.000Z",
+  old: { id: "key-0", generation: "bbbbbbbbbbbbbbbb", revoked: false },
+};
+
+const DESTINATION = "github-actions:acme/mailer:DUE_KEY";
+const IDS = { vault: "vault-id-1", item: "item-id-1" };
+
+function published() {
+  const map = parsed();
+  const ref = map.keys[0]?.environments.prod?.ref ?? null;
+  let state = recordIssued(emptyState(), ISSUED);
+  state = recordReceipt(
+    state,
+    receipt(DESTINATION, ISSUED.generation, {
+      keyId: "DUE_KEY",
+      mapFile: FILE,
+      source: ref,
+      sourceIds: IDS,
+      account: { pinned: "acme", publisher: "me@example.com", destinationAccount: "acme" },
+      at: "2026-11-09T12:00:01.000Z",
+    }),
+    KINDS,
+  );
+  return { map, state };
+}
+
+describe(".keypin/rotation.json", () => {
+  test("holds key names, environments, provider key IDs, generations, dates and hashes, never a value or a reference", async () => {
+    const { map, state } = published();
+    const file = await rotationFile(state, map, KINDS, null);
+    const text = JSON.stringify(file);
+    expect(file.issued).toEqual([
+      {
+        key: "DUE_KEY",
+        environment: "prod",
+        issuer: "resend",
+        id: "re-new-1",
+        generation: "aaaaaaaaaaaaaaaa",
+        at: "2026-11-09T12:00:00.000Z",
+        old: { id: "key-0", generation: "bbbbbbbbbbbbbbbb", revoked: false },
+      },
+    ]);
+    const [write, ...more] = file.published;
+    expect(more).toEqual([]);
+    expect(write?.approved).toMatch(/^[0-9a-f]{16}$/);
+    expect({ ...write, approved: "hash" }).toEqual({
+      key: "DUE_KEY",
+      environment: "prod",
+      destination: DESTINATION,
+      generation: "aaaaaaaaaaaaaaaa",
+      at: "2026-11-09T12:00:01.000Z",
+      approved: "hash",
+    });
+    expect(text).not.toMatch(
+      /op:|1password|Private|due key|my\.1password|vault-id|item-id|me@example|\/work|mapFile|evidence/,
+    );
+    const keys = (value: unknown): string[] =>
+      Array.isArray(value)
+        ? value.flatMap(keys)
+        : value !== null && typeof value === "object"
+          ? Object.entries(value).flatMap(([k, v]) => [k, ...keys(v)])
+          : [];
+    expect([...new Set(keys(file))].toSorted()).toEqual([
+      "approved",
+      "at",
+      "destination",
+      "environment",
+      "generation",
+      "id",
+      "issued",
+      "issuer",
+      "key",
+      "old",
+      "published",
+      "revoked",
+      "version",
+    ]);
+  });
+
+  test("a fresh machine gets the rotation back from the file alone", async () => {
+    const { map, state } = published();
+    const file = await rotationFile(state, map, KINDS, null);
+    const owner = { keyId: "DUE_KEY", environment: "prod", mapFile: FILE };
+    const fresh = restoreIssued(emptyState(), file, map);
+    expect(fresh.issued).toEqual([ISSUED]);
+    const back = await restoreReceipts({
+      state: fresh,
+      file,
+      map,
+      kinds: KINDS,
+      owner,
+      ids: async () => IDS,
+    });
+    expect(back.receipts).toMatchObject([
+      { destinationId: DESTINATION, generation: ISSUED.generation, sourceIds: IDS },
+    ]);
+  });
+
+  test("a write approved for another vault item doesn't count on a fresh machine", async () => {
+    const { map, state } = published();
+    const file = await rotationFile(state, map, KINDS, null);
+    const back = await restoreReceipts({
+      state: restoreIssued(emptyState(), file, map),
+      file,
+      map,
+      kinds: KINDS,
+      owner: { keyId: "DUE_KEY", environment: "prod", mapFile: FILE },
+      ids: async () => ({ vault: "vault-id-1", item: "another-item" }),
+    });
+    expect(back.receipts).toEqual([]);
+  });
+
+  test("a revoke recorded on another machine isn't undone by an older local state", async () => {
+    const { map, state } = published();
+    const revoked = recordIssued(state, { ...ISSUED, old: { ...ISSUED.old, revoked: true } });
+    const file = await rotationFile(revoked, map, KINDS, null);
+    expect(file.issued[0]?.old.revoked).toBe(true);
+    const merged = await rotationFile(state, map, KINDS, file);
+    expect(merged.issued[0]?.old.revoked).toBe(true);
+    expect(restoreIssued(state, file, map).issued[0]?.old.revoked).toBe(true);
+  });
+
+  test("says per key where the new key went and whether the old key waits", async () => {
+    const { map, state } = published();
+    const file = await rotationFile(state, map, KINDS, null);
+    expect(rotationRecord(file, map, KINDS, "DUE_KEY", "prod")).toEqual({
+      at: "2026-11-09T12:00:00.000Z",
+      published: ["github-actions:acme/mailer"],
+      unpublished: [],
+      old: "waiting for approval",
+    });
+    const unpublished = { ...file, published: [] };
+    expect(rotationRecord(unpublished, map, KINDS, "DUE_KEY", "prod")?.old).toBe("still in use");
+    expect(rotationRecord(file, map, KINDS, "TODAY_KEY", "prod")).toBeNull();
+  });
+
+  test("round-trips, refuses a malformed file, and writes nothing while there's nothing to record", async () => {
+    const { map, state } = published();
+    const disk = fakeFiles();
+    const path = "/work/mailer/.keypin/rotation.json";
+    expect(
+      await writeRotationFile(disk.files, path, await rotationFile(emptyState(), map, KINDS, null)),
+    ).toBe("unchanged");
+    expect(disk.contents.has(path)).toBe(false);
+    const file = await rotationFile(state, map, KINDS, null);
+    expect(await writeRotationFile(disk.files, path, file)).toBe("written");
+    expect(await writeRotationFile(disk.files, path, file)).toBe("unchanged");
+    expect(await loadRotationFile(disk.files, path)).toEqual(file);
+    disk.contents.set(path, JSON.stringify({ version: 1, issued: [{ key: "A" }], published: [] }));
+    await expect(loadRotationFile(disk.files, path)).rejects.toThrow(
+      `${path}: the rotation file's "issued" must be a list of issued keys`,
+    );
+  });
+});

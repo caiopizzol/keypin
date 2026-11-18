@@ -5,6 +5,7 @@ import {
   type DestinationKinds,
   envFlag,
   kindOf,
+  type KeyRef,
   type KeysMap,
   loadRegistry,
   loadState,
@@ -13,8 +14,11 @@ import {
   messageOf,
   parseMap,
   publishEnvironment,
+  loadRotationFile,
+  rotationRecord,
   type Status,
   type StatusRow,
+  statusDates,
   statusFile,
   targetOf,
   type VaultKinds,
@@ -25,7 +29,7 @@ import {
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
 import { registryPath, statePath } from "../paths";
-import { findMap, MAP_FILE, STATUS_FILE } from "../project";
+import { findMap, MAP_FILE, ROTATION_FILE, STATUS_FILE } from "../project";
 import { columns, count, type Output, output, tilde } from "../output";
 import { approval } from "../sign-in";
 import { distinctRefs, refKey } from "../vault";
@@ -63,7 +67,7 @@ export async function status(args: string[], deps: Deps): Promise<number> {
 
   const metadata = await readDates(
     deps,
-    [...maps.values()].flatMap((result) => (result.ok ? [result.map] : [])),
+    refsOf([...maps.values()].flatMap((result) => (result.ok ? [result.map] : []))),
   );
 
   const today = localDay(deps.now());
@@ -104,13 +108,18 @@ export async function status(args: string[], deps: Deps): Promise<number> {
 
 async function writeFile(deps: Deps): Promise<number> {
   const map = await findMap(deps);
+  return (await writeStatus(deps, map, false)) ? 0 : 1;
+}
+
+export async function writeStatus(deps: Deps, map: KeysMap, keepDates: boolean): Promise<boolean> {
   const project = dirname(map.file);
-  const metadata = await readDates(deps, [map]);
-  if (metadata.failed) {
+  const file = join(project, STATUS_FILE);
+  const metadata = await readDates(deps, refsOf([map]));
+  if (metadata.failed && !keepDates) {
     deps.stderr.write(
       `keypin: left ${STATUS_FILE} as it is, since a rotated date couldn't be read\n`,
     );
-    return 1;
+    return false;
   }
   const today = localDay(deps.now());
   const { rows } = buildStatus({
@@ -122,8 +131,20 @@ async function writeFile(deps: Deps): Promise<number> {
     metadata: (ref) => metadata.dates.get(refKey(ref)) ?? null,
     today,
   });
-  const file = join(project, STATUS_FILE);
-  const result = await writeStatusFile(deps.files, file, statusFile(rows, map.environments, today));
+  const before = statusDates(await deps.files.read(file));
+  const dated = rows.map((row) =>
+    metadata.dates.get(refKey(row.ref)) === null
+      ? { ...row, rotated: before(row.keyId, row.environment) ?? null }
+      : row,
+  );
+  const rotation = await loadRotationFile(deps.files, join(project, ROTATION_FILE));
+  const records = (keyId: string, environment: string) =>
+    rotation && rotationRecord(rotation, map, deps.destinations, keyId, environment);
+  const result = await writeStatusFile(
+    deps.files,
+    file,
+    statusFile(dated, map.environments, today, records),
+  );
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);
   const shown = tilde(file, deps.home);
   out.line(
@@ -131,18 +152,20 @@ async function writeFile(deps: Deps): Promise<number> {
       ? `${out.mark(true)} wrote ${shown}`
       : `${out.mark(true)} ${shown} has these dates already; left it as it is`,
   );
-  return 0;
+  return true;
 }
 
-async function readDates(
-  deps: Deps,
-  maps: readonly KeysMap[],
-): Promise<{ dates: Map<string, VaultMetadata | null>; failed: boolean }> {
-  const refs = distinctRefs(
-    maps.flatMap((map) =>
-      map.keys.flatMap((key) => Object.values(key.environments).flatMap((e) => (e ? [e.ref] : []))),
-    ),
+export function refsOf(maps: readonly KeysMap[]): KeyRef[] {
+  return maps.flatMap((map) =>
+    map.keys.flatMap((key) => Object.values(key.environments).flatMap((e) => (e ? [e.ref] : []))),
   );
+}
+
+export async function readDates(
+  deps: Deps,
+  wanted: readonly KeyRef[],
+): Promise<{ dates: Map<string, VaultMetadata | null>; failed: boolean }> {
+  const refs = distinctRefs(wanted);
   const dates = new Map<string, VaultMetadata | null>();
   const errors: string[] = [];
   if (refs.length) {

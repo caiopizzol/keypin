@@ -84,6 +84,21 @@ const COMMAND_USAGE: [string, string][] = [
                            nothing
 `,
   ],
+  [
+    "rotate",
+    `  keypin rotate --due [--env <name>] [--yes]
+                           the same for every key that is due and has an issuer and destinations;
+                           without a terminal it stops before revoking, and the old key waits for
+                           approval. Records the result in .keypin/, never a value
+`,
+  ],
+  [
+    "rotate",
+    `  keypin rotate --approve-revoke [<VARIABLE>] [--env <name>]
+                           revoke the old key of each rotation waiting for approval, once every
+                           destination has the new key; this is the approval, so no y is asked
+`,
+  ],
 ];
 
 export const USAGE = `Usage:

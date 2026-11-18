@@ -1,4 +1,4 @@
-export { Secret, generationOf, keyIdText, type Generation } from "./secret";
+export { Secret, generationOf, hashText, keyIdText, type Generation } from "./secret";
 export { type Fetch } from "./fetch";
 export {
   DEFAULT_ENVIRONMENTS,
@@ -92,7 +92,21 @@ export {
   type StatusInput,
   type StatusRow,
 } from "./status";
-export { type StatusFile, statusFile, writeStatusFile } from "./status-file";
+export { type StatusFile, statusDates, statusFile, writeStatusFile } from "./status-file";
+export {
+  deliveredTo,
+  loadRotationFile,
+  restoreIssued,
+  restoreReceipts,
+  type RotationFile,
+  rotationFile,
+  rotationRecord,
+  type RotationRecord,
+  rotates,
+  waitsForRevoke,
+  writeRotationFile,
+} from "./rotation-file";
+export { type DueChoice, dueKeys, dueRefs, type Progress } from "./due";
 export { envFileKind, envNames, envValues, type EnvFileKind } from "./dotenv";
 export {
   type Discovered,

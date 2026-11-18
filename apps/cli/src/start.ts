@@ -24,7 +24,7 @@ import { convexDeployment } from "@keypin/connectors/convex";
 import { elevenlabsIssuer } from "@keypin/connectors/elevenlabs";
 import { flyApp } from "@keypin/connectors/fly";
 import { ghToken, githubActions, listRepoSecrets, sshHostname } from "@keypin/connectors/github";
-import { googleIssuer } from "@keypin/connectors/google";
+import { googleIssuer, googleServiceAccountIssuer } from "@keypin/connectors/google";
 import { neonIssuer } from "@keypin/connectors/neon";
 import { netlifyProject } from "@keypin/connectors/netlify";
 import { openaiIssuer } from "@keypin/connectors/openai";
@@ -97,6 +97,7 @@ export const issuers = [
   cloudflareIssuer,
   openrouterIssuer,
   googleIssuer,
+  googleServiceAccountIssuer,
   elevenlabsIssuer,
   awsIssuer,
   sendgridIssuer,

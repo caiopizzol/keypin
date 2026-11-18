@@ -11,10 +11,10 @@ export async function call(
   fetch: Fetch,
   token: string,
   method: string,
-  path: string,
+  url: string,
   body?: unknown,
 ): Promise<Reply> {
-  const response = await fetch(`${API}/${path}`, {
+  const response = await fetch(url, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -44,4 +44,16 @@ export function disabledIn(reply: Reply): string | null {
 export function returned(method: string, path: string, reply: Reply): string {
   const status = statusOf(objectField(reply.body, "error"));
   return `Google ${method} ${path} returned HTTP ${reply.status}${status ? ` ${status}` : ""}`;
+}
+
+export function apiDisabled(
+  api: string,
+  title: string,
+  project: string,
+): { reason: string; fix: string } {
+  const where = project ? ` in project ${project}` : "";
+  return {
+    reason: `the ${title} is turned off${where}, the admin service account's project`,
+    fix: `turn on ${api} at https://console.cloud.google.com/apis/library/${api}${project ? `?project=${encodeURIComponent(project)}` : ""}`,
+  };
 }

@@ -2,7 +2,6 @@ import { createPrivateKey, type KeyObject, sign } from "node:crypto";
 import { type Fetch, isRecord, parseObject, type Secret } from "@keypin/core";
 
 export const TOKEN_URL = "https://oauth2.googleapis.com/token";
-export const SCOPE = "https://www.googleapis.com/auth/apikeys";
 export const SERVICE_ACCOUNTS = "https://console.cloud.google.com/iam-admin/serviceaccounts";
 const LIFETIME = 3600;
 const EARLY = 60_000;
@@ -19,7 +18,7 @@ export interface Refusal {
   fix: string;
 }
 
-const OTHER_LOGINS: Record<string, string> = {
+export const OTHER_LOGINS: Record<string, string> = {
   authorized_user: "a gcloud user login (authorized_user)",
   external_account: "a workload identity federation config (external_account)",
   external_account_authorized_user: "a workforce identity login (external_account_authorized_user)",
@@ -27,9 +26,11 @@ const OTHER_LOGINS: Record<string, string> = {
   gdch_service_account: "a Google Distributed Cloud key (gdch_service_account)",
 };
 
-export const ADMIN_FIX = `put a JSON key of a service account with the API Keys Admin role in the admin item; create one at ${SERVICE_ACCOUNTS}`;
+export function adminFix(role: string): string {
+  return `put a JSON key of a service account with the ${role} role in the admin item; create one at ${SERVICE_ACCOUNTS}`;
+}
 
-export function serviceAccount(admin: Secret): ServiceAccount | Refusal {
+export function serviceAccount(admin: Secret, fix: string): ServiceAccount | Refusal {
   const json = parseObject(admin.reveal());
   const type = json.type;
   const other = typeof type === "string" ? OTHER_LOGINS[type] : undefined;
@@ -37,13 +38,13 @@ export function serviceAccount(admin: Secret): ServiceAccount | Refusal {
     return {
       facts: `the admin item holds ${other}`,
       reason: `keypin signs in to Google only with a service account key, so it runs without gcloud`,
-      fix: ADMIN_FIX,
+      fix,
     };
   if (type !== "service_account")
     return {
       facts: "the admin item holds no service account key",
       reason: `keypin signs in to Google with a service account's JSON key, and the admin item holds another value`,
-      fix: ADMIN_FIX,
+      fix,
     };
   const email = json.client_email;
   const pem = json.private_key;
@@ -51,7 +52,7 @@ export function serviceAccount(admin: Secret): ServiceAccount | Refusal {
     return {
       facts: "the admin item holds a service account key without client_email or private_key",
       reason: "keypin needs both to sign in to Google",
-      fix: ADMIN_FIX,
+      fix,
     };
   let key: KeyObject;
   try {
@@ -72,6 +73,7 @@ export type AccessToken = { token: string; until: number } | Refusal;
 export async function accessToken(
   fetch: Fetch,
   account: ServiceAccount,
+  scope: string,
   now: Date,
 ): Promise<AccessToken> {
   const iat = Math.floor(now.getTime() / 1000);
@@ -83,7 +85,7 @@ export async function accessToken(
   });
   const claims = encode({
     iss: account.email,
-    scope: SCOPE,
+    scope,
     aud: TOKEN_URL,
     iat,
     exp: iat + LIFETIME,
@@ -112,4 +114,36 @@ export async function accessToken(
       fix: `create a new JSON key for ${account.email} at ${SERVICE_ACCOUNTS} and put it in the admin item`,
     };
   throw new Error(`Google POST ${TOKEN_URL} returned HTTP ${response.status}`);
+}
+
+export interface SessionOptions {
+  admin: () => Promise<Secret>;
+  fetch: Fetch;
+  now: () => Date;
+  scope: string;
+  fix: string;
+}
+
+export class Session {
+  readonly #options: SessionOptions;
+  #token: { token: string; until: number } | null = null;
+
+  constructor(options: SessionOptions) {
+    this.#options = options;
+  }
+
+  async account(): Promise<ServiceAccount | Refusal> {
+    return serviceAccount(await this.#options.admin(), this.#options.fix);
+  }
+
+  async bearer(): Promise<string | Refusal> {
+    const { fetch, now, scope } = this.#options;
+    if (this.#token && this.#token.until > now().getTime()) return this.#token.token;
+    const account = await this.account();
+    if ("facts" in account) return account;
+    const token = await accessToken(fetch, account, scope, now());
+    if ("facts" in token) return token;
+    this.#token = token;
+    return token.token;
+  }
 }

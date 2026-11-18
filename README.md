@@ -22,18 +22,19 @@ paste in a chat, or leave on a laptop.
 Each project lists its keys in a `keypin.toml`: names, vault items and destinations, never values. keypin runs your
 commands with the dev keys and publishes the prod keys. It reads a value only while a command runs.
 
-| Vaults    | Destinations       | Rotation              |
-| --------- | ------------------ | --------------------- |
-| 1Password | GitHub Actions     | Resend                |
-| Infisical | Cloudflare Workers | Neon                  |
-| Bitwarden | Vercel projects    | OpenAI                |
-| Doppler   | Supabase Functions | Supabase              |
-|           | Netlify projects   | Cloudflare API tokens |
-|           | Railway services   | OpenRouter            |
-|           | Convex deployments | Google Cloud API keys |
-|           | Fly.io apps        | ElevenLabs            |
-|           |                    | AWS IAM access keys   |
-|           |                    | SendGrid              |
+| Vaults    | Destinations       | Rotation                          |
+| --------- | ------------------ | --------------------------------- |
+| 1Password | GitHub Actions     | Resend                            |
+| Infisical | Cloudflare Workers | Neon                              |
+| Bitwarden | Vercel projects    | OpenAI                            |
+| Doppler   | Supabase Functions | Supabase                          |
+|           | Netlify projects   | Cloudflare API tokens             |
+|           | Railway services   | OpenRouter                        |
+|           | Convex deployments | Google Cloud API keys             |
+|           | Fly.io apps        | ElevenLabs                        |
+|           |                    | AWS IAM access keys               |
+|           |                    | SendGrid                          |
+|           |                    | Google Cloud service account keys |
 
 Want another? Vote for it on the [roadmap](https://github.com/caiopizzol/keypin/issues/138).
 

@@ -1,0 +1,159 @@
+$ keypin check
+exit 0
+
+--- file .env ---
+DATABASE_URL=sentinel-value-7f3a9c2e1d
+RESEND_API_KEY=sentinel-value-7f3a9c2e1d
+
+--- file .env.example ---
+DATABASE_URL=
+
+--- file .github/workflows/deploy.yml ---
+
+on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: deploy
+        env:
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+--- file .github/workflows/rotate-keys.yml ---
+name: rotate keys
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      approve_revoke:
+        description: Revoke the old keys waiting for approval
+        type: boolean
+        default: false
+      key:
+        description: Only this key, or empty for every key that waits
+        type: string
+
+permissions:
+  contents: write
+
+concurrency: rotate-keys
+
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: npm install -g keypin@0.31.0
+      - run: gh auth login --hostname github.com --with-token <<< "$TOKEN"
+        env:
+          TOKEN: ${{ secrets.KEYPIN_GITHUB_TOKEN }}
+      - run: keypin rotate ${KEY:+"$KEY"} ${{ inputs.approve_revoke && '--approve-revoke' || '--due --yes' }}
+        env:
+          KEY: ${{ inputs.key }}
+          KEYPIN_1PASSWORD: service-account
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+      - if: always()
+        run: |
+          git add -- $(git ls-files --others --modified -- .keypin/rotation.json .keypin/status.json)
+          git diff --cached --quiet && exit 0
+          git config user.name keypin
+          git config user.email keypin@users.noreply.github.com
+          git commit -m "chore: record key rotation"
+          for try in 1 2 3; do git pull --rebase && git push && exit 0; sleep 10; done
+          exit 1
+
+--- file keypin.toml ---
+ignore = ["KEYPIN_GITHUB_TOKEN", "OP_SERVICE_ACCOUNT_TOKEN"]
+[1password]
+account = "my.1password.com"
+
+[keys.DATABASE_URL]
+rotate_every = "90d"
+dev = "op://Private/billing dev database url/password"
+
+[keys.RESEND_API_KEY]
+rotate_every = "90d"
+dev = "op://Private/billing dev resend api key/password"
+
+[keys.RESEND_API_KEY.prod]
+from = "op://Private/billing prod resend api key/password"
+
+[[keys.RESEND_API_KEY.prod.publish]]
+to = "cloudflare-worker"
+account = "11111111111111111111111111111111"
+worker = "billing-worker"
+
+[keys.STRIPE_API_KEY]
+rotate_every = "90d"
+
+[keys.STRIPE_API_KEY.prod]
+from = "op://Private/billing prod stripe api key/password"
+
+[[keys.STRIPE_API_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+
+--- file wrangler.toml ---
+name = "billing-worker"
+account_id = "11111111111111111111111111111111"
+
+[vars]
+REGION = "sentinel-value-7f3a9c2e1d"
+
+[secrets]
+required = ["RESEND_API_KEY"]
+
+--- given git ---
+{
+  "rev-parse --show-toplevel": "/work/billing\n",
+  "remote get-url origin": "git@github.com:acme/billing.git\n",
+  "config --get github.account": null
+}
+
+--- given github ---
+{
+  "ok": true,
+  "secrets": [
+    {
+      "name": "STRIPE_API_KEY",
+      "updatedAt": null
+    }
+  ]
+}
+
+--- given worker ---
+{
+  "ok": true,
+  "secrets": [
+    {
+      "name": "RESEND_API_KEY",
+      "updatedAt": null
+    }
+  ]
+}
+
+--- calls reads ---
+worker 11111111111111111111111111111111 billing-worker
+github acme/billing as null
+
+--- calls vault ---
+ids billing dev database url
+ids billing dev resend api key
+ids billing prod resend api key
+ids billing prod stripe api key
+
+--- calls destination ---
+check cloudflare-worker:billing-worker
+check github-actions:acme/billing
+
+--- stdout ---
+billing /work/billing · read 2 env files, 1 wrangler config, 2 workflows; GitHub acme/billing
+ok     3 keys, 2 destinations. Everything checks out.
+Note: keypin.toml ignores 2 keys
+
+--- stderr ---
+ok     Looked up 4 items in 1Password account my.1password.com, not the values
+ok     Checked 2 accounts

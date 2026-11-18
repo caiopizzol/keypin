@@ -57,6 +57,13 @@ It needs two Actions secrets:
 - `KEYPIN_GITHUB_TOKEN`: a fine-grained token for this repository only, with the Secrets permission set to Read and
   write. The workflow's own `GITHUB_TOKEN` can't write secrets.
 
+keypin runs with these two, so it doesn't manage them. [Ignore](configuration.md#ignored-keys) them at the top of
+keypin.toml, or `keypin check` asks you to add them:
+
+```toml
+ignore = ["KEYPIN_GITHUB_TOKEN", "OP_SERVICE_ACCOUNT_TOKEN"]
+```
+
 If your plan has environments with deployment branches, keep both secrets in an environment only the default branch can
 use, and add `environment: <name>` to the job.
 

@@ -1,4 +1,6 @@
 import { assert, describe, expect, test } from "vite-plus/test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { isRecord, parseMap, SignInFailed, type StoreRead } from "@keypin/core";
 import { CloudflareReader } from "@keypin/connectors/cloudflare";
 import { fakeSignIn } from "@keypin/connectors/cloudflare/testing";
@@ -438,6 +440,27 @@ describe("keypin check on a whole project", () => {
       worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
     });
     expect(await without.record("ignore-removed", ["check"])).toBe(1);
+  });
+
+  test("the scheduled rotation workflow and ignore line from the docs leave check clean", async () => {
+    const docs = readFileSync(
+      join(import.meta.dirname, "../../../docs/scheduled-rotation.md"),
+      "utf8",
+    );
+    const workflow = /^```yaml\n([\s\S]*?)^```/m.exec(docs)?.[1];
+    const ignore = /^```toml\n(ignore = [^\n]*\n)```/m.exec(docs)?.[1];
+    assert(workflow !== undefined && workflow.includes("keypin rotate"));
+    assert(ignore !== undefined);
+    const run = setup({
+      files: {
+        [MAP]: `${ignore}${PUBLISHED}`,
+        [`${ROOT}/.github/workflows/rotate-keys.yml`]: workflow,
+      },
+      deps: { workerSignIn: () => fakeSignIn("oauth") },
+      github: { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+    });
+    expect(await run.record("scheduled-rotation-workflow", ["check"])).toBe(0);
   });
 
   test("ignore matches names in any case, so check never proposes a key ignore would reject", async () => {

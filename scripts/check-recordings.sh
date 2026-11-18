@@ -16,6 +16,9 @@ restore() {
   rm -rf "$aside"
 }
 trap restore EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 printf '%s\n' "$recordings" | while IFS= read -r file; do
   [ -f "$file" ] || continue
   mkdir -p "$aside/files/$(dirname "$file")"

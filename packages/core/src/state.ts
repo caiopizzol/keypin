@@ -1,5 +1,5 @@
 import type { Environment, KeyId, Receipt } from "./contracts";
-import { type Files, readVersionedJson, writeJsonAtomic } from "./files";
+import { type Files, readVersionedJson, UPGRADE, writeJsonAtomic } from "./files";
 import { type DestinationKinds, receiptSecretKey } from "./destination";
 import { isRecord } from "./record";
 import type { VaultKinds } from "./login";
@@ -49,6 +49,14 @@ export async function loadState(files: Files, path: string, vaults: VaultKinds):
           : r,
       )
     : data.receipts;
+  const unknown = Array.isArray(receipts)
+    ? receipts.map((r) => unknownVault(r, vaults)).find((kind) => kind !== null)
+    : undefined;
+  if (unknown) {
+    throw new Error(
+      `${path}: the state file has a receipt from a ${JSON.stringify(unknown)} vault, which this keypin doesn't know; a newer keypin likely wrote it. ${UPGRADE}`,
+    );
+  }
   if (!Array.isArray(receipts) || !receipts.every((r) => isReceipt(r, vaults))) {
     throw new Error(`${path}: the state file's "receipts" must be a list of receipts`);
   }
@@ -143,6 +151,12 @@ function isReceipt(r: unknown, vaults: VaultKinds): r is Receipt {
     typeof r.evidence === "object" &&
     r.evidence !== null
   );
+}
+
+function unknownVault(r: unknown, vaults: VaultKinds): string | null {
+  if (!isRecord(r) || !isRecord(r.source)) return null;
+  const { kind } = r.source;
+  return typeof kind === "string" && !vaults.some((vault) => vault.kind === kind) ? kind : null;
 }
 
 function storedSource(source: unknown, vaults: VaultKinds): unknown {

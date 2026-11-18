@@ -7,6 +7,8 @@ export interface Files {
   remove(path: string): Promise<void>;
 }
 
+export const UPGRADE = "Upgrade keypin: npm install -g keypin@latest";
+
 export async function writeJsonAtomic(files: Files, path: string, data: unknown): Promise<void> {
   const temporary = `${path}.${crypto.randomUUID()}.tmp`;
   try {
@@ -36,8 +38,11 @@ export async function readVersionedJson(
   }
   if (!isRecord(data)) throw new Error(`${path}: the ${what} must be a JSON object`);
   if (!versions.some((version) => version === data.version)) {
+    const found = `${path}: the ${what} has schema version ${JSON.stringify(data.version ?? null)}`;
+    const reads = `this keypin reads version ${versions.join(" or ")}`;
+    const newer = typeof data.version === "number" && data.version > Math.max(...versions);
     throw new Error(
-      `${path}: the ${what} has schema version ${JSON.stringify(data.version ?? null)}, and this keypin reads version ${versions.join(" or ")}`,
+      newer ? `${found}, from a newer keypin, and ${reads}. ${UPGRADE}` : `${found}, and ${reads}`,
     );
   }
   return data;

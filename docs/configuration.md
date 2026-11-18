@@ -390,8 +390,8 @@ key_id = "TWILIO_API_KEY"
 `TWILIO_API_SECRET` of a Main key or a Restricted key that may create, read and delete API keys. A Standard key
 can't manage keys. For a subaccount's key, use the subaccount's own SID and credential.
 
-The new key gets the old key's type, and a Restricted key's permissions. A Restricted key needs permission to read
-available phone numbers, which keypin uses to check its secret. keypin refuses a Main key, which Twilio's API can't
+The new key gets the old key's type, and a Restricted key's permissions. A Restricted key needs `/twilio/phone-numbers/available-numbers/list`, which
+keypin uses to check its secret. keypin refuses a Main key, which Twilio's API can't
 make. It doesn't rotate `TWILIO_AUTH_TOKEN`.
 
 ### xAI

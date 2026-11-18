@@ -107,7 +107,10 @@ describe("Twilio issuer", () => {
   });
 
   test("gives a Restricted key's permissions to the new key", async () => {
-    const allow = ["/twilio/messaging/messages/create", "/twilio/phone-numbers/available/read"];
+    const allow = [
+      "/twilio/messaging/messages/create",
+      "/twilio/phone-numbers/available-numbers/list",
+    ];
     const subject = twilio([{ ...APP, type: "restricted", policy: allow }]);
     const check = await checked(subject);
     expect(check.facts).toContain("the vault holds Restricted key");
@@ -137,7 +140,10 @@ describe("Twilio issuer", () => {
       {
         ...APP,
         type: "restricted",
-        policy: ["/twilio/messaging/messages/create", "/twilio/phone-numbers/available/read"],
+        policy: [
+          "/twilio/messaging/messages/create",
+          "/twilio/phone-numbers/available-numbers/list",
+        ],
       },
     ]);
     await checked(subject);

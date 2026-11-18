@@ -78,7 +78,7 @@ export function twilioFetch(fake: FakeTwilio): Fetch {
       if (available[1] !== caller.account) return error(403, 20003, "Permission Denied");
       if (
         caller.type === "restricted" &&
-        !caller.policy?.some((p) => p.startsWith("/twilio/phone-numbers/"))
+        !caller.policy?.includes("/twilio/phone-numbers/available-numbers/list")
       )
         return error(403, 70051, "Authorization Failed");
       return reply(200, { countries: [], uri: pathname });

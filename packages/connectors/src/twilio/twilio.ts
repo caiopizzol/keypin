@@ -115,7 +115,7 @@ export class TwilioIssuer implements Issuer {
         ok: false,
         facts: `${facts}; Twilio answered ${answered(signs)} to it`,
         reason: `keypin can't confirm the vault's secret works: Twilio gives this answer when Restricted key ${id} lacks permission to read available phone numbers, but also when the key or account is suspended`,
-        fix: `check at ${DASHBOARD} that the key and account are active, and give the key permission to read available phone numbers, then run this again`,
+        fix: `check at ${DASHBOARD} that the key and account are active, and give the key the /twilio/phone-numbers/available-numbers/list permission, then run this again`,
       };
     if (signs.status !== 200) {
       if (signs.status !== 401 && signs.status !== 403)

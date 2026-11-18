@@ -956,7 +956,7 @@ const TWILIO_KEY: FakeTwilioKey = {
   secret: TWILIO_OLD_SECRET,
   name: "billing sms",
   type: "restricted",
-  policy: ["/twilio/messaging/messages/create", "/twilio/phone-numbers/available/read"],
+  policy: ["/twilio/messaging/messages/create", "/twilio/phone-numbers/available-numbers/list"],
 };
 
 const twilio: Scenario = {

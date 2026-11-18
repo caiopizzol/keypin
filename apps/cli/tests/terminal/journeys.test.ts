@@ -769,7 +769,7 @@ describe("keypin rotate in a real terminal", () => {
         "  + Twilio                create a new key\n    a Restricted key with the old key's 2 permissions",
       );
       expect(result.effects).toEqual([
-        "twilio create SKfeed0000000000000000000000000001 restricted with /twilio/messaging/messages/create,/twilio/phone-numbers/available/read",
+        "twilio create SKfeed0000000000000000000000000001 restricted with /twilio/messaging/messages/create,/twilio/phone-numbers/available-numbers/list",
         "1password update my.1password.com/Private/app twilio secret (27 chars)",
         "1password update my.1password.com/Private/app twilio key sid (34 chars)",
         "destination write github-actions:acme/billing TWILIO_API_SECRET (27 chars)",
@@ -792,7 +792,7 @@ describe("keypin rotate in a real terminal", () => {
       expect(result.exit).toBe(1);
       expect(result.screen).toContain("Twilio may have made the key before the reply was lost.");
       expect(result.effects).toEqual([
-        "twilio create SKfeed0000000000000000000000000001 restricted with /twilio/messaging/messages/create,/twilio/phone-numbers/available/read",
+        "twilio create SKfeed0000000000000000000000000001 restricted with /twilio/messaging/messages/create,/twilio/phone-numbers/available-numbers/list",
       ]);
       clean(result);
     },

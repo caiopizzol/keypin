@@ -25,6 +25,8 @@
     "./google/testing": "./src/google/testing.ts",
     "./infisical": "./src/infisical/index.ts",
     "./infisical/testing": "./src/infisical/testing.ts",
+    "./mongodb-atlas": "./src/mongodb-atlas/index.ts",
+    "./mongodb-atlas/testing": "./src/mongodb-atlas/testing.ts",
     "./neon": "./src/neon/index.ts",
     "./neon/testing": "./src/neon/testing.ts",
     "./netlify": "./src/netlify/index.ts",

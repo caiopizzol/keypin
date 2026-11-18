@@ -205,27 +205,62 @@ describe("check-recordings", () => {
     expect(() => checkRecordings(cwd, writes({}))).toThrow("git ls-files failed");
   });
 
-  test("refuses a symlinked recording or recordings folder, before copying anything", () => {
+  test("copies no symlinks, so the tests can't write outside the copy", () => {
+    const cwd = repo({
+      "tests/a.test.ts": WRITER,
+      "tests/recordings/a.txt": "a\n",
+      "lib/x.ts": "x\n",
+    });
+    const outside = mkdtempSync(join(tmpdir(), "check-recordings-test-"));
+    repos.push(outside);
+    writeFileSync(join(outside, "x.ts"), "sentinel\n");
+    writeFileSync(join(cwd, "tests/recordings/a.txt"), "local edit\n");
+    symlinkSync(join(cwd, "tests/recordings"), join(cwd, "tests/snapshots"));
+    mkdirSync(join(cwd, "other"));
+    symlinkSync("../tests", join(cwd, "other/link"));
+    rmSync(join(cwd, "lib"), { recursive: true });
+    symlinkSync(outside, join(cwd, "lib"));
+    const before = [snapshot(cwd), snapshot(outside)];
+    let links: string[] = [];
+    const outcome = checkRecordings(cwd, (copy) => {
+      links = ["tests/snapshots", "other/link", "lib"].filter(
+        (path) => lstatSync(join(copy, path), { throwIfNoEntry: false }) !== undefined,
+      );
+      return writes({ "tests/snapshots/a.txt": "regenerated\n", "lib/x.ts": "regenerated\n" })(
+        copy,
+      );
+    });
+    expect(links).toEqual([]);
+    expect(outcome).toEqual({ kind: "stale", paths: ["tests/recordings/a.txt"] });
+    expect([snapshot(cwd), snapshot(outside)]).toEqual(before);
+  });
+
+  test("refuses symlinked recordings and recordings folders, before running anything", () => {
     const cwd = repo({
       "tests/a.test.ts": WRITER,
       "elsewhere/a.txt": "a\n",
       "tests/recordings/b.txt": "b\n",
+      "replaced/recordings/c.txt": "c\n",
     });
     symlinkSync("b.txt", join(cwd, "tests/recordings/link.txt"));
     mkdirSync(join(cwd, "tests/nested"));
     symlinkSync(join(cwd, "elsewhere"), join(cwd, "tests/nested/recordings"));
-    git(cwd, "add", "-A");
-    git(cwd, "commit", "-qm", "links");
+    rmSync(join(cwd, "replaced/recordings"), { recursive: true });
+    symlinkSync("../tests/a.test.ts", join(cwd, "replaced/recordings"));
     const before = snapshot(cwd);
     let ran = false;
     const outcome = checkRecordings(cwd, () => {
       ran = true;
       return 0;
     });
-    expect(outcome).toEqual({
-      kind: "symlinks",
-      paths: ["tests/nested/recordings", "tests/recordings/link.txt"],
-    });
+    expect(outcome.kind).toBe("symlinks");
+    if (outcome.kind !== "symlinks") return;
+    expect([...new Set(outcome.paths)].sort()).toEqual([
+      "replaced/recordings",
+      "replaced/recordings/c.txt",
+      "tests/nested/recordings",
+      "tests/recordings/link.txt",
+    ]);
     expect(ran).toBe(false);
     expect(snapshot(cwd)).toEqual(before);
   });
@@ -253,13 +288,5 @@ describe("check-recordings", () => {
     expect(checkRecordings(cwd, writes({ "other/recordings/b.txt": "b\n" }))).toEqual({
       kind: "ok",
     });
-  });
-
-  test("refuses a recordings folder replaced by a symlink to a file", () => {
-    const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
-    rmSync(join(cwd, "tests/recordings"), { recursive: true });
-    symlinkSync("a.test.ts", join(cwd, "tests/recordings"));
-    const outcome = checkRecordings(cwd, writes({}));
-    expect(outcome.kind).toBe("symlinks");
   });
 });

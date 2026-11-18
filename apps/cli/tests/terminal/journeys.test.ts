@@ -1,3 +1,6 @@
+import { mkdtempSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import { type Drive, drive } from "./drive";
 import { FAKE_TOKEN, ready, valuesOf } from "./scenarios";
@@ -260,6 +263,46 @@ describe("keypin in a real terminal", () => {
       expect(result.effects).toEqual([
         "destination write fly-app:billing-api STRIPE_KEY (23 chars)",
       ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "publish to GitLab says the next pipeline uses the value",
+    async () => {
+      const result = await drive({
+        scenario: "gitlab",
+        args: ["publish", "STRIPE_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain("  + GitLab  acme/billing  first write  needs approval");
+      expect(result.screen).toContain(
+        "    GitLab uses the new value from the next pipeline; keypin doesn't start one",
+      );
+      expect(result.effects).toEqual([
+        "destination write gitlab-project:acme/billing STRIPE_KEY (23 chars)",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "check without glab or KEYPIN_GITLAB_TOKEN says how to sign in to GitLab",
+    async () => {
+      const onlyBun = mkdtempSync(join(tmpdir(), "keypin-no-glab-"));
+      symlinkSync(process.execPath, join(onlyBun, "bun"));
+      const result = await drive({
+        scenario: "gitlab-no-login",
+        args: ["check"],
+        env: { PATH: onlyBun },
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("1 Sign in to GitLab");
+      expect(result.screen).toContain("glab auth login");
+      expect(result.effects).toEqual([]);
       clean(result);
     },
     SLOW,
@@ -757,6 +800,120 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "Twilio: replaces an API key and its SID together with the old key's permissions, then deletes the old key after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "twilio",
+        args: ["rotate", "TWILIO_API_SECRET"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  + Twilio                create a new key\n    a Restricted key with the old key's 2 permissions",
+      );
+      expect(result.effects).toEqual([
+        "twilio create SKfeed0000000000000000000000000001 restricted with /twilio/messaging/messages/create,/twilio/phone-numbers/available-numbers/list",
+        "1password update my.1password.com/Private/app twilio secret (27 chars)",
+        "1password update my.1password.com/Private/app twilio key sid (34 chars)",
+        "destination write github-actions:acme/billing TWILIO_API_SECRET (27 chars)",
+        "destination write github-actions:acme/billing TWILIO_API_KEY (34 chars)",
+        "twilio delete SKa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "Twilio: a lost create reply isn't retried, and names the key to delete",
+    async () => {
+      const result = await drive({
+        scenario: "twilio-lost",
+        args: ["rotate", "TWILIO_API_SECRET"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("Twilio may have made the key before the reply was lost.");
+      expect(result.effects).toEqual([
+        "twilio create SKfeed0000000000000000000000000001 restricted with /twilio/messaging/messages/create,/twilio/phone-numbers/available-numbers/list",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "Twilio: a Main key in the vault stops before anything is created",
+    async () => {
+      const result = await drive({
+        scenario: "twilio-main",
+        args: ["rotate", "TWILIO_API_SECRET"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("Twilio's API makes only Standard and Restricted keys");
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "MongoDB Atlas: creates a second user with the same roles, publishes its URL, then deletes the old user after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "atlas",
+        args: ["rotate", "MONGODB_URI"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  + MongoDB Atlas         create a new key\n    creates database user billing-b with billing's roles and scopes",
+      );
+      expect(result.screen).toMatch(/^✓ MongoDB Atlas {2}revoked billing {2}\d+\.\ds$/m);
+      expect(result.effects).toEqual([
+        "atlas create billing-b with readWrite@billing on Cluster0",
+        "1password update my.1password.com/Private/app mongodb uri (136 chars)",
+        "destination write github-actions:acme/billing MONGODB_URI (136 chars)",
+        "atlas delete billing",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "MongoDB Atlas: a lost create reply isn't retried, and names the user to delete",
+    async () => {
+      const result = await drive({
+        scenario: "atlas-lost",
+        args: ["rotate", "MONGODB_URI"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        "MongoDB Atlas may have created database user billing-b before the reply was lost.",
+      );
+      expect(result.effects).toEqual(["atlas create billing-b with readWrite@billing on Cluster0"]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "MongoDB Atlas: an X.509 user stops before anything is created",
+    async () => {
+      const result = await drive({ scenario: "atlas-x509", args: ["rotate", "MONGODB_URI"] });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        "    user billing signs in with MANAGED (x509Type), which has no password keypin can rotate",
+      );
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "SendGrid: makes a key with the old key's scopes, publishes it, then deletes the old key after a second y",
     async () => {
       const result = await drive({
@@ -1002,6 +1159,78 @@ describe("keypin rotate in a real terminal", () => {
         "destination write github-actions:acme/billing GOOGLE_MAPS_API_KEY (26 chars)",
         "google delete projects/481537286014/locations/global/keys/maps-web",
       ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "Google Cloud IAM: makes a service account key file, publishes it, then disables and deletes the old key after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "google-iam",
+        args: ["rotate", "GOOGLE_APPLICATION_CREDENTIALS"],
+        answers: ["y", "y"],
+      });
+      const app = "billing@acme-prod.iam.gserviceaccount.com";
+      const old = `${"a".repeat(37)}f00`;
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        `  + Google Cloud IAM      create a new key\n    for ${app}, which has 2 of 10 keys: ${"a".repeat(37)}bee (disabled), created 2026-03-02 and this one`,
+      );
+      expect(result.screen).toContain(
+        "    keypin disables it, then deletes it; a deleted key can't come back",
+      );
+      expect(result.screen).toMatch(
+        new RegExp(`^✓ Google Cloud IAM {2}revoked ${old} {2}\\d+\\.\\ds$`, "m"),
+      );
+      expect(result.effects).toEqual([
+        `google-iam create ${app}/${"a".repeat(39)}1`,
+        expect.stringMatching(
+          /^1password update my\.1password\.com\/Private\/app service account \(\d+ chars\)$/,
+        ),
+        expect.stringMatching(
+          /^destination write github-actions:acme\/billing GOOGLE_APPLICATION_CREDENTIALS \(\d+ chars\)$/,
+        ),
+        `google-iam delete ${app}/${old}`,
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "Google Cloud IAM: the organization policy that blocks keys is named, with what to do, and nothing is created",
+    async () => {
+      const result = await drive({
+        scenario: "google-iam-policy",
+        args: ["rotate", "GOOGLE_APPLICATION_CREDENTIALS"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        "    the organization policy iam.disableServiceAccountKeyCreation stops new service account keys in project acme-prod",
+      );
+      expect(result.screen).toContain("Stopped. Nothing was created.");
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "Google Cloud IAM: a lost create lists the keys to keep, so the rerun doesn't leave a second key",
+    async () => {
+      const result = await drive({
+        scenario: "google-iam-lost",
+        args: ["rotate", "GOOGLE_APPLICATION_CREDENTIALS"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        `keep ${"a".repeat(37)}bee, ${"a".repeat(37)}f00, and delete any other key`,
+      );
+      expect(result.effects).toHaveLength(1);
       clean(result);
     },
     SLOW,

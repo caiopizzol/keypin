@@ -2,7 +2,12 @@ import { envValues } from "@keypin/core";
 import { localDay } from "@keypin/core";
 import { accessKeyJson, type FakeAwsKey } from "@keypin/connectors/aws/testing";
 import type { FakeToken } from "@keypin/connectors/cloudflare/testing";
-import type { FakeGoogleKey } from "@keypin/connectors/google/testing";
+import {
+  type FakeGoogleKey,
+  type FakeIamAccount,
+  iamKeyFile,
+  serviceAccountKeyId,
+} from "@keypin/connectors/google/testing";
 import type { FakeInfisical } from "@keypin/connectors/infisical/testing";
 import { FAKE_ACCESS_TOKEN, type FakeBitwarden } from "@keypin/connectors/bitwarden/testing";
 import type { FakeDoppler } from "@keypin/connectors/doppler/testing";
@@ -12,6 +17,8 @@ import type { FakeOpenRouterKey } from "@keypin/connectors/openrouter/testing";
 import type { FakeXaiKey } from "@keypin/connectors/xai/testing";
 import type { SupabaseKey } from "@keypin/connectors/supabase/testing";
 import type { FakeSendGridKey } from "@keypin/connectors/sendgrid/testing";
+import { adminJson, type FakeTwilioKey } from "@keypin/connectors/twilio/testing";
+import type { FakeAtlasUser } from "@keypin/connectors/mongodb-atlas/testing";
 
 export interface FakeItem {
   title: string;
@@ -40,11 +47,14 @@ export interface Scenario {
   supabase?: { keys: SupabaseKey[]; loseCreated?: boolean; prefixOnly?: boolean };
   cloudflareTokens?: { tokens: FakeToken[]; loseCreated?: boolean };
   google?: { keys: FakeGoogleKey[]; pendingPolls?: number };
+  googleIam?: { accounts: FakeIamAccount[]; policy?: string; loseCreated?: boolean };
   openrouter?: { keys: FakeOpenRouterKey[] };
   elevenlabs?: { keys: FakeElevenLabsKey[] };
   aws?: { keys: FakeAwsKey[]; unready?: number; loseCreated?: boolean };
   sendgrid?: { keys: FakeSendGridKey[]; loseCreated?: boolean };
+  twilio?: { keys: FakeTwilioKey[]; loseCreated?: boolean };
   xai?: { keys: FakeXaiKey[]; pendingPolls?: number; loseCreated?: boolean };
+  atlas?: { users: FakeAtlasUser[]; loseCreated?: boolean };
   paired?: { keys: string[] };
   registered: boolean;
   git: { origin?: string; account?: string };
@@ -106,6 +116,11 @@ const CONVEX_MAP = MAP.replace(
 const FLY_MAP = MAP.replace(
   'to = "github-actions"\nrepo = "acme/billing"',
   'to = "fly-app"\napp = "billing-api"',
+);
+
+const GITLAB_MAP = MAP.replace(
+  'to = "github-actions"\nrepo = "acme/billing"',
+  'to = "gitlab-project"\nproject = "acme/billing"',
 );
 
 const RAILWAY_MAP = MAP.replace(
@@ -667,6 +682,65 @@ const google: Scenario = {
   },
 };
 
+const GOOGLE_IAM_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.GOOGLE_APPLICATION_CREDENTIALS]
+rotate_every = "90d"
+
+[keys.GOOGLE_APPLICATION_CREDENTIALS.prod]
+from = "op://Private/app service account/credential"
+
+[keys.GOOGLE_APPLICATION_CREDENTIALS.prod.issuer]
+kind = "google-service-account"
+admin = "op://Private/google key maker/credential"
+
+[[keys.GOOGLE_APPLICATION_CREDENTIALS.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`;
+
+export const GOOGLE_IAM_PREFIX = "verify-new-private-key-";
+const GOOGLE_IAM_APP = "billing@acme-prod.iam.gserviceaccount.com";
+const GOOGLE_IAM_OLD = serviceAccountKeyId(0xf00);
+
+const googleIam: Scenario = {
+  ...ready,
+  about: `GOOGLE_APPLICATION_CREDENTIALS has a google-service-account issuer; the vault holds key ${GOOGLE_IAM_OLD} of ${GOOGLE_IAM_APP}, which also has a disabled key`,
+  files: { "keypin.toml": GOOGLE_IAM_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          {
+            title: "app service account",
+            value: iamKeyFile(
+              GOOGLE_IAM_APP,
+              "acme-prod",
+              GOOGLE_IAM_OLD,
+              "verify-old-private-key-4d1c",
+            ),
+            rotated: day(-95),
+          },
+          { title: "google key maker", value: GOOGLE_ADMIN },
+        ],
+      },
+    },
+  },
+  googleIam: {
+    accounts: [
+      {
+        email: GOOGLE_IAM_APP,
+        project: "acme-prod",
+        keys: [
+          { id: serviceAccountKeyId(0xbee), disabled: true, created: "2026-03-02T00:00:00Z" },
+          { id: GOOGLE_IAM_OLD, created: "2026-08-15T00:00:00Z" },
+        ],
+      },
+    ],
+  },
+};
+
 const infisical: Scenario = {
   ...ready,
   about:
@@ -915,6 +989,127 @@ const sendgrid: Scenario = {
   sendgrid: { keys: [SENDGRID_KEY] },
 };
 
+const TWILIO_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.TWILIO_API_SECRET]
+rotate_every = "90d"
+
+[keys.TWILIO_API_SECRET.prod]
+from = "op://Private/app twilio secret/credential"
+
+[keys.TWILIO_API_SECRET.prod.issuer]
+kind = "twilio"
+admin = "op://Private/twilio admin/credential"
+key_id = "TWILIO_API_KEY"
+
+[[keys.TWILIO_API_SECRET.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+
+[keys.TWILIO_API_KEY]
+rotate_every = "never"
+
+[keys.TWILIO_API_KEY.prod]
+from = "op://Private/app twilio key sid/credential"
+
+[[keys.TWILIO_API_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`;
+
+export const TWILIO_ACCOUNT = `AC${"0123456789abcdef".repeat(2)}`;
+export const TWILIO_TOKEN = "twilio_verify_auth_token_4e7c";
+export const TWILIO_PREFIX = "twilio_verify_new_secret_";
+const TWILIO_OLD_SID = `SK${"a1".repeat(16)}`;
+const TWILIO_OLD_SECRET = "twilio_verify_old_secret_8d3f";
+const TWILIO_KEY: FakeTwilioKey = {
+  sid: TWILIO_OLD_SID,
+  secret: TWILIO_OLD_SECRET,
+  name: "billing sms",
+  type: "restricted",
+  policy: ["/twilio/messaging/messages/create", "/twilio/phone-numbers/available-numbers/list"],
+};
+
+const twilio: Scenario = {
+  ...ready,
+  about: `TWILIO_API_SECRET has a Twilio issuer whose key ID is TWILIO_API_KEY; the vault holds Restricted key ${TWILIO_OLD_SID} with a messaging and a phone-numbers permission, and the admin item holds the account's auth token`,
+  files: { "keypin.toml": TWILIO_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          { title: "app twilio secret", value: TWILIO_OLD_SECRET, rotated: day(-95) },
+          { title: "app twilio key sid", value: TWILIO_OLD_SID, rotated: day(-95), public: true },
+          {
+            title: "twilio admin",
+            value: adminJson({
+              TWILIO_ACCOUNT_SID: TWILIO_ACCOUNT,
+              TWILIO_AUTH_TOKEN: TWILIO_TOKEN,
+            }),
+          },
+        ],
+      },
+    },
+  },
+  twilio: { keys: [TWILIO_KEY] },
+};
+
+export const ATLAS_CLIENT = "mdb_sa_id_verify_6745";
+export const ATLAS_SECRET = "mdb_sa_sk_verify_admin_secret_5c1f";
+export const ATLAS_PROJECT = "5f1a2b3c4d5e6f7a8b9c0d1e";
+
+const ATLAS_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.MONGODB_URI]
+rotate_every = "90d"
+
+[keys.MONGODB_URI.prod]
+from = "op://Private/app mongodb uri/password"
+
+[keys.MONGODB_URI.prod.issuer]
+kind = "mongodb-atlas"
+admin = "op://Private/atlas service account/credential"
+client_id = "${ATLAS_CLIENT}"
+project_id = "${ATLAS_PROJECT}"
+
+[[keys.MONGODB_URI.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`;
+
+export const ATLAS_HOST = "cluster0.ab1cd.mongodb.net";
+const ATLAS_OLD = "atlas_verify_old_password_3b9d";
+const ATLAS_USER: FakeAtlasUser = {
+  username: "billing",
+  password: ATLAS_OLD,
+  roles: [{ roleName: "readWrite", databaseName: "billing" }],
+  scopes: [{ name: "Cluster0", type: "CLUSTER" }],
+};
+
+const atlas: Scenario = {
+  ...ready,
+  about:
+    "MONGODB_URI has a MongoDB Atlas issuer; the vault holds database user billing's connection string for Cluster0, and keypin has never rotated it",
+  files: { "keypin.toml": ATLAS_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          {
+            title: "app mongodb uri",
+            value: `mongodb+srv://billing:${ATLAS_OLD}@${ATLAS_HOST}/billing?retryWrites=true&w=majority&appName=Cluster0`,
+            rotated: day(-95),
+          },
+          { title: "atlas service account", value: ATLAS_SECRET },
+        ],
+      },
+    },
+  },
+  atlas: { users: [ATLAS_USER] },
+};
+
 const RANDOM_MAP = `[1password]
 account = "my.1password.com"
 
@@ -948,9 +1143,31 @@ const random: Scenario = {
 };
 
 export const scenarios: Record<string, Scenario> = {
+  twilio,
+  "twilio-lost": {
+    ...twilio,
+    about: "twilio, but the reply to the create is lost after Twilio made the key",
+    twilio: { keys: [TWILIO_KEY], loseCreated: true },
+  },
+  "twilio-main": {
+    ...twilio,
+    about: "twilio, but the vault's key is a Main key, which Twilio's API can't make",
+    twilio: { keys: [{ ...TWILIO_KEY, type: "main" }] },
+  },
   ready,
   paired,
   sendgrid,
+  atlas,
+  "atlas-lost": {
+    ...atlas,
+    about: "atlas, but the reply to the create is lost after Atlas made user billing-b",
+    atlas: { users: [ATLAS_USER], loseCreated: true },
+  },
+  "atlas-x509": {
+    ...atlas,
+    about: "atlas, but database user billing signs in with an X.509 certificate",
+    atlas: { users: [{ ...ATLAS_USER, x509Type: "MANAGED" }] },
+  },
   "sendgrid-lost": {
     ...sendgrid,
     about: "sendgrid, but the reply to the create is lost after SendGrid made the key",
@@ -1336,6 +1553,27 @@ jobs:
       },
     },
   },
+  gitlab: {
+    ...ready,
+    about: "ready, but STRIPE_KEY publishes to a GitLab project's CI/CD variables",
+    files: { "keypin.toml": GITLAB_MAP },
+    env: { KEYPIN_GITLAB_TOKEN: "glpat-verify-gitlab-token-6d1e" },
+  },
+  "gitlab-no-login": {
+    ...ready,
+    about: "gitlab, but neither KEYPIN_GITLAB_TOKEN nor glab is there",
+    files: { "keypin.toml": GITLAB_MAP },
+    places: {
+      "gitlab-project:acme/billing": {
+        check: {
+          reason:
+            "keypin can't find glab, and KEYPIN_GITLAB_TOKEN isn't set. Run glab auth login --hostname gitlab.com, or create a personal, project or group access token with the api scope (https://gitlab.com/-/user_settings/personal_access_tokens) and set KEYPIN_GITLAB_TOKEN",
+          publisher: "unknown",
+          destinationAccount: null,
+        },
+      },
+    },
+  },
   railway: {
     ...ready,
     about: "ready, but STRIPE_KEY publishes to a Railway service's production environment",
@@ -1362,6 +1600,22 @@ jobs:
     },
   },
   google,
+  "google-iam": googleIam,
+  "google-iam-policy": {
+    ...googleIam,
+    about:
+      "google-iam, but the organization policy iam.disableServiceAccountKeyCreation blocks new keys",
+    googleIam: {
+      ...googleIam.googleIam,
+      accounts: googleIam.googleIam?.accounts ?? [],
+      policy: "iam.disableServiceAccountKeyCreation",
+    },
+  },
+  "google-iam-lost": {
+    ...googleIam,
+    about: "google-iam, but the reply to the create is lost after Google makes the key",
+    googleIam: { accounts: googleIam.googleIam?.accounts ?? [], loseCreated: true },
+  },
   "google-user-login": {
     ...google,
     about: "google, but the admin item holds a gcloud user login, not a service account key",
@@ -1491,7 +1745,11 @@ export function valuesOf(scenario: Scenario): string[] {
     ...(scenario.openrouter ? [OPENROUTER_PREFIX] : []),
     ...(scenario.elevenlabs ? [ELEVENLABS_PREFIX] : []),
     ...(scenario.sendgrid ? [SENDGRID_PREFIX] : []),
+    ...(scenario.twilio
+      ? [TWILIO_PREFIX, TWILIO_TOKEN, ...scenario.twilio.keys.map((key) => key.secret)]
+      : []),
     ...(scenario.xai ? [XAI_PREFIX] : []),
+    ...(scenario.atlas ? scenario.atlas.users.map((user) => user.password) : []),
     ...(scenario.aws ? [AWS_PREFIX, ...scenario.aws.keys.map((key) => key.secret)] : []),
   ];
   return [

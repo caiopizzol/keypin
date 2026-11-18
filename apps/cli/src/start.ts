@@ -24,7 +24,9 @@ import { convexDeployment } from "@keypin/connectors/convex";
 import { elevenlabsIssuer } from "@keypin/connectors/elevenlabs";
 import { flyApp } from "@keypin/connectors/fly";
 import { ghToken, githubActions, listRepoSecrets, sshHostname } from "@keypin/connectors/github";
-import { googleIssuer } from "@keypin/connectors/google";
+import { gitlabGroup, gitlabProject } from "@keypin/connectors/gitlab";
+import { googleIssuer, googleServiceAccountIssuer } from "@keypin/connectors/google";
+import { atlasIssuer } from "@keypin/connectors/mongodb-atlas";
 import { neonIssuer } from "@keypin/connectors/neon";
 import { netlifyProject } from "@keypin/connectors/netlify";
 import { openaiIssuer } from "@keypin/connectors/openai";
@@ -33,6 +35,7 @@ import { railwayService } from "@keypin/connectors/railway";
 import { resendIssuer } from "@keypin/connectors/resend";
 import { sendgridIssuer } from "@keypin/connectors/sendgrid";
 import { supabaseFunctions, supabaseIssuer } from "@keypin/connectors/supabase";
+import { twilioIssuer } from "@keypin/connectors/twilio";
 import { vercelProject } from "@keypin/connectors/vercel";
 import { xaiIssuer } from "@keypin/connectors/xai";
 import { randomIssuer } from "./random";
@@ -83,6 +86,8 @@ export const destinations = [
   railwayService,
   convexDeployment,
   flyApp,
+  gitlabProject,
+  gitlabGroup,
 ];
 export const vaults = [infisicalVault, bitwardenVault, dopplerVault, onePasswordVault];
 export const signInNames = signInVariables([...vaults, ...destinations]);
@@ -99,10 +104,13 @@ export const issuers = [
   cloudflareIssuer,
   openrouterIssuer,
   googleIssuer,
+  googleServiceAccountIssuer,
   elevenlabsIssuer,
   awsIssuer,
   sendgridIssuer,
+  twilioIssuer,
   xaiIssuer,
+  atlasIssuer,
   randomIssuer,
 ];
 

@@ -104,6 +104,10 @@ url = "https://happy-animal-123.convex.cloud"
 [[keys.API_TOKEN.prod.publish]]
 to = "fly-app"
 app = "my-app"
+
+[[keys.API_TOKEN.prod.publish]]
+to = "gitlab-project"
+project = "acme/billing"
 ```
 
 GitHub reserves secret names that start with `GITHUB_`. Add `environment = "production"` to write a secret of that
@@ -126,6 +130,9 @@ The map says where a key goes, not who writes it, so every teammate publishes fr
   keypin doesn't read the `npx convex` login or `CONVEX_DEPLOY_KEY`.
 - **Fly.io:** a deploy token for the `app` or an org token for its organization, in `KEYPIN_FLY_API_TOKEN`. Add
   `org = "<org slug>"` to also pin the organization. keypin doesn't read the `fly` login or `FLY_API_TOKEN`.
+- **GitLab:** the `glab` login for the host, or a personal, project or group access token with the `api` scope in
+  `KEYPIN_GITLAB_TOKEN`. It needs the Maintainer role on a project, or Owner on a group. A CI/CD job token can't
+  change variables. keypin doesn't sign in with `GITLAB_TOKEN`.
 
 ## Vault items
 
@@ -141,8 +148,9 @@ it was written; no values or vault references.
 
 Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key, at Resend, [Neon](#neon),
 [OpenAI](#openai), [Supabase](#supabase), [Cloudflare](#cloudflare), [OpenRouter](#openrouter),
-[Google Cloud](#google-cloud), [ElevenLabs](#elevenlabs), [AWS](#aws), [SendGrid](#sendgrid) or [xAI](#xai), or
-make it yourself with [`random`](#random):
+[Google Cloud](#google-cloud) (API keys and [service account keys](#google-cloud-service-account-keys)), [ElevenLabs](#elevenlabs), [AWS](#aws), [SendGrid](#sendgrid),
+[Twilio](#twilio), [xAI](#xai) or [MongoDB Atlas](#mongodb-atlas), or make it yourself with
+[`random`](#random):
 
 ```toml
 [keys.RESEND_API_KEY.prod]
@@ -306,6 +314,27 @@ keypin finds the vault's key from its value, makes a key in the same project wit
 application restrictions (websites, IP addresses, Android or iOS apps), then deletes the old one. A key with no
 restrictions gets a key with none. Google Cloud keeps a deleted key for 30 days, so you can restore it.
 
+### Google Cloud service account keys
+
+For a service account's JSON key file, such as `GOOGLE_APPLICATION_CREDENTIALS` content or Firebase Admin
+credentials. The vault holds the whole file.
+
+```toml
+[keys.GOOGLE_APPLICATION_CREDENTIALS.prod.issuer]
+kind = "google-service-account"
+admin = "op://Private/google key admin/credential"
+```
+
+`admin` is another service account's JSON key, in its own 1Password item, with **Service Account Key Admin**
+(`roles/iam.serviceAccountKeyAdmin`) on the service account you rotate. Turn on the IAM API in the admin's project.
+
+keypin finds the key by the `client_email` and `private_key_id` in the file, then makes a new key file for the same
+service account. A service account holds at most 10 keys, so keypin stops when it has no room. To revoke, keypin
+disables the old key, then deletes it. It refuses a key you uploaded yourself.
+
+Organizations created since May 2024 block new keys with the `iam.disableServiceAccountKeyCreation` policy. To
+rotate, an organization policy admin must turn it off for the project.
+
 ### ElevenLabs
 
 ```toml
@@ -374,6 +403,26 @@ the ID in its value (`SG.<id>.<secret>`) and gives the new key the same scopes.
 For a subuser's key, add `subuser = "<username>"` and use a key from the parent account. For an EU regional
 subuser, add `region = "eu"`.
 
+### Twilio
+
+An API key is two keys in the map, like [AWS](#aws): the secret, and its SID (`SK…`). The secret's issuer names the
+SID's key with `key_id`:
+
+```toml
+[keys.TWILIO_API_SECRET.prod.issuer]
+kind = "twilio"
+admin = "op://Private/twilio admin/credential"
+key_id = "TWILIO_API_KEY"
+```
+
+`admin` holds JSON with `TWILIO_ACCOUNT_SID` and either `TWILIO_AUTH_TOKEN`, or `TWILIO_API_KEY` and
+`TWILIO_API_SECRET` of a Main key or a Restricted key that may create, read and delete API keys. A Standard key
+can't manage keys. For a subaccount's key, use the subaccount's own SID and credential.
+
+The new key gets the old key's type, and a Restricted key's permissions. A Restricted key needs `/twilio/phone-numbers/available-numbers/list`, which
+keypin uses to check its secret. keypin refuses a Main key, which Twilio's API can't
+make. It doesn't rotate `TWILIO_AUTH_TOKEN`.
+
 ### xAI
 
 ```toml
@@ -391,6 +440,30 @@ propagation. keypin asks xAI which key and team the vault's key is, so there's n
 
 The new key gets the old key's ACLs, rate limits and lifetime. keypin waits until xAI reports it on every cluster
 before saving it; if that takes over a minute, keypin deletes it and nothing changes. keypin refuses a disabled key.
+
+### MongoDB Atlas
+
+```toml
+[keys.MONGODB_URI.prod]
+from = "op://Private/app mongodb uri/password"
+
+[keys.MONGODB_URI.prod.issuer]
+kind = "mongodb-atlas"
+admin = "op://Private/atlas service account/credential"
+client_id = "mdb_sa_id_..."
+project_id = "5f1a2b3c4d5e6f7a8b9c0d1e"
+```
+
+`admin` holds the client secret (`mdb_sa_sk_...`) of an Atlas
+[service account](https://www.mongodb.com/docs/atlas/configure-api-access/) with **Project Database Access Admin** on
+the project, and `client_id` is its client ID. keypin doesn't take API keys, which Atlas calls legacy.
+`project_id` is the 24-character ID in the project's settings.
+
+A changed password stops the old one at once, so keypin makes a second database user instead: user `app` becomes
+`app-b`, then `app-a`, then `app-b` again. The new user gets the old user's roles, scopes, labels and description, and
+the vault's connection string keeps its hosts, database and options with the new username and password. keypin
+deletes the old user after the second `y`. It refuses users that sign in with X.509, AWS IAM, LDAP or OIDC, and
+temporary users.
 
 ### random
 

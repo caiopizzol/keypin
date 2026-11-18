@@ -22,6 +22,8 @@ import {
   fakePrivateKey,
   googleFetch,
   type GoogleWorld,
+  iamFetch,
+  type IamWorld,
   serviceAccountJson,
 } from "@keypin/connectors/google/testing";
 import { type AwsWorld, awsFetch } from "@keypin/connectors/aws/testing";
@@ -31,7 +33,9 @@ import { type OpenAIKeys, openaiFetch } from "@keypin/connectors/openai/testing"
 import { openrouterFetch, type OpenRouterWorld } from "@keypin/connectors/openrouter/testing";
 import { resendFetch } from "@keypin/connectors/resend/testing";
 import { sendgridFetch, type SendGridWorld } from "@keypin/connectors/sendgrid/testing";
+import { atlasFetch, type AtlasWorld } from "@keypin/connectors/mongodb-atlas/testing";
 import { supabaseFetch, type SupabaseWorld } from "@keypin/connectors/supabase/testing";
+import { twilioFetch, type TwilioWorld } from "@keypin/connectors/twilio/testing";
 import { xaiFetch, type XaiWorld } from "@keypin/connectors/xai/testing";
 import { credentialsFrom, infisicalBackend } from "@keypin/connectors/infisical";
 import { fileStore, infisicalFetch } from "@keypin/connectors/infisical/testing";
@@ -53,11 +57,19 @@ import {
   type FakeItem,
   GOOGLE_ADMIN,
   GOOGLE_EMAIL,
+  GOOGLE_IAM_PREFIX,
   GOOGLE_PREFIX,
   ISSUED_PREFIX,
   RESEND_ADMIN,
   SENDGRID_ADMIN,
+  ATLAS_CLIENT,
+  ATLAS_HOST,
+  ATLAS_PROJECT,
+  ATLAS_SECRET,
   SENDGRID_PREFIX,
+  TWILIO_ACCOUNT,
+  TWILIO_PREFIX,
+  TWILIO_TOKEN,
   RESEND_KNOWN,
   NEON_HOST,
   NEON_PREFIX,
@@ -109,13 +121,16 @@ const OPENAI = join(sandbox, "openai.json");
 const SUPABASE = join(sandbox, "supabase.json");
 const CLOUDFLARE = join(sandbox, "cloudflare-tokens.json");
 const GOOGLE = join(sandbox, "google.json");
-const GOOGLE_KEY = scenario.google ? fakePrivateKey() : "";
+const GOOGLE_IAM = join(sandbox, "google-iam.json");
+const GOOGLE_KEY = scenario.google || scenario.googleIam ? fakePrivateKey() : "";
 const OPENROUTER = join(sandbox, "openrouter.json");
 const ELEVENLABS = join(sandbox, "elevenlabs.json");
 const PAIRED = join(sandbox, "paired.json");
 const AWS = join(sandbox, "aws.json");
 const SENDGRID = join(sandbox, "sendgrid.json");
+const TWILIO = join(sandbox, "twilio.json");
 const XAI = join(sandbox, "xai.json");
+const ATLAS = join(sandbox, "atlas.json");
 
 function effect(line: string): void {
   appendFileSync(EFFECTS, `${line}\n`);
@@ -424,6 +439,25 @@ const google = googleFetch({
   effect,
 });
 
+const googleIam = iamFetch({
+  serviceAccount: GOOGLE_EMAIL,
+  privateKey: GOOGLE_KEY,
+  manages: (run.googleIam?.accounts ?? []).map((a) => a.email),
+  keyPrefix: GOOGLE_IAM_PREFIX,
+  ...(run.googleIam?.policy === undefined ? {} : { policy: run.googleIam.policy }),
+  loseCreated: run.googleIam?.loseCreated === true,
+  world: {
+    load(): IamWorld {
+      if (!existsSync(GOOGLE_IAM)) return { accounts: run.googleIam?.accounts ?? [], created: 0 };
+      const parsed: unknown = JSON.parse(readFileSync(GOOGLE_IAM, "utf8"));
+      if (!isIamWorld(parsed)) throw new Error(`${GOOGLE_IAM} isn't the fake Google IAM's keys`);
+      return parsed;
+    },
+    save: (world) => writeFileSync(GOOGLE_IAM, JSON.stringify(world)),
+  },
+  effect,
+});
+
 const openrouter = openrouterFetch({
   admin: OPENROUTER_ADMIN,
   valuePrefix: OPENROUTER_PREFIX,
@@ -491,6 +525,24 @@ const sendgrid = sendgridFetch({
   effect,
 });
 
+const twilio = twilioFetch({
+  account: TWILIO_ACCOUNT,
+  authToken: TWILIO_TOKEN,
+  sidPrefix: "SKfeed",
+  valuePrefix: TWILIO_PREFIX,
+  loseCreated: run.twilio?.loseCreated === true,
+  world: {
+    load(): TwilioWorld {
+      if (!existsSync(TWILIO)) return { keys: run.twilio?.keys ?? [], created: 0 };
+      const parsed: unknown = JSON.parse(readFileSync(TWILIO, "utf8"));
+      if (!isTwilioWorld(parsed)) throw new Error(`${TWILIO} isn't the fake Twilio account's keys`);
+      return parsed;
+    },
+    save: (world) => writeFileSync(TWILIO, JSON.stringify(world)),
+  },
+  effect,
+});
+
 const xai = xaiFetch({
   admin: XAI_ADMIN,
   team: "team_1",
@@ -509,19 +561,49 @@ const xai = xaiFetch({
   effect,
 });
 
+const atlas = atlasFetch({
+  clientId: ATLAS_CLIENT,
+  secret: ATLAS_SECRET,
+  projectId: ATLAS_PROJECT,
+  clusters: [{ name: "Cluster0", srvHost: ATLAS_HOST }],
+  pendingPolls: 1,
+  loseCreated: run.atlas?.loseCreated === true,
+  world: {
+    load(): AtlasWorld {
+      if (!existsSync(ATLAS)) return { users: run.atlas?.users ?? [], created: 0, pending: 0 };
+      const parsed: unknown = JSON.parse(readFileSync(ATLAS, "utf8"));
+      if (!isAtlasWorld(parsed)) throw new Error(`${ATLAS} isn't the fake Atlas project's users`);
+      return parsed;
+    },
+    save: (world) => writeFileSync(ATLAS, JSON.stringify(world)),
+  },
+  effect,
+});
+
 const issuerFetch: Record<string, Fetch> = {
   aws,
   cloudflare,
   elevenlabs,
   google,
+  "google-service-account": googleIam,
+  "mongodb-atlas": atlas,
   neon,
   openai,
   openrouter,
   resend,
   sendgrid,
   supabase,
+  twilio,
   xai,
 };
+
+function isTwilioWorld(value: unknown): value is TwilioWorld {
+  return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";
+}
+
+function isAtlasWorld(value: unknown): value is AtlasWorld {
+  return isRecord(value) && Array.isArray(value.users) && typeof value.pending === "number";
+}
 
 function isSendGridWorld(value: unknown): value is SendGridWorld {
   return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";
@@ -541,6 +623,10 @@ function isElevenLabsWorld(value: unknown): value is ElevenLabsWorld {
 
 function isOpenRouterWorld(value: unknown): value is OpenRouterWorld {
   return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";
+}
+
+function isIamWorld(value: unknown): value is IamWorld {
+  return isRecord(value) && Array.isArray(value.accounts) && typeof value.created === "number";
 }
 
 function isGoogleWorld(value: unknown): value is GoogleWorld {

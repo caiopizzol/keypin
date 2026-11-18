@@ -179,12 +179,18 @@ describe("check-recordings", () => {
   test("refuses symlinked recordings, before running the tests", () => {
     const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/b.txt": "b\n" });
     symlinkSync("b.txt", join(cwd, "tests/recordings/link.txt"));
+    symlinkSync("missing.txt", join(cwd, "tests/recordings/broken.txt"));
     let ran = false;
     const outcome = checkRecordings(cwd, () => {
       ran = true;
       return 0;
     });
-    expect(outcome).toEqual({ kind: "symlinks", paths: ["tests/recordings/link.txt"] });
+    expect(outcome.kind).toBe("symlinks");
+    if (outcome.kind !== "symlinks") return;
+    expect([...outcome.paths].sort()).toEqual([
+      "tests/recordings/broken.txt",
+      "tests/recordings/link.txt",
+    ]);
     expect(ran).toBe(false);
   });
 

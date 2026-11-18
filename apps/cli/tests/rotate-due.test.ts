@@ -117,8 +117,7 @@ function machine(
 }
 
 const ci = (w: World) => machine(w);
-const WARNING =
-  "An old key waits for approval: The old RESEND_API_KEY (prod) still works. Once nothing uses it, run this workflow with approve revoke.";
+const WARNING = `An old key waits for approval: The old RESEND_API_KEY (prod) still works. Once nothing uses it, run this workflow with approve revoke, or run ${RERUN} rotate RESEND_API_KEY --approve-revoke.`;
 const json = (w: World, path: string) => parseJson(w.repo.contents.get(path) ?? "null");
 
 async function rotatedOnceOnALaptop(map = MAP) {
@@ -225,8 +224,15 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
     const w = await rotatedOnceOnALaptop();
     const cron = machine(w, { runner: false });
     expect(await cron.run("--due", "--yes")).toBe(0);
+    const approve = `Once nothing uses the old RESEND_API_KEY (prod), run:\n  ${RERUN} rotate RESEND_API_KEY --approve-revoke`;
     expect(cron.stderr.text).toContain(
-      `The old key re-new-1 still works, and waits for approval.\nOnce nothing uses it, run:\n  ${RERUN} rotate RESEND_API_KEY --approve-revoke`,
+      `The old key re-new-1 still works, and waits for approval.\n${approve}`,
+    );
+
+    const again = machine(w, { runner: false });
+    expect(await again.run("--due", "--yes")).toBe(0);
+    expect(again.stderr.text).toContain(
+      `Nothing is due. An old key waits for approval.\n${approve}`,
     );
   });
 

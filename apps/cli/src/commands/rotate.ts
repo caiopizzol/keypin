@@ -252,12 +252,11 @@ async function rotateDue(context: Context, flags: Flags, path: string): Promise<
   const rows = columns(choices.map((c) => [c.keyId, shown[c.action]]));
   choices.forEach((c, i) => out.line(`  ${(rows[i] ?? []).join("  ")}  ${out.dim(c.why)}`));
   const picked = choices.filter((c) => c.action === "rotate" || c.action === "finish");
-  const waits = choices.some((c) => c.action === "waiting");
-  for (const c of choices) if (c.action === "waiting") waitsNotice(deps, c.keyId, environment);
-  if (!picked.length) {
-    out.line(waits ? "Nothing is due. An old key waits for approval." : "Nothing is due.");
-    return 0;
-  }
+  const waiting = choices.filter((c) => c.action === "waiting");
+  if (!picked.length)
+    out.line(waiting.length ? "Nothing is due. An old key waits for approval." : "Nothing is due.");
+  for (const c of waiting) waitsNotice(context, c.keyId);
+  if (!picked.length) return 0;
   const codes: number[] = [];
   for (const choice of picked) {
     out.line("");
@@ -274,11 +273,16 @@ async function rotateDue(context: Context, flags: Flags, path: string): Promise<
   return worst(codes);
 }
 
-function waitsNotice(deps: Deps, keyId: string, environment: string): boolean {
-  return deps.warnRunner(
+function waitsNotice(
+  { deps, out, envArgs, environment }: Pick<Context, "deps" | "out" | "envArgs" | "environment">,
+  keyId: string,
+): void {
+  const approve = commandLine(deps, "rotate", [keyId, ...envArgs, "--approve-revoke"]);
+  const warned = deps.warnRunner(
     "An old key waits for approval",
-    `The old ${keyId} (${environment}) still works. Once nothing uses it, run this workflow with approve revoke.`,
+    `The old ${keyId} (${environment}) still works. Once nothing uses it, run this workflow with approve revoke, or run ${approve}.`,
   );
+  if (!warned) out.line(`Once nothing uses the old ${keyId} (${environment}), run:\n  ${approve}`);
 }
 
 async function approveAll(
@@ -917,10 +921,8 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
   const asked = job.args.filter((arg) => arg !== "--yes");
   const later = `To revoke it later, run this in a terminal:\n  ${commandLine(deps, "rotate", asked)}`;
   if (job.due && !deps.isTerminal) {
-    const approve = [key.name, ...job.envArgs, "--approve-revoke"];
     out.line(`The old key ${shown(issuer, old)} still works, and waits for approval.`);
-    if (!waitsNotice(deps, key.name, owner.environment))
-      out.line(`Once nothing uses it, run:\n  ${commandLine(deps, "rotate", approve)}`);
+    waitsNotice({ ...job, environment: owner.environment }, key.name);
     return 0;
   }
   if (job.approve && !deps.isTerminal && behind.length) {

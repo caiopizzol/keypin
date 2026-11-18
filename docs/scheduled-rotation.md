@@ -68,8 +68,8 @@ and commit `.keypin/`.
 When an old key waits for approval, the run passes with a warning; a red run means something failed. To approve, run
 the workflow with **approve revoke** checked, and a key to approve only that one. keypin deletes an old key only if
 every destination got the new one, and only in a terminal if a destination taken out of the map may still use it.
-Resend can't tell keypin which key the vault holds, so after a Resend key's first rotation, delete the old key at
-Resend yourself. Later rotations wait for approval.
+Resend can't tell keypin which key the vault holds, so keypin never revokes the key a first rotation replaces: once
+nothing uses it, delete it at Resend yourself. Later rotations wait for approval.
 
 Each run pushes `.keypin/rotation.json`, what the next run needs to continue, and `.keypin/status.json`, each key's last
 rotation for the hosted console, so the workflow must be allowed to push to the default branch. Neither holds a value

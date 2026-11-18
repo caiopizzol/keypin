@@ -213,6 +213,7 @@ describe("check-recordings", () => {
       "tests/a.test.ts": WRITER,
       "tests/recordings/a.txt": "a\n",
       "lib/x.ts": "x\n",
+      "loop/y.ts": "y\n",
     });
     const outside = mkdtempSync(join(tmpdir(), "check-recordings-test-"));
     repos.push(outside);
@@ -223,6 +224,8 @@ describe("check-recordings", () => {
     symlinkSync("../tests", join(cwd, "other/link"));
     rmSync(join(cwd, "lib"), { recursive: true });
     symlinkSync(outside, join(cwd, "lib"));
+    rmSync(join(cwd, "loop"), { recursive: true });
+    symlinkSync("loop", join(cwd, "loop"));
     const before = [snapshot(cwd), snapshot(outside)];
     let links: string[] = [];
     const outcome = await checkRecordings(cwd, (copy) => {
@@ -248,12 +251,15 @@ describe("check-recordings", () => {
       "elsewhere/a.txt": "a\n",
       "tests/recordings/b.txt": "b\n",
       "replaced/recordings/c.txt": "c\n",
+      "looped/recordings/d.txt": "d\n",
     });
     symlinkSync("b.txt", join(cwd, "tests/recordings/link.txt"));
     mkdirSync(join(cwd, "tests/nested"));
     symlinkSync(join(cwd, "elsewhere"), join(cwd, "tests/nested/recordings"));
     rmSync(join(cwd, "replaced/recordings"), { recursive: true });
     symlinkSync("../tests/a.test.ts", join(cwd, "replaced/recordings"));
+    rmSync(join(cwd, "looped/recordings"), { recursive: true });
+    symlinkSync("recordings", join(cwd, "looped/recordings"));
     const before = snapshot(cwd);
     let ran = false;
     const outcome = await checkRecordings(cwd, () => {
@@ -263,6 +269,8 @@ describe("check-recordings", () => {
     expect(outcome.kind).toBe("symlinks");
     if (outcome.kind !== "symlinks") return;
     expect([...new Set(outcome.paths)].sort()).toEqual([
+      "looped/recordings",
+      "looped/recordings/d.txt",
       "replaced/recordings",
       "replaced/recordings/c.txt",
       "tests/nested/recordings",

@@ -48,7 +48,8 @@ function entry(path: string) {
   try {
     return lstatSync(path, { throwIfNoEntry: false });
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOTDIR") return undefined;
+    const code = error instanceof Error && "code" in error ? error.code : undefined;
+    if (code === "ENOTDIR" || code === "ELOOP") return undefined;
     throw error;
   }
 }

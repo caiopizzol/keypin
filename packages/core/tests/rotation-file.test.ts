@@ -349,4 +349,36 @@ prod = { from = "op://Private/due key/credential", publish = [{ to = "cloudflare
       "dropped once its key is revoked",
     ).toEqual([`cloudflare-worker:${NEW_ACCOUNT}:web:DUE_KEY`]);
   });
+
+  test("a write to the same Worker name in the account the map no longer names doesn't count as published", async () => {
+    const before = parseMap(worker(OLD_ACCOUNT), FILE, KINDS, ISSUERS, VAULT_KINDS);
+    const after = parseMap(worker(NEW_ACCOUNT), FILE, KINDS, ISSUERS, VAULT_KINDS);
+    if (!before.ok || !after.ok) throw new Error("map");
+    const ref = before.map.keys[0]?.environments.prod?.ref ?? null;
+    const state = recordReceipt(
+      recordIssued(emptyState(), ISSUED),
+      receipt(WEB, ISSUED.generation, {
+        keyId: "DUE_KEY",
+        mapFile: FILE,
+        source: ref,
+        sourceIds: IDS,
+        account: {
+          pinned: OLD_ACCOUNT,
+          publisher: "me@example.com",
+          destinationAccount: OLD_ACCOUNT,
+        },
+        at: ISSUED.at,
+      }),
+      KINDS,
+    );
+    const file = await rotationFile(state, before.map, KINDS, null);
+    expect(rotationRecord(file, before.map, KINDS, "DUE_KEY", "prod")?.old).toBe(
+      "waiting for approval",
+    );
+    expect(rotationRecord(file, after.map, KINDS, "DUE_KEY", "prod")).toMatchObject({
+      published: [],
+      unpublished: ["cloudflare-worker:web"],
+      old: "still in use",
+    });
+  });
 });

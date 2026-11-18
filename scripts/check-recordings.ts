@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { copyFileSync, lstatSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, lstatSync, mkdirSync, mkdtempSync, rmSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -16,11 +16,23 @@ export type Outcome =
   | { kind: "not-restored"; paths: string[]; aside: string };
 
 function git(cwd: string, args: string[], noMatch = false): string[] {
-  const result = spawnSync("git", args, { cwd, encoding: "utf8" });
+  const result = spawnSync("git", args, { cwd, maxBuffer: Number.POSITIVE_INFINITY });
   if (result.status !== 0 && !(noMatch && result.status === 1)) {
-    throw new Error(`git ${args[0]} failed: ${result.stderr.trim() || `exit ${result.status}`}`);
+    const reason = result.stderr.toString().trim() || `exit ${result.status}`;
+    throw new Error(`git ${args[0]} failed: ${reason}`);
   }
-  return result.stdout.split("\0").filter((path) => path !== "");
+  const paths = new Set<string>();
+  let start = 0;
+  for (let end = result.stdout.indexOf(0); end !== -1; end = result.stdout.indexOf(0, start)) {
+    const bytes = result.stdout.subarray(start, end);
+    const path = bytes.toString("utf8");
+    if (!Buffer.from(path, "utf8").equals(bytes)) {
+      throw new Error(`Rename this file to valid UTF-8: ${path}`);
+    }
+    paths.add(path);
+    start = end + 1;
+  }
+  return [...paths];
 }
 
 const entry = (path: string) => lstatSync(path, { throwIfNoEntry: false });
@@ -32,10 +44,16 @@ function throughSymlink(cwd: string, path: string): boolean {
   return false;
 }
 
+function copyWithTimes(from: string, to: string) {
+  const { atime, mtime } = lstatSync(from);
+  mkdirSync(dirname(to), { recursive: true });
+  copyFileSync(from, to);
+  utimesSync(to, atime, mtime);
+}
+
 function putBack(cwd: string, aside: string, path: string): boolean {
   try {
-    mkdirSync(dirname(join(cwd, path)), { recursive: true });
-    copyFileSync(join(aside, path), join(cwd, path));
+    copyWithTimes(join(aside, path), join(cwd, path));
     return true;
   } catch {
     return false;
@@ -54,16 +72,21 @@ export function checkRecordings(cwd: string, runTests: (files: string[]) => Test
   if (saved.length === 0) return { kind: "ok" };
   const writers = git(
     cwd,
-    ["grep", "-lz", "--untracked", "toMatchFileSnapshot", "--", "*.test.ts"],
+    [
+      "grep",
+      "-lz",
+      "--untracked",
+      "toMatchFileSnapshot",
+      "--",
+      "*.test.ts",
+      ":(exclude)scripts/check-recordings.test.ts",
+    ],
     true,
   );
 
   const aside = mkdtempSync(join(tmpdir(), "check-recordings-"));
   try {
-    for (const path of saved) {
-      mkdirSync(dirname(join(aside, path)), { recursive: true });
-      copyFileSync(join(cwd, path), join(aside, path));
-    }
+    for (const path of saved) copyWithTimes(join(cwd, path), join(aside, path));
   } catch (error) {
     rmSync(aside, { recursive: true, force: true });
     throw error;
@@ -94,6 +117,7 @@ function vitest(files: string[]): TestRun {
   const result = spawnSync("bun", ["--bun", "vp", "test", ...files, "--update"], {
     env,
     encoding: "utf8",
+    maxBuffer: Number.POSITIVE_INFINITY,
   });
   return { status: result.status, output: `${result.stdout ?? ""}${result.stderr ?? ""}` };
 }

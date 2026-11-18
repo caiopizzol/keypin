@@ -6,7 +6,9 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -43,6 +45,9 @@ const passing = (cwd: string, writes: Record<string, string>) => (): TestRun => 
 };
 
 const read = (cwd: string, path: string) => readFileSync(join(cwd, path), "utf8");
+
+const git = (cwd: string, ...args: string[]) =>
+  spawnSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd });
 
 afterEach(() => {
   for (const cwd of repos.splice(0)) {
@@ -151,5 +156,54 @@ describe("check-recordings", () => {
     writeFileSync(join(cwd, ".git/index"), "garbage");
     expect(() => checkRecordings(cwd, passing(cwd, {}))).toThrow("git ls-files failed");
     expect(existsSync(join(cwd, "tests/recordings/a.txt"))).toBe(true);
+  });
+
+  test("keeps each recording's modification time", () => {
+    const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
+    const old = new Date("2020-01-02T03:04:05Z");
+    utimesSync(join(cwd, "tests/recordings/a.txt"), old, old);
+    expect(checkRecordings(cwd, passing(cwd, { "tests/recordings/a.txt": "a\n" }))).toEqual({
+      kind: "ok",
+    });
+    expect(statSync(join(cwd, "tests/recordings/a.txt")).mtime.getTime()).toBe(old.getTime());
+  });
+
+  test("checks a recording once while git lists it for each side of a merge conflict", () => {
+    const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "base\n" });
+    git(cwd, "checkout", "-qb", "other");
+    writeFileSync(join(cwd, "tests/recordings/a.txt"), "other\n");
+    git(cwd, "commit", "-qam", "other");
+    git(cwd, "checkout", "-q", "-");
+    writeFileSync(join(cwd, "tests/recordings/a.txt"), "main\n");
+    git(cwd, "commit", "-qam", "main");
+    git(cwd, "merge", "-q", "other");
+    const outcome = checkRecordings(cwd, passing(cwd, {}));
+    expect(outcome).toEqual({ kind: "stale", paths: ["tests/recordings/a.txt"] });
+    expect(existsSync(join(cwd, "tests/recordings/a.txt"))).toBe(true);
+  });
+
+  test("refuses a path that isn't valid UTF-8", () => {
+    const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
+    const blob = spawnSync("git", ["hash-object", "-w", "--stdin"], { cwd, input: "x\n" });
+    const sha = blob.stdout.toString().trim();
+    const name = Buffer.concat([Buffer.from("tests/recordings/bad-"), Buffer.from([0xff])]);
+    const line = Buffer.concat([Buffer.from(`100644 ${sha}\t`), name, Buffer.from("\n")]);
+    spawnSync("git", ["update-index", "--index-info"], { cwd, input: line });
+    expect(() => checkRecordings(cwd, passing(cwd, {}))).toThrow("valid UTF-8");
+    expect(read(cwd, "tests/recordings/a.txt")).toBe("a\n");
+  });
+
+  test("doesn't count its own test file as a recording writer", () => {
+    const cwd = repo({
+      "scripts/check-recordings.test.ts": WRITER,
+      "tests/recordings/a.txt": "a\n",
+    });
+    let ran = false;
+    const outcome = checkRecordings(cwd, () => {
+      ran = true;
+      return { status: 0, output: "" };
+    });
+    expect(outcome).toEqual({ kind: "stale", paths: ["tests/recordings/a.txt"] });
+    expect(ran).toBe(false);
   });
 });

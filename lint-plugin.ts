@@ -385,9 +385,9 @@ function outputLines(node: ESTree.Node): number {
     return 0;
   const separator = provenText(node.arguments[0] ?? null);
   if (!separator.includes("\n")) return 0;
-  const parts = node.callee.object.elements.map((element) =>
-    element?.type === "SpreadElement" ? "" : provenText(element),
-  );
+  const parts = node.callee.object.elements
+    .filter((element) => element?.type !== "SpreadElement")
+    .map(provenText);
   return textLines(parts.join(separator));
 }
 

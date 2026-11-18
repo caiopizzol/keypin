@@ -79,12 +79,13 @@ export async function unattendedApproval(
     approvals: (ids: readonly (ItemIds | null)[]) => readonly { approval: string }[];
     nothing: string;
     stopped: string;
+    ids?: readonly ItemIds[];
   },
 ): Promise<number | null> {
   if (deps.isTerminal || gate.plan) return null;
   const say = (text: string) => out.line(text);
-  let approvals = gate.approvals([]);
-  if (!approvals.length) {
+  let approvals = gate.approvals(gate.ids ?? []);
+  if (!approvals.length && !gate.ids) {
     try {
       approvals = gate.approvals(await lookUpIds(gate.refs, deps, out));
     } catch (error) {

@@ -1,5 +1,20 @@
+import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
 import {
+  deliveredTo,
+  dueKeys,
+  dueRefs,
+  type KeysMap,
+  loadRotationFile,
+  type Progress,
+  removedBehind,
+  restoreIssued,
+  restoreReceipts,
+  type RotationFile,
+  rotates,
+  rotationFile,
+  waitsForRevoke,
+  writeRotationFile,
   approvalsFor,
   destinationId,
   type EnvEntry,
@@ -19,6 +34,7 @@ import {
   type KeyOwner,
   type KeyRef,
   keyIdText,
+  type NextRotation,
   kindOf,
   localDay,
   loadState,
@@ -44,8 +60,10 @@ import {
   vaultKindOf,
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
-import { confirm, type Output, output } from "../output";
-import { findMap, pickEnvironment } from "../project";
+import { columns, confirm, type Output, output, tilde } from "../output";
+import { findMap, pickEnvironment, ROTATION_FILE } from "../project";
+import { refKey } from "../vault";
+import { readDates, writeStatus } from "./status";
 import { approval } from "../sign-in";
 import {
   commandLine,
@@ -61,6 +79,7 @@ import {
   type Label,
   labels,
   locked,
+  lookUpIds,
   type PlanRow,
   publishRows,
   showPlan,
@@ -82,12 +101,19 @@ interface Job {
   pair: Pair | null;
   yes: boolean;
   plan: boolean;
+  due: boolean;
+  approve: boolean;
   args: string[];
+  envArgs: string[];
+  map: KeysMap;
+  committed: RotationFile | null;
   deps: Deps;
   out: Output;
   label: Label;
   path: string;
 }
+
+type Flags = Pick<Job, "yes" | "plan" | "due" | "approve" | "args">;
 
 interface Ready {
   ids: ItemIds;
@@ -105,14 +131,50 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
       env: { type: "string" },
       yes: { type: "boolean", default: false },
       plan: { type: "boolean", default: false },
+      due: { type: "boolean", default: false },
+      "approve-revoke": { type: "boolean", default: false },
     },
     allowPositionals: true,
   });
+  const approve = values["approve-revoke"];
   const [keyId, ...extra] = positionals;
-  if (keyId === undefined || extra.length)
+  if (values.due && approve)
+    throw new UsageError("--due and --approve-revoke are separate runs; use one");
+  if (values.due && positionals.length)
+    throw new UsageError("--due takes no key: it rotates every key that is due");
+  if (approve && values.plan) throw new UsageError("--approve-revoke takes no --plan");
+  if (extra.length || (keyId === undefined && !values.due && !approve))
     throw new UsageError("keypin rotate takes one key: the variable name");
   const map = await findMap(deps);
   const environment = pickEnvironment(map, values.env, publishEnvironment(map));
+  const envArgs = environment === publishEnvironment(map) ? [] : ["--env", environment];
+  const out = output(deps.stderr, deps.styled.stderr, deps.columns);
+  const file = join(dirname(map.file), ROTATION_FILE);
+  const committed = await loadRotationFile(deps.files, file);
+  const flags = { yes: values.yes, plan: values.plan, due: values.due, approve, args };
+  const context = { map, environment, envArgs, committed, deps, out };
+  return locked(deps, async (path) => {
+    const code = approve
+      ? await approveAll(context, keyId, path)
+      : values.due
+        ? await rotateDue(context, flags, path)
+        : await rotateLocked({ ...jobFor(context, keyId ?? "", flags), path });
+    if (values.plan || (!approve && !values.due && committed === null)) return code;
+    return (await commitState(context, file, path)) ? code : 1;
+  });
+}
+
+interface Context {
+  map: KeysMap;
+  environment: string;
+  envArgs: string[];
+  committed: RotationFile | null;
+  deps: Deps;
+  out: Output;
+}
+
+function jobFor(context: Context, keyId: string, flags: Flags): Omit<Job, "path"> {
+  const { map, environment, deps } = context;
   const key = map.keys.find((k) => k.name === keyId);
   if (!key) throw new Error(`${map.file} has no key "${keyId}"`);
   const entry = key.environments[environment];
@@ -145,29 +207,157 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
     throw new Error(
       `${vaultName(entry.ref, deps.vaults)} may hold a change for approval, and keypin couldn't tell later whether the ${spec.kind} value it made was approved or rejected, so it can't rotate ${keyId}. Make a new value yourself, save it, then run keypin publish ${keyId}${envFlag(environment, publishEnvironment(map))}.`,
     );
-  const out = output(deps.stderr, deps.styled.stderr, deps.columns);
-  const owner = { keyId, environment, mapFile: map.file };
-  const label = labels(entry.publish, deps.destinations);
-  const base = {
+  return {
+    ...context,
+    ...flags,
     key,
     entry,
     spec,
-    owner,
+    owner: { keyId, environment, mapFile: map.file },
     pair,
-    yes: values.yes,
-    plan: values.plan,
-    args,
-    deps,
-    out,
-    label,
+    label: labels(entry.publish, deps.destinations),
   };
-  return locked(deps, (path) => rotateLocked({ ...base, path }));
+}
+
+async function progressOf(context: Context, path: string) {
+  const { map, environment, committed, deps } = context;
+  const state = restoreIssued(await loadState(deps.files, path, deps.vaults), committed, map);
+  return (keyId: string): Progress => {
+    const entry = rotates(map, keyId, environment);
+    const issued = issuedFor(state, { keyId, environment, mapFile: map.file });
+    if (!entry || !issued) return null;
+    const owner = { keyId, environment, mapFile: map.file };
+    const everywhere = entry.publish.every((target) =>
+      deliveredTo(committed, state.receipts, owner, target, issued.generation, deps.destinations),
+    );
+    const since = issued.at.slice(0, 10);
+    const revokes = waitsForRevoke(issued);
+    if (!everywhere || issued.held) return { kind: "unfinished", since, revokes };
+    return revokes ? { kind: "waiting", since, revokes } : null;
+  };
+}
+
+async function rotateDue(context: Context, flags: Flags, path: string): Promise<number> {
+  const { map, environment, deps, out } = context;
+  const metadata = await readDates(deps, dueRefs(map, environment));
+  const choices = dueKeys({
+    map,
+    environment,
+    today: localDay(deps.now()),
+    metadata: (ref) => metadata.dates.get(refKey(ref)) ?? null,
+    progress: await progressOf(context, path),
+  });
+  const shown = { rotate: "rotate", finish: "finish", skip: "skip", waiting: "wait" } as const;
+  out.line(`\nKeys in ${environment}`);
+  const rows = columns(choices.map((c) => [c.keyId, shown[c.action]]));
+  choices.forEach((c, i) => out.line(`  ${(rows[i] ?? []).join("  ")}  ${out.dim(c.why)}`));
+  const picked = choices.filter((c) => c.action === "rotate" || c.action === "finish");
+  const waits = choices.some((c) => c.action === "waiting");
+  for (const c of choices) if (c.action === "waiting") waitsNotice(deps, c.keyId, environment);
+  if (!picked.length) {
+    out.line(waits ? "Nothing is due. An old key waits for approval." : "Nothing is due.");
+    return 0;
+  }
+  const codes: number[] = [];
+  for (const choice of picked) {
+    out.line("");
+    try {
+      const args = [choice.keyId, ...context.envArgs, ...(flags.yes ? ["--yes"] : [])];
+      codes.push(
+        await rotateLocked({ ...jobFor(context, choice.keyId, { ...flags, args }), path }),
+      );
+    } catch (error) {
+      out.line(`${choice.keyId}: ${messageOf(error)}`);
+      codes.push(1);
+    }
+  }
+  return worst(codes);
+}
+
+function waitsNotice(deps: Deps, keyId: string, environment: string): void {
+  deps.warnRunner(
+    "An old key waits for approval",
+    `The old ${keyId} (${environment}) still works. Once nothing uses it, run this workflow with approve revoke.`,
+  );
+}
+
+async function approveAll(
+  context: Context,
+  keyId: string | undefined,
+  path: string,
+): Promise<number> {
+  const { map, environment, out } = context;
+  if (keyId !== undefined) jobFor(context, keyId, NO_FLAGS);
+  const progress = await progressOf(context, path);
+  const codes: number[] = [];
+  for (const name of keyId === undefined ? map.keys.map((k) => k.name) : [keyId]) {
+    const now = progress(name);
+    if (now?.kind === "unfinished" && now.revokes) {
+      out.line(
+        `Stopped: not every destination has the new ${name} (${environment}) yet, so keypin won't revoke the old key. Run keypin rotate --due first. Nothing was revoked.`,
+      );
+      codes.push(1);
+    } else if (now?.kind === "waiting") {
+      const args = [name, ...context.envArgs, "--approve-revoke"];
+      out.line("");
+      codes.push(
+        await rotateLocked({
+          ...jobFor(context, name, { ...NO_FLAGS, approve: true, args }),
+          path,
+        }),
+      );
+    } else if (keyId !== undefined) {
+      out.line(
+        `Stopped: ${name} (${environment}) has no old key waiting for approval. Nothing was revoked.`,
+      );
+      codes.push(1);
+    }
+  }
+  if (!codes.length) out.line(`No old key waits for approval in ${environment}.`);
+  return worst(codes);
+}
+
+const NO_FLAGS: Flags = { yes: false, plan: false, due: false, approve: false, args: [] };
+
+function worst(codes: readonly number[]): number {
+  return codes.includes(1) ? 1 : codes.includes(NEEDS_APPROVAL) ? NEEDS_APPROVAL : 0;
+}
+
+async function commitState(context: Context, file: string, path: string): Promise<boolean> {
+  const { map, committed, deps, out } = context;
+  try {
+    const state = await loadState(deps.files, path, deps.vaults);
+    const next = await rotationFile(state, map, deps.destinations, committed);
+    if ((await writeRotationFile(deps.files, file, next)) === "written")
+      out.line(`${out.mark(true)} wrote ${tilde(file, deps.home)}`);
+    return await writeStatus(deps, map, true);
+  } catch (error) {
+    out.line(`keypin couldn't write ${ROTATION_FILE}: ${messageOf(error)}`);
+    return false;
+  }
 }
 
 async function rotateLocked(job: Job): Promise<number> {
   const { key, entry, spec, owner, deps, out } = job;
   const say = (text: string) => out.line(text);
-  let state = await loadState(deps.files, job.path, deps.vaults);
+  let looked: ItemIds[] | undefined;
+  let state = await restoreReceipts({
+    state: restoreIssued(
+      await loadState(deps.files, job.path, deps.vaults),
+      job.committed,
+      job.map,
+    ),
+    file: job.committed,
+    map: job.map,
+    kinds: deps.destinations,
+    owner,
+    ids: async () => {
+      looked = await lookUpIds([entry.ref], deps, out);
+      const [ids] = looked;
+      if (!ids) throw new Error(`couldn't find ${formatReference(entry.ref, deps.vaults)}`);
+      return ids;
+    },
+  });
   const inputFor = (of: KeyEntry): PlanInput => ({
     kinds: deps.destinations,
     vaults: deps.vaults,
@@ -194,6 +384,7 @@ async function rotateLocked(job: Job): Promise<number> {
     nothing: "Nothing was created.",
     stopped:
       "Stopped before reading the key: this rotation needs approval, and --yes can't give it. Nothing was read and nothing was created.",
+    ...(looked && !job.pair ? { ids: looked } : {}),
   });
   if (stopped !== null) return stopped;
 
@@ -245,6 +436,14 @@ async function rotateLocked(job: Job): Promise<number> {
     state = recordIssued(state, next.issued);
     if (!job.plan) await saveState(deps.files, job.path, state);
   }
+  if (job.approve && !revokeOnly(next, counted, idSaved)) {
+    say(
+      next.action === "resume" && waitsForRevoke(next.issued)
+        ? `Stopped: not every destination has the new key ${shown(issuer, next.issued.id)}, so keypin won't revoke the old one. Run keypin rotate --due to publish it first. Nothing was revoked.`
+        : `Stopped: ${key.name} (${owner.environment}) has no new key waiting for approval: the vault holds another value. Nothing was revoked.`,
+    );
+    return 1;
+  }
   if (next.action === "create" && !(await vaultTakesWrites(job))) return 1;
 
   const inVault =
@@ -268,6 +467,10 @@ async function rotateLocked(job: Job): Promise<number> {
     removed: [...removed, ...(pairNow?.removed ?? [])],
   };
   if (next.action === "resume" && check.gone !== undefined) {
+    if (job.approve) {
+      say(`\nStopped: ${check.gone}. Nothing was revoked.`);
+      return 1;
+    }
     if (!(await vaultTakesWrites(job))) return 1;
     const { old } = next.issued;
     if (old.id !== null && !old.revoked)
@@ -404,6 +607,16 @@ async function rotateLocked(job: Job): Promise<number> {
     created.secret,
     { steps, pairSteps, idSaved: true },
     state,
+  );
+}
+
+function revokeOnly(next: NextRotation, steps: readonly PlanStep[], idSaved: boolean): boolean {
+  return (
+    next.action === "resume" &&
+    waitsForRevoke(next.issued) &&
+    !next.issued.held &&
+    idSaved &&
+    steps.every((step) => step.action === "skip")
   );
 }
 
@@ -660,7 +873,22 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
   out.line(
     `\nRotated ${out.bold(key.name)} (${owner.environment}): the new key is in ${vaultName(job.entry.ref, job.deps.vaults)} and the ${listed === 1 ? "destination" : `${listed} destinations`} in the map.`,
   );
-  const behind = ready.removed.filter((r) => r.lastReceipt.generation !== issued.generation);
+  const recorded = removedBehind(
+    job.committed,
+    job.map,
+    deps.destinations,
+    owner,
+    issued.generation,
+  )
+    .filter((p) => !ready.removed.some((r) => r.destinationId === p.destination))
+    .map((p) => ({
+      destinationId: p.destination,
+      lastReceipt: { generation: p.generation, at: p.at, destinationAccount: "unknown" },
+    }));
+  const behind = [
+    ...ready.removed.filter((r) => r.lastReceipt.generation !== issued.generation),
+    ...recorded,
+  ];
   if (behind.length) {
     out.line(
       "Not in the map any more, so keypin didn't write them; they may still use the old key:",
@@ -682,16 +910,32 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
   }
   const asked = job.args.filter((arg) => arg !== "--yes");
   const later = `To revoke it later, run this in a terminal:\n  ${commandLine(deps, "rotate", asked)}`;
-  if (!deps.isTerminal) {
+  if (job.due && !deps.isTerminal) {
+    const approve = [key.name, ...job.envArgs, "--approve-revoke"];
+    out.line(
+      `The old key ${shown(issuer, old)} still works, and waits for approval. Once nothing uses it, run:\n  ${commandLine(deps, "rotate", approve)}`,
+    );
+    waitsNotice(deps, key.name, owner.environment);
+    return 0;
+  }
+  if (job.approve && !deps.isTerminal && behind.length) {
+    out.line(
+      `Stopped: something no longer in the map may still use the old key ${shown(issuer, old)}, so keypin won't revoke it without a terminal. Nothing was revoked. Once nothing uses it, run this in a terminal:\n  ${commandLine(deps, "rotate", asked)}`,
+    );
+    return 1;
+  }
+  if (!deps.isTerminal && !job.approve) {
     out.line(
       `The old key ${shown(issuer, old)} still works. Revoking it needs a y in a terminal.\n${later}`,
     );
     return NEEDS_APPROVAL;
   }
-  out.line(`The old key ${shown(issuer, old)} still works. Revoke it once nothing uses it.`);
-  if (!(await confirm(deps, `Revoke the old key at ${where}?`))) {
-    out.line(later);
-    return 0;
+  if (!job.approve || behind.length) {
+    out.line(`The old key ${shown(issuer, old)} still works. Revoke it once nothing uses it.`);
+    if (!(await confirm(deps, `Revoke the old key at ${where}?`))) {
+      out.line(later);
+      return 0;
+    }
   }
   try {
     await out.step(

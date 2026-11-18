@@ -1,22 +1,10 @@
-import { type ChildProcess, spawn, spawnSync } from "node:child_process";
-import { once } from "node:events";
-import {
-  closeSync,
-  copyFileSync,
-  createReadStream,
-  lstatSync,
-  mkdirSync,
-  mkdtempSync,
-  openSync,
-  rmSync,
-  symlinkSync,
-} from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 export type Outcome =
   | { kind: "ok" }
-  | { kind: "symlinks"; paths: string[] }
   | { kind: "stale"; paths: string[] }
   | { kind: "tests-failed" };
 
@@ -44,71 +32,35 @@ function paths(output: Buffer): string[] {
   return [...found];
 }
 
-function entry(path: string) {
+function isFile(path: string): boolean {
   try {
-    return lstatSync(path, { throwIfNoEntry: false });
+    return statSync(path, { throwIfNoEntry: false })?.isFile() ?? false;
   } catch (error) {
     const code = error instanceof Error && "code" in error ? error.code : undefined;
-    if (code === "ENOTDIR" || code === "ELOOP") return undefined;
+    if (code === "ENOTDIR" || code === "ELOOP") return false;
     throw error;
   }
 }
 
-function throughSymlink(cwd: string, path: string): boolean {
-  for (let part = path; part !== "."; part = dirname(part)) {
-    if (entry(join(cwd, part))?.isSymbolicLink()) return true;
-  }
-  return false;
-}
+const canonical = (path: string) => join(realpathSync(dirname(path)), basename(path));
 
-function plainFile(cwd: string, path: string): boolean {
-  if (!entry(join(cwd, path))?.isFile()) return false;
-  for (let dir = dirname(path); dir !== "."; dir = dirname(dir)) {
-    if (!entry(join(cwd, dir))?.isDirectory()) return false;
-  }
-  return true;
-}
-
-function copyWithoutLinks(cwd: string, copy: string, skip: Set<string>): string[] {
-  const files = paths(git(cwd, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"]));
-  const links = files.filter((path) => entry(join(cwd, path))?.isSymbolicLink());
-  for (const path of files) {
-    if (skip.has(path) || !plainFile(cwd, path)) continue;
-    mkdirSync(dirname(join(copy, path)), { recursive: true });
-    copyFileSync(join(cwd, path), join(copy, path));
-  }
-  const ignored = git(cwd, [
-    "ls-files",
-    "-z",
-    "--others",
-    "--ignored",
-    "--exclude-standard",
-    "--directory",
-  ]);
-  for (const path of paths(ignored).map((dir) => dir.replace(/\/$/, ""))) {
-    if (basename(path) !== "node_modules" || entry(join(copy, path))) continue;
-    mkdirSync(dirname(join(copy, path)), { recursive: true });
-    symlinkSync(join(cwd, path), join(copy, path));
-  }
-  return links;
-}
-
-export async function checkRecordings(
+export function checkRecordings(
   cwd: string,
-  runTests: (copy: string, files: string[]) => Promise<number | null> | number | null,
-  tmp = tmpdir(),
-): Promise<Outcome> {
-  const listed = (pathspec: string) =>
-    paths(
-      git(cwd, ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", pathspec]),
-    );
-  const listedRecordings = listed("*/recordings/*");
-  const symlinks = [...listed("*/recordings"), ...listedRecordings].filter((path) =>
-    throughSymlink(cwd, path),
+  runTests: (files: string[], log: string) => number | null,
+): Outcome {
+  const listed = paths(
+    git(cwd, [
+      "ls-files",
+      "-z",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "--",
+      "*/recordings/*",
+    ]),
   );
-  if (symlinks.length > 0) return { kind: "symlinks", paths: symlinks };
-  const recordings = new Set(listedRecordings.filter((path) => plainFile(cwd, path)));
-  if (recordings.size === 0) return { kind: "ok" };
+  const recordings = listed.filter((path) => isFile(join(cwd, path)));
+  if (recordings.length === 0) return { kind: "ok" };
   const writers = paths(
     git(
       cwd,
@@ -125,94 +77,40 @@ export async function checkRecordings(
     ),
   );
 
-  const copy = mkdtempSync(join(tmp, "check-recordings-"));
-  try {
-    const links = copyWithoutLinks(cwd, copy, recordings);
-    const status = writers.length > 0 ? await runTests(copy, writers) : 0;
-    if (status !== 0) return { kind: "tests-failed" };
-    const aliased = links.filter((path) => entry(join(copy, path)) !== undefined);
-    if (aliased.length > 0) return { kind: "symlinks", paths: aliased };
-    const stale = [...recordings].filter((path) => entry(join(copy, path)) === undefined);
-    return stale.length > 0 ? { kind: "stale", paths: stale } : { kind: "ok" };
-  } finally {
-    rmSync(copy, { recursive: true, force: true });
-  }
-}
-
-function vitest(log: string, started: (child: ChildProcess) => void) {
-  return async (copy: string, files: string[]): Promise<number | null> => {
-    const env = { ...process.env };
-    delete env.CI;
-    const out = openSync(log, "w");
+  const used = new Set<string>();
+  if (writers.length > 0) {
+    const dir = mkdtempSync(join(tmpdir(), "check-recordings-"));
     try {
-      const child = spawn("bun", ["--bun", "vp", "test", ...files, "--update"], {
-        cwd: copy,
-        env,
-        stdio: ["ignore", out, out],
-      });
-      started(child);
-      return await new Promise<number | null>((resolve, reject) => {
-        child.once("error", reject);
-        child.once("close", (code) => resolve(code));
-      });
+      const log = join(dir, "used");
+      writeFileSync(log, "");
+      if (runTests(writers, log) !== 0) return { kind: "tests-failed" };
+      for (const path of paths(readFileSync(log))) used.add(canonical(path));
     } finally {
-      closeSync(out);
+      rmSync(dir, { recursive: true, force: true });
     }
-  };
+  }
+  const stale = recordings.filter((path) => !used.has(canonical(join(cwd, path))));
+  return stale.length > 0 ? { kind: "stale", paths: stale } : { kind: "ok" };
 }
 
-async function print(chunks: AsyncIterable<Buffer> | string[]) {
-  for await (const chunk of chunks) {
-    if (!process.stderr.write(chunk)) await once(process.stderr, "drain");
-  }
-}
-
-async function report(outcome: Outcome, log: string): Promise<number> {
-  switch (outcome.kind) {
-    case "ok":
-      return 0;
-    case "symlinks":
-      await print([
-        `Recordings can't be checked through a symlink. Fix these paths:\n${outcome.paths.join("\n")}\n`,
-      ]);
-      return 1;
-    case "stale":
-      await print([
-        `No test writes these recordings anymore. Delete them:\n${outcome.paths.join("\n")}\n`,
-      ]);
-      return 1;
-    case "tests-failed":
-      await print(createReadStream(log));
-      return 1;
-  }
+function vitest(files: string[], log: string): number | null {
+  return spawnSync("bun", ["--bun", "vp", "test", ...files], {
+    stdio: "inherit",
+    env: { ...process.env, CI: "true", RECORDINGS_LOG: log },
+  }).status;
 }
 
 if (import.meta.main) {
-  const work = mkdtempSync(join(tmpdir(), "check-recordings-"));
-  const log = join(work, "test.log");
-  let child: ChildProcess | undefined;
-  for (const [signal, code] of [
-    ["SIGHUP", 129],
-    ["SIGINT", 130],
-    ["SIGTERM", 143],
-  ] as const) {
-    process.on(signal, () => {
-      child?.kill(signal);
-      rmSync(work, { recursive: true, force: true });
-      process.exit(code);
-    });
-  }
   try {
-    const outcome = await checkRecordings(
-      process.cwd(),
-      vitest(log, (c) => (child = c)),
-      work,
-    );
-    process.exitCode = await report(outcome, log);
+    const outcome = checkRecordings(process.cwd(), vitest);
+    if (outcome.kind === "stale") {
+      process.stderr.write(
+        `No test uses these recordings anymore. Delete them:\n${outcome.paths.join("\n")}\n`,
+      );
+    }
+    process.exitCode = outcome.kind === "ok" ? 0 : 1;
   } catch (error) {
-    await print([`${error instanceof Error ? error.message : String(error)}\n`]);
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;
-  } finally {
-    rmSync(work, { recursive: true, force: true });
   }
 }

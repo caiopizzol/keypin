@@ -43,6 +43,8 @@
     "./sendgrid/testing": "./src/sendgrid/testing.ts",
     "./supabase": "./src/supabase/index.ts",
     "./supabase/testing": "./src/supabase/testing.ts",
+    "./twilio": "./src/twilio/index.ts",
+    "./twilio/testing": "./src/twilio/testing.ts",
     "./vercel": "./src/vercel/index.ts",
     "./vercel/testing": "./src/vercel/testing.ts",
     "./xai": "./src/xai/index.ts",

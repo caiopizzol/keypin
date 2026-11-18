@@ -482,5 +482,5 @@ value replaces the old one, so anything signed with the old one stops working: w
 again. There's nothing to revoke, so `rotate` asks one `y`. It refuses a vault that holds changes for approval.
 
 keypin refuses `BETTER_AUTH_SECRET` and `BETTER_AUTH_SECRETS`: Better Auth encrypts stored data with them, and a new
-value can't read it. Add a version to [`BETTER_AUTH_SECRETS`](https://better-auth.com/docs/reference/options#secrets)
+value can't read it. Better Auth also reads `AUTH_SECRET`, so don't rotate that with `random` in a Better Auth app. Add a version to [`BETTER_AUTH_SECRETS`](https://better-auth.com/docs/reference/options#secrets)
 by hand instead.

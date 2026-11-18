@@ -122,7 +122,7 @@ describe("keypin rotate with a random issuer", () => {
       [
         "Plan",
         "  + random            create a new key",
-        "    replaces the old value: anything signed with it stops working, so everyone signs in again",
+        "    replaces the old value: anything signed with it stops working, so everyone signs in again. Don't use it for Better Auth, which also reads AUTH_SECRET: its stored two-factor secrets would become unreadable",
         "  ~ 1Password         save it to op://Private/app secret/password, rotated today",
         "  + GitHub  acme/app  first write  needs approval",
         "  = random            nothing to revoke: the new value replaces the old one",

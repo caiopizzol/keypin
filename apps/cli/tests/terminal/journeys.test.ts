@@ -1021,7 +1021,7 @@ describe("keypin rotate in a real terminal", () => {
       });
       expect(result.exit).toBe(0);
       expect(result.screen).toContain(
-        "    replaces the old value: anything signed with it stops working, so everyone signs in again",
+        "    replaces the old value: anything signed with it stops working, so everyone signs in again. Don't use it for Better Auth, which also reads AUTH_SECRET: its stored two-factor secrets would become unreadable",
       );
       expect(result.screen).toContain(
         "  = random            nothing to revoke: the new value replaces the old one",

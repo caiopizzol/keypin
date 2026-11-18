@@ -176,31 +176,31 @@ describe("check-recordings", () => {
     expect(outcome).toEqual({ kind: "ok" });
   });
 
-  test("counts every link a test reads through, and its target, but not a link nobody reads", () => {
+  test("refuses symlinked recordings, before running the tests", () => {
     const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/b.txt": "b\n" });
     symlinkSync("b.txt", join(cwd, "tests/recordings/link.txt"));
-    symlinkSync("link.txt", join(cwd, "tests/recordings/front.txt"));
-    expect(checkRecordings(cwd, uses(cwd, "tests/recordings/front.txt"))).toEqual({ kind: "ok" });
-    expect(checkRecordings(cwd, uses(cwd, "tests/recordings/link.txt"))).toEqual({
-      kind: "stale",
-      paths: ["tests/recordings/front.txt"],
+    let ran = false;
+    const outcome = checkRecordings(cwd, () => {
+      ran = true;
+      return 0;
     });
-    const outcome = checkRecordings(cwd, uses(cwd, "tests/recordings/b.txt"));
-    expect(outcome.kind).toBe("stale");
-    if (outcome.kind !== "stale") return;
-    expect([...outcome.paths].sort()).toEqual([
-      "tests/recordings/front.txt",
-      "tests/recordings/link.txt",
-    ]);
+    expect(outcome).toEqual({ kind: "symlinks", paths: ["tests/recordings/link.txt"] });
+    expect(ran).toBe(false);
   });
 
-  test("follows a link target the way the system does, through a symlinked folder and ..", () => {
-    const cwd = repo({ "tests/a.test.ts": WRITER, "fixtures/recordings/data.txt": "d\n" });
+  test("counts a recording a test reads through a link outside the recordings folders", () => {
+    const cwd = repo({
+      "tests/a.test.ts": WRITER,
+      "tests/recordings/b.txt": "b\n",
+      "fixtures/recordings/data.txt": "d\n",
+    });
     mkdirSync(join(cwd, "fixtures/recordings/deep"));
-    mkdirSync(join(cwd, "tests/recordings"));
-    symlinkSync("../../fixtures/recordings/deep", join(cwd, "tests/recordings/sub"));
-    symlinkSync("sub/../data.txt", join(cwd, "tests/recordings/front.txt"));
-    expect(checkRecordings(cwd, uses(cwd, "tests/recordings/front.txt"))).toEqual({ kind: "ok" });
+    symlinkSync("recordings/b.txt", join(cwd, "tests/snap.txt"));
+    symlinkSync("../fixtures/recordings/deep", join(cwd, "tests/sub"));
+    symlinkSync("sub/../data.txt", join(cwd, "tests/front.txt"));
+    expect(checkRecordings(cwd, uses(cwd, "tests/snap.txt", "tests/front.txt"))).toEqual({
+      kind: "ok",
+    });
   });
 
   test("ignores a snapshot a test removed before the run ended", () => {

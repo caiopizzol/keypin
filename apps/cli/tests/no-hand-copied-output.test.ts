@@ -25,6 +25,14 @@ const allowed: Record<string, string> = {
     'declare const fixture: { toContain(text: string): void };\nfixture.toContain("one\\ntwo\\nthree\\nfour\\n");',
   "array-value.ts": 'expect(["a", "b", "c", "d"]).toEqual(["a", "b", "c", "d"]);',
   "number.ts": "expect(1).toBe(1);",
+  "template-value-line.ts":
+    'declare const middle: string;\nexpect("x").toBe(`one\\n${middle}\\nthree\\nfour`);',
+  "joined-value-line.ts":
+    'declare const middle: string;\nexpect("x").toBe(["one", middle, "three", "four"].join("\\n"));',
+  "only-values.ts":
+    "declare const a: string, b: string, c: string, d: string;\nexpect(a).toBe(`${a}\\n${b}\\n${c}\\n${d}`);",
+  "implicit-separator.ts":
+    'declare const first: string, last: string;\nexpect("x").toBe(["Names:", [first, last].join(), "Status:", "Ready"].join("\\n"));',
 };
 
 const rejected: Record<string, string> = {
@@ -39,6 +47,7 @@ const rejected: Record<string, string> = {
   "joined-with-spread.ts":
     'declare const rest: string[];\nexpect("x").toBe(["one", "two", "three", "four", ...rest].join("\\n"));',
   "template-with-value.ts": 'expect("x").toStrictEqual(`one\n${"two"}\nthree\nfour`);',
+  "concatenated.ts": 'expect("x").toBe("one\\n" + "two\\n" + "three\\n" + "four\\n");',
 };
 
 const TESTS = "apps/cli/tests";

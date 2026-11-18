@@ -188,6 +188,24 @@ describe("check-recordings", () => {
     expect(ran).toBe(false);
   });
 
+  test("allows a symlinked folder inside a recordings folder", () => {
+    const cwd = repo({ "tests/a.test.ts": WRITER, "fixtures/recordings/data.txt": "d\n" });
+    mkdirSync(join(cwd, "tests/recordings"));
+    symlinkSync("../../fixtures/recordings", join(cwd, "tests/recordings/shared"));
+    expect(checkRecordings(cwd, uses(cwd, "tests/recordings/shared/data.txt"))).toEqual({
+      kind: "ok",
+    });
+  });
+
+  test("leaves out a recording a passing test deleted during the run", () => {
+    const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
+    const outcome = checkRecordings(cwd, () => {
+      rmSync(join(cwd, "tests/recordings/a.txt"));
+      return 0;
+    });
+    expect(outcome).toEqual({ kind: "ok" });
+  });
+
   test("counts a recording a test reads through a link outside the recordings folders", () => {
     const cwd = repo({
       "tests/a.test.ts": WRITER,

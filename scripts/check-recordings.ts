@@ -46,6 +46,19 @@ function unreachable(error: unknown): boolean {
   return code === "ENOENT" || code === "ENOTDIR" || code === "ELOOP";
 }
 
+function linkToFile(path: string): boolean {
+  return isSymlink(path) && !isDirectory(path);
+}
+
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch (error) {
+    if (unreachable(error)) return false;
+    throw error;
+  }
+}
+
 function isFile(path: string): boolean {
   try {
     return statSync(path).isFile();
@@ -88,7 +101,7 @@ export function checkRecordings(
       "*/recordings/*",
     ]),
   );
-  const symlinks = listed.filter((path) => isSymlink(join(cwd, path)));
+  const symlinks = listed.filter((path) => linkToFile(join(cwd, path)));
   if (symlinks.length > 0) return { kind: "symlinks", paths: symlinks };
   const recordings = listed.filter((path) => isFile(join(cwd, path)));
   if (recordings.length === 0) return { kind: "ok" };
@@ -123,7 +136,10 @@ export function checkRecordings(
       rmSync(dir, { recursive: true, force: true });
     }
   }
-  const stale = recordings.filter((path) => !used.has(realpathSync.native(join(cwd, path))));
+  const stale = recordings.filter((path) => {
+    const real = realPath(join(cwd, path));
+    return real !== undefined && !used.has(real);
+  });
   return stale.length > 0 ? { kind: "stale", paths: stale } : { kind: "ok" };
 }
 

@@ -5,7 +5,7 @@ import type { Secret } from "./secret";
 
 export interface IssuerSpec {
   readonly kind: string;
-  readonly admin: KeyRef;
+  readonly admin?: KeyRef;
 }
 
 export interface IssuerReader extends TableReader {
@@ -13,13 +13,19 @@ export interface IssuerReader extends TableReader {
   idKey(): KeyId | undefined;
 }
 
-export interface IssuerKind<T extends IssuerSpec = IssuerSpec> {
+interface IssuerKindBase<T extends IssuerSpec> {
   readonly kind: T["kind"];
   parse(read: IssuerReader): T | undefined;
-  connect(spec: T, admin: Secret, fetch?: Fetch): Issuer;
   claims?(spec: T): readonly string[];
   idKey?(spec: T): KeyId;
+  refuses?(keyName: KeyId): string | undefined;
 }
+
+export type IssuerKind<T extends IssuerSpec = IssuerSpec> = IssuerKindBase<T> &
+  (
+    | { readonly admin?: true; connect(spec: T, admin: Secret, fetch?: Fetch): Issuer }
+    | { readonly admin: false; connect(spec: T): Issuer }
+  );
 
 export type IssuerKinds = readonly IssuerKind[];
 
@@ -32,10 +38,13 @@ function issuerKindOf(kinds: IssuerKinds, kind: string): IssuerKind {
 export function connectIssuer(
   kinds: IssuerKinds,
   spec: IssuerSpec,
-  admin: Secret,
+  admin: Secret | null,
   fetch?: Fetch,
 ): Issuer {
-  return issuerKindOf(kinds, spec.kind).connect(spec, admin, fetch);
+  const found = issuerKindOf(kinds, spec.kind);
+  if (found.admin === false) return found.connect(spec);
+  if (admin === null) throw new Error(`the "${spec.kind}" issuer needs an admin key`);
+  return found.connect(spec, admin, fetch);
 }
 
 export function idKeyOf(kinds: IssuerKinds, spec: IssuerSpec): KeyId | null {

@@ -915,6 +915,38 @@ const sendgrid: Scenario = {
   sendgrid: { keys: [SENDGRID_KEY] },
 };
 
+const RANDOM_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.AUTH_SECRET]
+rotate_every = "90d"
+
+[keys.AUTH_SECRET.prod]
+from = "op://Private/app auth secret/password"
+
+[keys.AUTH_SECRET.prod.issuer]
+kind = "random"
+
+[[keys.AUTH_SECRET.prod.publish]]
+to = "github-actions"
+repo = "acme/app"
+`;
+
+const random: Scenario = {
+  ...ready,
+  about: "AUTH_SECRET has a random issuer and was never rotated by keypin",
+  files: { "keypin.toml": RANDOM_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          { title: "app auth secret", value: "verify-auth-secret-old-9d4b", rotated: day(-95) },
+        ],
+      },
+    },
+  },
+};
+
 export const scenarios: Record<string, Scenario> = {
   ready,
   paired,
@@ -1048,6 +1080,7 @@ jobs:
     env: { INFISICAL_TOKEN: "verify-access-token-8c3f" },
   },
   resend,
+  random,
   neon,
   supabase,
   "supabase-default": {

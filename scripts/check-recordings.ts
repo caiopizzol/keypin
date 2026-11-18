@@ -53,6 +53,7 @@ function throughSymlink(cwd: string, path: string): boolean {
 }
 
 export const aside = (path: string) => join(dirname(path), `.${basename(path)}.check-recordings`);
+const isBackup = (path: string) => /^\..+\.check-recordings$/.test(basename(path));
 
 function putBack(path: string): boolean {
   try {
@@ -71,12 +72,22 @@ export function checkRecordings(
     paths(
       git(cwd, ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", pathspec]),
     );
-  const recordings = listed("*/recordings/*");
+  const listedRecordings = listed("*/recordings/*");
+  const recordings = listedRecordings.filter((path) => !isBackup(path));
   const symlinks = [...listed("*/recordings"), ...recordings].filter((path) =>
     throughSymlink(cwd, path),
   );
   if (symlinks.length > 0) return { kind: "symlinks", paths: symlinks };
   const files = recordings.filter((path) => entry(join(cwd, path))?.isFile());
+  const leftover = [
+    ...listedRecordings.filter(isBackup),
+    ...files.filter((path) => entry(aside(join(cwd, path))) !== undefined).map(aside),
+  ];
+  if (leftover.length > 0) {
+    throw new Error(
+      `An earlier run was interrupted. Each file below is an original recording: rename it back (drop the leading dot and the .check-recordings ending), then run the check again.\n${[...new Set(leftover)].join("\n")}`,
+    );
+  }
   if (files.length === 0) return { kind: "ok" };
   const writers = paths(
     git(
@@ -93,10 +104,6 @@ export function checkRecordings(
       true,
     ),
   );
-  const leftover = files.filter((path) => entry(aside(join(cwd, path))) !== undefined);
-  if (leftover.length > 0) {
-    throw new Error(`Remove the leftover backups next to: ${leftover.join(", ")}`);
-  }
 
   const moved: string[] = [];
   let outcome: Outcome = { kind: "ok" };
@@ -136,12 +143,24 @@ function vitest(log: string) {
   };
 }
 
+function writeAll(fd: number, bytes: Buffer) {
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  for (let done = 0; done < bytes.length;) {
+    try {
+      done += writeSync(fd, bytes, done);
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "EAGAIN")) throw error;
+      Atomics.wait(pause, 0, 0, 10);
+    }
+  }
+}
+
 function printFile(path: string) {
   const file = openSync(path, "r");
   const chunk = Buffer.alloc(64 * 1024);
   try {
     for (let read = readSync(file, chunk); read > 0; read = readSync(file, chunk)) {
-      writeSync(2, chunk.subarray(0, read));
+      writeAll(2, chunk.subarray(0, read));
     }
   } finally {
     closeSync(file);

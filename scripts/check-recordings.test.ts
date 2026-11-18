@@ -159,10 +159,20 @@ describe("check-recordings", () => {
   });
 
   test("refuses to start when a backup from an earlier run is still there", () => {
-    const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
-    writeFileSync(aside(join(cwd, "tests/recordings/a.txt")), "old\n");
-    expect(() => checkRecordings(cwd, passing(cwd, {}))).toThrow("leftover backups");
-    expect(read(cwd, "tests/recordings/a.txt")).toBe("a\n");
+    const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "regenerated\n" });
+    writeFileSync(aside(join(cwd, "tests/recordings/a.txt")), "original\n");
+    expect(() => checkRecordings(cwd, passing(cwd, {}))).toThrow("rename it back");
+    expect(read(cwd, "tests/recordings/a.txt")).toBe("regenerated\n");
+    expect(read(cwd, "tests/recordings/.a.txt.check-recordings")).toBe("original\n");
+  });
+
+  test("never calls a lone backup stale, so the original isn't deleted", () => {
+    const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/b.txt": "b\n" });
+    writeFileSync(join(cwd, "tests/recordings/.a.txt.check-recordings"), "original\n");
+    expect(() => checkRecordings(cwd, passing(cwd, { "tests/recordings/b.txt": "b\n" }))).toThrow(
+      "tests/recordings/.a.txt.check-recordings",
+    );
+    expect(read(cwd, "tests/recordings/.a.txt.check-recordings")).toBe("original\n");
   });
 
   test("stops when git can't list the files", () => {

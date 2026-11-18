@@ -1,0 +1,57 @@
+$ keypin init
+exit 0
+
+--- given cwd ---
+"/home/me/code/shop"
+
+--- given home ---
+"/home/me"
+
+--- given styled ---
+{
+  "stdout": true,
+  "stderr": true
+}
+
+--- stdout ---
+
+--- stderr ---
+\e[32m✓\e[0m wrote ~/code/shop/keypin.toml
+\e[32m✓\e[0m registered (1 project)
+
+Next: keypin check  \e[2mwhat this project uses, and the TOML to add\e[0m
+
+--- wrote /home/me/.config/keypin/registry.json ---
+{
+  "version": 1,
+  "projects": [
+    "/home/me/code/shop"
+  ],
+  "shared": []
+}
+
+--- wrote /home/me/code/shop/keypin.toml ---
+# keypin.toml: this project's keys. It holds names and places, never values.
+# Uncomment and edit. Every field is checked; an unknown one is an error.
+#
+# The 1Password account the keys below read from: its sign-in address or account ID.
+# [1password]
+# account = "my.1password.com"
+#
+# A key, named after the variable your program reads.
+# [keys.EXAMPLE_API_KEY]
+# rotate_every = "180d" # <n>d, <n>w, <n>m or never
+# dev = "op://Private/my-project dev example api key/password" # what keypin run reads
+#
+# What keypin publish reads, and every place it writes it.
+# [keys.EXAMPLE_API_KEY.prod]
+# from = "op://Private/my-project prod example api key/password"
+#
+# [[keys.EXAMPLE_API_KEY.prod.publish]]
+# to = "cloudflare-worker"
+# account = "<cloudflare account ID>"
+# worker = "my-worker"
+#
+# [[keys.EXAMPLE_API_KEY.prod.publish]]
+# to = "github-actions"
+# repo = "owner/repo"

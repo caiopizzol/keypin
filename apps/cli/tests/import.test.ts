@@ -574,16 +574,13 @@ describe("keypin import", () => {
     ];
 
     test("with no map, names the items for that environment and writes its entries as tables", async () => {
-      const { deps, disk, fake, text } = setup({ files: { [PROD_ENV]: PROD_TEXT } });
-      expect(await cli([...args("--account", ACCOUNT), "--yes"], deps)).toBe(0);
+      const { disk, fake, text, record } = setup({ files: { [PROD_ENV]: PROD_TEXT } });
+      expect(await record("env-new-map", [...args("--account", ACCOUNT), "--yes"])).toBe(0);
       expect(fake.created.map((c) => c.ref.item)).toEqual([
         "billing prod stripe key",
         "billing prod new key",
       ]);
       const written = disk.contents.get(MAP) ?? "";
-      expect(written).toContain(
-        `[keys.STRIPE_KEY]\nrotate_every = "90d"\n\n[keys.STRIPE_KEY.prod]\nfrom = "op://App Secrets/billing prod stripe key/password"\n`,
-      );
       const parsed = parseMap(written, MAP, destinations, issuers, vaults);
       assert(parsed.ok, JSON.stringify(parsed));
       expect(parsed.map.keys.map((k) => [k.name, Object.keys(k.environments)])).toEqual([

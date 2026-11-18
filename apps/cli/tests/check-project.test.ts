@@ -736,17 +736,9 @@ worker = "billing-worker-staging"
 
     test("is proposed under the keypin environment of the same name, with the line to list it", async () => {
       const run = setup({ files: files(MAPPED) });
-      expect(await cli(["check", "--json"], run.deps)).toBe(1);
+      expect(await run.record("wrangler-env-proposed", ["check", "--json"])).toBe(1);
       const data = json(run.stdout.text);
       assert(typeof data.add === "string");
-      expect(data.add).toContain(`[[keys.RESEND_API_KEY.prod.publish]]
-to = "cloudflare-worker"
-account = "${ACCOUNT}"
-worker = "billing-worker"`);
-      expect(data.add).toContain(`[[keys.RESEND_API_KEY.staging.publish]]
-to = "cloudflare-worker"
-account = "${ACCOUNT}"
-worker = "billing-worker-staging"`);
       expect(data.add.match(/worker = /g)).toHaveLength(2);
       const line = 'environments = ["dev", "staging", "prod"]';
       expect(data.problems).toContain(
@@ -1404,16 +1396,11 @@ jobs:
         },
       },
     });
-    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(await run.record("job-environment-read", ["check"])).toBe(1);
     expect(run.calls).toContain("github acme/billing as null in production");
     expect(run.stdout.text).toContain(
       "  STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing (environment production) doesn't have it, and keypin.toml doesn't publish it there.\n",
     );
-    expect(added(run.stdout.text)).toContain(`[[keys.STRIPE_API_KEY.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
-environment = "production"
-`);
   });
 
   test("a map that publishes to the job's environment checks that environment's secrets", async () => {
@@ -1882,27 +1869,18 @@ describe("keypin check's prerequisites", () => {
   });
 
   test.each([
-    [{ GH_TOKEN: "ghp_x" }, "GH_TOKEN", "GH_TOKEN"],
-    [{ GITHUB_TOKEN: "ghp_y" }, "GITHUB_TOKEN", "GITHUB_TOKEN"],
-    [
-      { GH_TOKEN: "ghp_x", GITHUB_TOKEN: "ghp_y" },
-      "GH_TOKEN and GITHUB_TOKEN",
-      "GH_TOKEN GITHUB_TOKEN",
-    ],
+    [{ GH_TOKEN: "ghp_x" }, "gh-token-ignored"],
+    [{ GITHUB_TOKEN: "ghp_y" }, "github-token-ignored"],
+    [{ GH_TOKEN: "ghp_x", GITHUB_TOKEN: "ghp_y" }, "both-tokens-ignored"],
   ])(
     "with only %o set, says keypin uses gh's saved login and how to save one",
-    async (env, ignored, unset) => {
+    async (env, name) => {
       const run = setup({
         files: { [MAP]: TEMPLATE },
         git: { "config --get github.account": "alice\n" },
         deps: { ghLogin: async () => "not logged in", env },
       });
-      await cli(["check"], run.deps);
-      expect(run.stdout.text).toContain(`1 Sign in to GitHub
-  keypin ignores ${ignored}: it publishes only as a login gh has saved, so a token meant for another tool can't pick the account. Unset ${unset}, then run:
-    gh auth login --hostname github.com --with-token < token.txt
-  Use a classic token with the repo, read:org and gist scopes (gh needs all three), for alice.
-`);
+      await run.record(name, ["check"], { given: { ghLogin: "not logged in", env } });
       expect(run.stdout.text).not.toContain("ghp_");
     },
   );

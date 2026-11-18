@@ -1,0 +1,31 @@
+$ keypin check
+exit 0
+
+--- file /work/billing/keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.API_KEY]
+rotate_every = "90d"
+prod = { from = "op://Private/api key/password", publish = [
+  { to = "shelf", account = "library", shelf = "top" },
+] }
+
+--- given shelf CLI ---
+"not installed"
+
+--- calls vault ---
+ids api key
+
+--- stdout ---
+billing /work/billing · read 0 env files, 0 wrangler configs, 0 shelf files, 0 workflows
+1 thing to do:
+1 Install the shelf CLI
+    brew install shelf
+    shelf login
+Note: /work/billing isn't registered, so keypin status doesn't list it; run keypin init there
+
+--- stderr ---
+ok     Looked up 1 item in 1Password account my.1password.com, not the values
+ok     Checked 1 account

@@ -3,7 +3,8 @@ import { loadRegistry, parseMap } from "@keypin/core";
 import { cli } from "../src/cli";
 import { destinations, issuers, vaults } from "../src/start";
 import { TEMPLATE } from "../src/commands/init";
-import { fakeDeps, REGISTRY, unstyled } from "./fakes";
+import { ESC, fakeDeps, REGISTRY } from "./fakes";
+import { changes, recording } from "./recording";
 
 const VAULT = {
   kind: "1password",
@@ -13,6 +14,24 @@ const VAULT = {
   field: "password",
 };
 const CLOUDFLARE_ACCOUNT = "11111111111111111111111111111111";
+
+async function record(name: string, args: string[], run: ReturnType<typeof fakeDeps>) {
+  const before = new Map(run.disk.contents);
+  const exit = await cli(args, run.deps);
+  const shown = (text: string) => text.replaceAll(ESC, "\\e");
+  await expect(
+    recording({
+      args,
+      exit,
+      stdout: shown(run.stdout.text),
+      stderr: shown(run.stderr.text),
+      files: Object.fromEntries(before),
+      given: { cwd: run.deps.cwd, home: run.deps.home, styled: run.deps.styled },
+      wrote: changes(before, run.disk.contents),
+    }),
+  ).toMatchFileSnapshot(`./recordings/init/${name}.txt`);
+  return exit;
+}
 
 function uncomment(template: string): string {
   return template
@@ -24,38 +43,20 @@ function uncomment(template: string): string {
 
 describe("keypin init", () => {
   test("registers the current folder, writes the template, and points at check", async () => {
-    const { deps, disk, stderr } = fakeDeps();
-    expect(await cli(["init"], deps)).toBe(0);
-    expect(stderr.text).toBe(
-      [
-        "ok     wrote /work/billing/keypin.toml",
-        "ok     registered (1 project)",
-        "",
-        "Next: keypin check  what this project uses, and the TOML to add",
-        "",
-      ].join("\n"),
-    );
+    const run = fakeDeps();
+    const { disk } = run;
+    expect(await record("current-folder", ["init"], run)).toBe(0);
     expect(disk.contents.get("/work/billing/keypin.toml")).toBe(TEMPLATE);
     expect((await loadRegistry(disk.files, REGISTRY)).projects).toEqual(["/work/billing"]);
   });
 
   test("in a terminal, marks each line with a check and shortens the home folder", async () => {
-    const { deps, disk, stderr } = fakeDeps({
+    const run = fakeDeps({
       deps: { cwd: "/home/me/code/shop", styled: { stdout: true, stderr: true } },
     });
-    disk.folders.add("/home/me/code/shop");
-    expect(await cli(["init"], deps)).toBe(0);
-    const plain = unstyled(stderr.text);
-    expect(plain).toBe(
-      [
-        "✓ wrote ~/code/shop/keypin.toml",
-        "✓ registered (1 project)",
-        "",
-        "Next: keypin check  what this project uses, and the TOML to add",
-        "",
-      ].join("\n"),
-    );
-    expect(stderr.text).not.toContain("keypin:");
+    run.disk.folders.add("/home/me/code/shop");
+    expect(await record("terminal", ["init"], run)).toBe(0);
+    expect(run.stderr.text).not.toContain("keypin:");
   });
 
   test("quotes a folder with a space in the check command it suggests", async () => {

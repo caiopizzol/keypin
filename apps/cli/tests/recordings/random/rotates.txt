@@ -1,0 +1,107 @@
+$ keypin rotate AUTH_SECRET
+exit 0
+
+--- file /work/billing/keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.AUTH_SECRET.prod]
+from = "op://Private/app secret/password"
+publish = [{ to = "github-actions", repo = "acme/app" }]
+issuer = { kind = "random" }
+
+--- given answers ---
+[
+  "y"
+]
+
+--- given terminal ---
+true
+
+--- calls vault ---
+read app secret
+save app secret
+ids app secret
+
+--- calls destination ---
+check github-actions:acme/app
+write github-actions:acme/app AUTH_SECRET (44 chars)
+
+--- calls asked ---
+Rotate AUTH_SECRET? [y/N] 
+
+--- stdout ---
+
+--- stderr ---
+AUTH_SECRET prod  from op://Private/app secret/password in 1Password account my.1password.com
+ok     Read the key op://Private/app secret/password
+ok     random  32 random bytes, base64
+ok     GitHub  acme/app  as acme, account acme
+
+Plan
+  + random            create a new key
+    replaces the old value: anything signed with it stops working, so everyone signs in again. Don't use it for Better Auth, which also reads AUTH_SECRET: its stored two-factor secrets would become unreadable
+  ~ 1Password         save it to op://Private/app secret/password, rotated today
+  + GitHub  acme/app  first write  needs approval
+  = random            nothing to revoke: the new value replaces the old one
+
+ok     random  created AUTH_SECRET prod 2026-11-09 12:00:00 a1b2c3
+ok     1Password  op://Private/app secret/password  saved, rotated 2026-11-09
+ok     GitHub  acme/app  wrote AUTH_SECRET
+
+Rotated AUTH_SECRET (prod): the new key is in 1Password and the destination in the map.
+Nothing to revoke: the old value stops working once your apps use the new one.
+
+--- wrote /home/me/.local/state/keypin/state.json ---
+{
+  "version": 5,
+  "receipts": [
+    {
+      "keyId": "AUTH_SECRET",
+      "environment": "prod",
+      "mapFile": "/work/billing/keypin.toml",
+      "source": {
+        "kind": "1password",
+        "vault": "Private",
+        "item": "app secret",
+        "section": null,
+        "field": "password",
+        "account": "my.1password.com"
+      },
+      "sourceIds": {
+        "vault": "v1",
+        "item": "id-app secret"
+      },
+      "destinationId": "github-actions:acme/app:AUTH_SECRET",
+      "generation": "<generation of the new value>",
+      "account": {
+        "pinned": "acme",
+        "publisher": "acme",
+        "destinationAccount": "acme"
+      },
+      "at": "2026-11-09T12:00:00.000Z",
+      "evidence": {
+        "destination": "github-actions:acme/app",
+        "version": "v-2"
+      }
+    }
+  ],
+  "issued": [
+    {
+      "keyId": "AUTH_SECRET",
+      "environment": "prod",
+      "mapFile": "/work/billing/keypin.toml",
+      "issuer": "random",
+      "id": "AUTH_SECRET prod 2026-11-09 12:00:00 a1b2c3",
+      "generation": "<generation of the new value>",
+      "at": "2026-11-09T12:00:00.000Z",
+      "old": {
+        "id": null,
+        "generation": "92defb56ce1788ee",
+        "revoked": true
+      }
+    }
+  ],
+  "operations": []
+}

@@ -353,9 +353,86 @@ const noErrorTextMatching = defineRule({
   },
 });
 
+const EXACT_MATCHERS = new Set(["toBe", "toEqual", "toStrictEqual", "toContain"]);
+export const COPIED_LINES = 4;
+
+function textLines(text: string): number {
+  return text.split("\n").filter((line) => line.trim() !== "").length;
+}
+
+function knownText(node: ESTree.Node | null): string | null {
+  if (node?.type === "Literal") return typeof node.value === "string" ? node.value : null;
+  if (node?.type === "TemplateLiteral")
+    return node.quasis.map((quasi) => quasi.value.cooked ?? "").join("${}");
+  return null;
+}
+
+function provenText(node: ESTree.Node | null): string {
+  if (node?.type === "TemplateLiteral")
+    return node.quasis.map((quasi) => quasi.value.cooked ?? "").join("");
+  return node ? (knownText(node) ?? "") : "";
+}
+
+function outputLines(node: ESTree.Node): number {
+  const text = knownText(node);
+  if (text !== null) return textLines(text);
+  if (
+    node.type !== "CallExpression" ||
+    node.callee.type !== "MemberExpression" ||
+    node.callee.object.type !== "ArrayExpression" ||
+    propertyName(node.callee) !== "join"
+  )
+    return 0;
+  const separator = provenText(node.arguments[0] ?? null);
+  if (!separator.includes("\n")) return 0;
+  const parts = node.callee.object.elements
+    .filter((element) => element?.type !== "SpreadElement")
+    .map(provenText);
+  return textLines(parts.join(separator));
+}
+
+const EXPECT_MODIFIERS = new Set(["not", "resolves", "rejects"]);
+
+function onExpect(node: ESTree.Node): boolean {
+  let receiver = node;
+  while (receiver.type === "MemberExpression" && EXPECT_MODIFIERS.has(propertyName(receiver) ?? ""))
+    receiver = receiver.object;
+  if (receiver.type !== "CallExpression") return false;
+  const { callee } = receiver;
+  if (callee.type === "Identifier") return callee.name === "expect";
+  return (
+    callee.type === "MemberExpression" &&
+    callee.object.type === "Identifier" &&
+    callee.object.name === "expect" &&
+    propertyName(callee) === "soft"
+  );
+}
+
+const noHandCopiedOutput = defineRule({
+  meta: {
+    messages: {
+      copied:
+        "Don't write out output by hand. Record it with toMatchFileSnapshot, then read the recording, so a change in behavior shows up as a diff.",
+    },
+  },
+  create(context) {
+    return {
+      CallExpression(node) {
+        if (node.callee.type !== "MemberExpression") return;
+        if (!EXACT_MATCHERS.has(propertyName(node.callee) ?? "")) return;
+        if (!onExpect(node.callee.object)) return;
+        const [expected] = node.arguments;
+        if (expected && outputLines(expected) >= COPIED_LINES)
+          context.report({ messageId: "copied", node: expected });
+      },
+    };
+  },
+});
+
 export default definePlugin({
   meta: { name: "keypin" },
   rules: {
+    "no-hand-copied-output": noHandCopiedOutput,
     "no-comments": noComments,
     "no-reveal": noReveal,
     "no-ambient": noAmbient,

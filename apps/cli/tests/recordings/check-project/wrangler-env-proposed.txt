@@ -1,0 +1,140 @@
+$ keypin check --json
+exit 1
+
+--- file .env.example ---
+DATABASE_URL=
+
+--- file keypin.toml ---
+[1password]
+account = "my.1password.com"
+
+[keys.DATABASE_URL]
+rotate_every = "90d"
+dev = "op://Private/billing dev database url/password"
+
+[keys.RESEND_API_KEY]
+rotate_every = "90d"
+dev = "op://Private/billing dev resend api key/password"
+
+--- file wrangler.toml ---
+name = "billing-worker"
+account_id = "11111111111111111111111111111111"
+
+[secrets]
+required = ["RESEND_API_KEY"]
+
+[env.staging]
+name = "billing-worker-staging"
+
+[env.staging.secrets]
+required = ["RESEND_API_KEY"]
+
+--- given git ---
+{
+  "rev-parse --show-toplevel": "/work/billing\n",
+  "remote get-url origin": "git@github.com:acme/billing.git\n",
+  "config --get github.account": null
+}
+
+--- calls reads ---
+worker 11111111111111111111111111111111 billing-worker
+worker 11111111111111111111111111111111 billing-worker-staging
+
+--- calls vault ---
+ids billing dev database url
+ids billing dev resend api key
+
+--- calls destination ---
+
+--- stdout ---
+{
+  "folder": "/work/billing",
+  "map": "/work/billing/keypin.toml",
+  "registered": true,
+  "read": {
+    "env": [
+      ".env.example"
+    ],
+    "wrangler": [
+      "wrangler.toml"
+    ],
+    "workflows": [],
+    "notScanned": []
+  },
+  "github": {
+    "repo": "acme/billing",
+    "login": null
+  },
+  "onePassword": {
+    "signIn": "desktop",
+    "address": null
+  },
+  "keys": [
+    {
+      "key": "DATABASE_URL",
+      "environment": "dev",
+      "from": {
+        "reference": "op://Private/billing dev database url/password",
+        "ok": true,
+        "problem": null
+      },
+      "destinations": []
+    },
+    {
+      "key": "RESEND_API_KEY",
+      "environment": "dev",
+      "from": {
+        "reference": "op://Private/billing dev resend api key/password",
+        "ok": true,
+        "problem": null
+      },
+      "destinations": []
+    }
+  ],
+  "production": [
+    {
+      "name": "RESEND_API_KEY",
+      "to": "cloudflare-worker",
+      "place": "the Worker billing-worker",
+      "usedBy": [
+        "wrangler.toml"
+      ],
+      "mapped": null,
+      "holds": false,
+      "ok": false
+    },
+    {
+      "name": "RESEND_API_KEY",
+      "to": "cloudflare-worker",
+      "place": "the Worker billing-worker-staging",
+      "usedBy": [
+        "wrangler.toml"
+      ],
+      "mapped": null,
+      "holds": false,
+      "ok": false
+    }
+  ],
+  "local": [],
+  "add": "[keys.RESEND_API_KEY.prod]\nfrom = \"op://<vault>/<item>/<field>\"\n\n[[keys.RESEND_API_KEY.prod.publish]]\nto = \"cloudflare-worker\"\naccount = \"11111111111111111111111111111111\"\nworker = \"billing-worker\"\n\n[keys.RESEND_API_KEY.staging]\nfrom = \"op://<vault>/<item>/<field>\"\n\n[[keys.RESEND_API_KEY.staging.publish]]\nto = \"cloudflare-worker\"\naccount = \"11111111111111111111111111111111\"\nworker = \"billing-worker-staging\"\n",
+  "unknown": [],
+  "prerequisites": [
+    {
+      "name": "Cloudflare",
+      "status": "not logged in",
+      "fix": "run wrangler login, or set KEYPIN_CLOUDFLARE_API_TOKEN"
+    }
+  ],
+  "notes": [
+    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields"
+  ],
+  "problems": [
+    "keypin.toml has no environment for the wrangler env staging; add at the top of keypin.toml: environments = [\"dev\", \"staging\", \"prod\"] (keypin run uses the first, keypin publish the last)",
+    "RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and keypin.toml doesn't publish it there. Add the TOML below",
+    "RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker-staging doesn't have it, and keypin.toml doesn't publish it there. Add the TOML below"
+  ],
+  "ok": false
+}
+
+--- stderr ---
+ok     Looked up 2 items in 1Password account my.1password.com, not the values

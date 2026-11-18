@@ -12,6 +12,7 @@ import {
   STATE,
   writableVault,
 } from "./fakes";
+import { changes, recording } from "./recording";
 
 const OLD = "re_old_sentinel_value_4b1c";
 const ADMIN = "re_admin_sentinel_value_7e2f";
@@ -157,7 +158,31 @@ function setup(options: Setup = {}) {
     [fake.stdout.text, fake.stderr.text, ...disk.contents.values()].join("\n");
   const leaked = () => [OLD, ADMIN, NEW(1), NEW(2)].some((v) => everything().includes(v));
   const state = () => loadState(disk.files, STATE, vaults);
-  return { ...fake, disk, vault, issuer, destinations, asked, run, writes, leaked, state };
+  const given = { answers: [...answers], terminal: options.terminal ?? true };
+  const record = async (name: string, ...more: string[]) => {
+    const before = new Map(disk.contents);
+    const start = vault.log.length;
+    const exit = await run(...more);
+    await expect(
+      recording({
+        args: ["rotate", "RESEND_API_KEY", ...more],
+        exit,
+        stdout: fake.stdout.text,
+        stderr: fake.stderr.text,
+        files: Object.fromEntries(before),
+        given,
+        calls: {
+          issuer: issuer.log,
+          vault: vault.log.slice(start),
+          destination: destinations.log,
+          asked,
+        },
+        wrote: changes(before, disk.contents),
+      }),
+    ).toMatchFileSnapshot(`./recordings/rotate/${name}.txt`);
+    return exit;
+  };
+  return { ...fake, disk, vault, issuer, destinations, asked, run, record, writes, leaked, state };
 }
 
 describe("keypin rotate", () => {
@@ -186,7 +211,7 @@ describe("keypin rotate", () => {
     expect(before.leaked()).toBe(false);
 
     const again = setup({ disk: before.disk, vault: before.vault, answers: ["y", "y"] });
-    expect(await again.run()).toBe(0);
+    expect(await again.record("second-rotation-revokes")).toBe(0);
     expect(again.asked).toEqual([
       "Rotate RESEND_API_KEY? [y/N] ",
       "Revoke the old key at Resend? [y/N] ",
@@ -196,17 +221,6 @@ describe("keypin rotate", () => {
       "create RESEND_API_KEY prod 2026-11-09 12:00:00 a1b2c3 -> key-2",
       "revoke key-1",
     ]);
-    expect(again.stderr.text).toContain(
-      [
-        "Plan",
-        "  + Resend                   create a new key",
-        "  ~ 1Password                save it to op://Private/mailer resend key/credential, rotated today",
-        "  ~ Cloudflare  mailer       new value",
-        "    writing a Worker secret deploys a new version of the Worker",
-        "  ~ GitHub      acme/mailer  new value",
-        "  - Resend                   revoke the old key key-1, after a second y",
-      ].join("\n"),
-    );
     const state = await again.state();
     expect(state.issued).toEqual([
       expect.objectContaining({
@@ -693,7 +707,7 @@ describe("keypin rotate", () => {
 
   test("--plan runs the checks, shows the plan, and creates, writes and asks nothing", async () => {
     const run = setup({ terminal: false });
-    expect(await run.run("--plan", "--yes")).toBe(NEEDS_APPROVAL);
+    expect(await run.record("plan", "--plan", "--yes")).toBe(NEEDS_APPROVAL);
     expect(run.asked).toEqual([]);
     expect(run.issuer.log).toEqual(["check none"]);
     expect(run.destinations.log.filter((l) => l.startsWith("check")).toSorted()).toEqual([
@@ -704,22 +718,6 @@ describe("keypin rotate", () => {
     expect(run.vault.values.get("mailer resend key")).toBe(OLD);
     expect(run.writes()).toEqual([]);
     expect(run.disk.contents.has(STATE)).toBe(false);
-    expect(run.stderr.text).toContain(
-      [
-        "Plan",
-        "  + Resend                   create a new key",
-        "  ~ 1Password                save it to op://Private/mailer resend key/credential, rotated today",
-        "  + Cloudflare  mailer       first write  needs approval",
-        "    writing a Worker secret deploys a new version of the Worker",
-        "  + GitHub      acme/mailer  first write  needs approval",
-        "  - Resend                   the old key stays: keypin doesn't know its ID",
-        "",
-        "This plan needs approval in a terminal; --yes can't give it.",
-        "Nothing was written: --plan only shows the plan.",
-        "To approve, run this in a terminal:",
-        "  cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts rotate RESEND_API_KEY --yes",
-      ].join("\n"),
-    );
     expect(run.leaked()).toBe(false);
   });
 
@@ -736,21 +734,11 @@ describe("keypin rotate", () => {
     const saved = first.disk.contents.get(STATE);
 
     const plan = setup({ disk: first.disk, vault: first.vault, answers: ["y", "y"] });
-    expect(await plan.run("--plan")).toBe(NEEDS_APPROVAL);
+    expect(await plan.record("plan-resumed", "--plan")).toBe(NEEDS_APPROVAL);
     expect(plan.asked).toEqual([]);
     expect(plan.issuer.log).toEqual(["check key-2"]);
     expect(plan.writes()).toEqual([]);
     expect(plan.disk.contents.get(STATE)).toBe(saved);
-    expect(plan.stderr.text).toContain(
-      [
-        "Plan",
-        "  = Cloudflare  mailer       already has this value",
-        "  ~ GitHub      acme/mailer  new value",
-        "  - Resend                   revoke the old key key-1, after a second y",
-        "",
-        "This plan is routine: --yes can approve it.",
-      ].join("\n"),
-    );
 
     const published = setup({ disk: first.disk, vault: first.vault, answers: ["y", "n"] });
     expect(await published.run()).toBe(0);

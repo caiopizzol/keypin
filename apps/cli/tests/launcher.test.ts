@@ -1,18 +1,10 @@
 import { existsSync } from "node:fs";
-import {
-  chmod,
-  copyFile,
-  mkdir,
-  mkdtemp,
-  realpath,
-  rm,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
-import { LAUNCHER } from "../compile";
+import keypin from "../../../package.json";
+import { packKeypin } from "../pack";
 
 let root = "";
 beforeEach(async () => {
@@ -29,9 +21,7 @@ async function executable(path: string, text: string) {
 
 async function install(cpus: string[], os = "darwin") {
   const modules = join(root, "lib/node_modules");
-  await mkdir(join(modules, "keypin/bin"), { recursive: true });
-  await copyFile(LAUNCHER, join(modules, "keypin/bin/keypin"));
-  await chmod(join(modules, "keypin/bin/keypin"), 0o755);
+  await packKeypin(modules);
   for (const cpu of cpus) {
     const bin = join(modules, `@keypin/cli-${os}-${cpu}/bin`);
     await mkdir(bin, { recursive: true });
@@ -94,6 +84,15 @@ describe("launcher.sh", () => {
     const result = await run("Darwin", "arm64");
     expect(result.code).toBe(1);
     expect(result.stderr).toContain("the package @keypin/cli-darwin-arm64 isn't installed");
+    expect(result.stderr).toContain(`npm install -g keypin@${keypin.version} --prefer-online\n`);
+  });
+
+  test("names no version when keypin's package.json is missing", async () => {
+    await install([]);
+    await rm(join(root, "lib/node_modules/keypin/package.json"));
+    const result = await run("Darwin", "arm64");
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("npm install -g keypin --prefer-online\n");
   });
 
   test("names the launcher uses keep the caller's exported values", async () => {

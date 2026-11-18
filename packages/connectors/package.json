@@ -37,6 +37,8 @@
     "./railway/testing": "./src/railway/testing.ts",
     "./resend": "./src/resend/index.ts",
     "./resend/testing": "./src/resend/testing.ts",
+    "./sendgrid": "./src/sendgrid/index.ts",
+    "./sendgrid/testing": "./src/sendgrid/testing.ts",
     "./supabase": "./src/supabase/index.ts",
     "./supabase/testing": "./src/supabase/testing.ts",
     "./vercel": "./src/vercel/index.ts",

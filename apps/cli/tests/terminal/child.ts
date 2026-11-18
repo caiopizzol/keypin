@@ -30,6 +30,7 @@ import { neonFetch, type NeonWorld } from "@keypin/connectors/neon/testing";
 import { type OpenAIKeys, openaiFetch } from "@keypin/connectors/openai/testing";
 import { openrouterFetch, type OpenRouterWorld } from "@keypin/connectors/openrouter/testing";
 import { resendFetch } from "@keypin/connectors/resend/testing";
+import { sendgridFetch, type SendGridWorld } from "@keypin/connectors/sendgrid/testing";
 import { supabaseFetch, type SupabaseWorld } from "@keypin/connectors/supabase/testing";
 import { credentialsFrom, infisicalBackend } from "@keypin/connectors/infisical";
 import { fileStore, infisicalFetch } from "@keypin/connectors/infisical/testing";
@@ -54,6 +55,8 @@ import {
   GOOGLE_PREFIX,
   ISSUED_PREFIX,
   RESEND_ADMIN,
+  SENDGRID_ADMIN,
+  SENDGRID_PREFIX,
   RESEND_KNOWN,
   NEON_HOST,
   NEON_PREFIX,
@@ -108,6 +111,7 @@ const OPENROUTER = join(sandbox, "openrouter.json");
 const ELEVENLABS = join(sandbox, "elevenlabs.json");
 const PAIRED = join(sandbox, "paired.json");
 const AWS = join(sandbox, "aws.json");
+const SENDGRID = join(sandbox, "sendgrid.json");
 
 function effect(line: string): void {
   appendFileSync(EFFECTS, `${line}\n`);
@@ -467,6 +471,22 @@ const aws = awsFetch({
   effect,
 });
 
+const sendgrid = sendgridFetch({
+  admin: SENDGRID_ADMIN,
+  valuePrefix: SENDGRID_PREFIX,
+  loseCreated: run.sendgrid?.loseCreated === true,
+  world: {
+    load(): SendGridWorld {
+      if (!existsSync(SENDGRID)) return { keys: run.sendgrid?.keys ?? [], created: 0 };
+      const parsed: unknown = JSON.parse(readFileSync(SENDGRID, "utf8"));
+      if (!isSendGridWorld(parsed)) throw new Error(`${SENDGRID} isn't the fake SendGrid's keys`);
+      return parsed;
+    },
+    save: (world) => writeFileSync(SENDGRID, JSON.stringify(world)),
+  },
+  effect,
+});
+
 const issuerFetch: Record<string, Fetch> = {
   aws,
   cloudflare,
@@ -476,8 +496,13 @@ const issuerFetch: Record<string, Fetch> = {
   openai,
   openrouter,
   resend,
+  sendgrid,
   supabase,
 };
+
+function isSendGridWorld(value: unknown): value is SendGridWorld {
+  return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";
+}
 
 function isAwsWorld(value: unknown): value is AwsWorld {
   return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";

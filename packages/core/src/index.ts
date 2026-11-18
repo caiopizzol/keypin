@@ -96,6 +96,7 @@ export { type StatusFile, statusDates, statusFile, writeStatusFile } from "./sta
 export {
   deliveredTo,
   loadRotationFile,
+  removedBehind,
   restoreIssued,
   restoreReceipts,
   type RotationFile,

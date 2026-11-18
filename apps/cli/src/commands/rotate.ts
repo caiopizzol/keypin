@@ -7,6 +7,7 @@ import {
   type KeysMap,
   loadRotationFile,
   type Progress,
+  removedBehind,
   restoreIssued,
   restoreReceipts,
   type RotationFile,
@@ -258,9 +259,10 @@ async function rotateDue(context: Context, flags: Flags, path: string): Promise<
   choices.forEach((c, i) => out.line(`  ${(rows[i] ?? []).join("  ")}  ${out.dim(c.why)}`));
   const picked = choices.filter((c) => c.action === "rotate" || c.action === "finish");
   const waits = choices.some((c) => c.action === "waiting");
+  for (const c of choices) if (c.action === "waiting") waitsNotice(deps, c.keyId, environment);
   if (!picked.length) {
     out.line(waits ? "Nothing is due. An old key waits for approval." : "Nothing is due.");
-    return waits ? NEEDS_APPROVAL : 0;
+    return 0;
   }
   const codes: number[] = [];
   for (const choice of picked) {
@@ -275,7 +277,14 @@ async function rotateDue(context: Context, flags: Flags, path: string): Promise<
       codes.push(1);
     }
   }
-  return worst([...codes, waits ? NEEDS_APPROVAL : 0]);
+  return worst(codes);
+}
+
+function waitsNotice(deps: Deps, keyId: string, environment: string): void {
+  deps.warnRunner(
+    "An old key waits for approval",
+    `The old ${keyId} (${environment}) still works. Once nothing uses it, run this workflow with approve revoke.`,
+  );
 }
 
 async function approveAll(
@@ -870,7 +879,22 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
   out.line(
     `\nRotated ${out.bold(key.name)} (${owner.environment}): the new key is in ${vaultName(job.entry.ref, job.deps.vaults)} and the ${listed === 1 ? "destination" : `${listed} destinations`} in the map.`,
   );
-  const behind = ready.removed.filter((r) => r.lastReceipt.generation !== issued.generation);
+  const recorded = removedBehind(
+    job.committed,
+    job.map,
+    deps.destinations,
+    owner,
+    issued.generation,
+  )
+    .filter((p) => !ready.removed.some((r) => r.destinationId === p.destination))
+    .map((p) => ({
+      destinationId: p.destination,
+      lastReceipt: { generation: p.generation, at: p.at, destinationAccount: "unknown" },
+    }));
+  const behind = [
+    ...ready.removed.filter((r) => r.lastReceipt.generation !== issued.generation),
+    ...recorded,
+  ];
   if (behind.length) {
     out.line(
       "Not in the map any more, so keypin didn't write them; they may still use the old key:",
@@ -897,7 +921,14 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
     out.line(
       `The old key ${shown(issuer, old)} still works, and waits for approval. Once nothing uses it, run:\n  ${commandLine(deps, "rotate", approve)}`,
     );
-    return NEEDS_APPROVAL;
+    waitsNotice(deps, key.name, owner.environment);
+    return 0;
+  }
+  if (job.approve && !deps.isTerminal && behind.length) {
+    out.line(
+      `Stopped: something no longer in the map may still use the old key ${shown(issuer, old)}, so keypin won't revoke it without a terminal. Nothing was revoked. Once nothing uses it, run this in a terminal:\n  ${commandLine(deps, "rotate", asked)}`,
+    );
+    return 1;
   }
   if (!deps.isTerminal && !job.approve) {
     out.line(
@@ -905,7 +936,7 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
     );
     return NEEDS_APPROVAL;
   }
-  if (!job.approve) {
+  if (!job.approve || behind.length) {
     out.line(`The old key ${shown(issuer, old)} still works. Revoke it once nothing uses it.`);
     if (!(await confirm(deps, `Revoke the old key at ${where}?`))) {
       out.line(later);

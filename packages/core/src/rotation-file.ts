@@ -55,6 +55,23 @@ export function rotates(map: KeysMap, keyId: KeyId, environment: Environment): E
   return entry;
 }
 
+export function removedBehind(
+  file: RotationFile | null,
+  map: KeysMap,
+  kinds: DestinationKinds,
+  owner: KeyOwner,
+  generation: Generation,
+): CommittedWrite[] {
+  const listed = rotates(map, owner.keyId, owner.environment)?.publish ?? [];
+  return (file?.published ?? []).filter(
+    (p) =>
+      p.key === owner.keyId &&
+      p.environment === owner.environment &&
+      p.generation !== generation &&
+      !listed.some((target) => destinationId(target, owner.keyId, kinds) === p.destination),
+  );
+}
+
 export function waitsForRevoke(issued: Issued | undefined): issued is Issued {
   return issued !== undefined && issued.old.id !== null && !issued.old.revoked;
 }
@@ -126,16 +143,26 @@ export async function rotationFile(
       }),
     });
   }
+  const allIssued = merged(
+    (base?.issued ?? []).filter((c) => rotates(map, c.key, c.environment)),
+    issued,
+    (c) => [c.key, c.environment],
+    mergeIssued,
+  );
+  const stillWorks = (c: CommittedWrite) => {
+    const now = allIssued.find((i) => i.key === c.key && i.environment === c.environment);
+    if (!now || c.generation === now.generation) return true;
+    return c.generation === now.old.generation && !now.old.revoked;
+  };
   return {
     version: ROTATION_FILE_VERSION,
-    issued: merged(
-      (base?.issued ?? []).filter((c) => rotates(map, c.key, c.environment)),
-      issued,
-      (c) => [c.key, c.environment],
-      mergeIssued,
-    ),
+    issued: allIssued,
     published: merged(
-      (base?.published ?? []).filter((c) => listed(c.key, c.environment, c.destination)),
+      (base?.published ?? []).filter(
+        (c) =>
+          listed(c.key, c.environment, c.destination) ||
+          (rotates(map, c.key, c.environment) !== null && stillWorks(c)),
+      ),
       published,
       (c) => [c.key, c.environment, c.destination],
       (older, newer) => (newer.at >= older.at ? newer : older),

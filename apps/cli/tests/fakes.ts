@@ -310,6 +310,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
   const disk = setup.disk ?? memoryFiles();
   const stdout = output();
   const stderr = output();
+  const warnings: string[] = [];
   const backend = setup.backend ?? fakeVault().vault;
   const deps: Deps = {
     cwd: "/work/billing",
@@ -367,6 +368,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
     ghLogin: async () => "ok",
     lock: memoryLock(disk),
     isTerminal: false,
+    warnRunner: (title, text) => warnings.push(`${title}: ${text}`),
     styled: { stdout: false, stderr: false },
     columns: () => 80,
     ask: async () => {
@@ -374,7 +376,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
     },
     ...setup.deps,
   };
-  return { deps, disk, stdout, stderr };
+  return { deps, disk, stdout, stderr, warnings };
 }
 
 function listMemoryFolder(disk: ReturnType<typeof memoryFiles>, path: string): FolderEntry[] {

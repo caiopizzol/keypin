@@ -757,6 +757,63 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "SendGrid: makes a key with the old key's scopes, publishes it, then deletes the old key after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "sendgrid",
+        args: ["rotate", "SENDGRID_API_KEY"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  + SendGrid              create a new key\n    with the old key's 2 scopes",
+      );
+      expect(result.screen).toMatch(/^✓ SendGrid {2}revoked "mailer" {2}\d+\.\ds$/m);
+      expect(result.effects).toEqual([
+        "sendgrid create NewKey1Id with mail.send,templates.read",
+        "1password update my.1password.com/Private/mailer sendgrid key (32 chars)",
+        "destination write github-actions:acme/billing SENDGRID_API_KEY (32 chars)",
+        "sendgrid revoke OldVerifyId",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "SendGrid: a lost create reply isn't retried, and names the key to delete",
+    async () => {
+      const result = await drive({
+        scenario: "sendgrid-lost",
+        args: ["rotate", "SENDGRID_API_KEY"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("SendGrid may have made the key before the reply was lost.");
+      expect(result.effects).toEqual(["sendgrid create NewKey1Id with mail.send,templates.read"]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "SendGrid: a scope the admin key can't grant stops before anything is created",
+    async () => {
+      const result = await drive({
+        scenario: "sendgrid-billing",
+        args: ["rotate", "SENDGRID_API_KEY"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        `key "mailer" has 1 scope the admin key doesn't have, so it can't give them to a new key: billing.read`,
+      );
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "rotating the ID key points to the key that rotates it",
     async () => {
       const result = await drive({ scenario: "paired", args: ["rotate", "API_KEY_ID"] });

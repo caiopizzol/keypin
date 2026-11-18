@@ -31,6 +31,7 @@ import { openaiIssuer } from "@keypin/connectors/openai";
 import { openrouterIssuer } from "@keypin/connectors/openrouter";
 import { railwayService } from "@keypin/connectors/railway";
 import { resendIssuer } from "@keypin/connectors/resend";
+import { sendgridIssuer } from "@keypin/connectors/sendgrid";
 import { supabaseFunctions, supabaseIssuer } from "@keypin/connectors/supabase";
 import { vercelProject } from "@keypin/connectors/vercel";
 import { xaiIssuer } from "@keypin/connectors/xai";
@@ -99,6 +100,7 @@ export const issuers = [
   googleIssuer,
   elevenlabsIssuer,
   awsIssuer,
+  sendgridIssuer,
   xaiIssuer,
 ];
 

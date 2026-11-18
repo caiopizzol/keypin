@@ -8,8 +8,8 @@ import {
   objectField,
   Secret,
 } from "@keypin/core";
-import { call, disabledIn, type Reply, returned, statusOf } from "./api";
-import { ADMIN_FIX, accessToken, type Refusal, serviceAccount } from "./auth";
+import { API, apiDisabled, call, disabledIn, type Reply, returned, statusOf } from "./api";
+import { adminFix, type Refusal, Session } from "./auth";
 
 const CREDENTIALS = "https://console.cloud.google.com/apis/credentials";
 const KEY_NAME = /^projects\/([^/]+)\/locations\/global\/keys\/([^/]+)$/;
@@ -17,6 +17,8 @@ const KEY_ID_LIMIT = 63;
 const KEY_PREFIX = "AIza";
 const POLL_MS = 2000;
 const POLLS = 30;
+const SCOPE = "https://www.googleapis.com/auth/apikeys";
+const ADMIN_FIX = adminFix("API Keys Admin");
 
 export interface GoogleIssuerOptions {
   admin: () => Promise<Secret>;
@@ -40,21 +42,24 @@ interface Copy {
 }
 
 export class GoogleIssuer implements Issuer {
-  readonly #admin: () => Promise<Secret>;
+  readonly #session: Session;
   readonly #pinned: string;
   readonly #fetch: Fetch;
-  readonly #now: () => Date;
   readonly #sleep: (ms: number) => Promise<void>;
-  #token: { token: string; until: number } | null = null;
   #copy: Copy | null = null;
   #project: string | null = null;
   readonly #names = new Map<string, string>();
 
   constructor(options: GoogleIssuerOptions) {
-    this.#admin = options.admin;
     this.#pinned = options.projectNumber;
     this.#fetch = options.fetch ?? globalThis.fetch;
-    this.#now = options.now ?? (() => new Date());
+    this.#session = new Session({
+      admin: options.admin,
+      fetch: this.#fetch,
+      now: options.now ?? (() => new Date()),
+      scope: SCOPE,
+      fix: ADMIN_FIX,
+    });
     this.#sleep = options.sleep ?? ((ms) => new Promise((done) => setTimeout(done, ms)));
   }
 
@@ -247,7 +252,7 @@ export class GoogleIssuer implements Issuer {
   #refusedLookup(reply: Reply): IssuerCheck {
     const facts = `Google answered HTTP ${reply.status}`;
     const disabled = disabledIn(reply);
-    if (disabled !== null) return { ok: false, facts, ...apiDisabled(disabled) };
+    if (disabled !== null) return { ok: false, facts, ...keysApiOff(disabled) };
     if (reply.status === 400 || reply.status === 404)
       return {
         ok: false,
@@ -270,7 +275,7 @@ export class GoogleIssuer implements Issuer {
   #refusedRead(reply: Reply, name: string, issued: boolean): IssuerCheck {
     const facts = `Google answered HTTP ${reply.status}`;
     const disabled = disabledIn(reply);
-    if (disabled !== null) return { ok: false, facts, ...apiDisabled(disabled) };
+    if (disabled !== null) return { ok: false, facts, ...keysApiOff(disabled) };
     if (reply.status === 403)
       return {
         ok: false,
@@ -290,29 +295,19 @@ export class GoogleIssuer implements Issuer {
     throw new Error(returned("GET", "<project>/keys/<id>", reply));
   }
 
-  async #bearer(): Promise<string | Refusal> {
-    if (this.#token && this.#token.until > this.#now().getTime()) return this.#token.token;
-    const account = serviceAccount(await this.#admin());
-    if ("facts" in account) return account;
-    const token = await accessToken(this.#fetch, account, this.#now());
-    if ("facts" in token) return token;
-    this.#token = token;
-    return token.token;
+  #bearer(): Promise<string | Refusal> {
+    return this.#session.bearer();
   }
 
   async #request(method: string, path: string, body?: unknown): Promise<Reply> {
     const bearer = await this.#bearer();
     if (typeof bearer !== "string") throw new Error(`${bearer.reason}: ${bearer.fix}`);
-    return call(this.#fetch, bearer, method, path, body);
+    return call(this.#fetch, bearer, method, `${API}/${path}`, body);
   }
 }
 
-function apiDisabled(project: string): { reason: string; fix: string } {
-  const where = project ? ` in project ${project}` : "";
-  return {
-    reason: `the API Keys API is turned off${where}, the admin service account's project`,
-    fix: `turn on apikeys.googleapis.com at https://console.cloud.google.com/apis/library/apikeys.googleapis.com${project ? `?project=${encodeURIComponent(project)}` : ""}`,
-  };
+function keysApiOff(project: string): { reason: string; fix: string } {
+  return apiDisabled("apikeys.googleapis.com", "API Keys API", project);
 }
 
 function parseKey(body: Record<string, unknown>, name: string): Key {

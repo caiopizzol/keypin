@@ -149,7 +149,7 @@ it was written; no values or vault references.
 
 Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key, at Resend, [Neon](#neon),
 [OpenAI](#openai), [Supabase](#supabase), [Cloudflare](#cloudflare), [OpenRouter](#openrouter),
-[Google Cloud](#google-cloud), [ElevenLabs](#elevenlabs), [AWS](#aws), [SendGrid](#sendgrid),
+[Google Cloud](#google-cloud) (API keys and [service account keys](#google-cloud-service-account-keys)), [ElevenLabs](#elevenlabs), [AWS](#aws), [SendGrid](#sendgrid),
 [Twilio](#twilio), [xAI](#xai) or [MongoDB Atlas](#mongodb-atlas):
 
 ```toml
@@ -313,6 +313,27 @@ turn on the API Keys API in the service account's project. keypin doesn't use gc
 keypin finds the vault's key from its value, makes a key in the same project with the same API restrictions and
 application restrictions (websites, IP addresses, Android or iOS apps), then deletes the old one. A key with no
 restrictions gets a key with none. Google Cloud keeps a deleted key for 30 days, so you can restore it.
+
+### Google Cloud service account keys
+
+For a service account's JSON key file, such as `GOOGLE_APPLICATION_CREDENTIALS` content or Firebase Admin
+credentials. The vault holds the whole file.
+
+```toml
+[keys.GOOGLE_APPLICATION_CREDENTIALS.prod.issuer]
+kind = "google-service-account"
+admin = "op://Private/google key admin/credential"
+```
+
+`admin` is another service account's JSON key, in its own 1Password item, with **Service Account Key Admin**
+(`roles/iam.serviceAccountKeyAdmin`) on the service account you rotate. Turn on the IAM API in the admin's project.
+
+keypin finds the key by the `client_email` and `private_key_id` in the file, then makes a new key file for the same
+service account. A service account holds at most 10 keys, so keypin stops when it has no room. To revoke, keypin
+disables the old key, then deletes it. It refuses a key you uploaded yourself.
+
+Organizations created since May 2024 block new keys with the `iam.disableServiceAccountKeyCreation` policy. To
+rotate, an organization policy admin must turn it off for the project.
 
 ### ElevenLabs
 

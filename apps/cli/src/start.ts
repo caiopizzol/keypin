@@ -30,7 +30,7 @@ import { elevenlabsIssuer } from "@keypin/connectors/elevenlabs";
 import { flyApp } from "@keypin/connectors/fly";
 import { ghToken, githubActions, listRepoSecrets, sshHostname } from "@keypin/connectors/github";
 import { gitlabGroup, gitlabProject } from "@keypin/connectors/gitlab";
-import { googleIssuer } from "@keypin/connectors/google";
+import { googleIssuer, googleServiceAccountIssuer } from "@keypin/connectors/google";
 import { atlasIssuer } from "@keypin/connectors/mongodb-atlas";
 import { neonIssuer } from "@keypin/connectors/neon";
 import { netlifyProject } from "@keypin/connectors/netlify";
@@ -115,6 +115,7 @@ export const issuers = [
   cloudflareIssuer,
   openrouterIssuer,
   googleIssuer,
+  googleServiceAccountIssuer,
   elevenlabsIssuer,
   awsIssuer,
   sendgridIssuer,

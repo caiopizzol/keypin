@@ -1,15 +1,15 @@
-import { spawnSync } from "node:child_process";
+import { type ChildProcess, spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import {
   closeSync,
   copyFileSync,
+  createReadStream,
   lstatSync,
   mkdirSync,
   mkdtempSync,
   openSync,
-  readSync,
   rmSync,
   symlinkSync,
-  writeSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -68,8 +68,9 @@ function plainFile(cwd: string, path: string): boolean {
   return true;
 }
 
-function copyCheckout(cwd: string, copy: string, skip: Set<string>) {
+function copyWithoutLinks(cwd: string, copy: string, skip: Set<string>): string[] {
   const files = paths(git(cwd, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"]));
+  const links = files.filter((path) => entry(join(cwd, path))?.isSymbolicLink());
   for (const path of files) {
     if (skip.has(path) || !plainFile(cwd, path)) continue;
     mkdirSync(dirname(join(copy, path)), { recursive: true });
@@ -88,12 +89,14 @@ function copyCheckout(cwd: string, copy: string, skip: Set<string>) {
     mkdirSync(dirname(join(copy, path)), { recursive: true });
     symlinkSync(join(cwd, path), join(copy, path));
   }
+  return links;
 }
 
-export function checkRecordings(
+export async function checkRecordings(
   cwd: string,
-  runTests: (copy: string, files: string[]) => number | null,
-): Outcome {
+  runTests: (copy: string, files: string[]) => Promise<number | null> | number | null,
+  tmp = tmpdir(),
+): Promise<Outcome> {
   const listed = (pathspec: string) =>
     paths(
       git(cwd, ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", pathspec]),
@@ -121,11 +124,13 @@ export function checkRecordings(
     ),
   );
 
-  const copy = mkdtempSync(join(tmpdir(), "check-recordings-"));
+  const copy = mkdtempSync(join(tmp, "check-recordings-"));
   try {
-    copyCheckout(cwd, copy, recordings);
-    const status = writers.length > 0 ? runTests(copy, writers) : 0;
+    const links = copyWithoutLinks(cwd, copy, recordings);
+    const status = writers.length > 0 ? await runTests(copy, writers) : 0;
     if (status !== 0) return { kind: "tests-failed" };
+    const aliased = links.filter((path) => entry(join(copy, path)) !== undefined);
+    if (aliased.length > 0) return { kind: "symlinks", paths: aliased };
     const stale = [...recordings].filter((path) => entry(join(copy, path)) === undefined);
     return stale.length > 0 ? { kind: "stale", paths: stale } : { kind: "ok" };
   } finally {
@@ -133,82 +138,80 @@ export function checkRecordings(
   }
 }
 
-function vitest(log: string) {
-  return (copy: string, files: string[]): number | null => {
+function vitest(log: string, started: (child: ChildProcess) => void) {
+  return async (copy: string, files: string[]): Promise<number | null> => {
     const env = { ...process.env };
     delete env.CI;
     const out = openSync(log, "w");
     try {
-      return spawnSync("bun", ["--bun", "vp", "test", ...files, "--update"], {
+      const child = spawn("bun", ["--bun", "vp", "test", ...files, "--update"], {
         cwd: copy,
         env,
         stdio: ["ignore", out, out],
-      }).status;
+      });
+      started(child);
+      return await new Promise<number | null>((resolve, reject) => {
+        child.once("error", reject);
+        child.once("close", (code) => resolve(code));
+      });
     } finally {
       closeSync(out);
     }
   };
 }
 
-function writeAll(fd: number, bytes: Buffer) {
-  const pause = new Int32Array(new SharedArrayBuffer(4));
-  for (let done = 0; done < bytes.length;) {
-    try {
-      done += writeSync(fd, bytes, done);
-    } catch (error) {
-      if (!(error instanceof Error && "code" in error && error.code === "EAGAIN")) throw error;
-      Atomics.wait(pause, 0, 0, 10);
-    }
+async function print(chunks: AsyncIterable<Buffer> | string[]) {
+  for await (const chunk of chunks) {
+    if (!process.stderr.write(chunk)) await once(process.stderr, "drain");
   }
 }
 
-function printFile(path: string) {
-  const file = openSync(path, "r");
-  const chunk = Buffer.alloc(64 * 1024);
-  try {
-    for (let read = readSync(file, chunk); read > 0; read = readSync(file, chunk)) {
-      writeAll(2, chunk.subarray(0, read));
-    }
-  } finally {
-    closeSync(file);
-  }
-}
-
-function report(outcome: Outcome, log: string): number {
+async function report(outcome: Outcome, log: string): Promise<number> {
   switch (outcome.kind) {
     case "ok":
       return 0;
     case "symlinks":
-      writeAll(
-        2,
-        Buffer.from(
-          `Recordings must be plain files outside any symlinked folder. Fix these paths:\n${outcome.paths.join("\n")}\n`,
-        ),
-      );
+      await print([
+        `Recordings can't be checked through a symlink. Fix these paths:\n${outcome.paths.join("\n")}\n`,
+      ]);
       return 1;
     case "stale":
-      writeAll(
-        2,
-        Buffer.from(
-          `No test writes these recordings anymore. Delete them:\n${outcome.paths.join("\n")}\n`,
-        ),
-      );
+      await print([
+        `No test writes these recordings anymore. Delete them:\n${outcome.paths.join("\n")}\n`,
+      ]);
       return 1;
     case "tests-failed":
-      printFile(log);
+      await print(createReadStream(log));
       return 1;
   }
 }
 
 if (import.meta.main) {
-  const logs = mkdtempSync(join(tmpdir(), "check-recordings-log-"));
-  const log = join(logs, "test.log");
+  const work = mkdtempSync(join(tmpdir(), "check-recordings-"));
+  const log = join(work, "test.log");
+  let child: ChildProcess | undefined;
+  for (const [signal, code] of [
+    ["SIGHUP", 129],
+    ["SIGINT", 130],
+    ["SIGTERM", 143],
+  ] as const) {
+    process.on(signal, () => {
+      child?.kill(signal);
+      rmSync(work, { recursive: true, force: true });
+      process.exit(code);
+    });
+  }
   try {
-    process.exitCode = report(checkRecordings(process.cwd(), vitest(log)), log);
+    const outcome = await checkRecordings(
+      process.cwd(),
+      vitest(log, (c) => (child = c)),
+      work,
+    );
+    process.exitCode = await report(outcome, log);
   } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    await print([`${error instanceof Error ? error.message : String(error)}\n`]);
     process.exitCode = 1;
   } finally {
-    rmSync(logs, { recursive: true, force: true });
+    rmSync(work, { recursive: true, force: true });
   }
 }

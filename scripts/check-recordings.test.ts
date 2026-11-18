@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   existsSync,
   lstatSync,
@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { checkRecordings } from "./check-recordings";
 
@@ -66,22 +67,24 @@ afterEach(() => {
 });
 
 describe("check-recordings", () => {
-  test("passes when the tests write every recording again, and never touches the checkout", () => {
+  test("passes when the tests write every recording again, and never touches the checkout", async () => {
     const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
     writeFileSync(join(cwd, "tests/recordings/a.txt"), "local edit\n");
     const before = snapshot(cwd);
-    expect(checkRecordings(cwd, writes({ "tests/recordings/a.txt": "regenerated\n" }))).toEqual({
+    expect(
+      await checkRecordings(cwd, writes({ "tests/recordings/a.txt": "regenerated\n" })),
+    ).toEqual({
       kind: "ok",
     });
     expect(snapshot(cwd)).toEqual(before);
   });
 
-  test("runs the tests in a copy that has every file and node_modules but no recordings", () => {
+  test("runs the tests in a copy that has every file and node_modules but no recordings", async () => {
     const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
     mkdirSync(join(cwd, "node_modules/pkg"), { recursive: true });
     writeFileSync(join(cwd, ".gitignore"), "node_modules/\n");
     let seen: string[] = [];
-    checkRecordings(cwd, (copy, files) => {
+    await checkRecordings(cwd, (copy, files) => {
       seen = [
         ...files,
         `test file copied: ${existsSync(join(copy, "tests/a.test.ts"))}`,
@@ -98,7 +101,7 @@ describe("check-recordings", () => {
     ]);
   });
 
-  test("names recordings no test writes, whatever their names", () => {
+  test("names recordings no test writes, whatever their names", async () => {
     const odd = [
       "b c.txt",
       "café.txt",
@@ -113,17 +116,17 @@ describe("check-recordings", () => {
     for (const name of odd) files[`tests/recordings/${name}`] = `${name}\n`;
     const cwd = repo(files);
     const before = snapshot(cwd);
-    const outcome = checkRecordings(cwd, writes({ "tests/recordings/a.txt": "a\n" }));
+    const outcome = await checkRecordings(cwd, writes({ "tests/recordings/a.txt": "a\n" }));
     expect(outcome.kind).toBe("stale");
     if (outcome.kind !== "stale") return;
     expect([...outcome.paths].sort()).toEqual(odd.map((name) => `tests/recordings/${name}`).sort());
     expect(snapshot(cwd)).toEqual(before);
   });
 
-  test("reports every recording as stale when no test writes recordings", () => {
+  test("reports every recording as stale when no test writes recordings", async () => {
     const cwd = repo({ "tests/a.test.ts": "test();\n", "tests/recordings/a.txt": "a\n" });
     let ran = false;
-    const outcome = checkRecordings(cwd, () => {
+    const outcome = await checkRecordings(cwd, () => {
       ran = true;
       return 0;
     });
@@ -131,31 +134,31 @@ describe("check-recordings", () => {
     expect(ran).toBe(false);
   });
 
-  test("passes when there are no recordings", () => {
-    expect(checkRecordings(repo({ "tests/a.test.ts": "test();\n" }), writes({}))).toEqual({
+  test("passes when there are no recordings", async () => {
+    expect(await checkRecordings(repo({ "tests/a.test.ts": "test();\n" }), writes({}))).toEqual({
       kind: "ok",
     });
   });
 
-  test("reports failing tests and leaves the checkout alone", () => {
+  test("reports failing tests and leaves the checkout alone", async () => {
     const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
     const before = snapshot(cwd);
-    expect(checkRecordings(cwd, () => 1)).toEqual({ kind: "tests-failed" });
+    expect(await checkRecordings(cwd, () => 1)).toEqual({ kind: "tests-failed" });
     expect(snapshot(cwd)).toEqual(before);
   });
 
-  test("leaves the checkout alone when the test run throws", () => {
+  test("leaves the checkout alone when the test run throws", async () => {
     const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
     const before = snapshot(cwd);
-    expect(() =>
+    await expect(
       checkRecordings(cwd, () => {
         throw new Error("crashed");
       }),
-    ).toThrow("crashed");
+    ).rejects.toThrow("crashed");
     expect(snapshot(cwd)).toEqual(before);
   });
 
-  test("checks a recording once while git lists it for each side of a merge conflict", () => {
+  test("checks a recording once while git lists it for each side of a merge conflict", async () => {
     const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "base\n" });
     git(cwd, "checkout", "-qb", "other");
     writeFileSync(join(cwd, "tests/recordings/a.txt"), "other\n");
@@ -165,13 +168,13 @@ describe("check-recordings", () => {
     git(cwd, "commit", "-qam", "main");
     git(cwd, "merge", "-q", "--no-ff", "other");
     expect(git(cwd, "ls-files", "-u").stdout.toString()).toContain("tests/recordings/a.txt");
-    expect(checkRecordings(cwd, writes({}))).toEqual({
+    expect(await checkRecordings(cwd, writes({}))).toEqual({
       kind: "stale",
       paths: ["tests/recordings/a.txt"],
     });
   });
 
-  test("refuses a path that isn't valid UTF-8", () => {
+  test("refuses a path that isn't valid UTF-8", async () => {
     const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
     const blob = spawnSync("git", ["hash-object", "-w", "--stdin"], {
       cwd,
@@ -182,16 +185,16 @@ describe("check-recordings", () => {
     const name = Buffer.concat([Buffer.from("tests/recordings/bad-"), Buffer.from([0xff])]);
     const line = Buffer.concat([Buffer.from(`100644 ${sha}\t`), name, Buffer.from("\n")]);
     spawnSync("git", ["update-index", "--index-info"], { cwd, env: ISOLATED, input: line });
-    expect(() => checkRecordings(cwd, writes({}))).toThrow("valid UTF-8");
+    await expect(checkRecordings(cwd, writes({}))).rejects.toThrow("valid UTF-8");
   });
 
-  test("doesn't count its own test file as a recording writer", () => {
+  test("doesn't count its own test file as a recording writer", async () => {
     const cwd = repo({
       "scripts/check-recordings.test.ts": WRITER,
       "tests/recordings/a.txt": "a\n",
     });
     let ran = false;
-    const outcome = checkRecordings(cwd, () => {
+    const outcome = await checkRecordings(cwd, () => {
       ran = true;
       return 0;
     });
@@ -199,13 +202,13 @@ describe("check-recordings", () => {
     expect(ran).toBe(false);
   });
 
-  test("stops when git can't list the files", () => {
+  test("stops when git can't list the files", async () => {
     const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
     writeFileSync(join(cwd, ".git/index"), "garbage");
-    expect(() => checkRecordings(cwd, writes({}))).toThrow("git ls-files failed");
+    await expect(checkRecordings(cwd, writes({}))).rejects.toThrow("git ls-files failed");
   });
 
-  test("copies no symlinks, so the tests can't write outside the copy", () => {
+  test("copies no symlinks, and refuses tests that write through one", async () => {
     const cwd = repo({
       "tests/a.test.ts": WRITER,
       "tests/recordings/a.txt": "a\n",
@@ -222,20 +225,24 @@ describe("check-recordings", () => {
     symlinkSync(outside, join(cwd, "lib"));
     const before = [snapshot(cwd), snapshot(outside)];
     let links: string[] = [];
-    const outcome = checkRecordings(cwd, (copy) => {
+    const outcome = await checkRecordings(cwd, (copy) => {
       links = ["tests/snapshots", "other/link", "lib"].filter(
         (path) => lstatSync(join(copy, path), { throwIfNoEntry: false }) !== undefined,
       );
-      return writes({ "tests/snapshots/a.txt": "regenerated\n", "lib/x.ts": "regenerated\n" })(
-        copy,
-      );
+      return writes({
+        "tests/snapshots/a.txt": "regenerated\n",
+        "other/link/recordings/a.txt": "regenerated\n",
+        "lib/x.ts": "regenerated\n",
+      })(copy);
     });
     expect(links).toEqual([]);
-    expect(outcome).toEqual({ kind: "stale", paths: ["tests/recordings/a.txt"] });
+    expect(outcome.kind).toBe("symlinks");
+    if (outcome.kind !== "symlinks") return;
+    expect([...outcome.paths].sort()).toEqual(["lib", "other/link", "tests/snapshots"]);
     expect([snapshot(cwd), snapshot(outside)]).toEqual(before);
   });
 
-  test("refuses symlinked recordings and recordings folders, before running anything", () => {
+  test("refuses symlinked recordings and recordings folders, before running anything", async () => {
     const cwd = repo({
       "tests/a.test.ts": WRITER,
       "elsewhere/a.txt": "a\n",
@@ -249,7 +256,7 @@ describe("check-recordings", () => {
     symlinkSync("../tests/a.test.ts", join(cwd, "replaced/recordings"));
     const before = snapshot(cwd);
     let ran = false;
-    const outcome = checkRecordings(cwd, () => {
+    const outcome = await checkRecordings(cwd, () => {
       ran = true;
       return 0;
     });
@@ -265,19 +272,19 @@ describe("check-recordings", () => {
     expect(snapshot(cwd)).toEqual(before);
   });
 
-  test("ignores a recording already deleted from disk", () => {
+  test("ignores a recording already deleted from disk", async () => {
     const cwd = repo({
       "tests/a.test.ts": WRITER,
       "tests/recordings/a.txt": "a\n",
       "tests/recordings/gone.txt": "g\n",
     });
     rmSync(join(cwd, "tests/recordings/gone.txt"));
-    expect(checkRecordings(cwd, writes({ "tests/recordings/a.txt": "a\n" }))).toEqual({
+    expect(await checkRecordings(cwd, writes({ "tests/recordings/a.txt": "a\n" }))).toEqual({
       kind: "ok",
     });
   });
 
-  test("treats recordings under a folder replaced by a file as deleted", () => {
+  test("treats recordings under a folder replaced by a file as deleted", async () => {
     const cwd = repo({
       "tests/a.test.ts": WRITER,
       "tests/recordings/gone.txt": "g\n",
@@ -285,8 +292,31 @@ describe("check-recordings", () => {
     });
     rmSync(join(cwd, "tests/recordings"), { recursive: true });
     writeFileSync(join(cwd, "tests/recordings"), "now a file\n");
-    expect(checkRecordings(cwd, writes({ "other/recordings/b.txt": "b\n" }))).toEqual({
+    expect(await checkRecordings(cwd, writes({ "other/recordings/b.txt": "b\n" }))).toEqual({
       kind: "ok",
     });
+  });
+
+  test("removes its temporary files when cancelled mid-run", async () => {
+    const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
+    const tmp = mkdtempSync(join(tmpdir(), "check-recordings-test-"));
+    const bin = mkdtempSync(join(tmpdir(), "check-recordings-test-"));
+    repos.push(tmp, bin);
+    const bun = spawnSync("sh", ["-c", "command -v bun"]).stdout.toString().trim();
+    const started = join(bin, "started");
+    writeFileSync(join(bin, "bun"), `#!/bin/sh\ntouch '${started}'\nexec sleep 30\n`, {
+      mode: 0o755,
+    });
+    const script = fileURLToPath(new URL("check-recordings.ts", import.meta.url));
+    const child = spawn(bun, [script], {
+      cwd,
+      env: { ...ISOLATED, PATH: `${bin}:${process.env.PATH}`, TMPDIR: tmp },
+      stdio: "ignore",
+    });
+    while (!existsSync(started)) await new Promise((resolve) => setTimeout(resolve, 20));
+    child.kill("SIGTERM");
+    const code = await new Promise<number | null>((resolve) => child.once("exit", resolve));
+    expect(code).toBe(143);
+    expect(readdirSync(tmp)).toEqual([]);
   });
 });

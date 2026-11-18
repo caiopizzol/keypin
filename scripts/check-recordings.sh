@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 recordings=$(git -c core.quotePath=false ls-files --cached --others --exclude-standard -- '*/recordings/*')
-[ -z "$recordings" ] && exit 0
+roots=$(git -c core.quotePath=false ls-files --cached --others --exclude-standard -- '*/recordings')
 through_link() {
   path=$1
   while [ "$path" != . ]; do
@@ -10,12 +10,13 @@ through_link() {
   done
   return 1
 }
-links=$(printf '%s\n' "$recordings" | while IFS= read -r file; do if through_link "$file"; then printf '%s\n' "$file"; fi; done)
+links=$(printf '%s\n%s\n' "$roots" "$recordings" | while IFS= read -r file; do if [ -n "$file" ] && through_link "$file"; then printf '%s\n' "$file"; fi; done)
 if [ -n "$links" ]; then
   echo 'Recordings must be plain files outside any symlinked folder. Fix these paths:' >&2
   printf '%s\n' "$links" >&2
   exit 1
 fi
+[ -z "$recordings" ] && exit 0
 status=0
 writers=$(git -c core.quotePath=false grep -l --untracked toMatchFileSnapshot -- '*.test.ts') || status=$?
 [ "$status" -gt 1 ] && exit "$status"

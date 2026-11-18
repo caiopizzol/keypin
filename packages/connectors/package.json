@@ -40,7 +40,9 @@
     "./supabase": "./src/supabase/index.ts",
     "./supabase/testing": "./src/supabase/testing.ts",
     "./vercel": "./src/vercel/index.ts",
-    "./vercel/testing": "./src/vercel/testing.ts"
+    "./vercel/testing": "./src/vercel/testing.ts",
+    "./xai": "./src/xai/index.ts",
+    "./xai/testing": "./src/xai/testing.ts"
   },
   "scripts": {
     "typecheck": "tsc"

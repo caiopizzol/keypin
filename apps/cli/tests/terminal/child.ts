@@ -31,6 +31,7 @@ import { type OpenAIKeys, openaiFetch } from "@keypin/connectors/openai/testing"
 import { openrouterFetch, type OpenRouterWorld } from "@keypin/connectors/openrouter/testing";
 import { resendFetch } from "@keypin/connectors/resend/testing";
 import { supabaseFetch, type SupabaseWorld } from "@keypin/connectors/supabase/testing";
+import { xaiFetch, type XaiWorld } from "@keypin/connectors/xai/testing";
 import { credentialsFrom, infisicalBackend } from "@keypin/connectors/infisical";
 import { fileStore, infisicalFetch } from "@keypin/connectors/infisical/testing";
 import { accessTokenFrom, bitwardenBackend } from "@keypin/connectors/bitwarden";
@@ -66,6 +67,8 @@ import {
   SUPABASE_ADMIN,
   SUPABASE_PREFIX,
   SANDBOX_MARKER,
+  XAI_ADMIN,
+  XAI_PREFIX,
   type Scenario,
   scenarios,
 } from "./scenarios";
@@ -108,6 +111,7 @@ const OPENROUTER = join(sandbox, "openrouter.json");
 const ELEVENLABS = join(sandbox, "elevenlabs.json");
 const PAIRED = join(sandbox, "paired.json");
 const AWS = join(sandbox, "aws.json");
+const XAI = join(sandbox, "xai.json");
 
 function effect(line: string): void {
   appendFileSync(EFFECTS, `${line}\n`);
@@ -467,6 +471,24 @@ const aws = awsFetch({
   effect,
 });
 
+const xai = xaiFetch({
+  admin: XAI_ADMIN,
+  team: "team_1",
+  valuePrefix: XAI_PREFIX,
+  pendingPolls: run.xai?.pendingPolls ?? 0,
+  loseCreated: run.xai?.loseCreated === true,
+  world: {
+    load(): XaiWorld {
+      if (!existsSync(XAI)) return { keys: run.xai?.keys ?? [], created: 0 };
+      const parsed: unknown = JSON.parse(readFileSync(XAI, "utf8"));
+      if (!isXaiWorld(parsed)) throw new Error(`${XAI} isn't the fake xAI team's keys`);
+      return parsed;
+    },
+    save: (world) => writeFileSync(XAI, JSON.stringify(world)),
+  },
+  effect,
+});
+
 const issuerFetch: Record<string, Fetch> = {
   aws,
   cloudflare,
@@ -477,7 +499,12 @@ const issuerFetch: Record<string, Fetch> = {
   openrouter,
   resend,
   supabase,
+  xai,
 };
+
+function isXaiWorld(value: unknown): value is XaiWorld {
+  return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";
+}
 
 function isAwsWorld(value: unknown): value is AwsWorld {
   return isRecord(value) && Array.isArray(value.keys) && typeof value.created === "number";

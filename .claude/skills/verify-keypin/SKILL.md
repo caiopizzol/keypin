@@ -1,6 +1,6 @@
 ---
 name: verify-keypin
-description: Run the keypin CLI in a real terminal with fake 1Password, Infisical, gh, GitHub, Cloudflare (Workers and API tokens), Resend, Neon, OpenAI, OpenRouter, ElevenLabs, Supabase, Convex, Fly.io, Google Cloud and AWS IAM, and check what a developer sees (spinners, ✓/✗ steps, [y/N] prompts, colors, plain output) and what it writes. Use after changing a command's terminal output, prompts or exit codes.
+description: Run the keypin CLI in a real terminal with fake 1Password, Infisical, gh, GitHub, Cloudflare (Workers and API tokens), Resend, Neon, OpenAI, OpenRouter, ElevenLabs, Supabase, Convex, Fly.io, Google Cloud, AWS IAM and xAI, and check what a developer sees (spinners, ✓/✗ steps, [y/N] prompts, colors, plain output) and what it writes. Use after changing a command's terminal output, prompts or exit codes.
 metadata:
   internal: "true"
 ---

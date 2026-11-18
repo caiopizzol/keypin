@@ -33,6 +33,7 @@ import { railwayService } from "@keypin/connectors/railway";
 import { resendIssuer } from "@keypin/connectors/resend";
 import { supabaseFunctions, supabaseIssuer } from "@keypin/connectors/supabase";
 import { vercelProject } from "@keypin/connectors/vercel";
+import { xaiIssuer } from "@keypin/connectors/xai";
 import {
   type Connect,
   desktopConnect,
@@ -98,6 +99,7 @@ export const issuers = [
   googleIssuer,
   elevenlabsIssuer,
   awsIssuer,
+  xaiIssuer,
 ];
 
 export function issuer(spec: IssuerSpec, admin: Secret, fetch?: Fetch): Issuer {

@@ -1,0 +1,226 @@
+$ keypin rotate API_SECRET
+exit 0
+
+--- file /work/billing/keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.API_SECRET]
+rotate_every = "90d"
+
+[keys.API_SECRET.prod]
+from = "op://Private/api secret/credential"
+publish = [
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "api" },
+  { to = "github-actions", repo = "acme/api" },
+]
+
+[keys.API_SECRET.prod.issuer]
+kind = "paired"
+admin = "op://Private/keys admin/credential"
+key_id = "API_KEY_ID"
+
+[keys.API_KEY_ID]
+rotate_every = "never"
+
+[keys.API_KEY_ID.prod]
+from = "op://Private/api key id/credential"
+publish = [
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "api" },
+  { to = "github-actions", repo = "acme/api" },
+]
+
+--- given answers ---
+[
+  "y",
+  "y"
+]
+
+--- calls issuer ---
+check AKID-0
+create API_SECRET -> AKID-1
+revoke AKID-0
+
+--- calls destination ---
+check cloudflare-worker:api
+check github-actions:acme/api
+write cloudflare-worker:api API_SECRET API_KEY_ID in one request
+write github-actions:acme/api API_SECRET (26 chars)
+write github-actions:acme/api API_KEY_ID (6 chars)
+
+--- calls asked ---
+Rotate API_SECRET? [y/N] 
+Revoke the old key at Keys? [y/N] 
+
+--- stdout ---
+
+--- stderr ---
+API_SECRET prod  from op://Private/api secret/credential in 1Password account my.1password.com
+ok     Read the key and the admin key op://Private/keys admin/credential
+ok     Keys  the admin key lists 1 keys
+ok     Cloudflare  api       as me@example.com, account 11111111111111111111111111111111
+ok     GitHub      acme/api  as acme, account acme
+
+Plan
+  + Keys                  create a new key
+  ~ 1Password             save it to op://Private/api secret/credential, rotated today
+  ~ 1Password             save its ID to op://Private/api key id/credential, rotated today
+  + Cloudflare  api       API_SECRET: first write  needs approval
+  + Cloudflare  api       API_KEY_ID: first write  needs approval
+    writing a Worker secret deploys a new version of the Worker
+  + GitHub      acme/api  API_SECRET: first write  needs approval
+  + GitHub      acme/api  API_KEY_ID: first write  needs approval
+  - Keys                  revoke the old key AKID-0, after a second y
+  GitHub acme/api gets API_SECRET and API_KEY_ID one write after the other; a run that starts between them reads a mismatched pair. Pause new runs there until the rotation finishes.
+
+ok     Keys  created API_SECRET prod 2026-11-09 12:00:00 a1b2c3 (AKID-1)
+ok     1Password  op://Private/api secret/credential  saved, rotated 2026-11-09
+ok     1Password  op://Private/api key id/credential  saved, rotated 2026-11-09
+ok     Cloudflare  api       wrote API_SECRET, API_KEY_ID in one version
+ok     GitHub      acme/api  wrote API_SECRET
+ok     GitHub      acme/api  wrote API_KEY_ID
+
+Rotated API_SECRET (prod): the new key is in 1Password and the 2 destinations in the map.
+The old key AKID-0 still works. Revoke it once nothing uses it.
+ok     Keys  revoked AKID-0
+
+--- wrote /home/me/.local/state/keypin/state.json ---
+{
+  "version": 5,
+  "receipts": [
+    {
+      "keyId": "API_SECRET",
+      "environment": "prod",
+      "mapFile": "/work/billing/keypin.toml",
+      "source": {
+        "kind": "1password",
+        "vault": "Private",
+        "item": "api secret",
+        "section": null,
+        "field": "credential",
+        "account": "my.1password.com"
+      },
+      "sourceIds": {
+        "vault": "v1",
+        "item": "id-api secret"
+      },
+      "destinationId": "cloudflare-worker:api:API_SECRET",
+      "generation": "7bc5b45e3f63f027",
+      "account": {
+        "pinned": "11111111111111111111111111111111",
+        "publisher": "me@example.com",
+        "destinationAccount": "11111111111111111111111111111111"
+      },
+      "at": "2026-11-09T12:00:00.000Z",
+      "evidence": {
+        "destination": "cloudflare-worker:api",
+        "version": "v-3"
+      }
+    },
+    {
+      "keyId": "API_KEY_ID",
+      "environment": "prod",
+      "mapFile": "/work/billing/keypin.toml",
+      "source": {
+        "kind": "1password",
+        "vault": "Private",
+        "item": "api key id",
+        "section": null,
+        "field": "credential",
+        "account": "my.1password.com"
+      },
+      "sourceIds": {
+        "vault": "v1",
+        "item": "id-api key id"
+      },
+      "destinationId": "cloudflare-worker:api:API_KEY_ID",
+      "generation": "cfc81a781523383f",
+      "account": {
+        "pinned": "11111111111111111111111111111111",
+        "publisher": "me@example.com",
+        "destinationAccount": "11111111111111111111111111111111"
+      },
+      "at": "2026-11-09T12:00:00.000Z",
+      "evidence": {
+        "destination": "cloudflare-worker:api",
+        "version": "v-3"
+      }
+    },
+    {
+      "keyId": "API_SECRET",
+      "environment": "prod",
+      "mapFile": "/work/billing/keypin.toml",
+      "source": {
+        "kind": "1password",
+        "vault": "Private",
+        "item": "api secret",
+        "section": null,
+        "field": "credential",
+        "account": "my.1password.com"
+      },
+      "sourceIds": {
+        "vault": "v1",
+        "item": "id-api secret"
+      },
+      "destinationId": "github-actions:acme/api:API_SECRET",
+      "generation": "7bc5b45e3f63f027",
+      "account": {
+        "pinned": "acme",
+        "publisher": "acme",
+        "destinationAccount": "acme"
+      },
+      "at": "2026-11-09T12:00:00.000Z",
+      "evidence": {
+        "destination": "github-actions:acme/api",
+        "version": "v-4"
+      }
+    },
+    {
+      "keyId": "API_KEY_ID",
+      "environment": "prod",
+      "mapFile": "/work/billing/keypin.toml",
+      "source": {
+        "kind": "1password",
+        "vault": "Private",
+        "item": "api key id",
+        "section": null,
+        "field": "credential",
+        "account": "my.1password.com"
+      },
+      "sourceIds": {
+        "vault": "v1",
+        "item": "id-api key id"
+      },
+      "destinationId": "github-actions:acme/api:API_KEY_ID",
+      "generation": "cfc81a781523383f",
+      "account": {
+        "pinned": "acme",
+        "publisher": "acme",
+        "destinationAccount": "acme"
+      },
+      "at": "2026-11-09T12:00:00.000Z",
+      "evidence": {
+        "destination": "github-actions:acme/api",
+        "version": "v-5"
+      }
+    }
+  ],
+  "issued": [
+    {
+      "keyId": "API_SECRET",
+      "environment": "prod",
+      "mapFile": "/work/billing/keypin.toml",
+      "issuer": "paired",
+      "id": "AKID-1",
+      "generation": "7bc5b45e3f63f027",
+      "at": "2026-11-09T12:00:00.000Z",
+      "old": {
+        "id": "AKID-0",
+        "generation": "181f27923457c4e2",
+        "revoked": true
+      }
+    }
+  ],
+  "operations": []
+}

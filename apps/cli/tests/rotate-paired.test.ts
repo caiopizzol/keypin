@@ -14,6 +14,7 @@ import { issuers, vaults } from "../src/start";
 import { NEEDS_APPROVAL } from "../src/approval";
 import { fakeDeps, fakeDestinations, memoryFiles, STATE, writableVault } from "./fakes";
 import { pairedKind } from "./paired";
+import { changes, recording } from "./recording";
 
 const OLD_SECRET = "old_secret_sentinel_5c1e";
 const ADMIN = "admin_sentinel_value_3f7a";
@@ -190,45 +191,26 @@ const pairOf = (run: ReturnType<typeof setup>) => [
 describe("keypin rotate: a key whose ID is another key", () => {
   test("checks the vault's ID, saves the secret then the ID, publishes both, and revokes the old key", async () => {
     const run = setup({ answers: ["y", "y"] });
-    expect(await run.rotate()).toBe(0);
-    expect(run.issuer.log).toEqual([
-      "check AKID-0",
-      "create API_SECRET -> AKID-1",
-      "revoke AKID-0",
-    ]);
+    const before = new Map(run.disk.contents);
+    const exit = await run.rotate();
+    await expect(
+      recording({
+        args: ["rotate", "API_SECRET"],
+        exit,
+        stdout: run.stdout.text,
+        stderr: run.stderr.text,
+        files: Object.fromEntries(before),
+        given: { answers: ["y", "y"] },
+        calls: { issuer: run.issuer.log, destination: run.destinations.log, asked: run.asked },
+        wrote: changes(before, run.disk.contents),
+      }),
+    ).toMatchFileSnapshot("./recordings/rotate-paired/rotates-both.txt");
+    expect(exit).toBe(0);
     expect(pairOf(run)).toEqual([NEW(1), "AKID-1"]);
     expect(run.vault.rotated).toEqual(["2026-11-09", "2026-11-09"]);
-    expect(run.writes()).toEqual([
-      `write ${WORKER} API_SECRET API_KEY_ID in one request`,
-      `write ${GITHUB} API_SECRET (${NEW(1).length} chars)`,
-      `write ${GITHUB} API_KEY_ID (6 chars)`,
-    ]);
-    expect(run.stderr.text).toContain(
-      [
-        "Plan",
-        "  + Keys                  create a new key",
-        "  ~ 1Password             save it to op://Private/api secret/credential, rotated today",
-        "  ~ 1Password             save its ID to op://Private/api key id/credential, rotated today",
-        "  + Cloudflare  api       API_SECRET: first write  needs approval",
-        "  + Cloudflare  api       API_KEY_ID: first write  needs approval",
-        "    writing a Worker secret deploys a new version of the Worker",
-        "  + GitHub      acme/api  API_SECRET: first write  needs approval",
-        "  + GitHub      acme/api  API_KEY_ID: first write  needs approval",
-        "  - Keys                  revoke the old key AKID-0, after a second y",
-        "  GitHub acme/api gets API_SECRET and API_KEY_ID one write after the other; a run that starts between them reads a mismatched pair. Pause new runs there until the rotation finishes.",
-      ].join("\n"),
-    );
     const state = await run.state();
     const [issued] = state.issued;
-    expect(issued).toMatchObject({ id: "AKID-1" });
     expect(issued).not.toHaveProperty("idKey");
-    expect(issued?.old).toMatchObject({ id: "AKID-0", revoked: true });
-    expect(state.receipts.map((r) => `${r.keyId} ${r.destinationId}`).toSorted()).toEqual([
-      `API_KEY_ID ${WORKER}:API_KEY_ID`,
-      `API_KEY_ID ${GITHUB}:API_KEY_ID`,
-      `API_SECRET ${WORKER}:API_SECRET`,
-      `API_SECRET ${GITHUB}:API_SECRET`,
-    ]);
     expect(
       state.receipts.find((r) => r.keyId === "API_KEY_ID")?.sourceIds,
       "the ID's receipt names the ID's own item",

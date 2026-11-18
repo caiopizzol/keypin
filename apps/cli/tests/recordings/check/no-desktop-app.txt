@@ -1,0 +1,39 @@
+$ keypin check
+exit 1
+
+--- file keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.STRIPE_API_KEY]
+rotate_every = "365d"
+dev = "op://Private/billing stripe api key/password"
+prod = { from = "op://Private/billing stripe api key/password", publish = [
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
+  { to = "github-actions", repo = "acme/billing" },
+] }
+
+[keys.OTHER]
+dev = "op://Private/other key/password"
+
+--- given 1Password desktop app ---
+"not installed"
+
+--- calls vault ---
+
+--- calls destination ---
+check cloudflare-worker:billing-worker
+check github-actions:acme/billing
+
+--- stdout ---
+billing /work/billing · read 0 env files, 0 wrangler configs, 0 workflows
+1 thing to do:
+1 Sign in to 1Password
+  Install the 1Password desktop app.
+  On a server or in CI, use a 1Password service account instead (docs/service-account.md).
+  1Password account "my.1password.com": sign-in failed: the 1Password desktop app isn't installed.
+
+--- stderr ---
+FAILED Couldn't look up 2 of 2 items in 1Password account my.1password.com, not the values
+ok     Checked 2 accounts

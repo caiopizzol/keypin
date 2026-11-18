@@ -1,0 +1,163 @@
+$ keypin status --json
+exit 0
+
+--- file /home/me/.config/keypin/registry.json ---
+{"version":1,"projects":["/work/billing","/work/web"]}
+
+--- file /work/billing/keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.STRIPE_API_KEY]
+rotate_every = "365d"
+dev = "op://Private/billing stripe api key/password"
+prod = { from = "op://Private/billing stripe api key/password", publish = [
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
+  { to = "github-actions", repo = "acme/billing" },
+] }
+
+--- file /work/web/keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.SESSION_SECRET]
+rotate_every = "180d"
+dev = "op://Private/web dev session secret/password"
+prod = { from = "op://Private/web prod session secret/password", publish = [
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "web" },
+] }
+
+--- given rotated dates ---
+{
+  "web dev session secret": {
+    "rotated": "2026-11-09"
+  },
+  "web prod session secret": {
+    "rotated": "2026-11-09"
+  },
+  "billing stripe api key": {
+    "rotated": "2026-10-23"
+  }
+}
+
+--- stdout ---
+{
+  "today": "2026-11-09",
+  "rows": [
+    {
+      "project": "/work/billing",
+      "keyId": "STRIPE_API_KEY",
+      "environment": "dev",
+      "ref": {
+        "kind": "1password",
+        "vault": "Private",
+        "item": "billing stripe api key",
+        "section": null,
+        "field": "password",
+        "account": "my.1password.com"
+      },
+      "rotated": "2026-10-23",
+      "rotateEvery": "365d",
+      "due": "2027-10-23",
+      "issuer": null,
+      "destinations": []
+    },
+    {
+      "project": "/work/billing",
+      "keyId": "STRIPE_API_KEY",
+      "environment": "prod",
+      "ref": {
+        "kind": "1password",
+        "vault": "Private",
+        "item": "billing stripe api key",
+        "section": null,
+        "field": "password",
+        "account": "my.1password.com"
+      },
+      "rotated": "2026-10-23",
+      "rotateEvery": "365d",
+      "due": "2027-10-23",
+      "issuer": null,
+      "destinations": [
+        {
+          "destinationId": "cloudflare-worker:billing-worker:STRIPE_API_KEY",
+          "account": "11111111111111111111111111111111",
+          "receipt": null,
+          "stale": null
+        },
+        {
+          "destinationId": "github-actions:acme/billing:STRIPE_API_KEY",
+          "account": "acme",
+          "receipt": null,
+          "stale": null
+        }
+      ]
+    },
+    {
+      "project": "/work/web",
+      "keyId": "SESSION_SECRET",
+      "environment": "dev",
+      "ref": {
+        "kind": "1password",
+        "vault": "Private",
+        "item": "web dev session secret",
+        "section": null,
+        "field": "password",
+        "account": "my.1password.com"
+      },
+      "rotated": "2026-11-09",
+      "rotateEvery": "180d",
+      "due": "2027-05-08",
+      "issuer": null,
+      "destinations": []
+    },
+    {
+      "project": "/work/web",
+      "keyId": "SESSION_SECRET",
+      "environment": "prod",
+      "ref": {
+        "kind": "1password",
+        "vault": "Private",
+        "item": "web prod session secret",
+        "section": null,
+        "field": "password",
+        "account": "my.1password.com"
+      },
+      "rotated": "2026-11-09",
+      "rotateEvery": "180d",
+      "due": "2027-05-08",
+      "issuer": null,
+      "destinations": [
+        {
+          "destinationId": "cloudflare-worker:web:SESSION_SECRET",
+          "account": "11111111111111111111111111111111",
+          "receipt": null,
+          "stale": null
+        }
+      ]
+    }
+  ],
+  "problems": [
+    {
+      "kind": "never-published",
+      "severity": "notice",
+      "project": "/work/billing",
+      "keyId": "STRIPE_API_KEY",
+      "environment": "prod",
+      "message": "STRIPE_API_KEY (prod): not published yet to cloudflare-worker:billing-worker:STRIPE_API_KEY, github-actions:acme/billing:STRIPE_API_KEY; run keypin publish STRIPE_API_KEY"
+    },
+    {
+      "kind": "never-published",
+      "severity": "notice",
+      "project": "/work/web",
+      "keyId": "SESSION_SECRET",
+      "environment": "prod",
+      "message": "SESSION_SECRET (prod): not published yet to cloudflare-worker:web:SESSION_SECRET; run keypin publish SESSION_SECRET"
+    }
+  ]
+}
+
+--- stderr ---
+ok     Read 3 rotated dates from 1Password account my.1password.com, not the values

@@ -1,0 +1,79 @@
+$ keypin status
+exit 1
+
+--- file /home/me/.config/keypin/registry.json ---
+{"version":1,"projects":["/home/me/code/app"]}
+
+--- file /home/me/code/app/keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.LATE]
+rotate_every = "30d"
+dev = "op://Private/late/password"
+
+[keys.YESTERDAY]
+rotate_every = "30d"
+dev = { from = "op://Private/yesterday/password", issuer = { kind = "resend", admin = "op://Private/resend admin/password", permission = "full_access" } }
+
+[keys.TODAY]
+rotate_every = "30d"
+dev = "op://Private/today/password"
+
+[keys.TOMORROW]
+rotate_every = "30d"
+dev = "op://Private/tomorrow/password"
+
+[keys.UNDATED]
+rotate_every = "30d"
+dev = "op://Private/undated/password"
+
+[keys.FOREVER]
+rotate_every = "never"
+dev = "op://Private/forever/password"
+
+--- given rotated dates ---
+{
+  "late": {
+    "rotated": "2026-10-05"
+  },
+  "yesterday": {
+    "rotated": "2026-10-09"
+  },
+  "today": {
+    "rotated": "2026-10-10"
+  },
+  "tomorrow": {
+    "rotated": "2026-10-11"
+  },
+  "forever": {
+    "rotated": "2020-01-01"
+  }
+}
+
+--- stdout ---
+app ~/code/app
+  LATE       dev  5 days overdue
+  YESTERDAY  dev  1 day overdue
+  TODAY      dev  due today
+  TOMORROW   dev  due in 1 day
+  UNDATED    dev  rotation unknown
+  FOREVER    dev  never rotates
+
+3 problems
+  app LATE (dev): was due 2026-11-04 (rotated 2026-10-05, every 30d)
+    Put a new value in the 1Password item and set rotated to today.
+  app YESTERDAY (dev): was due 2026-11-08 (rotated 2026-10-09, every 30d)
+    Put a new value in the 1Password item and set rotated to today.
+  app UNDATED (dev): no rotated date
+    Add a rotated Date field to the 1Password item, with the day the value last changed.
+
+2 notices
+  app TODAY (dev): is due 2026-11-09 (rotated 2026-10-10, every 30d)
+    Put a new value in the 1Password item and set rotated to today.
+  app TOMORROW (dev): is due 2026-11-10 (rotated 2026-10-11, every 30d)
+    Put a new value in the 1Password item and set rotated to today.
+
+--- stderr ---
+ok     Read 6 rotated dates from 1Password account my.1password.com, not the values

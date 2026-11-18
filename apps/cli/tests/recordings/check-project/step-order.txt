@@ -1,0 +1,105 @@
+$ keypin check
+exit 1
+
+--- file .env ---
+DATABASE_URL=sentinel-value-7f3a9c2e1d
+NEW_KEY=sentinel-value-7f3a9c2e1d
+
+--- file .env.example ---
+DATABASE_URL=
+
+--- file .github/workflows/deploy.yml ---
+
+on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: deploy
+        env:
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+--- file keypin.toml ---
+[1password]
+account = "my.1password.com"
+
+[keys.DATABASE_URL]
+rotate_every = "90d"
+dev = "op://Private/billing dev database url/password"
+
+[keys.STRIPE_API_KEY.prod]
+  from = "op://Private/billing prod stripe api key/password"
+
+  [[keys.STRIPE_API_KEY.prod.publish]]
+  to = "github-actions"
+  repo = "acme/billing"
+
+  [keys.RESEND_API_KEY]
+rotate_every = "90d"
+dev = "op://Private/billing dev resend api key/password"
+
+--- file wrangler.toml ---
+name = "billing-worker"
+account_id = "11111111111111111111111111111111"
+
+[vars]
+REGION = "sentinel-value-7f3a9c2e1d"
+
+[secrets]
+required = ["RESEND_API_KEY"]
+
+--- given git ---
+{
+  "rev-parse --show-toplevel": "/work/billing\n",
+  "remote get-url origin": "git@github.com:acme/billing.git\n",
+  "config --get github.account": null
+}
+
+--- given ghLogin ---
+"not logged in"
+
+--- calls reads ---
+worker 11111111111111111111111111111111 billing-worker
+github acme/billing as null
+
+--- calls vault ---
+ids billing dev database url
+ids billing prod stripe api key
+ids billing dev resend api key
+
+--- calls destination ---
+check github-actions:acme/billing
+
+--- stdout ---
+billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub acme/billing
+5 things to do, in this order:
+1 Sign in to GitHub
+    gh auth login --hostname github.com
+2 Sign in to Cloudflare
+    wrangler login
+  Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
+3 Move .env's keys into 1Password
+  .env sets NEW_KEY, which keypin.toml doesn't map.
+    keypin import .env NEW_KEY --vault <vault>
+  Leave out a name that isn't a key; it stays in the file.
+4 Add the production keys to keypin.toml
+  RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and keypin.toml doesn't publish it there.
+  Replace each <...> with the real value; keypin rejects a map that still has one:
+
+[keys.RESEND_API_KEY.prod]
+from = "op://<vault>/<item>/<field>"
+
+[[keys.RESEND_API_KEY.prod.publish]]
+to = "cloudflare-worker"
+account = "11111111111111111111111111111111"
+worker = "billing-worker"
+
+  Then run keypin check again.
+5 Publish STRIPE_API_KEY
+  STRIPE_API_KEY: keypin.toml publishes it to acme/billing, which doesn't have it yet.
+    keypin publish STRIPE_API_KEY
+
+--- stderr ---
+ok     Looked up 3 items in 1Password account my.1password.com, not the values
+ok     Checked 1 account

@@ -1,0 +1,39 @@
+$ keypin check
+exit 1
+
+--- file keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.STRIPE_API_KEY]
+rotate_every = "365d"
+dev = "op://Private/billing stripe api key/password"
+prod = { from = "op://Private/billing stripe api key/password", publish = [
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
+  { to = "github-actions", repo = "acme/billing" },
+] }
+
+--- given bad accounts ---
+[
+  "cloudflare-worker:billing-worker"
+]
+
+--- calls vault ---
+ids billing stripe api key
+
+--- calls destination ---
+check cloudflare-worker:billing-worker
+check github-actions:acme/billing
+
+--- stdout ---
+billing /work/billing · read 0 env files, 0 wrangler configs, 0 workflows
+1 thing to do:
+1 Fix the login for the Worker billing-worker
+  The login can't reach 11111111111111111111111111111111.
+  keypin.toml pins 11111111111111111111111111111111; the login is the wrangler login (OAuth), signed in as me@example.com.
+  Used by STRIPE_API_KEY (prod).
+
+--- stderr ---
+ok     Looked up 1 item in 1Password account my.1password.com, not the values
+FAILED 1 of 2 accounts failed the check

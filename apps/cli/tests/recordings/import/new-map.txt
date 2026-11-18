@@ -1,0 +1,64 @@
+$ keypin import .env --vault 'App Secrets' --account my.1password.com --yes
+exit 0
+
+--- file /work/billing/.env ---
+STRIPE_KEY=sentinel-value-7f3a9c2e1d-stripe
+export WEBHOOK_SECRET="sentinel-value-7f3a9c2e1d-webhook"
+EMPTY=
+app.key=sentinel-value-7f3a9c2e1d-dotted
+
+--- given vault items ---
+[]
+
+--- calls vault ---
+list my.1password.com App Secrets
+write billing dev stripe key
+write billing dev webhook secret
+
+--- calls asked ---
+
+--- stdout ---
+
+--- stderr ---
+
+Import /work/billing/.env  into 1Password account my.1password.com, vault App Secrets
+ok     Listed the items in vault App Secrets of 1Password account my.1password.com, not the values
+
+Plan
+  + STRIPE_KEY      op://App Secrets/billing dev stripe key/password      create, rotated 2026-11-09
+  + WEBHOOK_SECRET  op://App Secrets/billing dev webhook secret/password  create, rotated 2026-11-09
+  - EMPTY           skipped: the value is empty
+  - app.key         skipped: not a variable name (letters, digits and _, not a digit first)
+Map: write /work/billing/keypin.toml and register /work/billing
+
+ok     Created "billing dev stripe key" in vault App Secrets
+ok     Created "billing dev webhook secret" in vault App Secrets
+ok     Mapped STRIPE_KEY, WEBHOOK_SECRET in /work/billing/keypin.toml
+ok     registered (1 project)
+
+The imported values are now in 1Password, and keypin run -- <command> provides them. keypin left /work/billing/.env as it is.
+app.key is still only in that file, for the reason in the plan.
+Remove the STRIPE_KEY, WEBHOOK_SECRET lines from it: keypin run warns while an env file holds a key it provides.
+
+--- wrote /home/me/.config/keypin/registry.json ---
+{
+  "version": 1,
+  "projects": [
+    "/work/billing"
+  ],
+  "shared": []
+}
+
+--- wrote /work/billing/keypin.toml ---
+# Written by keypin import. The values are in 1Password; this file holds only references.
+
+[1password]
+account = "my.1password.com"
+
+[keys.STRIPE_KEY]
+rotate_every = "90d"
+dev = "op://App Secrets/billing dev stripe key/password"
+
+[keys.WEBHOOK_SECRET]
+rotate_every = "90d"
+dev = "op://App Secrets/billing dev webhook secret/password"

@@ -1,0 +1,125 @@
+$ keypin check --json
+exit 1
+
+--- file .env.example ---
+DATABASE_URL=
+
+--- file .github/workflows/deploy.yml ---
+
+on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: deploy
+        env:
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+--- file keypin.toml ---
+[1password]
+  account = "my.1password.com"
+
+  [keys.stripe_api_key]
+  rotate_every = "90d"
+
+  [keys.stripe_api_key.prod]
+  from = "op://Private/billing prod stripe api key/password"
+
+  [[keys.stripe_api_key.prod.publish]]
+  to = "github-actions"
+  repo = "acme/billing"
+  
+
+--- given git ---
+{
+  "rev-parse --show-toplevel": "/work/billing\n",
+  "remote get-url origin": "git@github.com:acme/billing.git\n",
+  "config --get github.account": null
+}
+
+--- calls reads ---
+github acme/billing as null
+
+--- calls vault ---
+ids billing prod stripe api key
+
+--- calls destination ---
+check github-actions:acme/billing
+
+--- stdout ---
+{
+  "folder": "/work/billing",
+  "map": "/work/billing/keypin.toml",
+  "registered": true,
+  "read": {
+    "env": [
+      ".env.example"
+    ],
+    "wrangler": [],
+    "workflows": [
+      ".github/workflows/deploy.yml"
+    ],
+    "notScanned": []
+  },
+  "github": {
+    "repo": "acme/billing",
+    "login": null
+  },
+  "onePassword": {
+    "signIn": "desktop",
+    "address": null
+  },
+  "keys": [
+    {
+      "key": "stripe_api_key",
+      "environment": "prod",
+      "from": {
+        "reference": "op://Private/billing prod stripe api key/password",
+        "ok": true,
+        "problem": null
+      },
+      "destinations": [
+        {
+          "destination": "github-actions:acme/billing:STRIPE_API_KEY",
+          "to": "github-actions",
+          "login": "the active gh login",
+          "pinned": "acme",
+          "publisher": "acme",
+          "reached": "acme",
+          "ok": true,
+          "problem": null,
+          "fix": null
+        }
+      ]
+    }
+  ],
+  "production": [
+    {
+      "name": "STRIPE_API_KEY",
+      "to": "github-actions",
+      "place": "acme/billing",
+      "usedBy": [
+        ".github/workflows/deploy.yml"
+      ],
+      "mapped": "prod",
+      "holds": false,
+      "ok": false
+    }
+  ],
+  "local": [],
+  "add": null,
+  "unknown": [],
+  "prerequisites": [],
+  "notes": [
+    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields"
+  ],
+  "problems": [
+    "STRIPE_API_KEY: keypin.toml publishes it to acme/billing, which doesn't have it yet; run keypin publish stripe_api_key"
+  ],
+  "ok": false
+}
+
+--- stderr ---
+ok     Looked up 1 item in 1Password account my.1password.com, not the values
+ok     Checked 1 account

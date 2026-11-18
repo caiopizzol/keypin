@@ -1,0 +1,63 @@
+$ keypin import .env --vault 'App Secrets' --account my.1password.com --yes
+exit 0
+
+--- file /work/billing/.env ---
+STRIPE_KEY=sentinel-value-7f3a9c2e1d-stripe
+WEBHOOK_SECRET=sentinel-value-7f3a9c2e1d-webhook
+EMPTY=
+
+--- given vault items ---
+[
+  "billing dev webhook secret"
+]
+
+--- calls vault ---
+list my.1password.com App Secrets
+read billing dev webhook secret
+write billing dev stripe key
+
+--- calls asked ---
+
+--- stdout ---
+
+--- stderr ---
+
+Import /work/billing/.env  into 1Password account my.1password.com, vault App Secrets
+ok     Listed the items in vault App Secrets of 1Password account my.1password.com, not the values
+ok     Read 1 item that already exists, to compare with the file
+
+Plan
+  + STRIPE_KEY      op://App Secrets/billing dev stripe key/password      create, rotated 2026-11-09
+  = WEBHOOK_SECRET  op://App Secrets/billing dev webhook secret/password  exists with the same value; map it
+  - EMPTY           skipped: the value is empty
+Map: write /work/billing/keypin.toml and register /work/billing
+
+ok     Created "billing dev stripe key" in vault App Secrets
+ok     Mapped STRIPE_KEY, WEBHOOK_SECRET in /work/billing/keypin.toml
+ok     registered (1 project)
+
+The imported values are now in 1Password, and keypin run -- <command> provides them. keypin left /work/billing/.env as it is.
+Nothing else is set in it. Delete it and stop loading it.
+
+--- wrote /home/me/.config/keypin/registry.json ---
+{
+  "version": 1,
+  "projects": [
+    "/work/billing"
+  ],
+  "shared": []
+}
+
+--- wrote /work/billing/keypin.toml ---
+# Written by keypin import. The values are in 1Password; this file holds only references.
+
+[1password]
+account = "my.1password.com"
+
+[keys.STRIPE_KEY]
+rotate_every = "90d"
+dev = "op://App Secrets/billing dev stripe key/password"
+
+[keys.WEBHOOK_SECRET]
+rotate_every = "90d"
+dev = "op://App Secrets/billing dev webhook secret/password"

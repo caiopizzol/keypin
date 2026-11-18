@@ -1,0 +1,64 @@
+$ keypin publish --all --plan
+exit 3
+
+--- file /work/billing/keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.STRIPE_API_KEY]
+rotate_every = "365d"
+dev = "op://Private/billing stripe api key/password"
+prod = { from = "op://Private/billing stripe api key/password", publish = [
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
+  { to = "github-actions", repo = "acme/billing" },
+] }
+
+[keys.OTHER_KEY]
+prod = { from = "op://Private/billing other key/password", publish = [
+  { to = "github-actions", repo = "acme/other" },
+] }
+
+[keys.DEV_ONLY]
+dev = "op://Private/billing dev only/password"
+
+--- given terminal ---
+"none"
+
+--- calls vault ---
+read billing stripe api key
+read billing other key
+
+--- calls destination ---
+check cloudflare-worker:billing-worker
+check github-actions:acme/billing
+check github-actions:acme/other
+
+--- calls asked ---
+
+--- stdout ---
+
+--- stderr ---
+Not published, no prod destinations: DEV_ONLY
+
+STRIPE_API_KEY prod  from op://Private/billing stripe api key/password in 1Password account my.1password.com
+ok     Cloudflare  billing-worker  as me@example.com, account 11111111111111111111111111111111
+ok     GitHub      acme/billing    as acme, account acme
+
+OTHER_KEY prod  from op://Private/billing other key/password in 1Password account my.1password.com
+ok     GitHub      acme/other      as acme, account acme
+
+ok     Read 2 values from 1Password account my.1password.com
+
+Plan for STRIPE_API_KEY  generation 8f24c3e0b75826a7
+  + Cloudflare  billing-worker  first write  needs approval
+    writing a Worker secret deploys a new version of the Worker
+  + GitHub      acme/billing    first write  needs approval
+
+Plan for OTHER_KEY  generation 1e3cc98de65eefc3
+  + GitHub      acme/other      first write  needs approval
+
+This plan needs approval in a terminal; --yes can't give it.
+Nothing was written: --plan only shows the plan.
+To approve, run this in a terminal:
+  cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts publish --all

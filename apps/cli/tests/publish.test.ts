@@ -11,7 +11,7 @@ import {
 import { GitHubSecretDestination } from "@keypin/connectors/github";
 import { type FullItem, onePasswordBackend } from "@keypin/connectors/onepassword";
 import { cli } from "../src/cli";
-import type { Publisher } from "../src/deps";
+import type { Deps, Publisher } from "../src/deps";
 import { NEEDS_APPROVAL, rerun } from "../src/approval";
 import { destinations, vaults } from "../src/start";
 import {
@@ -25,6 +25,35 @@ import {
   SENTINEL,
   STATE,
 } from "./fakes";
+import { changes, recording } from "./recording";
+
+interface Recordable {
+  deps: Deps;
+  stdout: { text: string };
+  stderr: { text: string };
+  disk: ReturnType<typeof memoryFiles>;
+  calls: string[];
+  log: string[];
+  asked: string[];
+}
+
+async function record(name: string, args: string[], run: Recordable, terminal?: string) {
+  const before = new Map(run.disk.contents);
+  const exit = await cli(args, run.deps);
+  await expect(
+    recording({
+      args,
+      exit,
+      stdout: run.stdout.text,
+      stderr: run.stderr.text,
+      files: Object.fromEntries(before),
+      given: { terminal: terminal ?? "none" },
+      calls: { vault: run.calls, destination: run.log, asked: run.asked },
+      wrote: changes(before, run.disk.contents),
+    }),
+  ).toMatchFileSnapshot(`./recordings/publish/${name}.txt`);
+  return exit;
+}
 
 const WORKER_PLACE = "cloudflare-worker:billing-worker";
 const GITHUB_PLACE = "github-actions:acme/billing";
@@ -92,15 +121,10 @@ describe("keypin publish", () => {
 
   test("a first publish without a terminal stops before reading the value, exit 3", async () => {
     const run = setup();
-    expect(await cli(["publish", "STRIPE_API_KEY"], run.deps)).toBe(NEEDS_APPROVAL);
-    expect(run.log).toEqual([`check ${WORKER_PLACE}`, `check ${GITHUB_PLACE}`]);
-    expect(run.calls).toEqual([]);
-    expect(run.stderr.text).not.toContain("keypin: reading");
-    expect(run.stderr.text).toContain(
-      `  first write to ${WORKER} (account 11111111111111111111111111111111)`,
+    expect(await record("first-without-terminal", ["publish", "STRIPE_API_KEY"], run)).toBe(
+      NEEDS_APPROVAL,
     );
-    expect(run.stderr.text).toContain(`  first write to ${GITHUB} (account acme)`);
-    expect(run.stderr.text).toContain("Stopped before reading the value");
+    expect(run.calls).toEqual([]);
     expect(run.disk.contents.has(STATE)).toBe(false);
     expect(leaks(...run.everything())).toBe(false);
   });
@@ -144,17 +168,10 @@ describe("keypin publish", () => {
 
   test("before any approval prompt it names the key, item and every destination", async () => {
     const run = setup({ terminal: "no" });
-    await cli(["publish", "STRIPE_API_KEY"], run.deps);
-    const readAt = run.stderr.text.indexOf("Read 1 value");
-    expect(readAt).toBeGreaterThan(0);
-    expect(run.stderr.text).toContain("Read 1 value from 1Password account my.1password.com");
-    expect(run.stderr.text).not.toContain("1Password account 1Password account");
-    const beforeRead = run.stderr.text.slice(0, readAt);
-    expect(beforeRead).toContain(
-      "STRIPE_API_KEY prod  from op://Private/billing stripe api key/password in 1Password account my.1password.com",
+    await record("declined", ["publish", "STRIPE_API_KEY"], run, "no");
+    expect(run.stderr.text.indexOf("STRIPE_API_KEY prod  from op://")).toBeLessThan(
+      run.stderr.text.indexOf("Read 1 value"),
     );
-    expect(beforeRead).toContain("Cloudflare  billing-worker  as me@example.com");
-    expect(beforeRead).toContain("GitHub      acme/billing    as acme");
   });
 
   test("the approval command drops --plan, but keeps one after the -- separator", () => {
@@ -169,27 +186,14 @@ describe("keypin publish", () => {
 
   test("a confirmed first publish writes every destination and saves receipts", async () => {
     const run = setup({ terminal: "yes" });
-    expect(await cli(["publish", "STRIPE_API_KEY"], run.deps)).toBe(0);
-    expect(run.asked).toHaveLength(1);
-    expect(run.log.filter((l) => l.startsWith("write"))).toEqual([
-      `write ${WORKER_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
-      `write ${GITHUB_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
-    ]);
+    expect(await record("confirmed-first", ["publish", "STRIPE_API_KEY"], run, "yes")).toBe(0);
     expect(run.delivered(SENTINEL), "every destination got the vault's value").toEqual([
       `${WORKER_PLACE} STRIPE_API_KEY`,
       `${GITHUB_PLACE} STRIPE_API_KEY`,
     ]);
     const state = await run.state();
     const generation = await generationOf(new Secret(SENTINEL));
-    expect(state.receipts.map((r) => r.destinationId)).toEqual([WORKER, GITHUB]);
     expect(state.receipts.every((r) => r.generation === generation)).toBe(true);
-    expect(state.receipts[0]).toMatchObject({
-      account: {
-        publisher: "me@example.com",
-        destinationAccount: "11111111111111111111111111111111",
-      },
-      evidence: { destination: WORKER_PLACE, version: "v-3" },
-    });
     expect(leaks(...run.everything())).toBe(false);
   });
 
@@ -318,24 +322,10 @@ describe("keypin publish", () => {
   test("--plan without a terminal reads the value, shows the full plan, and writes nothing", async () => {
     const run = setup();
     const before = new Map(run.disk.contents);
-    expect(await cli(["publish", "STRIPE_API_KEY", "--plan"], run.deps)).toBe(NEEDS_APPROVAL);
-    expect(run.calls).toEqual(["read billing stripe api key"]);
-    expect(run.log).toEqual([`check ${WORKER_PLACE}`, `check ${GITHUB_PLACE}`]);
+    expect(await record("plan", ["publish", "STRIPE_API_KEY", "--plan"], run)).toBe(NEEDS_APPROVAL);
     expect(run.disk.contents).toEqual(before);
-    const text = run.stderr.text;
     const generation = await generationOf(new Secret(SENTINEL));
-    expect(text).toContain(
-      "ok     Cloudflare  billing-worker  as me@example.com, account 11111111111111111111111111111111",
-    );
-    expect(text).toContain(`Plan  generation ${generation}`);
-    expect(text).toContain("  + GitHub      acme/billing    first write  needs approval");
-    expect(text).toContain(
-      "  + Cloudflare  billing-worker  first write  needs approval\n    writing a Worker secret deploys a new version of the Worker\n  + GitHub",
-    );
-    expect(text).toContain("This plan needs approval in a terminal; --yes can't give it.");
-    expect(text).toContain(
-      "To approve, run this in a terminal:\n  cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts publish STRIPE_API_KEY\n",
-    );
+    expect(run.stderr.text).toContain(`Plan  generation ${generation}`);
     expect(leaks(...run.everything())).toBe(false);
   });
 
@@ -1067,28 +1057,7 @@ function setupAll(
 describe("keypin publish --all", () => {
   test("several keys get one combined plan and one approval, in map order", async () => {
     const run = setupAll({ terminal: "yes" });
-    expect(await cli(["publish", "--all"], run.deps)).toBe(0);
-    expect(run.asked).toEqual(["Write 3 secrets? [y/N] "]);
-    expect(run.calls).toEqual(["read billing stripe api key", "read billing other key"]);
-    expect(run.writes()).toEqual([
-      `write ${WORKER_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
-      `write ${GITHUB_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
-      `write ${OTHER_PLACE} OTHER_KEY (${SENTINEL.length + 6} chars)`,
-    ]);
-    const text = run.stderr.text;
-    const firstWrite = text.indexOf("Published STRIPE_API_KEY");
-    expect(text.indexOf("Plan for STRIPE_API_KEY  generation")).toBeLessThan(
-      text.indexOf("Plan for OTHER_KEY  generation"),
-    );
-    expect(text.indexOf("Plan for OTHER_KEY  generation")).toBeLessThan(firstWrite);
-    expect(text).toContain("Not published, no prod destinations: DEV_ONLY");
-    expect(text).toContain("Published OTHER_KEY (prod) to 1 destination.");
-    const state = await run.state();
-    expect(state.receipts.map((r) => [r.keyId, r.destinationId])).toEqual([
-      ["STRIPE_API_KEY", WORKER],
-      ["STRIPE_API_KEY", GITHUB],
-      ["OTHER_KEY", OTHER],
-    ]);
+    expect(await record("all-confirmed", ["publish", "--all"], run, "yes")).toBe(0);
     expect(leaks(...run.everything())).toBe(false);
   });
 
@@ -1109,32 +1078,19 @@ describe("keypin publish --all", () => {
 
   test("without a terminal, it lists every approval and the rerun command, and reads nothing, exit 3", async () => {
     const run = setupAll();
-    expect(await cli(["publish", "--all", "--env", "prod"], run.deps)).toBe(NEEDS_APPROVAL);
+    expect(await record("all-without-terminal", ["publish", "--all", "--env", "prod"], run)).toBe(
+      NEEDS_APPROVAL,
+    );
     expect(run.calls).toEqual([]);
-    expect(run.stderr.text).not.toContain("keypin: reading");
-    expect(run.stderr.text).toContain(
-      `Needs approval:\n  first write to ${WORKER} (account 11111111111111111111111111111111)\n  first write to ${GITHUB} (account acme)\n  first write to ${OTHER} (account acme)\n`,
-    );
-    expect(run.stderr.text).toContain("Stopped before reading any value");
-    expect(run.stderr.text).toContain(
-      `To approve, run this in a terminal:\n  cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts publish --all --env prod\n`,
-    );
     expect(run.disk.contents.has(STATE)).toBe(false);
   });
 
   test("--plan shows every key's plan and approvals without a terminal, and writes nothing", async () => {
     const run = setupAll();
     const before = new Map(run.disk.contents);
-    expect(await cli(["publish", "--all", "--plan"], run.deps)).toBe(NEEDS_APPROVAL);
-    expect(run.calls).toEqual(["read billing stripe api key", "read billing other key"]);
+    expect(await record("all-plan", ["publish", "--all", "--plan"], run)).toBe(NEEDS_APPROVAL);
     expect(run.writes()).toEqual([]);
     expect(run.disk.contents).toEqual(before);
-    expect(run.stderr.text).toContain("Plan for STRIPE_API_KEY  generation");
-    expect(run.stderr.text).toContain("Plan for OTHER_KEY  generation");
-    expect(run.stderr.text).toContain(
-      "  + GitHub      acme/other      first write  needs approval",
-    );
-    expect(run.stderr.text).toContain("main.ts publish --all\n");
     expect(leaks(...run.everything())).toBe(false);
   });
 

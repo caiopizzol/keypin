@@ -1,0 +1,63 @@
+$ keypin check --json
+exit 1
+
+--- file keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.STRIPE_API_KEY]
+rotate_every = "365d"
+dev = "op://Private/billing stripe api key/password"
+prod = { from = "op://Private/billing stripe api key/password", publish = [
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
+  { to = "github-actions", repo = "acme/billing" },
+] }
+
+[keys.BAD]
+rotate_every = "soon"
+
+--- calls vault ---
+
+--- calls destination ---
+
+--- stdout ---
+{
+  "folder": "/work/billing",
+  "map": "/work/billing/keypin.toml",
+  "registered": true,
+  "read": {
+    "env": [],
+    "wrangler": [],
+    "workflows": [],
+    "notScanned": []
+  },
+  "github": {
+    "repo": null,
+    "login": null
+  },
+  "onePassword": {
+    "signIn": "desktop",
+    "address": null
+  },
+  "keys": [],
+  "production": [],
+  "local": [],
+  "add": null,
+  "unknown": [],
+  "prerequisites": [
+    {
+      "name": "1Password",
+      "status": "not checked",
+      "fix": "keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected"
+    }
+  ],
+  "notes": [],
+  "problems": [
+    "/work/billing/keypin.toml: key \"BAD\": field \"rotate_every\" must be <n>d, <n>w, <n>m or never",
+    "/work/billing/keypin.toml: key \"BAD\": needs at least one of \"dev\", \"prod\""
+  ],
+  "ok": false
+}
+
+--- stderr ---

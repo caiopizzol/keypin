@@ -95,6 +95,7 @@ export default defineConfig({
     "*": "vp check --fix",
   },
   fmt: {},
+  test: { env: { TZ: "UTC" } },
   lint: {
     jsPlugins: [
       { name: "vite-plus", specifier: "vite-plus/oxlint-plugin" },

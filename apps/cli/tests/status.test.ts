@@ -1,6 +1,5 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import { stripVTControlCharacters } from "node:util";
-import { isRecord } from "@keypin/core";
 import { cli } from "../src/cli";
 import type { Deps } from "../src/deps";
 import { TEMPLATE } from "../src/commands/init";
@@ -15,6 +14,29 @@ import {
   WEB_MAP,
   STATE,
 } from "./fakes";
+import { changes, recording } from "./recording";
+
+async function record(
+  name: string,
+  args: string[],
+  run: ReturnType<typeof fakeDeps>,
+  more: { given?: Record<string, unknown>; calls?: Record<string, readonly string[]> } = {},
+) {
+  const before = new Map(run.disk.contents);
+  const exit = await cli(args, run.deps);
+  await expect(
+    recording({
+      args,
+      exit,
+      stdout: run.stdout.text,
+      stderr: run.stderr.text,
+      files: Object.fromEntries(before),
+      ...more,
+      wrote: changes(before, run.disk.contents),
+    }),
+  ).toMatchFileSnapshot(`./recordings/status/${name}.txt`);
+  return exit;
+}
 
 const METADATA = {
   "web dev session secret": { rotated: "2026-11-09" },
@@ -33,49 +55,28 @@ function setup(options: { failing?: string[]; state?: string } = {}) {
   return { ...fakeDeps({ disk: files, backend: fake.vault }), calls: fake.calls };
 }
 
+const sessionReceipt = {
+  keyId: "SESSION_SECRET",
+  environment: "prod",
+  destinationId: "cloudflare-worker:web:SESSION_SECRET",
+  generation: "0123456789abcdef",
+  account: {
+    pinned: "11111111111111111111111111111111",
+    publisher: "me@example.com",
+    destinationAccount: "11111111111111111111111111111111",
+  },
+  at: "2026-11-09T15:30:35Z",
+  evidence: { versionId: "v1" },
+};
+
 describe("keypin status", () => {
   test("a fresh map lists every key, says what to publish, and exits 0", async () => {
-    const { deps, stdout, stderr, calls } = setup();
-    expect(await cli(["status"], deps)).toBe(0);
-    expect(stdout.text).toBe(
-      [
-        "billing /work/billing",
-        "  STRIPE_API_KEY  dev   due in 348 days",
-        "  STRIPE_API_KEY  prod  due in 348 days  · Cloudflare not published  · GitHub not published",
-        "web /work/web",
-        "  SESSION_SECRET  dev   due in 180 days",
-        "  SESSION_SECRET  prod  due in 180 days  · Cloudflare not published",
-        "",
-        "2 notices",
-        "  billing STRIPE_API_KEY (prod): not published yet to the Worker billing-worker, GitHub acme/billing; run keypin publish STRIPE_API_KEY",
-        "  web SESSION_SECRET (prod): not published yet to the Worker web; run keypin publish SESSION_SECRET",
-        "",
-      ].join("\n"),
-    );
-    expect(stdout.text).not.toContain("authority");
-    expect(calls.toSorted()).toEqual([
-      "metadata billing stripe api key",
-      "metadata web dev session secret",
-      "metadata web prod session secret",
-    ]);
-    expect(stderr.text).toBe(
-      "ok     Read 3 rotated dates from 1Password account my.1password.com, not the values\n",
+    const run = setup();
+    const given = { "rotated dates": METADATA };
+    expect(await record("fresh-map", ["status"], run, { given, calls: { vault: run.calls } })).toBe(
+      0,
     );
   });
-
-  const sessionReceipt = {
-    keyId: "SESSION_SECRET",
-    environment: "prod",
-    destinationId: "cloudflare-worker:web:SESSION_SECRET",
-    generation: "0123456789abcdef",
-    account: {
-      pinned: "11111111111111111111111111111111",
-      publisher: "me@example.com",
-      destinationAccount: "11111111111111111111111111111111",
-    },
-    at: "2026-11-09T15:30:35Z",
-    evidence: { versionId: "v1" },
-  };
 
   test("a receipt from state version 1, which records neither item nor project, is missing until the next publish", async () => {
     const state = JSON.stringify({ version: 1, operations: [], receipts: [sessionReceipt] });
@@ -131,17 +132,10 @@ describe("keypin status", () => {
   });
 
   test("a failing metadata read is rotation-unreadable, never nothing due", async () => {
-    const { deps, stdout, stderr } = setup({ failing: ["billing stripe api key"] });
-    expect(await cli(["status"], deps)).toBe(1);
-    expect(stdout.text).toMatch(/STRIPE_API_KEY {2}prod {2}rotation unknown/);
-    expect(stdout.text.match(/rotated date couldn't be read/g)).toHaveLength(2);
-    expect(stderr.text).toBe(
-      [
-        "FAILED Couldn't read 1 of 3 rotated dates from 1Password account my.1password.com, not the values",
-        `keypin: 1Password: "billing stripe api key" isn't readable`,
-        "",
-      ].join("\n"),
-    );
+    const run = setup({ failing: ["billing stripe api key"] });
+    const given = { "rotated dates": METADATA, unreadable: ["billing stripe api key"] };
+    expect(await record("unreadable-date", ["status"], run, { given })).toBe(1);
+    expect(run.stdout.text).toMatch(/STRIPE_API_KEY {2}prod {2}rotation unknown/);
   });
 
   test("a sign-in that fails for every key prints its error once", async () => {
@@ -161,45 +155,20 @@ describe("keypin status", () => {
       [REGISTRY]: registryWith("/work/billing"),
       "/work/billing/keypin.toml": BILLING_MAP.replace(/publish = \[[\s\S]*?\] \}/, "}"),
     });
-    const { deps, stdout } = fakeDeps({
-      disk: files,
-      backend: fakeVault({ metadata: METADATA }).vault,
-    });
-    expect(await cli(["status"], deps)).toBe(0);
-    expect(stdout.text).toBe(
-      "billing /work/billing\n  STRIPE_API_KEY  dev   due in 348 days\n  STRIPE_API_KEY  prod  due in 348 days\n",
-    );
+    const run = fakeDeps({ disk: files, backend: fakeVault({ metadata: METADATA }).vault });
+    const given = { "rotated dates": METADATA };
+    expect(await record("no-destinations", ["status"], run, { given })).toBe(0);
   });
 
   test("--json prints the same rows and problems", async () => {
-    const { deps, stdout } = setup();
-    expect(await cli(["status", "--json"], deps)).toBe(0);
-    expect(parseJson(stdout.text)).toMatchObject({
-      today: "2026-11-09",
-      rows: [
-        { keyId: "STRIPE_API_KEY", environment: "dev", due: "2027-10-23" },
-        { keyId: "STRIPE_API_KEY", environment: "prod", due: "2027-10-23" },
-        { keyId: "SESSION_SECRET", environment: "dev", due: "2027-05-08" },
-        { keyId: "SESSION_SECRET", environment: "prod", due: "2027-05-08" },
-      ],
-    });
-    expect(parseJson(stdout.text)).toMatchObject({
-      problems: [
-        { kind: "never-published", severity: "notice", keyId: "STRIPE_API_KEY" },
-        { kind: "never-published", severity: "notice", keyId: "SESSION_SECRET" },
-      ],
-    });
-    expect(stdout.text).not.toContain("authority");
+    const run = setup();
+    const given = { "rotated dates": METADATA };
+    expect(await record("fresh-map-json", ["status", "--json"], run, { given })).toBe(0);
   });
 
   test("no registered projects", async () => {
-    const { deps, stdout, stderr } = fakeDeps();
-    expect(await cli(["status"], deps)).toBe(0);
-    expect(stdout.text).toBe(`No projects registered. Run "keypin init" in a project folder.\n`);
-    expect(stderr.text).toBe("");
-    const json = fakeDeps();
-    expect(await cli(["status", "--json"], json.deps)).toBe(0);
-    expect(parseJson(json.stdout.text)).toEqual({ today: "2026-11-09", rows: [], problems: [] });
+    expect(await record("no-projects", ["status"], fakeDeps())).toBe(0);
+    expect(await record("no-projects-json", ["status", "--json"], fakeDeps())).toBe(0);
   });
 
   test("a registered folder without a map, or with a bad one, is a problem", async () => {
@@ -325,46 +294,9 @@ dev = "op://Private/forever/password"
       deps: { styled: { stdout: styled, stderr: styled } },
     });
 
-  test("says when each key is due in words, counted from today", async () => {
-    const { deps, stdout } = rotations();
-    expect(await cli(["status"], deps)).toBe(1);
-    expect(stdout.text).toContain(
-      [
-        "app ~/code/app",
-        "  LATE       dev  5 days overdue",
-        "  YESTERDAY  dev  1 day overdue",
-        "  TODAY      dev  due today",
-        "  TOMORROW   dev  due in 1 day",
-        "  UNDATED    dev  rotation unknown",
-        "  FOREVER    dev  never rotates",
-        "",
-      ].join("\n"),
-    );
-  });
-
-  test("problems come last, each with what to do next", async () => {
-    const { deps, stdout } = rotations();
-    await cli(["status"], deps);
-    const problems = stdout.text.slice(stdout.text.indexOf("\n3 problems\n"));
-    expect(problems).toBe(
-      [
-        "",
-        "3 problems",
-        "  app LATE (dev): was due 2026-11-04 (rotated 2026-10-05, every 30d)",
-        "    Put a new value in the 1Password item and set rotated to today.",
-        "  app YESTERDAY (dev): was due 2026-11-08 (rotated 2026-10-09, every 30d)",
-        "    Put a new value in the 1Password item and set rotated to today.",
-        "  app UNDATED (dev): no rotated date",
-        "    Add a rotated Date field to the 1Password item, with the day the value last changed.",
-        "",
-        "2 notices",
-        "  app TODAY (dev): is due 2026-11-09 (rotated 2026-10-10, every 30d)",
-        "    Put a new value in the 1Password item and set rotated to today.",
-        "  app TOMORROW (dev): is due 2026-11-10 (rotated 2026-10-11, every 30d)",
-        "    Put a new value in the 1Password item and set rotated to today.",
-        "",
-      ].join("\n"),
-    );
+  test("says when each key is due in words, counted from today, and problems come last with what to do next", async () => {
+    const given = { "rotated dates": ROTATED };
+    expect(await record("due-in-words", ["status"], rotations(), { given })).toBe(1);
   });
 
   test("a key due soon with destinations names the publish to run, and where", async () => {
@@ -514,58 +446,11 @@ dev = "op://Private/forever/password"
     const state = JSON.stringify({
       version: 3,
       operations: [],
-      receipts: [
-        {
-          keyId: "SESSION_SECRET",
-          environment: "prod",
-          destinationId: "cloudflare-worker:web:SESSION_SECRET",
-          generation: "0123456789abcdef",
-          account: {
-            pinned: "11111111111111111111111111111111",
-            publisher: "me@example.com",
-            destinationAccount: "11111111111111111111111111111111",
-          },
-          at: "2026-11-09T15:30:35Z",
-          evidence: { versionId: "v1" },
-          mapFile: "/work/web/keypin.toml",
-          source: null,
-        },
-      ],
+      receipts: [{ ...sessionReceipt, mapFile: "/work/web/keypin.toml", source: null }],
     });
-    const { deps, stdout } = setup({ state });
-    expect(await cli(["status", "--json"], deps)).toBe(0);
-    const json = parseJson(stdout.text);
-    expect(json).toMatchObject({ rows: [{}, {}, {}, {}] });
-    const rows = isRecord(json) && Array.isArray(json.rows) ? json.rows : [];
-    expect(rows[3]).toEqual({
-      project: "/work/web",
-      keyId: "SESSION_SECRET",
-      environment: "prod",
-      ref: {
-        kind: "1password",
-        account: "my.1password.com",
-        vault: "Private",
-        item: "web prod session secret",
-        section: null,
-        field: "password",
-      },
-      rotated: "2026-11-09",
-      rotateEvery: "180d",
-      due: "2027-05-08",
-      issuer: null,
-      destinations: [
-        {
-          destinationId: "cloudflare-worker:web:SESSION_SECRET",
-          account: "11111111111111111111111111111111",
-          receipt: {
-            generation: "0123456789abcdef",
-            at: "2026-11-09T15:30:35Z",
-            publisher: "me@example.com",
-          },
-          stale: null,
-        },
-      ],
-    });
+    const run = setup({ state });
+    const given = { "rotated dates": METADATA };
+    expect(await record("receipt-json", ["status", "--json"], run, { given })).toBe(0);
   });
 
   test("while 1Password is slow, the approval hint fits an 80-column terminal", async () => {
@@ -610,37 +495,12 @@ describe("keypin status --write", () => {
   const FILE = "/work/billing/.keypin/status.json";
 
   test("writes only this project's rotated dates, and no reference, path or receipt", async () => {
-    const { deps, stdout, stderr, calls } = setup();
-    expect(await cli(["status", "--write"], deps)).toBe(0);
-    expect(calls).toEqual(["metadata billing stripe api key"]);
-    const text = await deps.files.read(FILE);
-    expect(text).toBe(
-      [
-        "{",
-        '  "version": 1,',
-        '  "written": "2026-11-09",',
-        '  "keys": {',
-        '    "STRIPE_API_KEY": {',
-        '      "dev": {',
-        '        "rotated": "2026-10-23"',
-        "      },",
-        '      "prod": {',
-        '        "rotated": "2026-10-23"',
-        "      }",
-        "    }",
-        "  }",
-        "}",
-        "",
-      ].join("\n"),
-    );
-    expect(text).not.toMatch(/op:|billing stripe|Private|my\.1password|\/work|SESSION_SECRET/);
-    expect(stdout.text).toBe("");
-    expect(stderr.text).toBe(
-      [
-        "ok     Read 1 rotated date from 1Password account my.1password.com, not the values",
-        "ok     wrote /work/billing/.keypin/status.json",
-        "",
-      ].join("\n"),
+    const run = setup();
+    const given = { "rotated dates": METADATA };
+    const calls = { vault: run.calls };
+    expect(await record("write", ["status", "--write"], run, { given, calls })).toBe(0);
+    expect(await run.deps.files.read(FILE)).not.toMatch(
+      /op:|billing stripe|Private|my\.1password|\/work|SESSION_SECRET/,
     );
   });
 

@@ -1,0 +1,112 @@
+$ keypin check
+exit 1
+
+--- file .env.example ---
+DATABASE_URL=
+
+--- file .github/workflows/deploy.yml ---
+
+on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: deploy
+        env:
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+--- file keypin.toml ---
+[1password]
+account = "my.1password.com"
+
+[keys.DATABASE_URL]
+rotate_every = "90d"
+dev = "op://Private/billing dev database url/password"
+
+[keys.RESEND_API_KEY]
+rotate_every = "90d"
+dev = "op://Private/billing dev resend api key/password"
+
+--- file wrangler.toml ---
+name = "billing-worker"
+account_id = "11111111111111111111111111111111"
+
+[vars]
+REGION = "sentinel-value-7f3a9c2e1d"
+
+[secrets]
+required = ["RESEND_API_KEY"]
+
+--- given git ---
+{
+  "rev-parse --show-toplevel": "/work/billing\n",
+  "remote get-url origin": "git@github.com:acme/billing.git\n",
+  "config --get github.account": null
+}
+
+--- given github ---
+{
+  "ok": true,
+  "secrets": [
+    {
+      "name": "STRIPE_API_KEY",
+      "updatedAt": null
+    }
+  ]
+}
+
+--- given worker ---
+{
+  "ok": true,
+  "secrets": [
+    {
+      "name": "RESEND_API_KEY",
+      "updatedAt": null
+    }
+  ]
+}
+
+--- calls reads ---
+worker 11111111111111111111111111111111 billing-worker
+github acme/billing as null
+
+--- calls vault ---
+ids billing dev database url
+ids billing dev resend api key
+
+--- calls destination ---
+
+--- stdout ---
+billing /work/billing · read 1 env file, 1 wrangler config, 1 workflow; GitHub acme/billing
+2 things to do, in this order:
+1 Sign in to Cloudflare
+    wrangler login
+  Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
+2 Add the production keys to keypin.toml
+  STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing has it, but keypin.toml doesn't publish it there.
+  RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker has it, but keypin.toml doesn't publish it there.
+  Replace each <...> with the real value; keypin rejects a map that still has one:
+
+[keys.STRIPE_API_KEY]
+rotate_every = "90d"
+
+[keys.STRIPE_API_KEY.prod]
+from = "op://<vault>/<item>/<field>"
+
+[[keys.STRIPE_API_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+
+[keys.RESEND_API_KEY.prod]
+from = "op://<vault>/<item>/<field>"
+
+[[keys.RESEND_API_KEY.prod.publish]]
+to = "cloudflare-worker"
+account = "11111111111111111111111111111111"
+worker = "billing-worker"
+
+  Then run keypin check again.
+
+--- stderr ---
+ok     Looked up 2 items in 1Password account my.1password.com, not the values

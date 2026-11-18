@@ -800,6 +800,64 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "Twilio: replaces an API key and its SID together with the old key's permissions, then deletes the old key after a second y",
+    async () => {
+      const result = await drive({
+        scenario: "twilio",
+        args: ["rotate", "TWILIO_API_SECRET"],
+        answers: ["y", "y"],
+      });
+      expect(result.exit).toBe(0);
+      expect(result.screen).toContain(
+        "  + Twilio                create a new key\n    a Restricted key with the old key's 2 permissions",
+      );
+      expect(result.effects).toEqual([
+        "twilio create SKfeed0000000000000000000000000001 restricted with /twilio/messaging/messages/create,/twilio/phone-numbers/available-numbers/list",
+        "1password update my.1password.com/Private/app twilio secret (27 chars)",
+        "1password update my.1password.com/Private/app twilio key sid (34 chars)",
+        "destination write github-actions:acme/billing TWILIO_API_SECRET (27 chars)",
+        "destination write github-actions:acme/billing TWILIO_API_KEY (34 chars)",
+        "twilio delete SKa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "Twilio: a lost create reply isn't retried, and names the key to delete",
+    async () => {
+      const result = await drive({
+        scenario: "twilio-lost",
+        args: ["rotate", "TWILIO_API_SECRET"],
+        answers: ["y"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("Twilio may have made the key before the reply was lost.");
+      expect(result.effects).toEqual([
+        "twilio create SKfeed0000000000000000000000000001 restricted with /twilio/messaging/messages/create,/twilio/phone-numbers/available-numbers/list",
+      ]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
+    "Twilio: a Main key in the vault stops before anything is created",
+    async () => {
+      const result = await drive({
+        scenario: "twilio-main",
+        args: ["rotate", "TWILIO_API_SECRET"],
+      });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("Twilio's API makes only Standard and Restricted keys");
+      expect(result.effects).toEqual([]);
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "MongoDB Atlas: creates a second user with the same roles, publishes its URL, then deletes the old user after a second y",
     async () => {
       const result = await drive({

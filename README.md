@@ -34,6 +34,7 @@ commands with the dev keys and publishes the prod keys. It reads a value only wh
 |           | Fly.io apps        | ElevenLabs            |
 |           | GitLab CI/CD       | AWS IAM access keys   |
 |           |                    | SendGrid              |
+|           |                    | Twilio API keys       |
 |           |                    | xAI                   |
 |           |                    | MongoDB Atlas         |
 

@@ -12,6 +12,7 @@ import type { FakeOpenRouterKey } from "@keypin/connectors/openrouter/testing";
 import type { FakeXaiKey } from "@keypin/connectors/xai/testing";
 import type { SupabaseKey } from "@keypin/connectors/supabase/testing";
 import type { FakeSendGridKey } from "@keypin/connectors/sendgrid/testing";
+import { adminJson, type FakeTwilioKey } from "@keypin/connectors/twilio/testing";
 import type { FakeAtlasUser } from "@keypin/connectors/mongodb-atlas/testing";
 
 export interface FakeItem {
@@ -45,6 +46,7 @@ export interface Scenario {
   elevenlabs?: { keys: FakeElevenLabsKey[] };
   aws?: { keys: FakeAwsKey[]; unready?: number; loseCreated?: boolean };
   sendgrid?: { keys: FakeSendGridKey[]; loseCreated?: boolean };
+  twilio?: { keys: FakeTwilioKey[]; loseCreated?: boolean };
   xai?: { keys: FakeXaiKey[]; pendingPolls?: number; loseCreated?: boolean };
   atlas?: { users: FakeAtlasUser[]; loseCreated?: boolean };
   paired?: { keys: string[] };
@@ -922,6 +924,72 @@ const sendgrid: Scenario = {
   sendgrid: { keys: [SENDGRID_KEY] },
 };
 
+const TWILIO_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.TWILIO_API_SECRET]
+rotate_every = "90d"
+
+[keys.TWILIO_API_SECRET.prod]
+from = "op://Private/app twilio secret/credential"
+
+[keys.TWILIO_API_SECRET.prod.issuer]
+kind = "twilio"
+admin = "op://Private/twilio admin/credential"
+key_id = "TWILIO_API_KEY"
+
+[[keys.TWILIO_API_SECRET.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+
+[keys.TWILIO_API_KEY]
+rotate_every = "never"
+
+[keys.TWILIO_API_KEY.prod]
+from = "op://Private/app twilio key sid/credential"
+
+[[keys.TWILIO_API_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`;
+
+export const TWILIO_ACCOUNT = `AC${"0123456789abcdef".repeat(2)}`;
+export const TWILIO_TOKEN = "twilio_verify_auth_token_4e7c";
+export const TWILIO_PREFIX = "twilio_verify_new_secret_";
+const TWILIO_OLD_SID = `SK${"a1".repeat(16)}`;
+const TWILIO_OLD_SECRET = "twilio_verify_old_secret_8d3f";
+const TWILIO_KEY: FakeTwilioKey = {
+  sid: TWILIO_OLD_SID,
+  secret: TWILIO_OLD_SECRET,
+  name: "billing sms",
+  type: "restricted",
+  policy: ["/twilio/messaging/messages/create", "/twilio/phone-numbers/available-numbers/list"],
+};
+
+const twilio: Scenario = {
+  ...ready,
+  about: `TWILIO_API_SECRET has a Twilio issuer whose key ID is TWILIO_API_KEY; the vault holds Restricted key ${TWILIO_OLD_SID} with a messaging and a phone-numbers permission, and the admin item holds the account's auth token`,
+  files: { "keypin.toml": TWILIO_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          { title: "app twilio secret", value: TWILIO_OLD_SECRET, rotated: day(-95) },
+          { title: "app twilio key sid", value: TWILIO_OLD_SID, rotated: day(-95), public: true },
+          {
+            title: "twilio admin",
+            value: adminJson({
+              TWILIO_ACCOUNT_SID: TWILIO_ACCOUNT,
+              TWILIO_AUTH_TOKEN: TWILIO_TOKEN,
+            }),
+          },
+        ],
+      },
+    },
+  },
+  twilio: { keys: [TWILIO_KEY] },
+};
+
 export const ATLAS_CLIENT = "mdb_sa_id_verify_6745";
 export const ATLAS_SECRET = "mdb_sa_sk_verify_admin_secret_5c1f";
 export const ATLAS_PROJECT = "5f1a2b3c4d5e6f7a8b9c0d1e";
@@ -978,6 +1046,17 @@ const atlas: Scenario = {
 };
 
 export const scenarios: Record<string, Scenario> = {
+  twilio,
+  "twilio-lost": {
+    ...twilio,
+    about: "twilio, but the reply to the create is lost after Twilio made the key",
+    twilio: { keys: [TWILIO_KEY], loseCreated: true },
+  },
+  "twilio-main": {
+    ...twilio,
+    about: "twilio, but the vault's key is a Main key, which Twilio's API can't make",
+    twilio: { keys: [{ ...TWILIO_KEY, type: "main" }] },
+  },
   ready,
   paired,
   sendgrid,
@@ -1552,6 +1631,9 @@ export function valuesOf(scenario: Scenario): string[] {
     ...(scenario.openrouter ? [OPENROUTER_PREFIX] : []),
     ...(scenario.elevenlabs ? [ELEVENLABS_PREFIX] : []),
     ...(scenario.sendgrid ? [SENDGRID_PREFIX] : []),
+    ...(scenario.twilio
+      ? [TWILIO_PREFIX, TWILIO_TOKEN, ...scenario.twilio.keys.map((key) => key.secret)]
+      : []),
     ...(scenario.xai ? [XAI_PREFIX] : []),
     ...(scenario.atlas ? scenario.atlas.users.map((user) => user.password) : []),
     ...(scenario.aws ? [AWS_PREFIX, ...scenario.aws.keys.map((key) => key.secret)] : []),

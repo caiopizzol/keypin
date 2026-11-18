@@ -84,7 +84,9 @@ describe("launcher.sh", () => {
     const result = await run("Darwin", "arm64");
     expect(result.code).toBe(1);
     expect(result.stderr).toContain("the package @keypin/cli-darwin-arm64 isn't installed");
-    expect(result.stderr).toContain(`npm install -g keypin@${keypin.version} --prefer-online\n`);
+    expect(result.stderr).toContain(
+      `npm install -g keypin@${keypin.version} --prefer-online --no-prefer-offline\n`,
+    );
   });
 
   test("names no version when keypin's package.json is missing", async () => {
@@ -92,7 +94,7 @@ describe("launcher.sh", () => {
     await rm(join(root, "lib/node_modules/keypin/package.json"));
     const result = await run("Darwin", "arm64");
     expect(result.code).toBe(1);
-    expect(result.stderr).toContain("npm install -g keypin --prefer-online\n");
+    expect(result.stderr).toContain("npm install -g keypin --prefer-online --no-prefer-offline\n");
   });
 
   test("names the launcher uses keep the caller's exported values", async () => {

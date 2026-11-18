@@ -67,57 +67,6 @@ jobs:
     ]);
   });
 
-  test("leaves out secrets only keypin gets: its own step and the gh login of that job", () => {
-    const refs = workflowRefs(`
-on: push
-jobs:
-  rotate:
-    runs-on: ubuntu-latest
-    env:
-      JOB_WIDE: \${{ secrets.JOB_WIDE }}
-    steps:
-      - run: gh auth login --hostname github.com --with-token <<< "$TOKEN"
-        env:
-          TOKEN: \${{ secrets.KEYPIN_GITHUB_TOKEN }}
-      - run: keypin rotate \${{ inputs.approve && '--approve-revoke' || '--due --yes' }}
-        env:
-          OP_SERVICE_ACCOUNT_TOKEN: \${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-          SHARED: \${{ secrets.SHARED }}
-      - run: npx -y keypin@0.31.0 publish --all
-        env:
-          VAULT: \${{ secrets.VAULT_TOKEN }}
-      - run: keypin run -- ./deploy.sh
-        env:
-          APP_KEY: \${{ secrets.APP_KEY }}
-      - run: |
-          keypin publish --all
-          ./deploy.sh
-        env:
-          SCRIPT_KEY: \${{ secrets.SCRIPT_KEY }}
-      - run: keypin publish --all && ./deploy.sh
-        env:
-          CHAINED_KEY: \${{ secrets.CHAINED_KEY }}
-      - run: ./deploy.sh
-        env:
-          SHARED: \${{ secrets.SHARED }}
-  release:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "$TOKEN" | gh auth login --with-token
-        env:
-          TOKEN: \${{ secrets.RELEASE_TOKEN }}
-`);
-    assert(refs);
-    expect(refs.uses).toEqual([
-      {
-        environment: null,
-        secrets: ["JOB_WIDE", "APP_KEY", "SCRIPT_KEY", "CHAINED_KEY", "SHARED"],
-        fromCaller: false,
-      },
-      { environment: null, secrets: ["RELEASE_TOKEN"], fromCaller: false },
-    ]);
-  });
-
   test("notices secrets: inherit and toJSON(secrets), which can hide uses", () => {
     expect(
       workflowRefs(`

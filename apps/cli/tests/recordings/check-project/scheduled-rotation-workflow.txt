@@ -66,6 +66,7 @@ jobs:
           exit 1
 
 --- file keypin.toml ---
+ignore = ["KEYPIN_GITHUB_TOKEN", "OP_SERVICE_ACCOUNT_TOKEN"]
 [1password]
 account = "my.1password.com"
 
@@ -151,6 +152,7 @@ check github-actions:acme/billing
 --- stdout ---
 billing /work/billing · read 2 env files, 1 wrangler config, 2 workflows; GitHub acme/billing
 ok     3 keys, 2 destinations. Everything checks out.
+Note: keypin.toml ignores 2 keys
 
 --- stderr ---
 ok     Looked up 4 items in 1Password account my.1password.com, not the values

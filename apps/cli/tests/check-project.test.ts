@@ -442,15 +442,20 @@ describe("keypin check on a whole project", () => {
     expect(await without.record("ignore-removed", ["check"])).toBe(1);
   });
 
-  test("the scheduled rotation workflow from the docs needs nothing for the secrets keypin runs with", async () => {
+  test("the scheduled rotation workflow and ignore line from the docs leave check clean", async () => {
     const docs = readFileSync(
       join(import.meta.dirname, "../../../docs/scheduled-rotation.md"),
       "utf8",
     );
     const workflow = /^```yaml\n([\s\S]*?)^```/m.exec(docs)?.[1];
+    const ignore = /^```toml\n(ignore = [^\n]*\n)```/m.exec(docs)?.[1];
     assert(workflow !== undefined && workflow.includes("keypin rotate"));
+    assert(ignore !== undefined);
     const run = setup({
-      files: { [MAP]: PUBLISHED, [`${ROOT}/.github/workflows/rotate-keys.yml`]: workflow },
+      files: {
+        [MAP]: `${ignore}${PUBLISHED}`,
+        [`${ROOT}/.github/workflows/rotate-keys.yml`]: workflow,
+      },
       deps: { workerSignIn: () => fakeSignIn("oauth") },
       github: { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] },
       worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },

@@ -33,24 +33,18 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     environments: new Set<string>(),
     hidesUses: false,
   };
-  const secretsIn = (
-    root: unknown,
-    skip: unknown,
-    callerOwned = false,
-    onlyKeypinReads: readonly unknown[] = [],
-  ): Set<string> => {
+  const secretsIn = (root: unknown, skip: unknown, callerOwned = false): Set<string> => {
     const secrets = new Set<string>();
-    let into = secrets;
     const scan = (expression: string) => {
       if (/toJSON\(\s*secrets\s*\)/i.test(expression) || COMPUTED_SECRET.test(expression))
         refs.hidesUses = true;
       for (const match of expression.matchAll(CONTEXT_REF)) {
         const name = (match[2] ?? match[3])?.toUpperCase();
         if (!name) continue;
-        (match[1]?.toLowerCase() === "secrets" ? into : refs.vars).add(name);
+        (match[1]?.toLowerCase() === "secrets" ? secrets : refs.vars).add(name);
       }
     };
-    const seen = new Set<unknown>([skip, ...onlyKeypinReads]);
+    const seen = new Set<unknown>([skip]);
     const visit = (value: unknown, key: string | null) => {
       if (typeof value === "string") {
         if (key === "if" && !value.includes("${{")) scan(withoutStrings(value));
@@ -67,12 +61,6 @@ export function workflowRefs(text: string): WorkflowRefs | null {
       }
     };
     visit(root, null);
-    const keypinCredentials = new Set<string>();
-    into = keypinCredentials;
-    for (const step of onlyKeypinReads) {
-      seen.delete(step);
-      visit(step, null);
-    }
     if (callerOwned) secrets.clear();
     for (const name of secrets) refs.secrets.add(name);
     return secrets;
@@ -93,9 +81,7 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     if (named !== null) refs.environments.add(named);
     uses.push({
       environment: named?.trim() ?? null,
-      secrets: [
-        ...secretsIn(job, null, passedByCaller && named === null, stepsOnlyKeypinReads(job)),
-      ],
+      secrets: [...secretsIn(job, null, passedByCaller && named === null)],
       fromCaller: passedByCaller,
     });
   }
@@ -106,24 +92,6 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     uses: uses.filter((use) => use.secrets.length),
     hidesUses: refs.hidesUses,
   };
-}
-
-const KEYPIN_COMMAND_NOT_RUN =
-  /^(?:(?:npx|bunx)\s+(?:--yes\s+|-y\s+)?)?keypin(?:@\S+)?\s+(?!run\b)[a-z]/;
-const ONE_COMMAND = /^(?:[^\n;&|`$]|\$(?!\())*$/;
-const GH_LOGIN = /^(?:(?:echo|printf)\s[^;&|]*\|\s*)?gh\s+auth\s+login\s[^;&|]*$/;
-
-function stepsOnlyKeypinReads(job: unknown): unknown[] {
-  const steps: unknown[] = isRecord(job) && Array.isArray(job.steps) ? job.steps : [];
-  const command = (step: unknown) =>
-    isRecord(step) && typeof step.run === "string" && !("uses" in step)
-      ? step.run.replaceAll(/\$\{\{[\s\S]*?\}\}/g, "''").trim()
-      : "";
-  const keypin = steps.filter((step) => {
-    const run = command(step);
-    return ONE_COMMAND.test(run) && KEYPIN_COMMAND_NOT_RUN.test(run);
-  });
-  return keypin.length ? [...keypin, ...steps.filter((step) => GH_LOGIN.test(command(step)))] : [];
 }
 
 function onlyWorkflowCall(on: unknown): boolean {

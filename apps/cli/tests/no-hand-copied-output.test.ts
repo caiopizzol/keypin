@@ -17,6 +17,10 @@ const allowed: Record<string, string> = {
   "trailing-empty-entry.ts": 'expect("x").toBe(["one", "two", "three", ""].join("\\n"));',
   "interpolated-separator.ts":
     'const indent = "  ";\nexpect("x").toBe(["one", "two", "three"].join(`\\n${indent}\\n`));',
+  "dynamic-entry.ts":
+    'declare const middle: string;\nexpect("x").toBe(["one", middle, "three", ""].join("\\n"));',
+  "not-an-assertion.ts":
+    'declare const fixture: { toContain(text: string): void };\nfixture.toContain("one\\ntwo\\nthree\\nfour\\n");',
   "array-value.ts": 'expect(["a", "b", "c", "d"]).toEqual(["a", "b", "c", "d"]);',
   "number.ts": "expect(1).toBe(1);",
 };
@@ -26,6 +30,8 @@ const rejected: Record<string, string> = {
   "joined.ts": 'expect("x").toContain(["a", "b", "c", "d"].join("\\n"));',
   "joined-with-newlines.ts": 'expect("x").toBe(["one\\ntwo", "three\\nfour"].join("\\n"));',
   "template.ts": 'expect("x").toEqual(`one\ntwo\nthree\nfour`);',
+  "negated.ts": 'expect("x").not.toBe("one\\ntwo\\nthree\\nfour\\n");',
+  "soft.ts": 'expect.soft("x").toEqual("one\\ntwo\\nthree\\nfour\\n");',
   "template-with-value.ts": 'expect("x").toStrictEqual(`one\n${"two"}\nthree\nfour`);',
 };
 

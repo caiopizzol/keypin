@@ -1,4 +1,4 @@
-$ keypin import .env.production --env prod --vault App Secrets --account my.1password.com --yes
+$ keypin import .env.production --env prod --vault 'App Secrets' --account my.1password.com --yes
 exit 0
 
 --- file /work/billing/.env ---

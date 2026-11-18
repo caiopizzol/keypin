@@ -367,9 +367,10 @@ function knownText(node: ESTree.Node | null): string | null {
   return null;
 }
 
-function exactText(node: ESTree.Node | null): string | null {
-  if (node?.type === "TemplateLiteral" && node.expressions.length > 0) return null;
-  return knownText(node);
+function provenText(node: ESTree.Node | null): string {
+  if (node?.type === "TemplateLiteral")
+    return node.quasis.map((quasi) => quasi.value.cooked ?? "").join("");
+  return node ? (knownText(node) ?? "") : "";
 }
 
 function outputLines(node: ESTree.Node): number {
@@ -382,15 +383,29 @@ function outputLines(node: ESTree.Node): number {
     propertyName(node.callee) !== "join"
   )
     return 0;
-  const [separator] = node.arguments;
-  if (!separator || !knownText(separator)?.includes("\n")) return 0;
-  const exact = exactText(separator);
+  const separator = provenText(node.arguments[0] ?? null);
+  if (!separator.includes("\n")) return 0;
   const parts = node.callee.object.elements.map((element) =>
-    element?.type === "SpreadElement" ? null : exactText(element),
+    element?.type === "SpreadElement" ? "" : provenText(element),
   );
-  return exact !== null && parts.every((part) => part !== null)
-    ? textLines(parts.join(exact))
-    : node.callee.object.elements.length;
+  return textLines(parts.join(separator));
+}
+
+const EXPECT_MODIFIERS = new Set(["not", "resolves", "rejects"]);
+
+function onExpect(node: ESTree.Node): boolean {
+  let receiver = node;
+  while (receiver.type === "MemberExpression" && EXPECT_MODIFIERS.has(propertyName(receiver) ?? ""))
+    receiver = receiver.object;
+  if (receiver.type !== "CallExpression") return false;
+  const { callee } = receiver;
+  if (callee.type === "Identifier") return callee.name === "expect";
+  return (
+    callee.type === "MemberExpression" &&
+    callee.object.type === "Identifier" &&
+    callee.object.name === "expect" &&
+    propertyName(callee) === "soft"
+  );
 }
 
 const noHandCopiedOutput = defineRule({
@@ -405,6 +420,7 @@ const noHandCopiedOutput = defineRule({
       CallExpression(node) {
         if (node.callee.type !== "MemberExpression") return;
         if (!EXACT_MATCHERS.has(propertyName(node.callee) ?? "")) return;
+        if (!onExpect(node.callee.object)) return;
         const [expected] = node.arguments;
         if (expected && outputLines(expected) >= COPIED_LINES)
           context.report({ messageId: "copied", node: expected });

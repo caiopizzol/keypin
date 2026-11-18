@@ -274,8 +274,8 @@ async function rotateDue(context: Context, flags: Flags, path: string): Promise<
   return worst(codes);
 }
 
-function waitsNotice(deps: Deps, keyId: string, environment: string): void {
-  deps.warnRunner(
+function waitsNotice(deps: Deps, keyId: string, environment: string): boolean {
+  return deps.warnRunner(
     "An old key waits for approval",
     `The old ${keyId} (${environment}) still works. Once nothing uses it, run this workflow with approve revoke.`,
   );
@@ -522,7 +522,7 @@ async function rotateLocked(job: Job): Promise<number> {
     !issuer.revoke
       ? row("=", issuer.describe(), "nothing to revoke: the new value replaces the old one")
       : check.gone === undefined
-        ? revokeRow(issuer, current, "after a second y", check.notes?.revoke)
+        ? revokeRow(issuer, current, revokeWhen(job, "after a second y"), check.notes?.revoke)
         : row("=", issuer.describe(), `nothing to revoke: ${check.gone}`),
   ]);
   showRemoved(out, ready.removed);
@@ -794,7 +794,13 @@ async function resume(
     ...writeRows(job, steps, pairSteps),
     ...(old === null
       ? []
-      : [revokeRow(ready.issuer, old, published ? "after a y" : "after a second y")]),
+      : [
+          revokeRow(
+            ready.issuer,
+            old,
+            revokeWhen(job, published ? "after a y" : "after a second y"),
+          ),
+        ]),
   ]);
   showRemoved(out, ready.removed);
   apartNote(job, ready.checked);
@@ -912,10 +918,9 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
   const later = `To revoke it later, run this in a terminal:\n  ${commandLine(deps, "rotate", asked)}`;
   if (job.due && !deps.isTerminal) {
     const approve = [key.name, ...job.envArgs, "--approve-revoke"];
-    out.line(
-      `The old key ${shown(issuer, old)} still works, and waits for approval. Once nothing uses it, run:\n  ${commandLine(deps, "rotate", approve)}`,
-    );
-    waitsNotice(deps, key.name, owner.environment);
+    out.line(`The old key ${shown(issuer, old)} still works, and waits for approval.`);
+    if (!waitsNotice(deps, key.name, owner.environment))
+      out.line(`Once nothing uses it, run:\n  ${commandLine(deps, "rotate", approve)}`);
     return 0;
   }
   if (job.approve && !deps.isTerminal && behind.length) {
@@ -971,6 +976,10 @@ function abandonedNote(
     return `keypin created key ${old.id} at ${old.issuer} on ${old.at}, before this key's issuer became ${issuer.describe()}. If nothing uses it, delete it at ${old.issuer}, not ${issuer.describe()}.`;
   if (!issuer.revoke) return null;
   return `keypin created key ${shown(issuer, old.id)} at ${issuer.describe()} on ${old.at}, but ${vault} doesn't hold it. If nothing uses it, delete it at ${issuer.dashboard()}.`;
+}
+
+function revokeWhen(job: Job, interactive: string): string {
+  return job.due && !job.deps.isTerminal ? "after approval" : interactive;
 }
 
 function revokeRow(issuer: Issuer, old: string | null, when: string, detail?: string): PlanRow {

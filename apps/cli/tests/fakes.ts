@@ -368,7 +368,10 @@ export function fakeDeps(setup: FakeSetup = {}) {
     ghLogin: async () => "ok",
     lock: memoryLock(disk),
     isTerminal: false,
-    warnRunner: (title, text) => warnings.push(`${title}: ${text}`),
+    warnRunner: (title, text) => {
+      warnings.push(`${title}: ${text}`);
+      return true;
+    },
     styled: { stdout: false, stderr: false },
     columns: () => 80,
     ask: async () => {

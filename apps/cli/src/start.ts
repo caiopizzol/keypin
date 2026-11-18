@@ -282,8 +282,9 @@ export function realDeps(): Deps {
     lock: diskLock,
     isTerminal: Boolean(process.stdin.isTTY),
     warnRunner: (title, text) => {
-      if (process.env.GITHUB_ACTIONS === "true")
-        process.stdout.write(`::warning title=${title}::${text}\n`);
+      if (process.env.GITHUB_ACTIONS !== "true") return false;
+      process.stdout.write(`::warning title=${title}::${text}\n`);
+      return true;
     },
     styled: {
       stdout: isStyled(process.stdout.isTTY, process.env),

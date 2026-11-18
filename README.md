@@ -35,6 +35,7 @@ commands with the dev keys and publishes the prod keys. It reads a value only wh
 |           |                    | AWS IAM access keys   |
 |           |                    | SendGrid              |
 |           |                    | Twilio API keys       |
+|           |                    | xAI                   |
 
 Want another? Vote for it on the [roadmap](https://github.com/caiopizzol/keypin/issues/138).
 

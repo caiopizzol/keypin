@@ -35,6 +35,7 @@ import { sendgridIssuer } from "@keypin/connectors/sendgrid";
 import { supabaseFunctions, supabaseIssuer } from "@keypin/connectors/supabase";
 import { twilioIssuer } from "@keypin/connectors/twilio";
 import { vercelProject } from "@keypin/connectors/vercel";
+import { xaiIssuer } from "@keypin/connectors/xai";
 import {
   type Connect,
   desktopConnect,
@@ -102,6 +103,7 @@ export const issuers = [
   awsIssuer,
   sendgridIssuer,
   twilioIssuer,
+  xaiIssuer,
 ];
 
 export function issuer(spec: IssuerSpec, admin: Secret, fetch?: Fetch): Issuer {

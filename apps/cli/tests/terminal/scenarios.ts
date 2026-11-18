@@ -9,6 +9,7 @@ import type { FakeDoppler } from "@keypin/connectors/doppler/testing";
 import type { FakeOpenAIKey } from "@keypin/connectors/openai/testing";
 import type { FakeElevenLabsKey } from "@keypin/connectors/elevenlabs/testing";
 import type { FakeOpenRouterKey } from "@keypin/connectors/openrouter/testing";
+import type { FakeXaiKey } from "@keypin/connectors/xai/testing";
 import type { SupabaseKey } from "@keypin/connectors/supabase/testing";
 import type { FakeSendGridKey } from "@keypin/connectors/sendgrid/testing";
 import { adminJson, type FakeTwilioKey } from "@keypin/connectors/twilio/testing";
@@ -45,6 +46,7 @@ export interface Scenario {
   aws?: { keys: FakeAwsKey[]; unready?: number; loseCreated?: boolean };
   sendgrid?: { keys: FakeSendGridKey[]; loseCreated?: boolean };
   twilio?: { keys: FakeTwilioKey[]; loseCreated?: boolean };
+  xai?: { keys: FakeXaiKey[]; pendingPolls?: number; loseCreated?: boolean };
   paired?: { keys: string[] };
   registered: boolean;
   git: { origin?: string; account?: string };
@@ -401,6 +403,54 @@ const openrouter: Scenario = {
       { hash: "hash_old", name: "chat", value: OPENROUTER_OLD, limit: 25, limitReset: "monthly" },
     ],
   },
+};
+
+const XAI_MAP = `[1password]
+account = "my.1password.com"
+
+[keys.XAI_API_KEY]
+rotate_every = "90d"
+
+[keys.XAI_API_KEY.prod]
+from = "op://Private/chat xai key/credential"
+
+[keys.XAI_API_KEY.prod.issuer]
+kind = "xai"
+admin = "op://Private/xai management key/credential"
+
+[[keys.XAI_API_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`;
+
+export const XAI_ADMIN = "xai-token-verify-management-4b7e";
+export const XAI_PREFIX = "xai-verify-new-";
+const XAI_OLD = "xai-verify-old-key-8d3c";
+const XAI_API_KEY_AS_ADMIN = "xai-verify-ops-key-6e1d";
+const XAI_KEY = {
+  id: "key_old",
+  name: "chat",
+  value: XAI_OLD,
+  acls: ["api-key:model:grok-4.7", "api-key:endpoint:chat"],
+  qpm: 100,
+};
+
+const xai: Scenario = {
+  ...ready,
+  about:
+    'XAI_API_KEY has an xAI issuer; the vault holds key "chat" of team team_1, limited to grok-4.7 and 100 requests a minute, and a new key takes one extra check to reach every cluster',
+  files: { "keypin.toml": XAI_MAP },
+  onePassword: {
+    accounts: {
+      "my.1password.com": {
+        Private: [
+          { title: "chat xai key", value: XAI_OLD, rotated: day(-95) },
+          { title: "xai management key", value: XAI_ADMIN },
+        ],
+      },
+    },
+  },
+  xai: { keys: [XAI_KEY], pendingPolls: 1 },
 };
 
 const ELEVENLABS_MAP = `[1password]
@@ -1403,6 +1453,27 @@ jobs:
       keys: [{ hash: "hash_old", name: "chat", value: OPENROUTER_OLD, limit: 25, disabled: true }],
     },
   },
+  xai,
+  "xai-api-key-as-admin": {
+    ...xai,
+    about: "xai, but the admin item holds a second xAI API key instead of a management key",
+    onePassword: {
+      accounts: {
+        "my.1password.com": {
+          Private: [
+            { title: "chat xai key", value: XAI_OLD, rotated: day(-95) },
+            { title: "xai management key", value: XAI_API_KEY_AS_ADMIN },
+          ],
+        },
+      },
+    },
+    xai: { keys: [XAI_KEY, { id: "key_ops", name: "ops", value: XAI_API_KEY_AS_ADMIN }] },
+  },
+  "xai-reply-lost": {
+    ...xai,
+    about: "xai, but the network drops xAI's reply after it creates the new key",
+    xai: { keys: [XAI_KEY], loseCreated: true },
+  },
   elevenlabs,
   "elevenlabs-disabled": {
     ...elevenlabs,
@@ -1469,6 +1540,7 @@ export function valuesOf(scenario: Scenario): string[] {
     ...(scenario.twilio
       ? [TWILIO_PREFIX, TWILIO_TOKEN, ...scenario.twilio.keys.map((key) => key.secret)]
       : []),
+    ...(scenario.xai ? [XAI_PREFIX] : []),
     ...(scenario.aws ? [AWS_PREFIX, ...scenario.aws.keys.map((key) => key.secret)] : []),
   ];
   return [

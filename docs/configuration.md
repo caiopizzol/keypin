@@ -141,8 +141,8 @@ it was written; no values or vault references.
 
 Add an `issuer` table to let `keypin rotate <VARIABLE>` make the new key, at Resend, [Neon](#neon),
 [OpenAI](#openai), [Supabase](#supabase), [Cloudflare](#cloudflare), [OpenRouter](#openrouter),
-[Google Cloud](#google-cloud), [ElevenLabs](#elevenlabs), [AWS](#aws), [SendGrid](#sendgrid) or
-[Twilio](#twilio):
+[Google Cloud](#google-cloud), [ElevenLabs](#elevenlabs), [AWS](#aws), [SendGrid](#sendgrid),
+[Twilio](#twilio) or [xAI](#xai):
 
 ```toml
 [keys.RESEND_API_KEY.prod]
@@ -392,3 +392,21 @@ can't manage keys. For a subaccount's key, use the subaccount's own SID and cred
 
 The new key gets the old key's type, and a Restricted key's permissions. keypin refuses a Main key, which Twilio's
 API can't make. It doesn't rotate `TWILIO_AUTH_TOKEN`.
+
+### xAI
+
+```toml
+[keys.XAI_API_KEY.prod]
+from = "op://Private/app xai key/credential"
+
+[keys.XAI_API_KEY.prod.issuer]
+kind = "xai"
+admin = "op://Private/xai management key/credential"
+```
+
+`admin` is a [management key](https://console.x.ai/team/default/management-keys), not an API key, made by a team
+admin, for the key's team or its organization. It needs to list, create and delete API keys, and to check their
+propagation. keypin asks xAI which key and team the vault's key is, so there's no team ID to set.
+
+The new key gets the old key's ACLs, rate limits and lifetime. keypin waits until xAI reports it on every cluster
+before saving it; if that takes over a minute, keypin deletes it and nothing changes. keypin refuses a disabled key.

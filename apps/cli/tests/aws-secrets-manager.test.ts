@@ -8,6 +8,7 @@ import {
 } from "@keypin/connectors/aws/testing";
 import { cli } from "../src/cli";
 import { onePasswordFrom } from "../src/sign-in";
+import { issuers } from "../src/start";
 import { routedVault } from "../src/vault";
 import {
   fakeDeps,
@@ -20,6 +21,7 @@ import {
   registryWith,
   SENTINEL,
 } from "./fakes";
+import { pairedKind } from "./paired";
 
 const KEY = { id: "AKIAAPPAPPAPPAPP0001", secret: "aws-sign-in-sentinel-6d2f" };
 const ISSUED = "re_issued_sentinel_value_8d3a";
@@ -34,6 +36,24 @@ dev = "awssm://eu-west-1/dev/billing:STRIPE_API_KEY"
 
 [keys.STRIPE_API_KEY.prod]
 from = "awssm://eu-west-1/prod/stripe"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
+`;
+
+const PAIRED_MAP = `
+[awssm]
+account = "123456789012"
+
+[keys.APP_SECRET.prod]
+from = "awssm://eu-west-1/prod/app:SECRET"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
+
+[keys.APP_SECRET.prod.issuer]
+kind = "paired"
+admin = "awssm://eu-west-1/prod/admin:RESEND"
+key_id = "APP_KEY_ID"
+
+[keys.APP_KEY_ID.prod]
+from = "awssm://eu-west-1/prod/app:ID"
 publish = [{ to = "github-actions", repo = "acme/billing" }]
 `;
 
@@ -93,7 +113,11 @@ function project(
   const issuer: Issuer = {
     describe: () => "Resend",
     dashboard: () => "https://resend.com/api-keys",
-    checkAccount: async () => ({ ok: true, facts: "the admin key lists 1 API key" }),
+    checkAccount: async (current) => ({
+      ok: true,
+      facts: "the admin key lists 1 API key",
+      ...(current ? { currentId: current } : {}),
+    }),
     async create(name) {
       issued.push(`create ${name}`);
       return { id: "key-1", secret: new Secret(ISSUED) };
@@ -111,6 +135,7 @@ function project(
     }),
     deps: {
       env,
+      issuers: [...issuers, pairedKind],
       signIn: () => signIn().signIn,
       launch: launcher.launch,
       onSignals: launcher.onSignals,
@@ -248,4 +273,22 @@ describe("keypin with AWS Secrets Manager", () => {
     expect(run.store.effects).toEqual(["awssm put eu-west-1/prod/app"]);
     expect(run.stderr.text + run.stdout.text).not.toContain(ISSUED);
   });
+
+  test.each([
+    ["current", 0, { SECRET: ISSUED, ID: "key-1" }, ["revoke key-0"]],
+    ["current-and-new-versions", 1, { SECRET: ISSUED, ID: "key-0" }, []],
+  ] as const)(
+    "a paired rotation whose AWSCURRENT read is stale (%s) never leaves the old secret with the new ID",
+    async (stale, code, saved, revoked) => {
+      const aws: FakeSecretsManager = { ...world(), staleReads: stale };
+      aws.secrets["eu-west-1/prod/app"] = {
+        value: JSON.stringify({ SECRET: `${SENTINEL}-old`, ID: "key-0" }),
+      };
+      const run = project({ map: PAIRED_MAP, aws });
+      expect(await cli(["rotate", "APP_SECRET"], run.deps)).toBe(code);
+      expect(parseJson(run.store.load()["eu-west-1/prod/app"]?.value ?? "")).toEqual(saved);
+      expect(run.issued.filter((line) => line.startsWith("revoke"))).toEqual(revoked);
+      expect(run.stderr.text + run.stdout.text).not.toContain(ISSUED);
+    },
+  );
 });

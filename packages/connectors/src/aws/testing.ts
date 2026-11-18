@@ -246,6 +246,9 @@ export interface FakeAwsSecret {
   rotation?: boolean;
   owner?: string;
   deleted?: boolean;
+  version?: string;
+  versions?: Record<string, string>;
+  previous?: string | null;
 }
 
 export interface FakeSecretsManager {
@@ -254,6 +257,7 @@ export interface FakeSecretsManager {
   secrets: Record<string, FakeAwsSecret>;
   denied?: readonly string[];
   failPut?: number;
+  staleReads?: "current" | "current-and-new-versions";
 }
 
 export interface SecretsStore {
@@ -344,7 +348,7 @@ export function secretsManagerFetch(fake: FakeSecretsManager, store: SecretsStor
         "Secrets Manager can't find the specified secret.",
       );
     const arn = arnOf(region, account, key);
-    const version = `v-${secret.created ?? "first"}`;
+    const version = secret.version ?? `v-${secret.created ?? "first"}`;
     const created = seconds(secret.created ?? "2026-11-01T00:00:00Z");
     if (action === "DescribeSecret")
       return reply(200, {
@@ -357,15 +361,31 @@ export function secretsManagerFetch(fake: FakeSecretsManager, store: SecretsStor
         ...(secret.owner ? { OwningService: secret.owner } : {}),
         ...(secret.deleted ? { DeletedDate: created } : {}),
       });
-    if (action === "GetSecretValue")
+    if (action === "GetSecretValue") {
+      const asked = typeof params.VersionId === "string" ? params.VersionId : null;
+      const stale = fake.staleReads !== undefined && secret.previous !== undefined;
+      const value =
+        asked === null
+          ? stale
+            ? secret.previous
+            : secret.value
+          : fake.staleReads === "current-and-new-versions"
+            ? undefined
+            : secret.versions?.[asked];
+      if (value === undefined)
+        return fail(
+          400,
+          "ResourceNotFoundException",
+          "Secrets Manager can't find the specified secret value for VersionId",
+        );
       return reply(200, {
         ARN: arn,
         Name: name,
-        VersionId: version,
-        VersionStages: ["AWSCURRENT"],
+        VersionId: asked ?? version,
         CreatedDate: created,
-        ...(secret.value === null ? { SecretBinary: "AAEC" } : { SecretString: secret.value }),
+        ...(value === null ? { SecretBinary: "AAEC" } : { SecretString: value }),
       });
+    }
     if (action === "ListSecretVersionIds")
       return reply(200, {
         ARN: arn,
@@ -389,12 +409,19 @@ export function secretsManagerFetch(fake: FakeSecretsManager, store: SecretsStor
         return fail(fake.failPut, "InternalServiceError", "try again");
       const date = init.headers["X-Amz-Date"] ?? "";
       const at = `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 11)}:${date.slice(11, 13)}:${date.slice(13, 15)}Z`;
-      store.save(key, { ...secret, value: params.SecretString, created: at });
+      store.save(key, {
+        ...secret,
+        value: params.SecretString,
+        created: at,
+        version: token,
+        versions: { ...secret.versions, [token]: params.SecretString },
+        previous: secret.value,
+      });
       store.effect(`awssm put ${key}`);
       return reply(200, {
         ARN: arn,
         Name: name,
-        VersionId: `v-${at}`,
+        VersionId: token,
         VersionStages: ["AWSCURRENT"],
       });
     }

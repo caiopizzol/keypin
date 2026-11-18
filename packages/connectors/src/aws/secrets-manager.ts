@@ -46,6 +46,8 @@ export function secretsManagerBackend(
   const now = options.now ?? (() => new Date());
   const requestToken = options.requestToken ?? randomUUID;
   const sessions = new Map<string, Promise<Credentials>>();
+  const versionSaved = new Map<string, string>();
+  const secretKey = (ref: Ref) => `${ref.account}/${ref.region}/${ref.name}`;
 
   async function signedIn(place: Scope): Promise<Credentials> {
     const where = account(place);
@@ -104,7 +106,15 @@ export function secretsManagerBackend(
   }
 
   async function current(ref: Ref, fail: Fail = plain): Promise<{ text: string; arn: string }> {
-    const found = await call(ref, "GetSecretValue", { SecretId: ref.name });
+    const version = versionSaved.get(secretKey(ref));
+    const found = await call(ref, "GetSecretValue", {
+      SecretId: ref.name,
+      ...(version ? { VersionId: version } : {}),
+    });
+    if (version && found.code === "ResourceNotFoundException")
+      throw fail(
+        `${describeRef(ref)}: keypin saved this secret a moment ago, but Secrets Manager doesn't return that version yet`,
+      );
     if (found.status !== 200 || typeof found.body.ARN !== "string")
       throw fail(`${describeRef(ref)}: ${problem(ref, "GetSecretValue", found)}`);
     const value = found.body.SecretString;
@@ -162,15 +172,17 @@ export function secretsManagerBackend(
         before === null
           ? value.reveal()
           : JSON.stringify({ ...parseObject(before), [ref.field ?? ""]: value.reveal() });
+      const versionId = requestToken();
       const put = await call(ref, "PutSecretValue", {
         SecretId: ref.name,
         SecretString: next,
-        ClientRequestToken: requestToken(),
+        ClientRequestToken: versionId,
       });
       if (put.status >= 400 && put.status < 500)
         throw new WriteRefused(`${describeRef(ref)}: ${problem(ref, "PutSecretValue", put)}`);
       if (put.status !== 200)
         throw new Error(`${describeRef(ref)}: ${returned("PutSecretValue", put)}`);
+      versionSaved.set(secretKey(ref), versionId);
       if (ref.field === null || options.rotated === undefined) return;
       await tag(ref, options.rotated);
     },

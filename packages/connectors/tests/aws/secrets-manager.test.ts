@@ -63,10 +63,11 @@ function setup(
     calls.push(`${new URL(url).host} ${init.headers["X-Amz-Target"] ?? "sts"}`);
     return inner(url, init);
   };
+  let tokens = 0;
   const vault = secretsManagerBackend(signIn, {
     fetch,
     now: () => NOW,
-    requestToken: () => "00000000-0000-4000-8000-000000000001",
+    requestToken: () => `00000000-0000-4000-8000-${String(++tokens).padStart(12, "0")}`,
   });
   return { vault, fake, store, calls };
 }
@@ -202,6 +203,34 @@ describe("writing", () => {
       JSON.stringify({ STRIPE: SENTINEL, port: 5432 }),
     );
     expect(run.store.effects).toEqual(["awssm put eu-west-1/prod/app"]);
+  });
+
+  test("a second key of the same JSON secret keeps the first, though AWSCURRENT reads are stale", async () => {
+    const run = setup(
+      { "eu-west-1/prod/app": { value: JSON.stringify({ SECRET: "old", ID: "AKID-0" }) } },
+      { staleReads: "current" },
+    );
+    await run.vault.write(ref("prod/app", "SECRET"), new Secret(SENTINEL));
+    await run.vault.write(ref("prod/app", "ID"), new Secret("AKID-1"));
+    expect(run.store.load()["eu-west-1/prod/app"]?.value).toBe(
+      JSON.stringify({ SECRET: SENTINEL, ID: "AKID-1" }),
+    );
+    expect(await run.vault.read(ref("prod/app", "SECRET"))).toEqual(new Secret(SENTINEL));
+  });
+
+  test("stops before the second write when AWS doesn't return the version keypin saved yet", async () => {
+    const run = setup(
+      { "eu-west-1/prod/app": { value: JSON.stringify({ SECRET: "old", ID: "AKID-0" }) } },
+      { staleReads: "current-and-new-versions" },
+    );
+    await run.vault.write(ref("prod/app", "SECRET"), new Secret(SENTINEL));
+    const refused = await caught(run.vault.write(ref("prod/app", "ID"), new Secret("AKID-1")));
+    expect(refused).toBeInstanceOf(WriteRefused);
+    expect(String(refused)).toContain(
+      "keypin saved this secret a moment ago, but Secrets Manager doesn't return that version yet",
+    );
+    expect(run.store.effects).toEqual(["awssm put eu-west-1/prod/app"]);
+    expectNoSentinel(refused);
   });
 
   test("the rotated date is the current version's day for a whole secret", async () => {

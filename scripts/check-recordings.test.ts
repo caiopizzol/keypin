@@ -176,13 +176,10 @@ describe("check-recordings", () => {
     expect(outcome).toEqual({ kind: "ok" });
   });
 
-  test("checks a symlinked recording under its own name", () => {
+  test("counts a symlinked recording and its target as used, but not a link nobody reads", () => {
     const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/b.txt": "b\n" });
     symlinkSync("b.txt", join(cwd, "tests/recordings/link.txt"));
-    expect(checkRecordings(cwd, uses(cwd, "tests/recordings/link.txt"))).toEqual({
-      kind: "stale",
-      paths: ["tests/recordings/b.txt"],
-    });
+    expect(checkRecordings(cwd, uses(cwd, "tests/recordings/link.txt"))).toEqual({ kind: "ok" });
     expect(checkRecordings(cwd, uses(cwd, "tests/recordings/b.txt"))).toEqual({
       kind: "stale",
       paths: ["tests/recordings/link.txt"],

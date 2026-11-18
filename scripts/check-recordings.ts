@@ -84,7 +84,10 @@ export function checkRecordings(
       const log = join(dir, "used");
       writeFileSync(log, "");
       if (runTests(writers, log) !== 0) return { kind: "tests-failed" };
-      for (const path of paths(readFileSync(log))) used.add(canonical(path));
+      for (const path of paths(readFileSync(log))) {
+        used.add(canonical(path));
+        used.add(realpathSync(path));
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -94,7 +97,7 @@ export function checkRecordings(
 }
 
 function vitest(files: string[], log: string): number | null {
-  return spawnSync("bun", ["--bun", "vp", "test", ...files], {
+  return spawnSync("bun", ["--bun", "vp", "test", ...files, "--update=none"], {
     stdio: "inherit",
     env: { ...process.env, CI: "true", RECORDINGS_LOG: log },
   }).status;

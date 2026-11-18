@@ -1,0 +1,11 @@
+$ keypin status --json
+exit 0
+
+--- stdout ---
+{
+  "today": "2026-11-09",
+  "rows": [],
+  "problems": []
+}
+
+--- stderr ---

@@ -1,0 +1,30 @@
+$ keypin check
+exit 0
+
+--- file keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.STRIPE_API_KEY]
+rotate_every = "365d"
+dev = "op://Private/billing stripe api key/password"
+prod = { from = "op://Private/billing stripe api key/password", publish = [
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
+  { to = "github-actions", repo = "acme/billing" },
+] }
+
+--- calls vault ---
+ids billing stripe api key
+
+--- calls destination ---
+check cloudflare-worker:billing-worker
+check github-actions:acme/billing
+
+--- stdout ---
+billing /work/billing · read 0 env files, 0 wrangler configs, 0 workflows
+ok     1 key, 2 destinations. Everything checks out.
+
+--- stderr ---
+ok     Looked up 1 item in 1Password account my.1password.com, not the values
+ok     Checked 2 accounts

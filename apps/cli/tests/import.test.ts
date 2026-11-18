@@ -15,6 +15,7 @@ import {
   SENTINEL,
   unstyled,
 } from "./fakes";
+import { changes, recording } from "./recording";
 
 const ROOT = "/work/billing";
 const ENV = `${ROOT}/.env`;
@@ -67,7 +68,24 @@ function setup(options: Setup = {}) {
     },
   });
   const text = () => result.stdout.text + result.stderr.text;
-  return { ...result, fake, asked, text };
+  const record = async (name: string, args: string[]) => {
+    const before = new Map(disk.contents);
+    const exit = await cli(args, result.deps);
+    await expect(
+      recording({
+        args,
+        exit,
+        stdout: result.stdout.text,
+        stderr: result.stderr.text,
+        files: Object.fromEntries(before),
+        given: { "vault items": options.items ?? [] },
+        calls: { vault: fake.calls, asked },
+        wrote: changes(before, disk.contents),
+      }),
+    ).toMatchFileSnapshot(`./recordings/import/${name}.txt`);
+    return exit;
+  };
+  return { ...result, fake, asked, text, record };
 }
 
 const squash = (text: string) => text.replace(/ {2,}/g, "  ");
@@ -76,68 +94,33 @@ const NEW = ["import", ".env", "--vault", "App Secrets", "--account", ACCOUNT];
 
 describe("keypin import", () => {
   test("with no keypin.toml, creates the items, writes a map that parses, and registers the project", async () => {
-    const { deps, disk, fake, text } = setup();
-    expect(await cli([...NEW, "--yes"], deps)).toBe(0);
-
-    expect(fake.created.map((c) => [c.ref.item, c.ref.field, c.rotated])).toEqual([
-      ["billing dev stripe key", "password", "2026-11-09"],
-      ["billing dev webhook secret", "password", "2026-11-09"],
+    const { disk, fake, text, record } = setup();
+    expect(await record("new-map", [...NEW, "--yes"])).toBe(0);
+    expect(fake.created.map((c) => [c.ref.vault, c.ref.item, c.ref.field, c.rotated])).toEqual([
+      ["App Secrets", "billing dev stripe key", "password", "2026-11-09"],
+      ["App Secrets", "billing dev webhook secret", "password", "2026-11-09"],
     ]);
-    expect(fake.created.map((c) => c.ref.vault)).toEqual(["App Secrets", "App Secrets"]);
     expect(fake.created.map((c) => c.value.reveal())).toEqual([
       `${SENTINEL}-stripe`,
       `${SENTINEL}-webhook`,
     ]);
-
     const written = disk.contents.get(MAP);
     assert(written !== undefined);
     const parsed = parseMap(written, MAP, destinations, issuers, vaults);
     assert(parsed.ok, JSON.stringify(parsed));
-    expect(parsed.map.pins["1password"]).toBe(ACCOUNT);
-    expect(
-      parsed.map.keys.map((k) => [
-        k.name,
-        k.rotateEvery?.text,
-        k.environments.dev ? formatReference(k.environments.dev.ref, vaults) : null,
-      ]),
-    ).toEqual([
-      ["STRIPE_KEY", "90d", "op://App Secrets/billing dev stripe key/password"],
-      ["WEBHOOK_SECRET", "90d", "op://App Secrets/billing dev webhook secret/password"],
-    ]);
-    expect((await loadRegistry(disk.files, REGISTRY)).projects).toEqual([ROOT]);
+    expect(parsed.map.keys.map((k) => k.name)).toEqual(["STRIPE_KEY", "WEBHOOK_SECRET"]);
     expect(disk.contents.get(ENV)).toBe(ENV_TEXT);
-
-    const out = text();
-    expect(squash(out)).toContain("- EMPTY  skipped: the value is empty");
-    expect(squash(out)).toContain("- app.key  skipped: not a variable name");
-    expect(out).toContain(`keypin left ${ENV} as it is`);
-    expect(out).toContain("app.key is still only in that file");
-    expect(out).toContain("keypin run -- <command> provides them");
-    expect(out).toContain("Remove the STRIPE_KEY, WEBHOOK_SECRET lines from it");
-    expect(leaks(out, written, disk.contents.get(REGISTRY) ?? "")).toBe(false);
+    expect(leaks(text(), written, disk.contents.get(REGISTRY) ?? "")).toBe(false);
   });
 
   test("prints the plan as aligned rows: + create, = map an existing item, - skipped", async () => {
     const env = `STRIPE_KEY=${SENTINEL}-stripe\nWEBHOOK_SECRET=${SENTINEL}-webhook\nEMPTY=\n`;
-    const { deps, stderr } = setup({
+    const { record } = setup({
       files: { [ENV]: env },
       items: ["billing dev webhook secret"],
       values: { "billing dev webhook secret": `${SENTINEL}-webhook` },
     });
-    expect(await cli([...NEW, "--yes"], deps)).toBe(0);
-    expect(stderr.text).toContain(
-      [
-        "Plan",
-        "  + STRIPE_KEY      op://App Secrets/billing dev stripe key/password      create, rotated 2026-11-09",
-        "  = WEBHOOK_SECRET  op://App Secrets/billing dev webhook secret/password  exists with the same value; map it",
-        "  - EMPTY           skipped: the value is empty",
-        "",
-      ].join("\n"),
-    );
-    expect(stderr.text).toContain(
-      `ok     Created "billing dev stripe key" in vault App Secrets\nok     Mapped STRIPE_KEY, WEBHOOK_SECRET in ${MAP}\n`,
-    );
-    expect(stderr.text).not.toContain("keypin:");
+    expect(await record("existing-item", [...NEW, "--yes"])).toBe(0);
   });
 
   test("in a terminal, vault work runs as live steps, skipped rows are dim, and the guidance is plain", async () => {
@@ -765,28 +748,15 @@ repo = "acme/billing"
       "DATABASE_URL=postgres://localhost/billing",
       "",
     ].join("\n");
-    const { deps, disk, fake, text } = setup({ files: { [ENV]: env } });
+    const { disk, text, record } = setup({ files: { [ENV]: env } });
     const args = ["import", ".env", "STRIPE_KEY", "WEBHOOK_SECRET"];
     expect(
-      await cli([...args, "--vault", "App Secrets", "--account", ACCOUNT, "--yes"], deps),
+      await record("named", [...args, "--vault", "App Secrets", "--account", ACCOUNT, "--yes"]),
     ).toBe(0);
-
-    expect(fake.created.map((c) => c.ref.item)).toEqual([
-      "billing dev stripe key",
-      "billing dev webhook secret",
-    ]);
     const parsed = parseMap(disk.contents.get(MAP) ?? "", MAP, destinations, issuers, vaults);
     assert(parsed.ok);
-    expect(parsed.map.keys.map((k) => k.name)).toEqual(["STRIPE_KEY", "WEBHOOK_SECRET"]);
     expect(disk.contents.get(ENV)).toBe(env);
-
-    const out = text();
-    expect(out).not.toContain("PUBLIC_SITE_URL");
-    expect(out).not.toContain("DATABASE_URL");
-    expect(out).not.toContain("still only in that file");
-    expect(out).not.toContain("Delete it");
-    expect(out).toContain("Remove the STRIPE_KEY, WEBHOOK_SECRET lines from it");
-    expect(leaks(out, disk.contents.get(MAP) ?? "")).toBe(false);
+    expect(leaks(text(), disk.contents.get(MAP) ?? "")).toBe(false);
   });
 
   test("with names, a name the file doesn't set is a usage error before the vault", async () => {

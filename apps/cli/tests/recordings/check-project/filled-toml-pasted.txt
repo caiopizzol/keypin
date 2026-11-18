@@ -1,0 +1,252 @@
+$ keypin check --json
+exit 1
+
+--- file .env ---
+DATABASE_URL=sentinel-value-7f3a9c2e1d
+RESEND_API_KEY=sentinel-value-7f3a9c2e1d
+
+--- file .env.example ---
+DATABASE_URL=
+
+--- file .github/workflows/deploy.yml ---
+
+on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: deploy
+        env:
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+--- file keypin.toml ---
+# keypin.toml: this project's keys. It holds names and places, never values.
+# Uncomment and edit. Every field is checked; an unknown one is an error.
+#
+# The 1Password account the keys below read from: its sign-in address or account ID.
+# [1password]
+# account = "my.1password.com"
+#
+# A key, named after the variable your program reads.
+# [keys.EXAMPLE_API_KEY]
+# rotate_every = "180d" # <n>d, <n>w, <n>m or never
+# dev = "op://Private/my-project dev example api key/password" # what keypin run reads
+#
+# What keypin publish reads, and every place it writes it.
+# [keys.EXAMPLE_API_KEY.prod]
+# from = "op://Private/my-project prod example api key/password"
+#
+# [[keys.EXAMPLE_API_KEY.prod.publish]]
+# to = "cloudflare-worker"
+# account = "<cloudflare account ID>"
+# worker = "my-worker"
+#
+# [[keys.EXAMPLE_API_KEY.prod.publish]]
+# to = "github-actions"
+# repo = "owner/repo"
+
+[1password]
+account = "my.1password.com"
+
+[keys.STRIPE_API_KEY]
+rotate_every = "90d"
+
+[keys.STRIPE_API_KEY.prod]
+from = "op://Private/billing prod item/password"
+
+[[keys.STRIPE_API_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+
+[keys.RESEND_API_KEY]
+rotate_every = "90d"
+
+[keys.RESEND_API_KEY.prod]
+from = "op://Private/billing prod item/password"
+
+[[keys.RESEND_API_KEY.prod.publish]]
+to = "cloudflare-worker"
+account = "11111111111111111111111111111111"
+worker = "billing-worker"
+
+--- file wrangler.toml ---
+name = "billing-worker"
+account_id = "11111111111111111111111111111111"
+
+[vars]
+REGION = "sentinel-value-7f3a9c2e1d"
+
+[secrets]
+required = ["RESEND_API_KEY"]
+
+--- given git ---
+{
+  "rev-parse --show-toplevel": "/work/billing\n",
+  "remote get-url origin": "git@github.com:acme/billing.git\n",
+  "config --get github.account": null
+}
+
+--- given github ---
+{
+  "ok": true,
+  "secrets": [
+    {
+      "name": "STRIPE_API_KEY",
+      "updatedAt": null
+    }
+  ]
+}
+
+--- given worker ---
+{
+  "ok": true,
+  "secrets": [
+    {
+      "name": "RESEND_API_KEY",
+      "updatedAt": null
+    }
+  ]
+}
+
+--- calls reads ---
+worker 11111111111111111111111111111111 billing-worker
+github acme/billing as null
+
+--- calls vault ---
+ids billing prod item
+
+--- calls destination ---
+check github-actions:acme/billing
+check cloudflare-worker:billing-worker
+
+--- stdout ---
+{
+  "folder": "/work/billing",
+  "map": "/work/billing/keypin.toml",
+  "registered": true,
+  "read": {
+    "env": [
+      ".env",
+      ".env.example"
+    ],
+    "wrangler": [
+      "wrangler.toml"
+    ],
+    "workflows": [
+      ".github/workflows/deploy.yml"
+    ],
+    "notScanned": []
+  },
+  "github": {
+    "repo": "acme/billing",
+    "login": null
+  },
+  "onePassword": {
+    "signIn": "desktop",
+    "address": null
+  },
+  "keys": [
+    {
+      "key": "STRIPE_API_KEY",
+      "environment": "prod",
+      "from": {
+        "reference": "op://Private/billing prod item/password",
+        "ok": true,
+        "problem": null
+      },
+      "destinations": [
+        {
+          "destination": "github-actions:acme/billing:STRIPE_API_KEY",
+          "to": "github-actions",
+          "login": "the active gh login",
+          "pinned": "acme",
+          "publisher": "acme",
+          "reached": "acme",
+          "ok": true,
+          "problem": null,
+          "fix": null
+        }
+      ]
+    },
+    {
+      "key": "RESEND_API_KEY",
+      "environment": "prod",
+      "from": {
+        "reference": "op://Private/billing prod item/password",
+        "ok": true,
+        "problem": null
+      },
+      "destinations": [
+        {
+          "destination": "cloudflare-worker:11111111111111111111111111111111:billing-worker:RESEND_API_KEY",
+          "to": "cloudflare-worker",
+          "login": "the wrangler login (OAuth)",
+          "pinned": "11111111111111111111111111111111",
+          "publisher": "me@example.com",
+          "reached": "11111111111111111111111111111111",
+          "ok": true,
+          "problem": null,
+          "fix": null
+        }
+      ]
+    }
+  ],
+  "production": [
+    {
+      "name": "STRIPE_API_KEY",
+      "to": "github-actions",
+      "place": "acme/billing",
+      "usedBy": [
+        ".github/workflows/deploy.yml"
+      ],
+      "mapped": "prod",
+      "holds": true,
+      "ok": true
+    },
+    {
+      "name": "RESEND_API_KEY",
+      "to": "cloudflare-worker",
+      "place": "the Worker billing-worker",
+      "usedBy": [
+        "wrangler.toml"
+      ],
+      "mapped": "prod",
+      "holds": true,
+      "ok": true
+    }
+  ],
+  "local": [
+    {
+      "file": ".env",
+      "tracked": false,
+      "unmapped": [
+        "DATABASE_URL"
+      ],
+      "elsewhere": [
+        "RESEND_API_KEY"
+      ]
+    }
+  ],
+  "add": null,
+  "unknown": [],
+  "prerequisites": [
+    {
+      "name": "Cloudflare",
+      "status": "not logged in",
+      "fix": "run wrangler login, or set KEYPIN_CLOUDFLARE_API_TOKEN"
+    }
+  ],
+  "notes": [
+    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields",
+    ".env sets DATABASE_URL, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env NAME... --vault <vault>"
+  ],
+  "problems": [
+    ".env sets RESEND_API_KEY, which keypin.toml maps with no dev entry; for a key run keypin import .env RESEND_API_KEY --vault <vault>"
+  ],
+  "ok": false
+}
+
+--- stderr ---
+ok     Looked up 1 item in 1Password account my.1password.com, not the values
+ok     Checked 2 accounts

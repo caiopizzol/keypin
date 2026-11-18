@@ -1,0 +1,102 @@
+$ keypin check /work/billing --json
+exit 0
+
+--- file keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.STRIPE_API_KEY]
+rotate_every = "365d"
+dev = "op://Private/billing stripe api key/password"
+prod = { from = "op://Private/billing stripe api key/password", publish = [
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
+  { to = "github-actions", repo = "acme/billing" },
+] }
+
+--- calls vault ---
+ids billing stripe api key
+
+--- calls destination ---
+check cloudflare-worker:billing-worker
+check github-actions:acme/billing
+
+--- stdout ---
+{
+  "folder": "/work/billing",
+  "map": "/work/billing/keypin.toml",
+  "registered": true,
+  "read": {
+    "env": [],
+    "wrangler": [],
+    "workflows": [],
+    "notScanned": []
+  },
+  "github": {
+    "repo": null,
+    "login": null
+  },
+  "onePassword": {
+    "signIn": "desktop",
+    "address": null
+  },
+  "keys": [
+    {
+      "key": "STRIPE_API_KEY",
+      "environment": "dev",
+      "from": {
+        "reference": "op://Private/billing stripe api key/password",
+        "ok": true,
+        "problem": null
+      },
+      "destinations": []
+    },
+    {
+      "key": "STRIPE_API_KEY",
+      "environment": "prod",
+      "from": {
+        "reference": "op://Private/billing stripe api key/password",
+        "ok": true,
+        "problem": null
+      },
+      "destinations": [
+        {
+          "destination": "cloudflare-worker:11111111111111111111111111111111:billing-worker:STRIPE_API_KEY",
+          "to": "cloudflare-worker",
+          "login": "the wrangler login (OAuth)",
+          "pinned": "11111111111111111111111111111111",
+          "publisher": "me@example.com",
+          "reached": "11111111111111111111111111111111",
+          "ok": true,
+          "problem": null,
+          "fix": null
+        },
+        {
+          "destination": "github-actions:acme/billing:STRIPE_API_KEY",
+          "to": "github-actions",
+          "login": "the active gh login",
+          "pinned": "acme",
+          "publisher": "acme",
+          "reached": "acme",
+          "ok": true,
+          "problem": null,
+          "fix": null
+        }
+      ]
+    }
+  ],
+  "production": [],
+  "local": [],
+  "add": null,
+  "unknown": [],
+  "prerequisites": [],
+  "notes": [
+    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields"
+  ],
+  "problems": [],
+  "ok": true
+}
+
+--- stderr ---
+ok     Looked up 1 item in 1Password account my.1password.com, not the values
+ok     Checked 2 accounts

@@ -1,0 +1,68 @@
+$ keypin status
+exit 1
+
+--- file /home/me/.config/keypin/registry.json ---
+{"version":1,"projects":["/work/billing","/work/web"]}
+
+--- file /work/billing/keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.STRIPE_API_KEY]
+rotate_every = "365d"
+dev = "op://Private/billing stripe api key/password"
+prod = { from = "op://Private/billing stripe api key/password", publish = [
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
+  { to = "github-actions", repo = "acme/billing" },
+] }
+
+--- file /work/web/keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.SESSION_SECRET]
+rotate_every = "180d"
+dev = "op://Private/web dev session secret/password"
+prod = { from = "op://Private/web prod session secret/password", publish = [
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "web" },
+] }
+
+--- given rotated dates ---
+{
+  "web dev session secret": {
+    "rotated": "2026-11-09"
+  },
+  "web prod session secret": {
+    "rotated": "2026-11-09"
+  },
+  "billing stripe api key": {
+    "rotated": "2026-10-23"
+  }
+}
+
+--- given unreadable ---
+[
+  "billing stripe api key"
+]
+
+--- stdout ---
+billing /work/billing
+  STRIPE_API_KEY  dev   rotation unknown
+  STRIPE_API_KEY  prod  rotation unknown  · Cloudflare not published  · GitHub not published
+web /work/web
+  SESSION_SECRET  dev   due in 180 days
+  SESSION_SECRET  prod  due in 180 days   · Cloudflare not published
+
+2 problems
+  billing STRIPE_API_KEY (dev): the vault item's rotated date couldn't be read, so whether it's due is unknown
+  billing STRIPE_API_KEY (prod): the vault item's rotated date couldn't be read, so whether it's due is unknown
+
+2 notices
+  billing STRIPE_API_KEY (prod): not published yet to the Worker billing-worker, GitHub acme/billing; run keypin publish STRIPE_API_KEY
+  web SESSION_SECRET (prod): not published yet to the Worker web; run keypin publish SESSION_SECRET
+
+--- stderr ---
+FAILED Couldn't read 1 of 3 rotated dates from 1Password account my.1password.com, not the values
+keypin: 1Password: "billing stripe api key" isn't readable

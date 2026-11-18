@@ -1,0 +1,55 @@
+$ keypin publish --all --env prod
+exit 3
+
+--- file /work/billing/keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.STRIPE_API_KEY]
+rotate_every = "365d"
+dev = "op://Private/billing stripe api key/password"
+prod = { from = "op://Private/billing stripe api key/password", publish = [
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
+  { to = "github-actions", repo = "acme/billing" },
+] }
+
+[keys.OTHER_KEY]
+prod = { from = "op://Private/billing other key/password", publish = [
+  { to = "github-actions", repo = "acme/other" },
+] }
+
+[keys.DEV_ONLY]
+dev = "op://Private/billing dev only/password"
+
+--- given terminal ---
+"none"
+
+--- calls vault ---
+
+--- calls destination ---
+check cloudflare-worker:billing-worker
+check github-actions:acme/billing
+check github-actions:acme/other
+
+--- calls asked ---
+
+--- stdout ---
+
+--- stderr ---
+Not published, no prod destinations: DEV_ONLY
+
+STRIPE_API_KEY prod  from op://Private/billing stripe api key/password in 1Password account my.1password.com
+ok     Cloudflare  billing-worker  as me@example.com, account 11111111111111111111111111111111
+ok     GitHub      acme/billing    as acme, account acme
+
+OTHER_KEY prod  from op://Private/billing other key/password in 1Password account my.1password.com
+ok     GitHub      acme/other      as acme, account acme
+
+Needs approval:
+  first write to cloudflare-worker:billing-worker:STRIPE_API_KEY (account 11111111111111111111111111111111)
+  first write to github-actions:acme/billing:STRIPE_API_KEY (account acme)
+  first write to github-actions:acme/other:OTHER_KEY (account acme)
+Stopped before reading any value: this publish needs approval, and --yes can't give it. Nothing was read and nothing was written.
+To approve, run this in a terminal:
+  cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts publish --all --env prod

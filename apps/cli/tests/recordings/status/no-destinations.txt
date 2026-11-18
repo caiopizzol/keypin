@@ -1,0 +1,36 @@
+$ keypin status
+exit 0
+
+--- file /home/me/.config/keypin/registry.json ---
+{"version":1,"projects":["/work/billing"]}
+
+--- file /work/billing/keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.STRIPE_API_KEY]
+rotate_every = "365d"
+dev = "op://Private/billing stripe api key/password"
+prod = { from = "op://Private/billing stripe api key/password", }
+
+--- given rotated dates ---
+{
+  "web dev session secret": {
+    "rotated": "2026-11-09"
+  },
+  "web prod session secret": {
+    "rotated": "2026-11-09"
+  },
+  "billing stripe api key": {
+    "rotated": "2026-10-23"
+  }
+}
+
+--- stdout ---
+billing /work/billing
+  STRIPE_API_KEY  dev   due in 348 days
+  STRIPE_API_KEY  prod  due in 348 days
+
+--- stderr ---
+ok     Read 1 rotated date from 1Password account my.1password.com, not the values

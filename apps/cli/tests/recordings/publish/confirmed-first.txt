@@ -1,0 +1,116 @@
+$ keypin publish STRIPE_API_KEY
+exit 0
+
+--- file /work/billing/keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.STRIPE_API_KEY]
+rotate_every = "365d"
+dev = "op://Private/billing stripe api key/password"
+prod = { from = "op://Private/billing stripe api key/password", publish = [
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
+  { to = "github-actions", repo = "acme/billing" },
+] }
+
+--- given terminal ---
+"yes"
+
+--- calls vault ---
+read billing stripe api key
+
+--- calls destination ---
+check cloudflare-worker:billing-worker
+check github-actions:acme/billing
+write cloudflare-worker:billing-worker STRIPE_API_KEY (25 chars)
+write github-actions:acme/billing STRIPE_API_KEY (25 chars)
+
+--- calls asked ---
+Write 2 secrets? [y/N] 
+
+--- stdout ---
+
+--- stderr ---
+
+STRIPE_API_KEY prod  from op://Private/billing stripe api key/password in 1Password account my.1password.com
+ok     Cloudflare  billing-worker  as me@example.com, account 11111111111111111111111111111111
+ok     GitHub      acme/billing    as acme, account acme
+
+ok     Read 1 value from 1Password account my.1password.com
+
+Plan  generation 8f24c3e0b75826a7
+  + Cloudflare  billing-worker  first write  needs approval
+    writing a Worker secret deploys a new version of the Worker
+  + GitHub      acme/billing    first write  needs approval
+
+ok     Cloudflare  billing-worker  wrote STRIPE_API_KEY
+ok     GitHub      acme/billing    wrote STRIPE_API_KEY
+Published STRIPE_API_KEY (prod) to 2 destinations.
+
+--- wrote /home/me/.local/state/keypin/state.json ---
+{
+  "version": 5,
+  "receipts": [
+    {
+      "keyId": "STRIPE_API_KEY",
+      "environment": "prod",
+      "mapFile": "/work/billing/keypin.toml",
+      "source": {
+        "kind": "1password",
+        "vault": "Private",
+        "item": "billing stripe api key",
+        "section": null,
+        "field": "password",
+        "account": "my.1password.com"
+      },
+      "sourceIds": {
+        "vault": "id-private",
+        "item": "id-billing stripe api key"
+      },
+      "destinationId": "cloudflare-worker:billing-worker:STRIPE_API_KEY",
+      "generation": "8f24c3e0b75826a7",
+      "account": {
+        "pinned": "11111111111111111111111111111111",
+        "publisher": "me@example.com",
+        "destinationAccount": "11111111111111111111111111111111"
+      },
+      "at": "2026-11-09T15:00:00.000Z",
+      "evidence": {
+        "destination": "cloudflare-worker:billing-worker",
+        "version": "v-3"
+      }
+    },
+    {
+      "keyId": "STRIPE_API_KEY",
+      "environment": "prod",
+      "mapFile": "/work/billing/keypin.toml",
+      "source": {
+        "kind": "1password",
+        "vault": "Private",
+        "item": "billing stripe api key",
+        "section": null,
+        "field": "password",
+        "account": "my.1password.com"
+      },
+      "sourceIds": {
+        "vault": "id-private",
+        "item": "id-billing stripe api key"
+      },
+      "destinationId": "github-actions:acme/billing:STRIPE_API_KEY",
+      "generation": "8f24c3e0b75826a7",
+      "account": {
+        "pinned": "acme",
+        "publisher": "acme",
+        "destinationAccount": "acme"
+      },
+      "at": "2026-11-09T15:00:00.000Z",
+      "evidence": {
+        "destination": "github-actions:acme/billing",
+        "version": "v-4"
+      }
+    }
+  ],
+  "issued": [],
+  "operations": []
+}

@@ -1,0 +1,81 @@
+$ keypin check --json
+exit 1
+
+--- file keypin.toml ---
+# keypin.toml: this project's keys. It holds names and places, never values.
+# Uncomment and edit. Every field is checked; an unknown one is an error.
+#
+# The 1Password account the keys below read from: its sign-in address or account ID.
+# [1password]
+# account = "my.1password.com"
+#
+# A key, named after the variable your program reads.
+# [keys.EXAMPLE_API_KEY]
+# rotate_every = "180d" # <n>d, <n>w, <n>m or never
+# dev = "op://Private/my-project dev example api key/password" # what keypin run reads
+#
+# What keypin publish reads, and every place it writes it.
+# [keys.EXAMPLE_API_KEY.prod]
+# from = "op://Private/my-project prod example api key/password"
+#
+# [[keys.EXAMPLE_API_KEY.prod.publish]]
+# to = "cloudflare-worker"
+# account = "<cloudflare account ID>"
+# worker = "my-worker"
+#
+# [[keys.EXAMPLE_API_KEY.prod.publish]]
+# to = "github-actions"
+# repo = "owner/repo"
+
+--- given git ---
+{
+  "rev-parse --show-toplevel": "/work/billing\n",
+  "remote get-url origin": "git@github.com:acme/billing.git\n",
+  "config --get github.account": null
+}
+
+--- calls reads ---
+
+--- calls vault ---
+
+--- calls destination ---
+
+--- stdout ---
+{
+  "folder": "/work/billing",
+  "map": "/work/billing/keypin.toml",
+  "registered": true,
+  "read": {
+    "env": [],
+    "wrangler": [],
+    "workflows": [],
+    "notScanned": []
+  },
+  "github": {
+    "repo": "acme/billing",
+    "login": null
+  },
+  "onePassword": {
+    "signIn": "desktop",
+    "address": null
+  },
+  "keys": [],
+  "production": [],
+  "local": [],
+  "add": null,
+  "unknown": [],
+  "prerequisites": [
+    {
+      "name": "1Password",
+      "status": "not checked",
+      "fix": "keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected"
+    }
+  ],
+  "notes": [],
+  "problems": [
+    "/work/billing/keypin.toml maps no keys yet; run keypin import for an env file, and add the TOML below for production"
+  ],
+  "ok": false
+}
+
+--- stderr ---

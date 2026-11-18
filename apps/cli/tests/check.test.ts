@@ -26,8 +26,8 @@ import {
   SENTINEL,
   STATE,
 } from "./fakes";
+import { recording } from "./recording";
 
-const ACCOUNT = "11111111111111111111111111111111";
 const MAP_FILE = "/work/billing/keypin.toml";
 
 function setup(
@@ -56,7 +56,26 @@ function setup(
   });
   const unchanged = () => expect(disk.contents).toEqual(before);
   const everything = () => [fake.stdout.text, fake.stderr.text, ...disk.contents.values()];
-  return { ...fake, calls: vault.calls, log: destinations.log, unchanged, everything };
+  const record = async (
+    name: string,
+    args: string[],
+    more: { given?: Record<string, unknown>; calls?: Record<string, readonly string[]> } = {},
+  ) => {
+    const exit = await cli(args, fake.deps);
+    await expect(
+      recording({
+        args,
+        exit,
+        stdout: fake.stdout.text,
+        stderr: fake.stderr.text,
+        files: { "keypin.toml": before.get(MAP_FILE) ?? "" },
+        given: { "bad accounts": options.badAccount, ...more.given },
+        calls: { vault: vault.calls, destination: destinations.log, ...more.calls },
+      }),
+    ).toMatchFileSnapshot(`./recordings/check/${name}.txt`);
+    return exit;
+  };
+  return { ...fake, calls: vault.calls, log: destinations.log, unchanged, everything, record };
 }
 
 function report(text: string) {
@@ -70,20 +89,8 @@ function report(text: string) {
 describe("keypin check", () => {
   test("a good setup checks every item and account, writes nothing, and exits 0", async () => {
     const run = setup();
-    expect(await cli(["check"], run.deps)).toBe(0);
-    expect(run.stderr.text).toContain(
-      "ok     Looked up 1 item in 1Password account my.1password.com, not the values\n",
-    );
-    expect(run.calls).toEqual(["ids billing stripe api key"]);
-    expect(run.log).toEqual([
-      `check cloudflare-worker:billing-worker`,
-      `check github-actions:acme/billing`,
-    ]);
+    expect(await run.record("good-setup", ["check"])).toBe(0);
     expect(run.log.some((l) => l.startsWith("write"))).toBe(false);
-    expect(run.stdout.text)
-      .toBe(`billing /work/billing · read 0 env files, 0 wrangler configs, 0 workflows
-ok     1 key, 2 destinations. Everything checks out.
-`);
     run.unchanged();
     expect(run.disk.contents.has(STATE)).toBe(false);
     expect(leaks(...run.everything())).toBe(false);
@@ -132,12 +139,9 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
 
   test("a missing item is one problem line naming the keys that use it, exit 1", async () => {
     const run = setup({ values: {} });
-    expect(await cli(["check"], run.deps)).toBe(1);
-    expect(run.stdout.text).toContain(`1 thing to do:
-1 Fix the vault item op://Private/billing stripe api key/password
-  No item "billing stripe api key".
-  Used by STRIPE_API_KEY (dev), STRIPE_API_KEY (prod).
-`);
+    expect(
+      await run.record("missing-item", ["check"], { given: { vault: "holds no items" } }),
+    ).toBe(1);
     run.unchanged();
   });
 
@@ -244,38 +248,18 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
             : workers.build(target),
       },
     });
-    expect(await cli(["check", "--json"], run.deps)).toBe(1);
-    const data = report(run.stdout.text);
-    const [dev, prod] = data.keys;
-    assert(isRecord(prod) && Array.isArray(prod.destinations));
-    expect(dev).toMatchObject({ key: "STRIPE_API_KEY", environment: "dev", destinations: [] });
-    expect(prod.destinations[1]).toEqual({
-      destination: "github-actions:acme/billing:STRIPE_API_KEY",
-      to: "github-actions",
-      login: "the active gh login",
-      publisher: "bob",
-      pinned: "acme",
-      reached: "acme",
-      ok: false,
-      problem:
-        "bob has no write access to acme/billing, so GitHub won't let it set Actions secrets",
-      fix: "ask an admin of acme for the Write role, or publish as another login: git config github.account <login>",
-    });
-    expect(data.problems).toEqual([
-      "github-actions:acme/billing: bob has no write access to acme/billing, so GitHub won't let it set Actions secrets; fix: ask an admin of acme for the Write role, or publish as another login: git config github.account <login> (STRIPE_API_KEY (prod))",
-    ]);
+    const given = { "GitHub API": Object.fromEntries(routes) };
+    expect(
+      await run.record("account-mismatch", ["check", "--json"], {
+        given,
+        calls: { destination: workers.log },
+      }),
+    ).toBe(1);
   });
 
   test("a failed account check is a problem; nothing is read twice or written", async () => {
     const run = setup({ badAccount: ["cloudflare-worker:billing-worker"] });
-    expect(await cli(["check"], run.deps)).toBe(1);
-    expect(run.stdout.text).toContain(`1 thing to do:
-1 Fix the login for the Worker billing-worker
-  The login can't reach ${ACCOUNT}.
-  keypin.toml pins ${ACCOUNT}; the login is the wrangler login (OAuth), signed in as me@example.com.
-  Used by STRIPE_API_KEY (prod).
-`);
-    expect(run.log.filter((l) => l.startsWith("check"))).toHaveLength(2);
+    expect(await run.record("failed-account-check", ["check"])).toBe(1);
     run.unchanged();
   });
 
@@ -292,14 +276,8 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
 
   test("a step that fails says so, instead of saying it finished", async () => {
     const run = setup({ values: {}, badAccount: ["cloudflare-worker:billing-worker"] });
-    expect(await cli(["check"], run.deps)).toBe(1);
-    expect(run.stderr.text).toBe(
-      [
-        "FAILED Couldn't look up 1 of 1 item in 1Password account my.1password.com, not the values",
-        "FAILED 1 of 2 accounts failed the check",
-        "",
-      ].join("\n"),
-    );
+    const given = { vault: "holds no items" };
+    expect(await run.record("failed-steps", ["check"], { given })).toBe(1);
   });
 
   test("a GitHub login that can't publish is one step with the gh sign-in, not two", async () => {
@@ -316,19 +294,14 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
   });
 
   test("an account the 1Password app doesn't have says to fix the map, not the app", async () => {
+    const error =
+      "An error occurred when processing SDK request: Error { msg: Account not found, inner: None }";
     const vault = onePasswordBackend(async () => {
-      throw new Error(
-        "An error occurred when processing SDK request: Error { msg: Account not found, inner: None }",
-      );
+      throw new Error(error);
     });
     const run = setup({ deps: { vault: () => vault } });
-    expect(await cli(["check"], run.deps)).toBe(1);
-    expect(run.stdout.text).toContain(`1 Sign in to 1Password
-  Set account under [1password] in keypin.toml to a sign-in address or account ID the 1Password app lists, under Settings → Accounts.
-  1Password account "my.1password.com": sign-in failed: the 1Password app has no account with this sign-in address or ID.
-`);
-    expect(run.stdout.text).not.toContain("Error {");
-    expect(run.stdout.text).not.toContain("Integrate with other apps");
+    const given = { "1Password SDK throws": error };
+    expect(await run.record("unknown-1password-account", ["check"], { given })).toBe(1);
   });
 
   test("without the 1Password desktop app, says to install it, or use a service account on a server", async () => {
@@ -346,19 +319,9 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
       map: `${BILLING_MAP}\n[keys.OTHER]\ndev = "op://Private/other key/password"\n`,
       deps: { vault: () => vault },
     });
-    expect(await cli(["check"], run.deps)).toBe(1);
-    expect(run.stdout.text).toContain(`1 Sign in to 1Password
-  Install the 1Password desktop app.
-  On a server or in CI, use a 1Password service account instead (docs/service-account.md).
-  1Password account "my.1password.com": sign-in failed: the 1Password desktop app isn't installed.
-`);
-    expect(run.stdout.text).not.toContain("Integrate with other apps");
-    expect(run.stdout.text).not.toContain("Native library");
+    const given = { "1Password desktop app": "not installed" };
+    expect(await run.record("no-desktop-app", ["check"], { given })).toBe(1);
     expect(tries).toBe(0);
-    for (const text of [run.stdout.text, run.stderr.text]) {
-      expect(text).not.toContain("critical error");
-      expect(text).not.toContain("find1PasswordLibPath");
-    }
   });
 
   test("with a Snap or Flatpak desktop app, says to install the .deb or .rpm package, not to install the app", async () => {
@@ -372,30 +335,20 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
       ),
     );
     const run = setup({ deps: { vault: () => vault } });
-    expect(await cli(["check"], run.deps)).toBe(1);
-    expect(run.stdout.text).toContain(`1 Sign in to 1Password
-  Install the 1Password desktop app from the .deb or .rpm package.
-  On a server or in CI, use a 1Password service account instead (docs/service-account.md).
-`);
-    expect(run.stdout.text).not.toContain("Install the 1Password desktop app.");
+    const given = { "1Password desktop app": "a Snap or Flatpak" };
+    expect(await run.record("sandboxed-desktop-app", ["check"], { given })).toBe(1);
   });
 
   test("a map that doesn't parse lists its errors, reads nothing, exit 1", async () => {
     const run = setup({ map: `${BILLING_MAP}\n[keys.BAD]\nrotate_every = "soon"\n` });
-    expect(await cli(["check", "--json"], run.deps)).toBe(1);
-    const data = report(run.stdout.text);
-    expect(data.problems).toEqual([
-      `${MAP_FILE}: key "BAD": field "rotate_every" must be <n>d, <n>w, <n>m or never`,
-      `${MAP_FILE}: key "BAD": needs at least one of "dev", "prod"`,
-    ]);
+    expect(await run.record("map-does-not-parse", ["check", "--json"])).toBe(1);
     expect(run.calls).toEqual([]);
     expect(run.log).toEqual([]);
   });
 
   test("an empty map is a problem, not a healthy setup", async () => {
     const run = setup({ map: "" });
-    expect(await cli(["check"], run.deps)).toBe(1);
-    expect(run.stdout.text).toContain(`2 Map a key\n  ${MAP_FILE} maps no keys yet.\n`);
+    expect(await run.record("empty-map", ["check"])).toBe(1);
     expect(run.calls).toEqual([]);
   });
 
@@ -417,62 +370,7 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
 
   test("the --json shape", async () => {
     const run = setup();
-    expect(await cli(["check", "/work/billing", "--json"], run.deps)).toBe(0);
-    const data = report(run.stdout.text);
-    expect(Object.keys(data)).toEqual([
-      "folder",
-      "map",
-      "registered",
-      "read",
-      "github",
-      "onePassword",
-      "keys",
-      "production",
-      "local",
-      "add",
-      "unknown",
-      "prerequisites",
-      "notes",
-      "problems",
-      "ok",
-    ]);
-    expect(data).toMatchObject({
-      folder: "/work/billing",
-      map: MAP_FILE,
-      registered: true,
-      onePassword: { signIn: "desktop", address: null },
-      problems: [],
-      ok: true,
-    });
-    expect(data.keys[1]).toEqual({
-      key: "STRIPE_API_KEY",
-      environment: "prod",
-      from: { reference: "op://Private/billing stripe api key/password", ok: true, problem: null },
-      destinations: [
-        {
-          destination: `cloudflare-worker:${ACCOUNT}:billing-worker:STRIPE_API_KEY`,
-          to: "cloudflare-worker",
-          login: "the wrangler login (OAuth)",
-          publisher: "me@example.com",
-          pinned: ACCOUNT,
-          reached: ACCOUNT,
-          ok: true,
-          problem: null,
-          fix: null,
-        },
-        {
-          destination: "github-actions:acme/billing:STRIPE_API_KEY",
-          to: "github-actions",
-          login: "the active gh login",
-          publisher: "acme",
-          pinned: "acme",
-          reached: "acme",
-          ok: true,
-          problem: null,
-          fix: null,
-        },
-      ],
-    });
+    expect(await run.record("json", ["check", "/work/billing", "--json"])).toBe(0);
     expect(leaks(...run.everything())).toBe(false);
   });
 

@@ -1,0 +1,45 @@
+$ keypin publish STRIPE_API_KEY
+exit 3
+
+--- file /work/billing/keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.STRIPE_API_KEY]
+rotate_every = "365d"
+dev = "op://Private/billing stripe api key/password"
+prod = { from = "op://Private/billing stripe api key/password", publish = [
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
+  { to = "github-actions", repo = "acme/billing" },
+] }
+
+--- given terminal ---
+"no"
+
+--- calls vault ---
+read billing stripe api key
+
+--- calls destination ---
+check cloudflare-worker:billing-worker
+check github-actions:acme/billing
+
+--- calls asked ---
+Write 2 secrets? [y/N] 
+
+--- stdout ---
+
+--- stderr ---
+
+STRIPE_API_KEY prod  from op://Private/billing stripe api key/password in 1Password account my.1password.com
+ok     Cloudflare  billing-worker  as me@example.com, account 11111111111111111111111111111111
+ok     GitHub      acme/billing    as acme, account acme
+
+ok     Read 1 value from 1Password account my.1password.com
+
+Plan  generation 8f24c3e0b75826a7
+  + Cloudflare  billing-worker  first write  needs approval
+    writing a Worker secret deploys a new version of the Worker
+  + GitHub      acme/billing    first write  needs approval
+
+Not confirmed. Nothing was written.

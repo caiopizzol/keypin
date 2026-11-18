@@ -1,0 +1,47 @@
+$ keypin check
+exit 1
+
+--- file /work/billing/keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.API_KEY]
+rotate_every = "90d"
+prod = { from = "op://Private/api key/password", publish = [
+  { to = "shelf", account = "library", shelf = "top" },
+] }
+
+--- file /work/billing/shelf.json ---
+{"account":"library","shelf":"bottom","needs":["NEW_KEY"]}
+
+--- given shelf CLI ---
+"ok"
+
+--- calls vault ---
+ids api key
+
+--- stdout ---
+billing /work/billing · read 0 env files, 0 wrangler configs, 1 shelf file, 0 workflows
+1 thing to do:
+1 Add the production keys to keypin.toml
+  NEW_KEY: shelf.json needs it; keypin.toml doesn't publish it to the bottom shelf.
+  Replace each <...> with the real value; keypin rejects a map that still has one:
+
+[keys.NEW_KEY]
+rotate_every = "90d"
+
+[keys.NEW_KEY.prod]
+from = "op://<vault>/<item>/<field>"
+
+[[keys.NEW_KEY.prod.publish]]
+to = "shelf"
+account = "library"
+shelf = "bottom"
+
+  Then run keypin check again.
+Note: /work/billing isn't registered, so keypin status doesn't list it; run keypin init there
+
+--- stderr ---
+ok     Looked up 1 item in 1Password account my.1password.com, not the values
+ok     Checked 1 account

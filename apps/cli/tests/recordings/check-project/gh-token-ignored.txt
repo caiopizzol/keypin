@@ -1,0 +1,130 @@
+$ keypin check
+exit 1
+
+--- file .env ---
+DATABASE_URL=sentinel-value-7f3a9c2e1d
+RESEND_API_KEY=sentinel-value-7f3a9c2e1d
+
+--- file .env.example ---
+DATABASE_URL=
+
+--- file .github/workflows/deploy.yml ---
+
+on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: deploy
+        env:
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+--- file keypin.toml ---
+# keypin.toml: this project's keys. It holds names and places, never values.
+# Uncomment and edit. Every field is checked; an unknown one is an error.
+#
+# The 1Password account the keys below read from: its sign-in address or account ID.
+# [1password]
+# account = "my.1password.com"
+#
+# A key, named after the variable your program reads.
+# [keys.EXAMPLE_API_KEY]
+# rotate_every = "180d" # <n>d, <n>w, <n>m or never
+# dev = "op://Private/my-project dev example api key/password" # what keypin run reads
+#
+# What keypin publish reads, and every place it writes it.
+# [keys.EXAMPLE_API_KEY.prod]
+# from = "op://Private/my-project prod example api key/password"
+#
+# [[keys.EXAMPLE_API_KEY.prod.publish]]
+# to = "cloudflare-worker"
+# account = "<cloudflare account ID>"
+# worker = "my-worker"
+#
+# [[keys.EXAMPLE_API_KEY.prod.publish]]
+# to = "github-actions"
+# repo = "owner/repo"
+
+--- file wrangler.toml ---
+name = "billing-worker"
+account_id = "11111111111111111111111111111111"
+
+[vars]
+REGION = "sentinel-value-7f3a9c2e1d"
+
+[secrets]
+required = ["RESEND_API_KEY"]
+
+--- given git ---
+{
+  "rev-parse --show-toplevel": "/work/billing\n",
+  "remote get-url origin": "git@github.com:acme/billing.git\n",
+  "config --get github.account": "alice\n"
+}
+
+--- given ghLogin ---
+"not logged in"
+
+--- given env ---
+{
+  "GH_TOKEN": "ghp_x"
+}
+
+--- calls reads ---
+worker 11111111111111111111111111111111 billing-worker
+github acme/billing as alice
+
+--- calls vault ---
+
+--- calls destination ---
+
+--- stdout ---
+billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub acme/billing
+5 things to do, in this order:
+1 Sign in to GitHub
+  keypin ignores GH_TOKEN: it publishes only as a login gh has saved, so a token meant for another tool can't pick the account. Unset GH_TOKEN, then run:
+    gh auth login --hostname github.com --with-token < token.txt
+  Use a classic token with the repo, read:org and gist scopes (gh needs all three), for alice.
+2 Sign in to Cloudflare
+    wrangler login
+  Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
+3 Set up 1Password
+  keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected.
+4 Move .env's keys into 1Password
+  .env sets DATABASE_URL, RESEND_API_KEY, which keypin.toml doesn't map.
+    keypin import .env DATABASE_URL RESEND_API_KEY --vault <vault> --account <1Password sign-in address>
+  Leave out a name that isn't a key; it stays in the file.
+5 Add the production keys to keypin.toml
+  STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and keypin.toml doesn't publish it there.
+  RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and keypin.toml doesn't publish it there.
+  If you ran the import above, run keypin check again for this TOML instead; the import wrote some of these tables.
+  Replace each <...> with the real value; keypin rejects a map that still has one:
+
+[1password]
+account = "<1Password sign-in address>"
+
+[keys.STRIPE_API_KEY]
+rotate_every = "90d"
+
+[keys.STRIPE_API_KEY.prod]
+from = "op://<vault>/<item>/<field>"
+
+[[keys.STRIPE_API_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+
+[keys.RESEND_API_KEY]
+rotate_every = "90d"
+
+[keys.RESEND_API_KEY.prod]
+from = "op://<vault>/<item>/<field>"
+
+[[keys.RESEND_API_KEY.prod.publish]]
+to = "cloudflare-worker"
+account = "11111111111111111111111111111111"
+worker = "billing-worker"
+
+  Then run keypin check again.
+
+--- stderr ---

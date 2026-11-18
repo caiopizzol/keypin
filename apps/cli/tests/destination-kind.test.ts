@@ -3,6 +3,7 @@ import { connectTo, type DestinationKind, type Discovery, isRecord, loadState } 
 import { cli } from "../src/cli";
 import { destinations, vaults } from "../src/start";
 import { fakeDeps, fakeVault, memoryFiles, SENTINEL, STATE } from "./fakes";
+import { recording } from "./recording";
 
 type ShelfTarget = { to: "shelf"; account: string; shelf: string };
 
@@ -117,9 +118,10 @@ prod = { from = "op://Private/api key/password", publish = [
 function setup(answer: string, files: Record<string, string> = {}) {
   const kinds = [...destinations, shelf];
   const disk = memoryFiles({ "/work/billing/keypin.toml": MAP, ...files });
+  const vault = fakeVault({ values: { "api key": SENTINEL } });
   const fake = fakeDeps({
     disk,
-    backend: fakeVault({ values: { "api key": SENTINEL } }).vault,
+    backend: vault.vault,
     deps: {
       destinations: kinds,
       destination: (target, publisher) => connectTo(kinds, target, publisher),
@@ -127,7 +129,23 @@ function setup(answer: string, files: Record<string, string> = {}) {
       ask: async () => answer,
     },
   });
-  return { ...fake, state: () => loadState(disk.files, STATE, vaults) };
+  const record = async (name: string, args: string[]) => {
+    const before = new Map(disk.contents);
+    const exit = await cli(args, fake.deps);
+    await expect(
+      recording({
+        args,
+        exit,
+        stdout: fake.stdout.text,
+        stderr: fake.stderr.text,
+        files: Object.fromEntries(before),
+        given: { "shelf CLI": shelfCli },
+        calls: { vault: vault.calls },
+      }),
+    ).toMatchFileSnapshot(`./recordings/destination-kind/${name}.txt`);
+    return exit;
+  };
+  return { ...fake, record, state: () => loadState(disk.files, STATE, vaults) };
 }
 
 describe("a destination kind defined outside keypin", () => {
@@ -151,10 +169,7 @@ describe("a destination kind's own sign-in", () => {
   test("keypin check lists it first, with its fix", async () => {
     shelfCli = "not installed";
     const run = setup("");
-    expect(await cli(["check"], run.deps)).toBe(0);
-    expect(run.stdout.text).toContain(
-      "1 thing to do:\n1 Install the shelf CLI\n    brew install shelf\n    shelf login\n",
-    );
+    expect(await run.record("own-sign-in", ["check"])).toBe(0);
     const json = setup("");
     await cli(["check", "--json"], json.deps);
     expect(JSON.parse(json.stdout.text)).toMatchObject({
@@ -181,22 +196,11 @@ describe("a destination kind's own discovery", () => {
       needs: ["NEW_KEY"],
     });
     const run = setup("", { "/work/billing/shelf.json": shelfJson });
-    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(await run.record("own-discovery", ["check"])).toBe(1);
     expect(run.stdout.text).toContain("read 0 env files, 0 wrangler configs, 1 shelf file");
     expect(run.stdout.text).toContain(
       "NEW_KEY: shelf.json needs it; keypin.toml doesn't publish it to the bottom shelf.",
     );
-    expect(run.stdout.text).toContain(`[keys.NEW_KEY]
-rotate_every = "90d"
-
-[keys.NEW_KEY.prod]
-from = "op://<vault>/<item>/<field>"
-
-[[keys.NEW_KEY.prod.publish]]
-to = "shelf"
-account = "library"
-shelf = "bottom"
-`);
     const json = setup("", { "/work/billing/shelf.json": shelfJson });
     await cli(["check", "--json"], json.deps);
     expect(JSON.parse(json.stdout.text)).toMatchObject({

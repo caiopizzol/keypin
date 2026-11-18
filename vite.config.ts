@@ -175,6 +175,14 @@ export default defineConfig({
         files: ["packages/*/src/**", "apps/*/src/**"],
         rules: { "keypin/no-error-text-matching": "error" },
       },
+      {
+        files: ["packages/*/tests/**", "apps/*/tests/**"],
+        rules: { "keypin/no-hand-copied-output": "error" },
+      },
+      {
+        files: ["packages/connectors/tests/aws/sigv4.test.ts"],
+        rules: { "keypin/no-hand-copied-output": "off" },
+      },
     ],
     options: { typeAware: true, typeCheck: true, denyWarnings: true },
   },

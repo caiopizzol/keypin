@@ -1,0 +1,69 @@
+$ keypin import .env.production --env prod --vault App Secrets --account my.1password.com --yes
+exit 0
+
+--- file /work/billing/.env ---
+STRIPE_KEY=sentinel-value-7f3a9c2e1d-stripe
+export WEBHOOK_SECRET="sentinel-value-7f3a9c2e1d-webhook"
+EMPTY=
+app.key=sentinel-value-7f3a9c2e1d-dotted
+
+--- file /work/billing/.env.production ---
+STRIPE_KEY=sentinel-value-7f3a9c2e1d-prod-stripe
+NEW_KEY=sentinel-value-7f3a9c2e1d-prod-new
+
+--- given vault items ---
+[]
+
+--- calls vault ---
+list my.1password.com App Secrets
+write billing prod stripe key
+write billing prod new key
+
+--- calls asked ---
+
+--- stdout ---
+
+--- stderr ---
+
+Import /work/billing/.env.production  into 1Password account my.1password.com, vault App Secrets
+ok     Listed the items in vault App Secrets of 1Password account my.1password.com, not the values
+
+Plan
+  + STRIPE_KEY  op://App Secrets/billing prod stripe key/password  create, rotated 2026-11-09
+  + NEW_KEY     op://App Secrets/billing prod new key/password     create, rotated 2026-11-09
+Map: write /work/billing/keypin.toml and register /work/billing
+
+ok     Created "billing prod stripe key" in vault App Secrets
+ok     Created "billing prod new key" in vault App Secrets
+ok     Mapped STRIPE_KEY, NEW_KEY in /work/billing/keypin.toml
+ok     registered (1 project)
+
+The imported values are now in 1Password, and keypin run --env prod -- <command> provides them. keypin left /work/billing/.env.production as it is.
+Nothing else is set in it. Delete it and stop loading it.
+
+--- wrote /home/me/.config/keypin/registry.json ---
+{
+  "version": 1,
+  "projects": [
+    "/work/billing"
+  ],
+  "shared": []
+}
+
+--- wrote /work/billing/keypin.toml ---
+# Written by keypin import. The values are in 1Password; this file holds only references.
+
+[1password]
+account = "my.1password.com"
+
+[keys.STRIPE_KEY]
+rotate_every = "90d"
+
+[keys.STRIPE_KEY.prod]
+from = "op://App Secrets/billing prod stripe key/password"
+
+[keys.NEW_KEY]
+rotate_every = "90d"
+
+[keys.NEW_KEY.prod]
+from = "op://App Secrets/billing prod new key/password"

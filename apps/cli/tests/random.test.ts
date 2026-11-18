@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { loadState } from "@keypin/core";
+import { generationOf, loadState, Secret } from "@keypin/core";
 import { cli } from "../src/cli";
 import { RandomIssuer, type RandomSpec } from "../src/random";
 import { issuer, vaults } from "../src/start";
@@ -12,6 +12,7 @@ import {
   STATE,
   writableVault,
 } from "./fakes";
+import { changes, recording } from "./recording";
 
 const OLD = "auth_secret_old_sentinel_3f9a";
 const GITHUB = "github-actions:acme/app";
@@ -62,7 +63,27 @@ function setup(options: Setup = {}) {
     const seen = [fake.stdout.text, fake.stderr.text, ...disk.contents.values()].join("\n");
     return [OLD, saved()].some((value) => seen.includes(value));
   };
-  return { ...fake, disk, vault, destinations, asked, run, saved, leaked };
+  const given = { answers: [...answers], terminal: options.terminal ?? true };
+  const record = async (name: string) => {
+    const before = new Map(disk.contents);
+    const start = vault.log.length;
+    const exit = await run();
+    const generation = await generationOf(new Secret(saved()));
+    await expect(
+      recording({
+        args: ["rotate", "AUTH_SECRET"],
+        exit,
+        stdout: fake.stdout.text,
+        stderr: fake.stderr.text,
+        files: Object.fromEntries(before),
+        given,
+        calls: { vault: vault.log.slice(start), destination: destinations.log, asked },
+        wrote: changes(before, disk.contents),
+      }).replaceAll(generation, "<generation of the new value>"),
+    ).toMatchFileSnapshot(`./recordings/random/${name}.txt`);
+    return exit;
+  };
+  return { ...fake, disk, vault, destinations, asked, run, record, saved, leaked };
 }
 
 describe("the random issuer", () => {
@@ -112,22 +133,12 @@ describe("the random issuer", () => {
 describe("keypin rotate with a random issuer", () => {
   test("reads no admin key, says everyone signs in again, saves, publishes and asks one y", async () => {
     const run = setup({ answers: ["y"] });
-    expect(await run.run()).toBe(0);
+    expect(await run.record("rotates")).toBe(0);
     expect(run.asked).toEqual(["Rotate AUTH_SECRET? [y/N] "]);
     expect(run.vault.log).toEqual(["read app secret", "save app secret", "ids app secret"]);
     expect(run.saved()).not.toBe(OLD);
     expect(run.destinations.delivered(run.saved())).toEqual([`${GITHUB} AUTH_SECRET`]);
     expect(run.stderr.text).toContain("ok     Read the key op://Private/app secret/password\n");
-    expect(run.stderr.text).toContain(
-      [
-        "Plan",
-        "  + random            create a new key",
-        "    replaces the old value: anything signed with it stops working, so everyone signs in again. Don't use it for Better Auth, which also reads AUTH_SECRET: its stored two-factor secrets would become unreadable",
-        "  ~ 1Password         save it to op://Private/app secret/password, rotated today",
-        "  + GitHub  acme/app  first write  needs approval",
-        "  = random            nothing to revoke: the new value replaces the old one",
-      ].join("\n"),
-    );
     expect(run.stderr.text).toContain(
       "Nothing to revoke: the old value stops working once your apps use the new one.",
     );

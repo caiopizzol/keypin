@@ -356,10 +356,16 @@ const noErrorTextMatching = defineRule({
 const EXACT_MATCHERS = new Set(["toBe", "toEqual", "toStrictEqual", "toContain"]);
 export const COPIED_LINES = 4;
 
-const UNKNOWN = "\u0000";
+const UNKNOWN = "";
 
 function writtenText(node: ESTree.Node): string {
-  if (node.type === "Literal") return typeof node.value === "string" ? node.value : UNKNOWN;
+  if (node.type === "Literal") {
+    const { value } = node;
+    if (typeof value === "string") return value;
+    if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint")
+      return String(value);
+    return node.raw === "null" ? "null" : UNKNOWN;
+  }
   if (node.type === "TemplateLiteral")
     return node.quasis
       .map((quasi, index) => {
@@ -387,7 +393,7 @@ function writtenText(node: ESTree.Node): string {
 function outputLines(node: ESTree.Node): number {
   return writtenText(node)
     .split("\n")
-    .filter((line) => line.replaceAll(UNKNOWN, "").trim() !== "").length;
+    .filter((line) => line.trim() !== "").length;
 }
 
 const EXPECT_MODIFIERS = new Set(["not", "resolves", "rejects"]);

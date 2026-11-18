@@ -48,6 +48,8 @@ const rejected: Record<string, string> = {
     'declare const rest: string[];\nexpect("x").toBe(["one", "two", "three", "four", ...rest].join("\\n"));',
   "template-with-value.ts": 'expect("x").toStrictEqual(`one\n${"two"}\nthree\nfour`);',
   "concatenated.ts": 'expect("x").toBe("one\\n" + "two\\n" + "three\\n" + "four\\n");',
+  "number-in-template.ts": 'expect("x").toBe(`one\\n${42}\\nthree\\nfour`);',
+  "nul-line.ts": 'expect("x").toBe("one\\ntwo\\nthree\\n\\0");',
 };
 
 const TESTS = "apps/cli/tests";

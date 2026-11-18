@@ -17,6 +17,7 @@ import { basename, dirname, join } from "node:path";
 
 export type Outcome =
   | { kind: "ok" }
+  | { kind: "symlinks"; paths: string[] }
   | { kind: "stale"; paths: string[] }
   | { kind: "tests-failed" };
 
@@ -46,6 +47,13 @@ function paths(output: Buffer): string[] {
 
 const entry = (path: string) => lstatSync(path, { throwIfNoEntry: false });
 
+function throughSymlink(cwd: string, path: string): boolean {
+  for (let part = path; part !== "." && part !== "/"; part = dirname(part)) {
+    if (entry(join(cwd, part))?.isSymbolicLink()) return true;
+  }
+  return false;
+}
+
 function copyCheckout(cwd: string, copy: string, skip: Set<string>) {
   const files = paths(git(cwd, ["ls-files", "-z", "--cached", "--others", "--exclude-standard"]));
   for (const path of files) {
@@ -74,19 +82,16 @@ export function checkRecordings(
   cwd: string,
   runTests: (copy: string, files: string[]) => number | null,
 ): Outcome {
-  const recordings = new Set(
+  const listed = (pathspec: string) =>
     paths(
-      git(cwd, [
-        "ls-files",
-        "-z",
-        "--cached",
-        "--others",
-        "--exclude-standard",
-        "--",
-        "*/recordings/*",
-      ]),
-    ),
+      git(cwd, ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", pathspec]),
+    );
+  const listedRecordings = listed("*/recordings/*");
+  const symlinks = [...listed("*/recordings"), ...listedRecordings].filter((path) =>
+    throughSymlink(cwd, path),
   );
+  if (symlinks.length > 0) return { kind: "symlinks", paths: symlinks };
+  const recordings = new Set(listedRecordings.filter((path) => entry(join(cwd, path))?.isFile()));
   if (recordings.size === 0) return { kind: "ok" };
   const writers = paths(
     git(
@@ -161,6 +166,14 @@ function report(outcome: Outcome, log: string): number {
   switch (outcome.kind) {
     case "ok":
       return 0;
+    case "symlinks":
+      writeAll(
+        2,
+        Buffer.from(
+          `Recordings must be plain files outside any symlinked folder. Fix these paths:\n${outcome.paths.join("\n")}\n`,
+        ),
+      );
+      return 1;
     case "stale":
       writeAll(
         2,

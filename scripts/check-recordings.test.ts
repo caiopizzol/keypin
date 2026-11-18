@@ -6,7 +6,9 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -43,6 +45,7 @@ function snapshot(dir: string, root = dir): string[] {
     const path = join(dir, item.name);
     if (item.name === ".git") return [];
     if (item.isDirectory()) return snapshot(path, root);
+    if (item.isSymbolicLink()) return [`${relative(root, path)} -> ${readlinkSync(path)}`];
     const { mtimeNs } = lstatSync(path, { bigint: true });
     return [`${relative(root, path)} ${mtimeNs} ${readFileSync(path, "utf8")}`];
   });
@@ -200,5 +203,42 @@ describe("check-recordings", () => {
     const cwd = repo({ "tests/a.test.ts": WRITER, "tests/recordings/a.txt": "a\n" });
     writeFileSync(join(cwd, ".git/index"), "garbage");
     expect(() => checkRecordings(cwd, writes({}))).toThrow("git ls-files failed");
+  });
+
+  test("refuses a symlinked recording or recordings folder, before copying anything", () => {
+    const cwd = repo({
+      "tests/a.test.ts": WRITER,
+      "elsewhere/a.txt": "a\n",
+      "tests/recordings/b.txt": "b\n",
+    });
+    symlinkSync("b.txt", join(cwd, "tests/recordings/link.txt"));
+    mkdirSync(join(cwd, "tests/nested"));
+    symlinkSync(join(cwd, "elsewhere"), join(cwd, "tests/nested/recordings"));
+    git(cwd, "add", "-A");
+    git(cwd, "commit", "-qm", "links");
+    const before = snapshot(cwd);
+    let ran = false;
+    const outcome = checkRecordings(cwd, () => {
+      ran = true;
+      return 0;
+    });
+    expect(outcome).toEqual({
+      kind: "symlinks",
+      paths: ["tests/nested/recordings", "tests/recordings/link.txt"],
+    });
+    expect(ran).toBe(false);
+    expect(snapshot(cwd)).toEqual(before);
+  });
+
+  test("ignores a recording already deleted from disk", () => {
+    const cwd = repo({
+      "tests/a.test.ts": WRITER,
+      "tests/recordings/a.txt": "a\n",
+      "tests/recordings/gone.txt": "g\n",
+    });
+    rmSync(join(cwd, "tests/recordings/gone.txt"));
+    expect(checkRecordings(cwd, writes({ "tests/recordings/a.txt": "a\n" }))).toEqual({
+      kind: "ok",
+    });
   });
 });

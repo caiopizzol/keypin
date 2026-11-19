@@ -381,6 +381,52 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
   });
 });
 
+describe("keypin rotate --due for a key CI pulls from the vault", () => {
+  const PULLED = MAP.replace(
+    'publish = [{ to = "github-actions", repo = "acme/mailer" }]\nissuer',
+    'pull = [{ by = "github-actions", repo = "acme/mailer" }]\nissuer',
+  );
+
+  test("a vault save that didn't land is finished by the next --due, not left waiting", async () => {
+    const w = await rotatedOnceOnALaptop(PULLED);
+    const save = w.vault.write.bind(w.vault);
+    w.vault.write = async () => {
+      throw new Error("1Password: the request timed out");
+    };
+    expect(await ci(w).run("--due", "--yes")).toBe(1);
+    expect(w.effects).toEqual(["resend create re-new-1", "resend create re-new-2"]);
+    w.vault.write = save;
+
+    const next = ci(w);
+    expect(await next.run("--due", "--yes")).toBe(0);
+    expect(next.stderr.text).toContain(
+      "RESEND_API_KEY  finish  finishing the rotation from 2026-11-09",
+    );
+    expect(w.effects).toEqual([
+      "resend create re-new-1",
+      "resend create re-new-2",
+      "resend create re-new-3",
+    ]);
+    expect(next.warnings).toEqual([WARNING]);
+
+    expect(await ci(w).run("--approve-revoke", "RESEND_API_KEY")).toBe(0);
+    expect(w.effects.at(-1)).toBe("resend revoke re-new-1");
+  });
+
+  test("after the vault goes back to the old key, a key that isn't due is skipped, not finished", async () => {
+    const w = await rotatedOnceOnALaptop(PULLED);
+    const pulledByAJob = w.value();
+    expect(await ci(w).run("--due", "--yes")).toBe(0);
+    expect(w.effects).toEqual(["resend create re-new-1", "resend create re-new-2"]);
+    w.inner.values.set(ITEM, pulledByAJob);
+
+    const next = ci(w);
+    expect(await next.run("--due", "--yes")).toBe(0);
+    expect(next.stderr.text).toContain("RESEND_API_KEY  skip  not due until 2027-02-07");
+    expect(w.effects, "nothing created or revoked").toHaveLength(2);
+  });
+});
+
 describe("keypin rotate --due after a person replaced a waiting key by hand", () => {
   const HAND = "re_hand_sentinel_value_9a3d";
 

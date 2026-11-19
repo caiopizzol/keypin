@@ -966,3 +966,161 @@ describe("keypin rotate --discard", () => {
     }
   });
 });
+
+describe("keypin rotate, for a key CI pulls from the vault", () => {
+  const READER = `{ by = "github-actions", repo = "acme/jobs", environment = "production" }`;
+  const pulled = (map: string) =>
+    memoryFiles({
+      "/work/billing/keypin.toml": map.replace(/publish = \[[^\]]*\]/, `pull = [${READER}]`),
+    });
+  const mixed = () =>
+    memoryFiles({
+      "/work/billing/keypin.toml": MAP.replace("\nissuer = ", `\npull = [${READER}]\nissuer = `),
+    });
+
+  test("--yes won't reset a key keypin saved once the vault holds the key it replaced again", async () => {
+    const first = setup({ disk: pulled(MAP), resetsOld: true, answers: ["y"] });
+    expect(await first.run()).toBe(0);
+    first.vault.values.set("mailer resend key", OLD);
+    const run = setup({ disk: first.disk, vault: first.vault, resetsOld: true, terminal: false });
+    expect(await run.run("--yes")).toBe(1);
+    expect(run.stderr.text).toContain(
+      "Stopped: Resend makes a new key by resetting key key-1, which keypin saved on 2026-11-09T12:00:00.000Z before 1Password went back to the key it replaced, and something may still use it. --yes can't approve that. To rotate anyway, run this in a terminal:\n  cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts rotate RESEND_API_KEY\nNothing was created.",
+    );
+    expect(run.issuer.log).toEqual(["check none"]);
+  });
+
+  test("--yes won't reset a key whose save keypin couldn't confirm", async () => {
+    const first = setup({ disk: pulled(MAP), resetsOld: true, answers: ["y"] });
+    expect(await first.run()).toBe(0);
+    const unsaved = writableVault({ "mailer resend key": NEW(1), "resend admin key": ADMIN }, true);
+    const failing = setup({
+      disk: first.disk,
+      vault: unsaved,
+      made: first.vault.made,
+      resetsOld: true,
+      answers: ["y"],
+    });
+    expect(await failing.run()).toBe(1);
+    const run = setup({ disk: first.disk, vault: first.vault, resetsOld: true, terminal: false });
+    expect(await run.run("--yes")).toBe(1);
+    expect(run.stderr.text).toContain(
+      "Stopped: Resend makes a new key by resetting key key-2, which keypin may have saved to 1Password on",
+    );
+    expect(run.stderr.text).toContain("--yes can't approve that.");
+    expect(run.issuer.log.some((line) => line.startsWith("create "))).toBe(false);
+  });
+
+  test("--check and --plan say the same reset needs a terminal, and create nothing", async () => {
+    const first = setup({ disk: pulled(MAP), resetsOld: true, answers: ["y"] });
+    expect(await first.run()).toBe(0);
+    const unsaved = writableVault({ "mailer resend key": NEW(1), "resend admin key": ADMIN }, true);
+    const failing = setup({
+      disk: first.disk,
+      vault: unsaved,
+      made: first.vault.made,
+      resetsOld: true,
+      answers: ["y"],
+    });
+    expect(await failing.run()).toBe(1);
+    const check = setup({ disk: first.disk, vault: first.vault, resetsOld: true, terminal: false });
+    expect(await cli(["rotate", "--check"], check.deps), check.stderr.text).toBe(1);
+    expect(check.stderr.text).toContain("Stopped: Resend makes a new key by resetting key key-2");
+    expect(check.stderr.text).not.toContain("is ready for keypin rotate --due");
+    const plan = setup({ disk: first.disk, vault: first.vault, resetsOld: true, terminal: false });
+    expect(await plan.run("--plan")).toBe(NEEDS_APPROVAL);
+    expect(plan.stderr.text).toContain(
+      "This plan needs approval in a terminal; --yes can't give it.",
+    );
+    for (const run of [check, plan])
+      expect(run.issuer.log.some((line) => line.startsWith("create "))).toBe(false);
+  });
+
+  test("--plan --yes on that reset suggests a terminal command without --yes", async () => {
+    const first = setup({ disk: pulled(MAP), resetsOld: true, answers: ["y"] });
+    expect(await first.run()).toBe(0);
+    const unsaved = writableVault({ "mailer resend key": NEW(1), "resend admin key": ADMIN }, true);
+    const failing = setup({
+      disk: first.disk,
+      vault: unsaved,
+      made: first.vault.made,
+      resetsOld: true,
+      answers: ["y"],
+    });
+    expect(await failing.run()).toBe(1);
+    const plan = setup({ disk: first.disk, vault: first.vault, resetsOld: true, terminal: false });
+    expect(await plan.run("--plan", "--yes")).toBe(NEEDS_APPROVAL);
+    const suggested = plan.stderr.text.split("To approve, run this in a terminal:\n")[1] ?? "";
+    expect(suggested).toContain("rotate RESEND_API_KEY");
+    expect(suggested).not.toContain("--yes");
+    expect(suggested).not.toContain("--plan");
+  });
+
+  test("saves the new key to the vault, writes nowhere, and revokes the old key after a second y", async () => {
+    const first = setup({ disk: pulled(MAP), answers: ["y"] });
+    expect(await first.run()).toBe(0);
+    const again = setup({ disk: first.disk, vault: first.vault, answers: ["y", "y"] });
+    expect(await again.record("pulled", "--plan")).toBe(NEEDS_APPROVAL);
+    expect(await again.run()).toBe(0);
+    expect(again.asked).toEqual([
+      "Rotate RESEND_API_KEY? [y/N] ",
+      "Revoke the old key at Resend? [y/N] ",
+    ]);
+    expect(again.issuer.log).toEqual([
+      "check key-1",
+      "check key-1",
+      "create RESEND_API_KEY prod 2026-11-09 12:00:00 a1b2c3 -> key-2",
+      "revoke key-1",
+    ]);
+    expect(again.destinations.log).toEqual([]);
+    expect(again.vault.values.get("mailer resend key")).toBe(NEW(2));
+    expect(again.stderr.text).toContain(
+      "Rotated RESEND_API_KEY (prod): the new key is in 1Password. GitHub Actions acme/jobs environment production reads it from there at job time.",
+    );
+    expect(again.leaked()).toBe(false);
+  });
+
+  test("the plan for a rotation waiting to revoke still lists the jobs that pull the key", async () => {
+    const first = setup({ disk: pulled(MAP), answers: ["y"] });
+    expect(await first.run()).toBe(0);
+    const waiting = setup({ disk: first.disk, vault: first.vault, answers: ["y", "n"] });
+    expect(await waiting.run()).toBe(0);
+    const plan = setup({ disk: first.disk, vault: first.vault });
+    expect(await plan.run("--plan")).toBe(NEEDS_APPROVAL);
+    expect(plan.stderr.text).toContain("Resuming: keypin created key key-2");
+    expect(plan.stderr.text).toMatch(
+      /GitHub Actions acme\/jobs environment production +reads the new key from the vault at job time/,
+    );
+  });
+
+  test("without a terminal, --yes saves the new key but never revokes", async () => {
+    const first = setup({ disk: pulled(MAP), answers: ["y"] });
+    expect(await first.run()).toBe(0);
+    const due = setup({ disk: first.disk, vault: first.vault, terminal: false });
+    expect(await due.run("--yes")).toBe(NEEDS_APPROVAL);
+    expect(due.vault.values.get("mailer resend key")).toBe(NEW(2));
+    expect(due.issuer.log.some((l) => l.startsWith("revoke"))).toBe(false);
+    expect(due.stderr.text).toContain(
+      "The old key key-1 still works. Revoking it needs a y in a terminal.",
+    );
+  });
+
+  test("a key with destinations too revokes nothing until every destination has the new key", async () => {
+    const failing = setup({ disk: mixed(), failWrite: [GITHUB], answers: ["y", "y"] });
+    expect(await failing.run()).toBe(1);
+    const resumed = setup({ disk: failing.disk, vault: failing.vault, answers: ["y", "y"] });
+    expect(await resumed.run()).toBe(0);
+    expect(resumed.writes()).toEqual([`write ${GITHUB} RESEND_API_KEY (${NEW(1).length} chars)`]);
+    expect(resumed.stderr.text).toContain(
+      "the new key is in 1Password and the 2 destinations in the map. GitHub Actions acme/jobs environment production reads it from there at job time.",
+    );
+  });
+
+  test("a key nothing reads says to add a destination or a pull entry", async () => {
+    const run = setup({ disk: pulled(MAP.replace(/publish = \[[^\]]*\]\n/, "")) });
+    expect(await run.run()).toBe(1);
+    expect(run.stderr.text).toContain(
+      "the map lists no destinations or pull entries for RESEND_API_KEY (prod); add them first, so the new key reaches what uses it",
+    );
+  });
+});

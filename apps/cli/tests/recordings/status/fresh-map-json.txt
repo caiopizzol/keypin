@@ -62,7 +62,8 @@ prod = { from = "op://Private/web prod session secret/password", publish = [
       "rotateEvery": "365d",
       "due": "2027-10-23",
       "issuer": null,
-      "destinations": []
+      "destinations": [],
+      "pull": []
     },
     {
       "project": "/work/billing",
@@ -93,7 +94,8 @@ prod = { from = "op://Private/web prod session secret/password", publish = [
           "receipt": null,
           "stale": null
         }
-      ]
+      ],
+      "pull": []
     },
     {
       "project": "/work/web",
@@ -111,7 +113,8 @@ prod = { from = "op://Private/web prod session secret/password", publish = [
       "rotateEvery": "180d",
       "due": "2027-05-08",
       "issuer": null,
-      "destinations": []
+      "destinations": [],
+      "pull": []
     },
     {
       "project": "/work/web",
@@ -136,7 +139,8 @@ prod = { from = "op://Private/web prod session secret/password", publish = [
           "receipt": null,
           "stale": null
         }
-      ]
+      ],
+      "pull": []
     }
   ],
   "problems": [

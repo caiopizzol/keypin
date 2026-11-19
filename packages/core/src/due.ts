@@ -1,6 +1,6 @@
 import type { Environment, KeyId, KeyRef, VaultMetadata } from "./contracts";
 import { addDays, type Day } from "./days";
-import { type KeysMap, pairedWith } from "./map";
+import { type KeysMap, pairedWith, reaches } from "./map";
 
 export type Progress = { kind: "unfinished" | "waiting"; since: string; revokes: boolean } | null;
 
@@ -12,7 +12,7 @@ export type DueChoice =
 export function dueRefs(map: KeysMap, environment: Environment): KeyRef[] {
   return map.keys.flatMap((key) => {
     const entry = key.environments[environment];
-    return entry?.issuer && entry.publish.length ? [entry.ref] : [];
+    return entry?.issuer && reaches(entry) ? [entry.ref] : [];
   });
 }
 
@@ -37,7 +37,7 @@ export function dueKeys(input: {
       return skip(
         `its ID is the key ${entry.idKey}; rotate the two with keypin rotate ${key.name}`,
       );
-    if (!entry.publish.length) return skip("no destination for the new key");
+    if (!reaches(entry)) return skip("no destination or pull entry for the new key");
     const progress = input.progress(key.name);
     if (progress?.kind === "waiting")
       return [

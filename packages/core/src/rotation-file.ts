@@ -24,6 +24,7 @@ export interface CommittedIssued {
   at: string;
   old: { id: string | null; generation: Generation; revoked: boolean };
   held?: true;
+  unsaved?: true;
 }
 
 export interface CommittedWrite {
@@ -219,6 +220,7 @@ function committedIssued(i: Issued): CommittedIssued {
     at: i.at,
     old: { id: i.old.id, generation: i.old.generation, revoked: i.old.revoked },
     ...(i.held ? { held: true } : {}),
+    ...(i.unsaved ? { unsaved: true } : {}),
   };
 }
 
@@ -337,14 +339,19 @@ const isText = (value: unknown): value is string => typeof value === "string";
 
 function readIssued(value: unknown): CommittedIssued | null {
   if (!isRecord(value) || !isRecord(value.old)) return null;
-  const { key, environment, issuer, id, generation, at, held } = value;
+  const { key, environment, issuer, id, generation, at, held, unsaved } = value;
   const { id: oldId, generation: oldGeneration, revoked } = value.old;
   if (!isText(key) || !isText(environment) || !isText(issuer) || !isText(id)) return null;
   if (!isText(generation) || !isText(at) || !isText(oldGeneration)) return null;
   if (!(oldId === null || isText(oldId)) || typeof revoked !== "boolean") return null;
-  if (held !== undefined && held !== true) return null;
+  if ((held !== undefined && held !== true) || (unsaved !== undefined && unsaved !== true))
+    return null;
   const old = { id: oldId, generation: oldGeneration, revoked };
-  return { key, environment, issuer, id, generation, at, old, ...(held ? { held } : {}) };
+  const flags = {
+    ...(held ? { held: true as const } : {}),
+    ...(unsaved ? { unsaved: true as const } : {}),
+  };
+  return { key, environment, issuer, id, generation, at, old, ...flags };
 }
 
 function readWrite(value: unknown): CommittedWrite | null {

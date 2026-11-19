@@ -41,12 +41,15 @@ export const workflowDiscovery: Discovery<WorkflowHost> = {
   files: { key: "workflows", noun: "workflow" },
   async scan(project, host) {
     const top = (await host.git(project.root, ["rev-parse", "--show-toplevel"]))?.trim() || null;
-    const workflows = await readWorkflows(project, top);
-    return { finish: () => lookUp(project, host, top, workflows) };
+    const { workflows, complete } = await readWorkflows(project, top);
+    return { finish: () => lookUp(project, host, top, workflows, complete) };
   },
 };
 
-async function readWorkflows(project: ProjectReader, top: string | null): Promise<Workflow[]> {
+async function readWorkflows(
+  project: ProjectReader,
+  top: string | null,
+): Promise<{ workflows: Workflow[]; complete: boolean }> {
   const dir = join(top ?? project.root, ".github", "workflows");
   const listed = await project.list(dir);
   if (!listed.ok) {
@@ -55,19 +58,20 @@ async function readWorkflows(project: ProjectReader, top: string | null): Promis
         "the secrets the workflows use",
         `${relative(project.root, dir)} couldn't be read: ${listed.reason}`,
       );
-    return [];
+    return { workflows: [], complete: listed.missing };
   }
   const workflows: Workflow[] = [];
+  let complete = true;
   for (const entry of listed.entries.toSorted((a, b) => a.name.localeCompare(b.name))) {
     if (entry.kind !== "file" || !/\.ya?ml$/.test(entry.name)) continue;
     const path = relative(project.root, join(dir, entry.name));
     const text = await project.read(path);
-    if (text === null) continue;
-    const refs = workflowRefs(text);
+    const refs = text === null ? null : workflowRefs(text);
     if (refs) workflows.push({ path, refs });
-    else project.unknown(`the secrets ${path} uses`, "it isn't valid YAML");
+    else if (text !== null) project.unknown(`the secrets ${path} uses`, "it isn't valid YAML");
+    complete &&= refs !== null && !refs.hidesUses;
   }
-  return workflows;
+  return { workflows, complete };
 }
 
 async function lookUp(
@@ -75,6 +79,7 @@ async function lookUp(
   host: WorkflowHost,
   top: string | null,
   workflows: Workflow[],
+  complete: boolean,
 ): Promise<Discovered> {
   for (const workflow of workflows)
     if (workflow.refs.hidesUses)
@@ -143,7 +148,7 @@ async function lookUp(
     used: uses || github.pulled.length > 0,
     about: github.repo ? `GitHub ${github.repo}` : null,
     report: { github: { repo: github.repo, login } },
-    needs: (view) => needsOf(github, workflows, view),
+    needs: (view) => needsOf(github, workflows, complete, view),
   };
 }
 
@@ -192,7 +197,7 @@ function describePlace(repo: string, environment: string | null): string {
   return environment === null ? repo : `${repo} environment ${environment}`;
 }
 
-function needsOf(github: Repo, workflows: Workflow[], view: MapView) {
+function needsOf(github: Repo, workflows: Workflow[], complete: boolean, view: MapView) {
   const declared = new Map<string, Set<string>>();
   const repo = githubPlace(github, null, declared, view);
   const uses = workflows.flatMap((workflow) =>
@@ -268,7 +273,7 @@ function needsOf(github: Repo, workflows: Workflow[], view: MapView) {
   const hidden = workflows.some((w) => w.refs.hidesUses);
   return {
     needs,
-    problems: leftovers(github, leftover),
+    problems: leftovers(github, leftover, complete),
     notes: [
       ...pullNotes(github.repo, here, workflows, view),
       ...[...fromOrganization].map(
@@ -309,7 +314,11 @@ function reaches(pulled: PulledAt, jobEnvironment: string | null): boolean {
   return literalEnvironment(jobEnvironment)?.toLowerCase() === pulled.environment.toLowerCase();
 }
 
-function leftovers(github: Repo, references: ReadonlyMap<PulledAt, string[]>): string[] {
+function leftovers(
+  github: Repo,
+  references: ReadonlyMap<PulledAt, string[]>,
+  complete: boolean,
+): string[] {
   const problems = new Map<string, string>();
   for (const pulled of github.pulled) {
     const { key, environment } = pulled.pulled;
@@ -339,16 +348,21 @@ function leftovers(github: Repo, references: ReadonlyMap<PulledAt, string[]>): s
       ...(stored ? [`${place} still has it as an Actions secret`] : []),
     ];
     const remove = `gh secret delete ${key} --repo ${pulled.repo}${pulled.environment === null ? "" : ` --env ${shellWord(pulled.environment)}`}`;
-    const seen = github.repo !== null && pulled.repo.toLowerCase() === github.repo.toLowerCase();
+    const origin = github.repo !== null && pulled.repo.toLowerCase() === github.repo.toLowerCase();
+    const unread = !origin
+      ? `check can't read the workflows of ${pulled.repo}`
+      : !complete
+        ? `check can't tell which secrets every workflow of ${pulled.repo} uses`
+        : null;
     const fixes = [
       ...(paths.length
         ? [`read it with keypin run --env ${environment} --only ${key} -- <command> instead`]
         : []),
       ...(stored
         ? [
-            seen
+            unread === null
               ? `delete the Actions secret: ${remove}`
-              : `check can't read the workflows of ${pulled.repo}, so it can't tell whether one still uses ${secret}; once none does, delete the Actions secret: ${remove}`,
+              : `${unread}, so it can't tell whether one still uses ${secret}; once none does, delete the Actions secret: ${remove}`,
           ]
         : []),
     ];

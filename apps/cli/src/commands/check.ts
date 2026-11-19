@@ -16,6 +16,7 @@ import {
   type Prerequisite,
   type PublishTarget,
   pullPlace,
+  type PullReader,
   secretKey,
   sentence,
   SignInFailed,
@@ -128,6 +129,22 @@ const ORDER = {
 const ITEM_NOTE =
   "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields";
 
+function publishedAt(map: KeysMap, name: string, reader: PullReader, deps: Deps): string[] {
+  const place = pullPlace(reader, deps.pulls);
+  const secret = (target: PublishTarget, key: string) => secretKey(target, key, deps.destinations);
+  return map.keys.flatMap((other) =>
+    map.environments.flatMap((environment) =>
+      other.environments[environment]?.publish.some(
+        (target) =>
+          checkId(target, deps.destinations) === place &&
+          secret(target, other.name) === secret(target, name),
+      )
+        ? [other.name === name ? environment : `${other.name} (${environment})`]
+        : [],
+    ),
+  );
+}
+
 async function build(
   folder: string,
   deps: Deps,
@@ -162,11 +179,7 @@ async function build(
             key: key.name,
             environment,
             reader,
-            publishedIn: parsed.map.environments.filter((other) =>
-              key.environments[other]?.publish.some(
-                (target) => checkId(target, deps.destinations) === pullPlace(reader, deps.pulls),
-              ),
-            ),
+            publishedIn: publishedAt(parsed.map, key.name, reader, deps),
           })),
         ),
       )

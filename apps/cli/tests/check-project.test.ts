@@ -2174,6 +2174,42 @@ publish = [{ to = "github-actions", repo = "acme/billing" }]
     expect(problems).not.toContain("gh secret delete");
   });
 
+  test("a copy another map key publishes under a differently cased name is a conflict, not a copy to delete", async () => {
+    const map = PULLED.replace(
+      "[[keys.STRIPE_API_KEY.prod.pull]]",
+      `[keys.stripe_api_key.dev]
+from = "op://Private/billing dev stripe api key/password"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
+
+[[keys.STRIPE_API_KEY.prod.pull]]`,
+    );
+    const run = setup({ files: project(OIDC, map), github: COPY });
+    await cli(["check", "--json"], run.deps);
+    const problems = JSON.stringify(json(run.stdout.text).problems);
+    expect(problems).toContain(
+      "STRIPE_API_KEY: keypin.toml says jobs in acme/billing pull it from the vault at job time, but also publishes it there for stripe_api_key (dev); keep the pull entry or the publish entry, not both",
+    );
+    expect(problems).not.toContain("gh secret delete");
+  });
+
+  test("a copy in the repo isn't called safe to delete when a workflow names its secrets by an expression", async () => {
+    const workflow = `${OIDC}      - run: echo \${{ secrets[vars.SELECTED_SECRET] }}
+`;
+    const run = setup({ files: project(workflow), github: COPY });
+    await cli(["check", "--json"], run.deps);
+    const data = json(run.stdout.text);
+    expect(data.unknown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ what: "every secret .github/workflows/deploy.yml uses" }),
+      ]),
+    );
+    expect(data.problems).toEqual(
+      expect.arrayContaining([
+        "STRIPE_API_KEY: keypin.toml says jobs in acme/billing pull it from the vault at job time, but acme/billing still has it as an Actions secret; check can't tell which secrets every workflow of acme/billing uses, so it can't tell whether one still uses secrets.STRIPE_API_KEY; once none does, delete the Actions secret: gh secret delete STRIPE_API_KEY --repo acme/billing",
+      ]),
+    );
+  });
+
   test("a copy in a repo whose workflows check can't read isn't called safe to delete", async () => {
     const map = PULLED.replace('repo = "acme/billing"\n', 'repo = "acme/jobs"\n');
     const run = setup({ files: project(OIDC, map), github: COPY });

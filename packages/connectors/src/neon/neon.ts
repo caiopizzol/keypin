@@ -41,6 +41,7 @@ interface Operation {
 }
 
 export class NeonIssuer implements Issuer {
+  readonly createResetsOld = true;
   readonly #admin: () => Promise<Secret>;
   readonly #projectId: string;
   readonly #branchId: string;

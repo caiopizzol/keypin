@@ -106,6 +106,7 @@ interface Job {
   due: boolean;
   approve: boolean;
   check: boolean;
+  discard: boolean;
   args: string[];
   envArgs: string[];
   map: KeysMap;
@@ -116,7 +117,7 @@ interface Job {
   path: string;
 }
 
-type Flags = Pick<Job, "yes" | "plan" | "due" | "approve" | "check" | "args">;
+type Flags = Pick<Job, "yes" | "plan" | "due" | "approve" | "check" | "discard" | "args">;
 
 interface Ready {
   ids: ItemIds;
@@ -137,6 +138,7 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
       due: { type: "boolean", default: false },
       "approve-revoke": { type: "boolean", default: false },
       check: { type: "boolean", default: false },
+      discard: { type: "boolean", default: false },
     },
     allowPositionals: true,
   });
@@ -147,6 +149,8 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
   if (values.due && positionals.length)
     throw new UsageError("--due takes no key: it rotates every key that is due");
   if (approve && values.plan) throw new UsageError("--approve-revoke takes no --plan");
+  if (values.discard && (values.due || approve || values.check))
+    throw new UsageError("--discard takes one key: keypin rotate <VARIABLE> --discard");
   if (values.check && (positionals.length || values.due || approve || values.plan || values.yes))
     throw new UsageError("--check takes only --env: it checks every key --due rotates");
   if (extra.length || (keyId === undefined && !values.due && !approve && !values.check))
@@ -163,6 +167,7 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
     due: values.due,
     approve,
     check: values.check,
+    discard: values.discard,
     args,
   };
   const context = { map, environment, envArgs, committed, deps, out };
@@ -421,6 +426,7 @@ const NO_FLAGS: Flags = {
   due: false,
   approve: false,
   check: false,
+  discard: false,
   args: [],
 };
 
@@ -519,6 +525,7 @@ async function rotateLocked(job: Job): Promise<number> {
     published: counted.every((step) => step.action === "skip"),
     idSaved,
   });
+  const unfinished = next.action !== "create";
   const issuer = deps.issuer(spec, read.admin);
   if (next.action === "wait") {
     const held = next.issued;
@@ -542,6 +549,15 @@ async function rotateLocked(job: Job): Promise<number> {
     next = { action: "resume", issued: { ...next.issued, held: false } };
     state = recordIssued(state, next.issued);
     if (!job.plan) await saveState(deps.files, job.path, state);
+  }
+  if (job.discard && !unfinished) {
+    const vault = vaultName(entry.ref, deps.vaults);
+    const left = next.action === "create" ? next.abandoned : null;
+    const note = left ? abandonedNote(left, issuer, spec, vault) : null;
+    say(
+      `Stopped: ${key.name} (${owner.environment}) has no unfinished rotation to discard. ${note ?? `To replace the key ${vault} holds, run:\n  ${commandLine(deps, "rotate", withoutDiscard(job.args))}`}\nNothing was created.`,
+    );
+    return 1;
   }
   if (job.approve && !revokeOnly(next, counted, idSaved)) {
     say(
@@ -583,14 +599,25 @@ async function rotateLocked(job: Job): Promise<number> {
       return 1;
     }
     if (!(await vaultTakesWrites(job))) return 1;
-    const { old } = next.issued;
-    if (old.id !== null && !old.revoked)
-      say(
-        out.dim(
-          `\nkeypin didn't revoke key ${shown(issuer, old.id)}, the one key ${shown(issuer, next.issued.id)} replaced. If nothing uses it, delete it at ${issuer.dashboard()}.`,
-        ),
-      );
+    oldStays(job, issuer, next.issued);
     next = { action: "create", current: null, abandoned: null };
+  }
+  if (job.discard && next.action === "resume") {
+    const dropped = next.issued;
+    if (issuer.createResetsOld && waitsForRevoke(dropped) && dropped.old.id !== null) {
+      say(
+        `\nStopped: ${issuer.describe()} makes a new key by resetting key ${shown(issuer, dropped.old.id)}, the one key ${shown(issuer, dropped.id)} replaced, and a destination may still use it. Finish this rotation, then run it again to replace key ${shown(issuer, dropped.id)}:\n  ${commandLine(deps, "rotate", withoutDiscard(job.args))}\nNothing was created.`,
+      );
+      return 1;
+    }
+    if (!(await vaultTakesWrites(job))) return 1;
+    say(
+      out.dim(
+        `\nDiscarding key ${shown(issuer, dropped.id)}, which keypin created at ${issuer.describe()} on ${dropped.at}: a new key replaces it everywhere.`,
+      ),
+    );
+    oldStays(job, issuer, dropped);
+    next = { action: "create", current: dropped.id, abandoned: null };
   }
   if (next.action === "resume") {
     const pairSteps = (await pairPlan(new Secret(next.issued.id)))?.steps ?? [];
@@ -661,6 +688,7 @@ async function rotateLocked(job: Job): Promise<number> {
     else mayHaveCreated(job, issuer, created.name);
     return 1;
   }
+  job = { ...job, discard: false, args: withoutDiscard(job.args) };
   const issued: Issued = {
     ...owner,
     issuer: spec.kind,
@@ -719,6 +747,10 @@ async function rotateLocked(job: Job): Promise<number> {
     { steps, pairSteps, idSaved: true },
     state,
   );
+}
+
+function withoutDiscard(args: readonly string[]): string[] {
+  return args.filter((arg) => arg !== "--discard");
 }
 
 function revokeOnly(next: NextRotation, steps: readonly PlanStep[], idSaved: boolean): boolean {
@@ -1073,6 +1105,16 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
     recordIssued(state, { ...issued, old: { ...issued.old, revoked: true } }),
   );
   return 0;
+}
+
+function oldStays({ out }: Job, issuer: Issuer, issued: Issued): void {
+  const { old } = issued;
+  if (old.id === null || old.revoked) return;
+  out.line(
+    out.dim(
+      `\nkeypin didn't revoke key ${shown(issuer, old.id)}, the one key ${shown(issuer, issued.id)} replaced. If nothing uses it, delete it at ${issuer.dashboard()}.`,
+    ),
+  );
 }
 
 function abandonedNote(

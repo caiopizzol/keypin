@@ -97,6 +97,7 @@ export interface Issuer {
   lostCreate?(name: string): string;
   revoke?(id: string): Promise<"revoked" | "already gone">;
   label?(id: string): string;
+  readonly createResetsOld?: true;
 }
 
 export interface Receipt {

@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import { parseMap } from "@keypin/core";
-import { destinations, issuers, vaults } from "../src/start";
+import { destinations, issuers, pulls, vaults } from "../src/start";
 
 const ROOT = join(import.meta.dirname, "../../..");
 const FILES = [
@@ -33,7 +33,7 @@ describe("keypin.toml examples in the docs", () => {
   });
 
   test.each(examples)("$name is a valid map", ({ name, map }) => {
-    const parsed = parseMap(map, name, destinations, issuers, vaults);
+    const parsed = parseMap(map, name, destinations, issuers, vaults, pulls);
     expect(parsed.ok ? [] : parsed.errors).toEqual([]);
   });
 });

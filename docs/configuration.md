@@ -135,6 +135,35 @@ The map says where a key goes, not who writes it, so every teammate publishes fr
   `KEYPIN_GITLAB_TOKEN`. It needs the Maintainer role on a project, or Owner on a group. A CI/CD job token can't
   change variables. keypin doesn't sign in with `GITLAB_TOKEN`.
 
+## Pulling in CI
+
+A CI job can read a key from your vault itself, signed in with OIDC, instead of getting a copy from `publish`. List
+the job under `pull`, so the map still says who reads the key:
+
+```toml
+[keys.API_TOKEN.prod]
+from = "op://Private/my-project prod api token/credential"
+
+[[keys.API_TOKEN.prod.pull]]
+by = "github-actions"
+repo = "owner/repo"
+environment = "production" # optional: only the jobs in this GitHub environment
+```
+
+The job runs `keypin run --env prod --only API_TOKEN -- <command>`; without `--env`, `run` uses the first
+environment. `run` doesn't read `pull`: your vault decides which jobs it lets in.
+
+- `publish` writes nothing for a key that is only pulled, and `publish --all` skips it.
+- `rotate` and `rotate --due` rotate it like a key with destinations. Once your vault holds the new key, the jobs
+  read it, so only the revoke is left.
+- `status` lists who pulls each key, apart from its destinations.
+- `check` reads the secret names stored in each repo or environment that pulls a key, and reports a copy left
+  there, or a workflow that still uses `secrets.API_TOKEN`.
+
+To move a key from `publish` to `pull`, replace its `publish` entry with a `pull` entry for the same place: the map
+rejects a place in both. Change the workflow to `keypin run`, then delete the old secret, such as
+`gh secret delete API_TOKEN --repo owner/repo`. keypin never deletes a copy it published.
+
 ## Vault items
 
 Any field except `rotated` can hold the value, such as `password` or an API Credential's `credential`. Add a

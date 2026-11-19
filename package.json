@@ -1,6 +1,6 @@
 {
   "name": "keypin",
-  "version": "0.32.1",
+  "version": "0.33.0",
   "private": true,
   "description": "Key syncs and rotation for the vault you already use. keypin runs your apps with keys from your vault, publishes them to your CI and hosting, and rotates them.",
   "homepage": "https://github.com/caiopizzol/keypin#readme",

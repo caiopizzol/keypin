@@ -242,19 +242,52 @@ function jobFor(context: Context, keyId: string, flags: Flags): Omit<Job, "path"
 async function progressOf(context: Context, path: string) {
   const { map, environment, committed, deps } = context;
   const state = restoreIssued(await loadState(deps.files, path, deps.vaults), committed, map);
-  return (keyId: string): Progress => {
+  const progress = new Map<string, Progress>();
+  for (const { name: keyId } of map.keys) {
     const entry = rotates(map, keyId, environment);
-    const issued = issuedFor(state, { keyId, environment, mapFile: map.file });
-    if (!entry || !issued) return null;
     const owner = { keyId, environment, mapFile: map.file };
+    const issued = issuedFor(state, owner);
+    if (!entry || !issued) continue;
     const everywhere = entry.publish.every((target) =>
       deliveredTo(committed, state.receipts, owner, target, issued.generation, deps.destinations),
     );
     const since = issued.at.slice(0, 10);
     const revokes = waitsForRevoke(issued);
-    if (!everywhere || issued.held) return { kind: "unfinished", since, revokes };
-    return revokes ? { kind: "waiting", since, revokes } : null;
-  };
+    if (!everywhere || issued.held) progress.set(keyId, { kind: "unfinished", since, revokes });
+    else if (revokes && !(await replacedByHand(context, entry.ref, issued)))
+      progress.set(keyId, { kind: "waiting", since, revokes });
+  }
+  return (keyId: string): Progress => progress.get(keyId) ?? null;
+}
+
+async function replacedByHand(
+  { deps, out }: Context,
+  ref: KeyRef,
+  issued: Issued,
+): Promise<boolean> {
+  const where = formatReference(ref, deps.vaults);
+  const read = await out.step(
+    `Reading the key ${where}`,
+    () =>
+      deps
+        .vault()
+        .read(ref)
+        .then(generationOf)
+        .then(
+          (generation) => ({ generation }),
+          (error: unknown) => ({ failed: messageOf(error) }),
+        ),
+    (result) => ({
+      ok: "generation" in result,
+      text: "generation" in result ? `Read the key ${where}` : `Couldn't read ${where}`,
+    }),
+    approval(deps, [ref]),
+  );
+  if (!("generation" in read)) {
+    out.line(`    ${read.failed}`);
+    return false;
+  }
+  return read.generation !== issued.generation && read.generation !== issued.old.generation;
 }
 
 async function rotateDue(context: Context, flags: Flags, path: string): Promise<number> {

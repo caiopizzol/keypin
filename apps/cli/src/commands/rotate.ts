@@ -262,23 +262,28 @@ async function progressOf(
     const revokes = waitsForRevoke(issued);
     const kind = !everywhere || issued.held ? "unfinished" : revokes ? "waiting" : null;
     if (kind === null) continue;
-    if (issued.held || !(await replacedByHand(context, key, entry, state, issued, check)))
+    if (issued.held) {
       progress.set(key.name, { kind, since, revokes });
+      continue;
+    }
+    const holds = await vaultGeneration(context, key, entry, state, check);
+    if (holds !== null && holds !== issued.generation && holds !== issued.old.generation) continue;
+    const vaultSaved = entry.publish.length > 0 || holds === issued.generation;
+    progress.set(key.name, { kind: vaultSaved ? kind : "unfinished", since, revokes });
   }
   return (keyId: string): Progress => progress.get(keyId) ?? null;
 }
 
-async function replacedByHand(
+async function vaultGeneration(
   context: Context,
   key: KeyEntry,
   entry: EnvEntry,
   state: State,
-  issued: Issued,
   check: boolean,
-): Promise<boolean> {
+): Promise<string | null> {
   const { deps, out } = context;
   const gated = check || !deps.isTerminal;
-  if (gated && !(await readsRoutinely(context, key, entry, state))) return false;
+  if (gated && !(await readsRoutinely(context, key, entry, state))) return null;
   const where = formatReference(entry.ref, deps.vaults);
   const read = await out.step(
     `Reading the key ${where}`,
@@ -299,9 +304,9 @@ async function replacedByHand(
   );
   if (!("generation" in read)) {
     out.line(`    ${read.failed}`);
-    return false;
+    return null;
   }
-  return read.generation !== issued.generation && read.generation !== issued.old.generation;
+  return read.generation;
 }
 
 async function readsRoutinely(

@@ -18,9 +18,11 @@ export interface KeypinRun {
 }
 
 export function usesSecrets(workflows: readonly { refs: WorkflowRefs }[]): boolean {
-  return workflows.some(
-    (w) => w.refs.hidesUses || w.refs.secrets.some((name) => !name.startsWith("GITHUB_")),
-  );
+  return workflows.some((w) => w.refs.hidesUses || stored(w.refs.secrets));
+}
+
+function stored(secrets: readonly string[]): boolean {
+  return secrets.some((name) => !name.startsWith("GITHUB_"));
 }
 
 const COMPUTED_SECRET = /(?<![\w.])secrets\s*\[(?!\s*'[A-Za-z_][A-Za-z0-9_]*'\s*\])/i;
@@ -89,7 +91,7 @@ export function workflowRefs(text: string): WorkflowRefs | null {
       for (const run of keypinRuns(script))
         runs.push({ environment: named?.trim() ?? null, ...run });
     const secrets = [...secretsIn(job, null, passedByCaller && named === null)];
-    if (named?.includes("${{") && (secrets.length || inherited.length)) refs.hidesUses = true;
+    if (named?.includes("${{") && stored([...secrets, ...inherited])) refs.hidesUses = true;
     uses.push({ environment: named?.trim() ?? null, secrets, fromCaller: passedByCaller });
   }
   return {

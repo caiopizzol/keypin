@@ -291,6 +291,26 @@ jobs:
     expect(refs.hidesUses).toBe(true);
   });
 
+  test("an expression environment hides nothing when the job uses only GitHub's built-in token", () => {
+    const refs = workflowRefs(`
+env:
+  GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+jobs:
+  deploy:
+    strategy:
+      matrix:
+        target: [staging, production]
+    environment:
+      name: \${{ matrix.target }}
+    steps:
+      - run: gh release view
+        env:
+          TOKEN: \${{ secrets.GITHUB_TOKEN }}
+`);
+    assert(refs);
+    expect(refs.hidesUses).toBe(false);
+  });
+
   test("an expression environment hides nothing when the job uses no secrets", () => {
     const refs = workflowRefs(`
 jobs:

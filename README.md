@@ -21,6 +21,8 @@
 
 > **The keypin CLI is free and open source.** No account, no server, and it never stores a value.
 
+## What is keypin?
+
 keypin is not a vault. It reads the one you already have, runs your apps with its keys, publishes them to CI and
 hosting, and rotates them. Nothing to commit, paste in a chat, or leave on a laptop.
 

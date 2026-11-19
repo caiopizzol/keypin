@@ -1,5 +1,12 @@
 import { describe, expect, test } from "vite-plus/test";
-import { type Fetch, generationOf, type Issuer, loadState, Secret } from "@keypin/core";
+import {
+  type Fetch,
+  generationOf,
+  type Issuer,
+  loadRotationFile,
+  loadState,
+  Secret,
+} from "@keypin/core";
 import { memoryKeys, resendFetch } from "@keypin/connectors/resend/testing";
 import { cli } from "../src/cli";
 import { issuer as connect, vaults } from "../src/start";
@@ -42,6 +49,7 @@ interface IssuerOptions {
   failCheck?: boolean;
   failCreate?: boolean;
   failRevoke?: boolean;
+  noRevoke?: boolean;
   listed?: string[];
 }
 
@@ -78,14 +86,18 @@ function fakeIssuer(options: IssuerOptions, made: { count: number }) {
         log.push(`create ${name} -> key-${made.count}`);
         return { id: `key-${made.count}`, secret: new Secret(NEW(made.count)) };
       },
-      async revoke(id) {
-        if (options.failRevoke) {
-          log.push(`revoke ${id} failed`);
-          throw new Error("Resend DELETE /api-keys/<id> returned HTTP 500");
-        }
-        log.push(`revoke ${id}`);
-        return "revoked";
-      },
+      ...(options.noRevoke
+        ? {}
+        : {
+            async revoke(id: string) {
+              if (options.failRevoke) {
+                log.push(`revoke ${id} failed`);
+                throw new Error("Resend DELETE /api-keys/<id> returned HTTP 500");
+              }
+              log.push(`revoke ${id}`);
+              return "revoked" as const;
+            },
+          }),
     };
   };
   return { build, log, admins };
@@ -758,5 +770,141 @@ describe("keypin rotate", () => {
     await run.run();
     const generation = await generationOf(new Secret(NEW(1)));
     expect((await run.state()).receipts.map((r) => r.generation)).toEqual([generation, generation]);
+  });
+});
+
+describe("keypin rotate --discard", () => {
+  const ROTATION = "/work/billing/.keypin/rotation.json";
+
+  async function unfinished(options: Setup = {}) {
+    const disk = memoryFiles({
+      "/work/billing/keypin.toml": MAP,
+      [ROTATION]: '{ "version": 1, "issued": [], "published": [] }\n',
+    });
+    const first = setup({ ...options, disk, answers: ["y"] });
+    expect(await first.run()).toBe(0);
+    const failing = setup({
+      ...options,
+      disk,
+      vault: first.vault,
+      failWrite: [GITHUB],
+      answers: ["y"],
+    });
+    expect(await failing.run()).toBe(1);
+    return first;
+  }
+
+  test("after a failed publish, makes a fresh key, writes every destination, then revokes the discarded one", async () => {
+    const first = await unfinished();
+    const run = setup({ disk: first.disk, vault: first.vault, answers: ["y", "y"] });
+    expect(await run.run("--discard")).toBe(0);
+    expect(run.stderr.text).not.toContain("Resuming");
+    expect(run.stderr.text).toContain(
+      "Discarding key key-2, which keypin created at Resend on 2026-11-09T12:00:00.000Z: a new key replaces it everywhere.",
+    );
+    expect(run.stderr.text).toContain(
+      "keypin didn't revoke key key-1, the one key key-2 replaced. If nothing uses it, delete it at https://resend.com/api-keys.",
+    );
+    expect(run.stderr.text).toContain(
+      "  - Resend                   revoke the old key key-2, after a second y",
+    );
+    expect(run.asked).toEqual([
+      "Rotate RESEND_API_KEY? [y/N] ",
+      "Revoke the old key at Resend? [y/N] ",
+    ]);
+    expect(run.issuer.log).toEqual([
+      "check key-2",
+      "create RESEND_API_KEY prod 2026-11-09 12:00:00 a1b2c3 -> key-3",
+      "revoke key-2",
+    ]);
+    expect(run.writes(), "the destination that got the discarded key is overwritten").toEqual([
+      `write ${WORKER} RESEND_API_KEY (${NEW(3).length} chars)`,
+      `write ${GITHUB} RESEND_API_KEY (${NEW(3).length} chars)`,
+    ]);
+    expect(run.vault.values.get("mailer resend key")).toBe(NEW(3));
+    const discarded = await generationOf(new Secret(NEW(2)));
+    expect((await run.state()).issued).toEqual([
+      expect.objectContaining({
+        id: "key-3",
+        old: { id: "key-2", generation: discarded, revoked: true },
+      }),
+    ]);
+    const fresh = await generationOf(new Secret(NEW(3)));
+    const committed = await loadRotationFile(first.disk.files, ROTATION);
+    expect(committed?.issued).toEqual([
+      expect.objectContaining({
+        id: "key-3",
+        old: { id: "key-2", generation: discarded, revoked: true },
+      }),
+    ]);
+    expect(committed?.published.map((p) => p.generation)).toEqual([fresh, fresh]);
+    expect(run.leaked()).toBe(false);
+  });
+
+  test("a declined revoke keeps the discarded key waiting, and a rerun revokes it", async () => {
+    const first = setup({ answers: ["y"] });
+    await first.run();
+    const waiting = setup({ disk: first.disk, vault: first.vault, answers: ["y", "n"] });
+    expect(await waiting.run()).toBe(0);
+
+    const run = setup({ disk: first.disk, vault: first.vault, answers: ["y", "n"] });
+    expect(await run.run("--discard")).toBe(0);
+    expect(run.issuer.log).toEqual([
+      "check key-2",
+      "create RESEND_API_KEY prod 2026-11-09 12:00:00 a1b2c3 -> key-3",
+    ]);
+    expect(run.stderr.text).toContain(
+      "keypin didn't revoke key key-1, the one key key-2 replaced.",
+    );
+    expect(run.writes()).toHaveLength(2);
+    expect((await run.state()).issued.map((i) => [i.id, i.old.id, i.old.revoked])).toEqual([
+      ["key-3", "key-2", false],
+    ]);
+
+    const later = setup({ disk: first.disk, vault: first.vault, answers: ["y"] });
+    expect(await later.run()).toBe(0);
+    expect(later.stderr.text).toContain("Resuming: keypin created key key-3");
+    expect(later.issuer.log).toEqual(["check key-3", "revoke key-2"]);
+    expect(later.writes()).toEqual([]);
+  });
+
+  test("without an unfinished rotation, stops and creates nothing", async () => {
+    const first = setup({ answers: ["y"] });
+    expect(await first.run()).toBe(0);
+    const run = setup({ disk: first.disk, vault: first.vault, answers: ["y", "y"] });
+    expect(await run.run("--discard")).toBe(1);
+    expect(run.stderr.text).toContain(
+      "Stopped: RESEND_API_KEY (prod) has no unfinished rotation to discard. To replace the key 1Password holds, run:\n  cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts rotate RESEND_API_KEY\nNothing was created.",
+    );
+    expect(run.issuer.log).toEqual([]);
+    expect(run.asked).toEqual([]);
+    expect(run.writes()).toEqual([]);
+    expect(run.vault.values.get("mailer resend key")).toBe(NEW(1));
+  });
+
+  test("an issuer that can't revoke makes a fresh value and asks one y", async () => {
+    const first = await unfinished({ noRevoke: true });
+    const run = setup({
+      disk: first.disk,
+      vault: first.vault,
+      noRevoke: true,
+      answers: ["y", "y"],
+    });
+    expect(await run.run("--discard")).toBe(0);
+    expect(run.asked).toEqual(["Rotate RESEND_API_KEY? [y/N] "]);
+    expect(run.stderr.text).toContain("nothing to revoke: the new value replaces the old one");
+    expect(run.stderr.text).not.toContain("didn't revoke");
+    expect(run.writes()).toHaveLength(2);
+    expect((await run.state()).issued.map((i) => [i.id, i.old.id, i.old.revoked])).toEqual([
+      ["key-3", null, true],
+    ]);
+  });
+
+  test("takes one key, never --due, --approve-revoke or --check", async () => {
+    for (const args of [["--due"], ["--approve-revoke"], ["--check"]]) {
+      const run = setup();
+      expect(await cli(["rotate", "--discard", ...args], run.deps)).toBe(2);
+      expect(run.stderr.text).toContain("--discard takes one key");
+    }
   });
 });

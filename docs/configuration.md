@@ -169,8 +169,9 @@ permission = "sending_access"
 
 `rotate` checks every account, shows a plan and asks `y`. It then creates the key, saves it to the `from` reference
 with `rotated` set to today, and publishes it like `keypin publish`. It asks a second `y` before it deletes the old
-key, and only if every destination got the new one. A rerun picks up where a failed or declined run stopped. It
-deletes only a key it created itself; it doesn't know the key you made by hand, so delete that one at the provider.
+key, and only if every destination got the new one. A rerun picks up where a failed or declined run stopped; if the
+key it made leaked, `--discard` makes a fresh one instead. It deletes only a key it created itself; it doesn't know
+the key you made by hand, so delete that one at the provider.
 `--plan` runs the checks and shows the plan, then stops like [`publish --plan`](publishing.md#--plan). To rotate
 on a schedule in GitHub Actions, see [Scheduled rotation](scheduled-rotation.md).
 

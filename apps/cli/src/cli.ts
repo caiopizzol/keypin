@@ -86,6 +86,14 @@ const COMMAND_USAGE: [string, string][] = [
   ],
   [
     "rotate",
+    `  keypin rotate <VARIABLE> --discard [--env <name>] [--yes | --plan]
+                           throw away an unfinished rotation, whose new key may have leaked: make
+                           a fresh key, publish it everywhere, then ask before revoking the
+                           discarded one
+`,
+  ],
+  [
+    "rotate",
     `  keypin rotate --due [--env <name>] [--yes]
                            the same for every key that is due and has an issuer and destinations;
                            without a terminal it stops before revoking, and the old key waits for

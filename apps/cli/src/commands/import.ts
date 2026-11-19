@@ -175,6 +175,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
       deps.destinations,
       deps.issuers,
       deps.vaults,
+      deps.pulls,
     );
     if (!check.ok)
       throw new Error(
@@ -494,7 +495,7 @@ async function readTarget(deps: Deps, request: Request): Promise<Target> {
       );
     return { file, found, map: null, account: request.account, vaults: deps.vaults };
   }
-  const parsed = parseMap(found, file, deps.destinations, deps.issuers, deps.vaults);
+  const parsed = parseMap(found, file, deps.destinations, deps.issuers, deps.vaults, deps.pulls);
   if (!parsed.ok) throw new Error(`fix ${file} first: ${parsed.errors.join("; ")}`);
   const pinned = parsed.map.pins["1password"];
   const account = typeof pinned === "string" ? pinned : request.account;
@@ -533,6 +534,7 @@ function extendsKey(
     deps.destinations,
     deps.issuers,
     deps.vaults,
+    deps.pulls,
   ).ok;
 }
 
@@ -576,7 +578,14 @@ async function writeMap(
   environment: string,
 ): Promise<void> {
   const text = mapText(target, imports, environment);
-  const check = parseMap(text, target.file, deps.destinations, deps.issuers, deps.vaults);
+  const check = parseMap(
+    text,
+    target.file,
+    deps.destinations,
+    deps.issuers,
+    deps.vaults,
+    deps.pulls,
+  );
   if (!check.ok)
     throw new Error(`the new ${target.file} doesn't parse: ${check.errors.join("; ")}`);
   const result =

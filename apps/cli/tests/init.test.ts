@@ -100,6 +100,7 @@ describe("keypin init", () => {
               field: "password",
             },
             publish: [],
+            pull: [],
           },
           prod: {
             ref: {
@@ -116,6 +117,7 @@ describe("keypin init", () => {
               },
               { to: "github-actions", repo: "owner/repo", account: "owner" },
             ],
+            pull: [],
           },
         },
       },

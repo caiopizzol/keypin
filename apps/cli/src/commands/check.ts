@@ -145,7 +145,7 @@ async function build(
   };
   const found = await locateMap(deps.files, folder);
   const parsed = found
-    ? parseMap(found.text, found.file, deps.destinations, deps.issuers, deps.vaults)
+    ? parseMap(found.text, found.file, deps.destinations, deps.issuers, deps.vaults, deps.pulls)
     : null;
   const mapped = parsed?.ok
     ? parsed.map.keys.flatMap((key) =>

@@ -6,6 +6,7 @@ import type {
   IssuerKinds,
   IssuerSpec,
   PublishTarget,
+  PullKinds,
   Secret,
   StoreRead,
   VaultBackend,
@@ -83,6 +84,7 @@ export interface Deps {
   destination(target: PublishTarget, publisher: Publisher): Destination;
   issuers: IssuerKinds;
   issuer(spec: IssuerSpec, admin: Secret | null): Issuer;
+  pulls: PullKinds;
   workerSignIn(folder: string): WorkerSignIn;
   ghLogin(login: string | null): Promise<"ok" | "not installed" | "not logged in">;
   lock: Lock;

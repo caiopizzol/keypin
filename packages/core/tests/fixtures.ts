@@ -1,5 +1,5 @@
 import { cloudflareWorker } from "@keypin/connectors/cloudflare";
-import { githubActions } from "@keypin/connectors/github";
+import { githubActions, githubPull } from "@keypin/connectors/github";
 import { resendIssuer } from "@keypin/connectors/resend";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { infisicalVault } from "@keypin/connectors/infisical";
@@ -41,6 +41,7 @@ export const KEY: KeyEntry = {
         },
         { to: "github-actions", repo: "acme/billing", account: "acme" },
       ],
+      pull: [],
     },
   },
 };
@@ -112,3 +113,4 @@ export const KINDS = [cloudflareWorker, githubActions];
 
 export const ISSUERS = [resendIssuer];
 export const VAULT_KINDS = [infisicalVault, onePasswordVault];
+export const PULLS = [githubPull];

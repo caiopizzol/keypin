@@ -1,6 +1,6 @@
 import { assert, describe, expect, test } from "vite-plus/test";
 import { type DestinationKind, type IssuerKind, type IssuerSpec, parseMap } from "../src/index";
-import { ISSUERS, KINDS, MAP_FILE, VALID_MAP, VAULT_KINDS } from "./fixtures";
+import { ISSUERS, KINDS, MAP_FILE, PULLS, VALID_MAP, VAULT_KINDS } from "./fixtures";
 
 const VAULTS = `
 [1password]
@@ -44,6 +44,7 @@ describe("a valid map", () => {
                   field: "password",
                 },
                 publish: [],
+                pull: [],
               },
               prod: {
                 ref: {
@@ -62,6 +63,7 @@ describe("a valid map", () => {
                   },
                   { to: "github-actions", repo: "acme/web", account: "acme" },
                 ],
+                pull: [],
               },
             },
           },
@@ -679,7 +681,7 @@ admin = "op://Private/shared cloudflare token admin/password"
       rotateEvery: { text: "90d", days: 90 },
     });
     const ref: unknown = expect.objectContaining({ item: "site deploy token" });
-    expect(result.map.keys[0]?.environments.prod).toEqual({ ref, publish: [] });
+    expect(result.map.keys[0]?.environments.prod).toEqual({ ref, publish: [], pull: [] });
   });
 });
 
@@ -1189,7 +1191,7 @@ prod = ${id}
 `;
   const ID = `{ from = "op://Private/key id/credential", publish = [${WORKER_TARGET}] }`;
   const parse = (text: string) =>
-    parseMap(text, MAP_FILE, KINDS, [...ISSUERS, paired], VAULT_KINDS);
+    parseMap(text, MAP_FILE, KINDS, [...ISSUERS, paired], VAULT_KINDS, PULLS);
   const errors = (text: string) => {
     const result = parse(text);
     assert(!result.ok, "expected the map to be rejected");
@@ -1236,6 +1238,14 @@ prod = ${id}
       `"KEY_ID" prod publishes to different destinations; list the same destinations for both keys`,
     ],
     [
+      "a key pulled by another reader",
+      map(
+        "KEY_ID",
+        ID.replace("] }", `], pull = [{ by = "github-actions", repo = "acme/api" }] }`),
+      ),
+      `"KEY_ID" prod is pulled by different readers; list the same pull entries for both keys`,
+    ],
+    [
       "a key with its own issuer",
       map(
         "KEY_ID",
@@ -1263,5 +1273,134 @@ issuer = { kind = "paired", admin = "op://Private/admin/credential", key_id = "K
     expect(errors(map("not a name", ID))).toEqual([
       `${MAP_FILE}: key "SECRET" prod: issuer: field "key_id" must name a key in this map, such as "API_KEY_ID"`,
     ]);
+  });
+});
+
+describe("pull", () => {
+  const map = (env: string) => `${VAULTS}[keys.API_TOKEN]\nprod = ${env}\n`;
+  const pulled = (...readers: string[]) =>
+    map(`{ from = "op://Private/api token/password", pull = [${readers.join(", ")}] }`);
+  const parse = (text: string) => parseMap(text, MAP_FILE, KINDS, ISSUERS, VAULT_KINDS, PULLS);
+  const errors = (text: string) => {
+    const result = parse(text);
+    assert(!result.ok, "expected the map to be rejected");
+    return result.errors;
+  };
+  const where = `${MAP_FILE}: key "API_TOKEN" prod: `;
+
+  test("lists the CI jobs that read the key from the vault, apart from its destinations", () => {
+    const result = parse(
+      `${VAULTS}
+[keys.API_TOKEN.prod]
+from = "op://Private/api token/password"
+
+[[keys.API_TOKEN.prod.pull]]
+by = "github-actions"
+repo = "acme/web"
+
+[[keys.API_TOKEN.prod.pull]]
+by = "github-actions"
+repo = "acme/web"
+environment = "production"
+`,
+    );
+    assert(result.ok, result.ok ? "" : result.errors.join("\n"));
+    expect(result.map.keys[0]?.environments.prod).toMatchObject({
+      publish: [],
+      pull: [
+        { by: "github-actions", repo: "acme/web" },
+        { by: "github-actions", repo: "acme/web", environment: "production" },
+      ],
+    });
+  });
+
+  test("an entry without pull has none", () => {
+    const result = parse(map(`"op://Private/api token/password"`));
+    assert(result.ok);
+    expect(result.map.keys[0]?.environments.prod?.pull).toEqual([]);
+  });
+
+  test.each([
+    [
+      "an unknown reader",
+      `{ by = "circleci", repo = "acme/web" }`,
+      `pull[0]: field "by" must be one of: github-actions`,
+    ],
+    ["no reader", `{ repo = "acme/web" }`, `pull[0]: missing field "by"`],
+    [
+      "a destination's to",
+      `{ to = "github-actions", repo = "acme/web" }`,
+      `pull[0]: missing field "by"`,
+    ],
+    [
+      "an unknown field",
+      `{ by = "github-actions", repo = "acme/web", worker = "w" }`,
+      `pull[0]: unknown field "worker" for github-actions`,
+    ],
+    [
+      "a repo that isn't owner/name",
+      `{ by = "github-actions", repo = "acme" }`,
+      `pull[0]: field "repo" must be "owner/name"`,
+    ],
+    [
+      "a placeholder repo",
+      `{ by = "github-actions", repo = "<owner>/<repo>" }`,
+      `pull[0]: field "repo" is a <...> placeholder: replace it with the GitHub repository as "owner/name", such as "acme/billing"`,
+    ],
+    [
+      "an environment named ..",
+      `{ by = "github-actions", repo = "acme/web", environment = ".." }`,
+      `pull[0]: field "environment" must be a GitHub environment name, at most 255 characters and not . or ..`,
+    ],
+    ["a string", `"acme/web"`, `pull[0]: must be a table`],
+  ])("refuses %s", (_, reader, message) => {
+    expect(errors(pulled(reader))).toEqual([`${where}${message}`]);
+  });
+
+  test("must be a list", () => {
+    expect(
+      errors(
+        map(
+          `{ from = "op://Private/api token/password", pull = { by = "github-actions", repo = "acme/web" } }`,
+        ),
+      ),
+    ).toEqual([`${where}field "pull" must be a list`]);
+  });
+
+  test("refuses the same place twice, compared without case like GitHub", () => {
+    expect(
+      errors(
+        pulled(
+          `{ by = "github-actions", repo = "acme/web", environment = "production" }`,
+          `{ by = "github-actions", repo = "Acme/Web", environment = "Production" }`,
+        ),
+      ),
+    ).toEqual([`${where}pull[1]: the same place as pull[0]`]);
+  });
+
+  test("refuses a place that both pulls the key and gets a copy published", () => {
+    const both = map(
+      `{ from = "op://Private/api token/password", publish = [{ to = "github-actions", repo = "acme/web", environment = "production" }], pull = [{ by = "github-actions", repo = "Acme/web", environment = "PRODUCTION" }] }`,
+    );
+    expect(errors(both)).toEqual([
+      `${where}pull[0]: publish[0] also writes the key to Acme/web environment PRODUCTION; keep one of them. To pull it instead, delete that publish entry, and delete the copy publish wrote there`,
+    ]);
+  });
+
+  test("a repo's secrets and one of its environments are different places", () => {
+    const result = parse(
+      map(
+        `{ from = "op://Private/api token/password", publish = [{ to = "github-actions", repo = "acme/web" }], pull = [{ by = "github-actions", repo = "acme/web", environment = "production" }] }`,
+      ),
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  test("two keys may be pulled by the same job", () => {
+    const reader = `pull = [{ by = "github-actions", repo = "acme/web" }]`;
+    const result = parse(
+      `${VAULTS}[keys.A]\nprod = { from = "op://Private/a/password", ${reader} }\n[keys.B]\nprod = { from = "op://Private/b/password", ${reader} }\n`,
+    );
+    expect(result.ok).toBe(true);
   });
 });

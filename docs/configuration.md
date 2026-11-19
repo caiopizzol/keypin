@@ -137,12 +137,13 @@ The map says where a key goes, not who writes it, so every teammate publishes fr
 
 ## Pulling in CI
 
-A CI job can read a key from your vault itself, signed in with OIDC, instead of getting a copy from `publish`. List
-the job under `pull`, so the map still says who reads the key:
+A CI job can sign in to your vault and read a key itself, instead of getting a copy from `publish`. `pull` doesn't
+set up that sign-in (for 1Password, see [Service account](service-account.md)); it lists the job, so the map still
+says who reads the key:
 
 ```toml
 [keys.API_TOKEN.prod]
-from = "op://Private/my-project prod api token/credential"
+from = "op://my-project/prod api token/credential"
 
 [[keys.API_TOKEN.prod.pull]]
 by = "github-actions"
@@ -162,7 +163,7 @@ environment. `run` doesn't read `pull`: your vault decides which jobs it lets in
 
 To move a key from `publish` to `pull`, replace its `publish` entry with a `pull` entry for the same place: the map
 rejects a place in both. Change the workflow to `keypin run`, then delete the old secret, such as
-`gh secret delete API_TOKEN --repo owner/repo`. keypin never deletes a copy it published.
+`gh secret delete API_TOKEN --repo owner/repo --env "production"`. keypin never deletes a copy it published.
 
 ## Vault items
 

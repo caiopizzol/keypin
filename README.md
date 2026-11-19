@@ -8,7 +8,7 @@
 <h1 align="center">keypin</h1>
 
 <p align="center">
-  Get your team's keys out of <code>.env</code> files.
+  Key syncs and rotation for the vault you already use.
 </p>
 
 <p align="center">

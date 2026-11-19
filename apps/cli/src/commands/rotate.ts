@@ -268,8 +268,11 @@ async function progressOf(
     }
     const holds = await vaultGeneration(context, key, entry, state, check);
     if (holds !== null && holds !== issued.generation && holds !== issued.old.generation) continue;
-    const vaultSaved = entry.publish.length > 0 || holds === issued.generation;
-    progress.set(key.name, { kind: vaultSaved ? kind : "unfinished", since, revokes });
+    const pulledOnly = entry.publish.length === 0;
+    const rolledBack = pulledOnly && holds === issued.old.generation && !issued.unsaved;
+    if (rolledBack) continue;
+    const neverSaved = pulledOnly && holds !== issued.generation && issued.unsaved === true;
+    progress.set(key.name, { kind: neverSaved ? "unfinished" : kind, since, revokes });
   }
   return (keyId: string): Progress => progress.get(keyId) ?? null;
 }
@@ -623,8 +626,8 @@ async function rotateLocked(job: Job): Promise<number> {
     );
     next = { action: "create", current: held.old.id, abandoned: null };
   }
-  if (next.action === "resume" && next.issued.held) {
-    next = { action: "resume", issued: { ...next.issued, held: false } };
+  if (next.action === "resume" && (next.issued.held || next.issued.unsaved)) {
+    next = { action: "resume", issued: { ...next.issued, held: false, unsaved: false } };
     state = recordIssued(state, next.issued);
     if (!job.plan) await saveState(deps.files, job.path, state);
   }
@@ -746,6 +749,17 @@ async function rotateLocked(job: Job): Promise<number> {
   apartNote(job, checked);
   const needsApproval = [...steps, ...pairSteps].some((step) => step.approval !== null);
   if (job.plan) return planOnly(deps, "rotate", job.args, needsApproval);
+  const reset = issuer.createResetsOld && next.abandoned?.issuer === spec.kind && next.abandoned;
+  if (job.yes && reset && reset.old.generation === generation && !reset.unsaved) {
+    say(
+      `\nStopped: ${issuer.describe()} makes a new key by resetting key ${shown(issuer, reset.id)}, which keypin saved on ${reset.at} before ${vaultName(entry.ref, deps.vaults)} went back to the key it replaced, and something may still use it. --yes can't approve that. To rotate anyway, run this in a terminal:\n  ${commandLine(
+        deps,
+        "rotate",
+        job.args.filter((arg) => arg !== "--yes"),
+      )}\nNothing was created.`,
+    );
+    return 1;
+  }
   say("");
   const ok = await confirmed(
     deps,
@@ -779,8 +793,8 @@ async function rotateLocked(job: Job): Promise<number> {
       : { id: null, generation, revoked: true },
   };
   const mayHold = vaultKindOf(deps.vaults, entry.ref.kind).holdsWrites === true;
+  const pending = mayHold ? { ...issued, held: true } : issued;
   try {
-    const pending = mayHold ? { ...issued, held: true } : issued;
     await saveState(deps.files, job.path, recordIssued(state, pending));
   } catch (error) {
     return undoCreate(
@@ -809,6 +823,7 @@ async function rotateLocked(job: Job): Promise<number> {
     return NEEDS_APPROVAL;
   }
   if (saved === "unknown") {
+    await saveState(deps.files, job.path, recordIssued(state, { ...pending, unsaved: true }));
     const vault = vaultName(entry.ref, deps.vaults);
     say(
       `Stopped: keypin can't tell whether ${vault} saved the new key ${shown(issuer, created.id)}. Run this again, and keypin picks up from what ${vault} holds:\n  ${commandLine(deps, "rotate", job.args)}`,

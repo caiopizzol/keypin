@@ -1,4 +1,4 @@
-import { type ItemIds, type KeyRef, messageOf } from "@keypin/core";
+import { type ItemIds, type KeyRef, messageOf, shellWord } from "@keypin/core";
 import type { Deps } from "./deps";
 import { confirm, type Output } from "./output";
 import { lookUpIds } from "./publishing";
@@ -34,10 +34,6 @@ export function planOnly(
   say("Nothing was written: --plan only shows the plan.");
   say(rerun(deps, command, args));
   return NEEDS_APPROVAL;
-}
-
-export function shellWord(word: string): string {
-  return /^[\w@%+=:,./-]+$/.test(word) ? word : `'${word.replaceAll("'", `'\\''`)}'`;
 }
 
 export async function confirmed(

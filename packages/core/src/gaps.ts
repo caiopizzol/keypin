@@ -147,6 +147,7 @@ export function findGaps(
 
   const view = {
     publishEnvironment: environment,
+    runEnvironment: runEnvironment({ environments: listed }),
     publishes: (name: string, place: Place) =>
       (keys?.keys ?? []).some(
         (k) => place.matches(k.name, name) && mappedIn(keys, k, place) !== null,

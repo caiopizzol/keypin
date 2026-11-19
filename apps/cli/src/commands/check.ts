@@ -15,6 +15,8 @@ import {
   parseMap,
   type Prerequisite,
   type PublishTarget,
+  pullPlace,
+  type PullReader,
   secretKey,
   sentence,
   SignInFailed,
@@ -127,6 +129,22 @@ const ORDER = {
 const ITEM_NOTE =
   "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields";
 
+function publishedAt(map: KeysMap, name: string, reader: PullReader, deps: Deps): string[] {
+  const place = pullPlace(reader, deps.pulls);
+  const secret = (target: PublishTarget, key: string) => secretKey(target, key, deps.destinations);
+  return map.keys.flatMap((other) =>
+    map.environments.flatMap((environment) =>
+      other.environments[environment]?.publish.some(
+        (target) =>
+          checkId(target, deps.destinations) === place &&
+          secret(target, other.name) === secret(target, name),
+      )
+        ? [other.name === name ? environment : `${other.name} (${environment})`]
+        : [],
+    ),
+  );
+}
+
 async function build(
   folder: string,
   deps: Deps,
@@ -154,7 +172,19 @@ async function build(
     : [];
   const signIn = mapSignIn(deps, parsed?.ok ? parsed.map : null, mapped);
   const root = found ? dirname(found.file) : folder;
-  const scanned = await scanProject(deps, root);
+  const pulled = parsed?.ok
+    ? parsed.map.keys.flatMap((key) =>
+        parsed.map.environments.flatMap((environment) =>
+          (key.environments[environment]?.pull ?? []).map((reader) => ({
+            key: key.name,
+            environment,
+            reader,
+            publishedIn: publishedAt(parsed.map, key.name, reader, deps),
+          })),
+        ),
+      )
+    : [];
+  const scanned = await scanProject(deps, root, pulled);
   const head = {
     folder: root,
     map: found?.file ?? null,

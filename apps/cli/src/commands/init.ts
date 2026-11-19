@@ -1,9 +1,8 @@
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { register } from "@keypin/core";
+import { register, shellWord } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
 import { count, output, tilde } from "../output";
-import { shellWord } from "../approval";
 import { registryLocked } from "../publishing";
 import { MAP_FILE } from "../project";
 

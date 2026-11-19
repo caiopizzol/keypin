@@ -61,6 +61,7 @@ import {
   vaultAccounts,
   vaultName,
   vaultKindOf,
+  shellWord,
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
 import { columns, confirm, type Output, output, tilde } from "../output";
@@ -73,7 +74,6 @@ import {
   confirmed,
   NEEDS_APPROVAL,
   planOnly,
-  shellWord,
   unattendedApproval,
   withoutPlan,
 } from "../approval";

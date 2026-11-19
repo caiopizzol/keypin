@@ -1,4 +1,4 @@
-import { shellWord } from "../src/approval";
+import { shellWord } from "@keypin/core";
 
 export interface Recorded {
   args: readonly string[];

@@ -192,3 +192,140 @@ jobs:
     expect(workflowRefs("jobs: [unclosed")).toBeNull();
   });
 });
+
+describe("keypin run in a workflow", () => {
+  test("finds each keypin run, the keys it names, and the job's environment", () => {
+    const refs = workflowRefs(`
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npx keypin@0.33.1 run --env prod --only API_TOKEN,Other -- npm test
+  deploy:
+    environment: production
+    steps:
+      - name: deploy
+        run: |
+          keypin run \\
+            --only=DEPLOY_KEY --only "SECOND" -- ./deploy.sh
+      - run: keypin run -- ./all.sh
+      - run: keypin run --only "\${{ inputs.key }}" -- ./one.sh
+      - run: keypin run --env "\${{ inputs.env }}" -- ./any.sh
+      - run: echo keypin status
+`);
+    assert(refs);
+    expect(refs.runs).toEqual([
+      { environment: null, env: "prod", dynamicEnv: false, only: ["API_TOKEN", "Other"] },
+      { environment: "production", env: null, dynamicEnv: false, only: ["DEPLOY_KEY", "SECOND"] },
+      { environment: "production", env: null, dynamicEnv: false, only: null },
+      { environment: "production", env: null, dynamicEnv: false, only: null },
+      { environment: "production", env: null, dynamicEnv: true, only: null },
+    ]);
+    expect(refs.uses).toEqual([]);
+  });
+
+  test("reads --env and --only the way the shell passes them, quotes removed", () => {
+    const refs = workflowRefs(`
+jobs:
+  deploy:
+    steps:
+      - run: keypin run --env="prod" --only API_KEY -- ./deploy.sh
+      - run: keypin run --env 'prod' --only="API_KEY" -- ./deploy.sh
+      - run: keypin run "--env=prod" --only='API'_KEY -- ./deploy.sh
+      - run: keypin run --env="$KEYPIN_ENV" -- ./deploy.sh
+`);
+    assert(refs);
+    expect(refs.runs).toEqual([
+      { environment: null, env: "prod", dynamicEnv: false, only: ["API_KEY"] },
+      { environment: null, env: "prod", dynamicEnv: false, only: ["API_KEY"] },
+      { environment: null, env: "prod", dynamicEnv: false, only: ["API_KEY"] },
+      { environment: null, env: null, dynamicEnv: true, only: null },
+    ]);
+  });
+
+  test("keeps a quoted --only list with spaces as one word", () => {
+    const refs = workflowRefs(`
+jobs:
+  deploy:
+    steps:
+      - run: keypin run --only="FIRST, SECOND" --env="prod" -- ./deploy.sh
+`);
+    assert(refs);
+    expect(refs.runs).toEqual([
+      { environment: null, env: "prod", dynamicEnv: false, only: ["FIRST", "SECOND"] },
+    ]);
+  });
+
+  test("can't tell a job's secrets apart when its environment is an expression", () => {
+    const refs = workflowRefs(`
+jobs:
+  deploy:
+    strategy:
+      matrix:
+        target: [staging, production]
+    environment:
+      name: \${{ matrix.target }}
+    steps:
+      - run: echo \${{ secrets.EXAMPLE_TOKEN }}
+`);
+    assert(refs);
+    expect(refs.hidesUses).toBe(true);
+  });
+
+  test("an expression environment hides uses of secrets the job inherits from the workflow's env", () => {
+    const refs = workflowRefs(`
+env:
+  API_KEY: \${{ secrets.API_KEY }}
+jobs:
+  deploy:
+    strategy:
+      matrix:
+        target: [staging, production]
+    environment:
+      name: \${{ matrix.target }}
+    steps:
+      - run: ./deploy.sh
+`);
+    assert(refs);
+    expect(refs.hidesUses).toBe(true);
+  });
+
+  test("an expression environment hides nothing when the job uses only GitHub's built-in token", () => {
+    const refs = workflowRefs(`
+env:
+  GH_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+jobs:
+  deploy:
+    strategy:
+      matrix:
+        target: [staging, production]
+    environment:
+      name: \${{ matrix.target }}
+    steps:
+      - run: gh release view
+        env:
+          TOKEN: \${{ secrets.GITHUB_TOKEN }}
+`);
+    assert(refs);
+    expect(refs.hidesUses).toBe(false);
+  });
+
+  test("an expression environment hides nothing when the job uses no secrets", () => {
+    const refs = workflowRefs(`
+jobs:
+  deploy:
+    strategy:
+      matrix:
+        target: [staging, production]
+    environment:
+      name: \${{ matrix.target }}
+    permissions:
+      id-token: write
+    steps:
+      - run: keypin run --env prod --only API_KEY -- ./deploy.sh
+`);
+    assert(refs);
+    expect(refs.hidesUses).toBe(false);
+  });
+});

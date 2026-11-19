@@ -130,6 +130,7 @@ export {
   type ProjectEntry,
   type ProjectFiles,
   type ProjectReader,
+  type Pulled,
   type Scanned,
   type Slot,
   type StoreRead,
@@ -147,3 +148,4 @@ export {
 } from "./login";
 export { findGaps, type Fix, type Gaps, type LocalFile, type Need, type ProjectScan } from "./gaps";
 export { signInVariables, withoutSignIn } from "./env";
+export { shellWord } from "./shell";

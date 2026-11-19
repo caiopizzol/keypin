@@ -84,8 +84,8 @@ Essence: one source, one map.
 
 ### Tagline & Slogans
 
-- Primary: "Key syncs and rotation for the vault you already use." Use it as the headline, everywhere. Name the category, never a
-  competitor: the obvious comparisons, such as Infisical and Doppler, are also vaults keypin reads.
+- Primary: "Key syncs and rotation for the vault you already use." Use it as the headline, everywhere. Name the
+  category, never a competitor: the obvious comparisons, such as Infisical and Doppler, are also vaults keypin reads.
 - Description: "keypin gets your keys out of `.env` files. It runs your apps with keys from your vault, publishes them
   to your CI and hosting, and rotates them when they're due."
 - Short description (60 characters or fewer): "Key syncs and rotation for the vault you already use."

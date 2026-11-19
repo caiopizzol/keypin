@@ -239,13 +239,14 @@ function jobFor(context: Context, keyId: string, flags: Flags): Omit<Job, "path"
   };
 }
 
-async function progressOf(context: Context, path: string) {
+async function progressOf(context: Context, path: string, only?: string) {
   const { map, environment, committed, deps } = context;
   const state = restoreIssued(await loadState(deps.files, path, deps.vaults), committed, map);
   const progress = new Map<string, Progress>();
-  for (const { name: keyId } of map.keys) {
-    const entry = rotates(map, keyId, environment);
-    const owner = { keyId, environment, mapFile: map.file };
+  for (const key of map.keys) {
+    if (only !== undefined && key.name !== only) continue;
+    const entry = rotates(map, key.name, environment);
+    const owner = { keyId: key.name, environment, mapFile: map.file };
     const issued = issuedFor(state, owner);
     if (!entry || !issued) continue;
     const everywhere = entry.publish.every((target) =>
@@ -253,25 +254,30 @@ async function progressOf(context: Context, path: string) {
     );
     const since = issued.at.slice(0, 10);
     const revokes = waitsForRevoke(issued);
-    if (!everywhere || issued.held) progress.set(keyId, { kind: "unfinished", since, revokes });
-    else if (revokes && !(await replacedByHand(context, entry.ref, issued)))
-      progress.set(keyId, { kind: "waiting", since, revokes });
+    const kind = !everywhere || issued.held ? "unfinished" : revokes ? "waiting" : null;
+    if (kind === null) continue;
+    if (issued.held || !(await replacedByHand(context, key, entry, state, issued)))
+      progress.set(key.name, { kind, since, revokes });
   }
   return (keyId: string): Progress => progress.get(keyId) ?? null;
 }
 
 async function replacedByHand(
-  { deps, out }: Context,
-  ref: KeyRef,
+  context: Context,
+  key: KeyEntry,
+  entry: EnvEntry,
+  state: State,
   issued: Issued,
 ): Promise<boolean> {
-  const where = formatReference(ref, deps.vaults);
+  const { deps, out } = context;
+  if (!deps.isTerminal && !(await readsRoutinely(context, key, entry, state))) return false;
+  const where = formatReference(entry.ref, deps.vaults);
   const read = await out.step(
     `Reading the key ${where}`,
     () =>
       deps
         .vault()
-        .read(ref)
+        .read(entry.ref)
         .then(generationOf)
         .then(
           (generation) => ({ generation }),
@@ -281,13 +287,39 @@ async function replacedByHand(
       ok: "generation" in result,
       text: "generation" in result ? `Read the key ${where}` : `Couldn't read ${where}`,
     }),
-    approval(deps, [ref]),
+    approval(deps, [entry.ref]),
   );
   if (!("generation" in read)) {
     out.line(`    ${read.failed}`);
     return false;
   }
   return read.generation !== issued.generation && read.generation !== issued.old.generation;
+}
+
+async function readsRoutinely(
+  { map, environment, committed, deps, out }: Context,
+  key: KeyEntry,
+  entry: EnvEntry,
+  state: State,
+): Promise<boolean> {
+  const owner = { keyId: key.name, environment, mapFile: map.file };
+  try {
+    const [ids] = await lookUpIds([entry.ref], deps, out);
+    if (!ids) return false;
+    const { receipts } = await restoreReceipts({
+      state,
+      file: committed,
+      map,
+      kinds: deps.destinations,
+      owner,
+      ids: async () => ids,
+    });
+    const input = { kinds: deps.destinations, vaults: deps.vaults, key, receipts, ...owner };
+    return approvalsFor(input, ids).length === 0;
+  } catch (error) {
+    out.line(`    ${messageOf(error)}`);
+    return false;
+  }
 }
 
 async function rotateDue(context: Context, flags: Flags, path: string): Promise<number> {
@@ -424,7 +456,7 @@ async function approveAll(
 ): Promise<number> {
   const { map, environment, out } = context;
   if (keyId !== undefined) jobFor(context, keyId, NO_FLAGS);
-  const progress = await progressOf(context, path);
+  const progress = await progressOf(context, path, keyId);
   const codes: number[] = [];
   for (const name of keyId === undefined ? map.keys.map((k) => k.name) : [keyId]) {
     const now = progress(name);

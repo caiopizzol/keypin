@@ -455,6 +455,34 @@ describe("keypin rotate --due after a person replaced a waiting key by hand", ()
     );
     expect(w.effects).toHaveLength(2);
   });
+
+  test("an item replaced under the same reference keeps the old key waiting, and its value isn't read", async () => {
+    const w = await replacedByHand("2026-08-01");
+    w.inner.itemIds.set(ITEM, "id-replaced");
+    w.inner.log.length = 0;
+    const run = ci(w);
+    expect(await run.run("--due", "--yes")).toBe(0);
+    expect(run.stderr.text).toContain(
+      "RESEND_API_KEY  wait  rotated 2026-11-09, the old key waits",
+    );
+    expect(await ci(w).run("--check")).toBe(1);
+    expect(w.inner.log.filter((line) => line.startsWith("read"))).toEqual([]);
+    expect(w.effects).toHaveLength(2);
+  });
+
+  test("a key published by hand after the rotation is skipped for its date, not finished", async () => {
+    const w = await replacedByHand("2026-11-09");
+    const laptop = machine(w, { terminal: true, answers: ["y"] });
+    laptop.disk.contents.set(MAP_FILE, MAP);
+    expect(await cli(["publish", "RESEND_API_KEY"], laptop.deps), laptop.stderr.text).toBe(0);
+    expect(await laptop.run("--due")).toBe(0);
+    expect(w.github.value("acme/mailer", "RESEND_API_KEY")).toBe(HAND);
+
+    const run = ci(w);
+    expect(await run.run("--due", "--yes")).toBe(0);
+    expect(run.stderr.text).toContain("RESEND_API_KEY  skip  not due until 2027-02-07");
+    expect(w.effects).toHaveLength(2);
+  });
 });
 
 describe("keypin rotate --check, the setup check a workflow runs before the first rotation", () => {

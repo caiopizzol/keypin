@@ -87,7 +87,7 @@ Essence: one source, one map.
 - Primary: "Key syncs and rotation for the vault you already use." Use it as the headline, everywhere. Name the
   category, never a competitor: Infisical and Doppler are vaults keypin reads.
 - Description: "keypin gets your keys out of `.env` files. It runs your apps with keys from your vault, publishes them
-  to your CI and hosting, and rotates them when they're due."
+  to your CI and hosting, and rotates them."
 - Short description (60 characters or fewer): "Key syncs and rotation for the vault you already use."
 
 ### Message Pillars

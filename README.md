@@ -12,9 +12,8 @@
 </p>
 
 <p align="center">
-  <a href="https://keypin.dev">keypin.dev</a> · <a href="#docs">Docs</a> ·
-  <a href="https://keypin.dev/console/">Console</a> · <a href="https://keypin.dev/keys">API keys</a> ·
-  <a href="https://www.npmjs.com/package/keypin">npm</a>
+  <a href="https://www.npmjs.com/package/keypin"><img src="https://img.shields.io/npm/v/keypin?color=121311" alt="npm version"></a>
+  <img src="https://img.shields.io/badge/license-MIT-121311" alt="MIT">
 </p>
 
 > **Free:** the CLI for everyone, and the console for personal accounts and public repos.

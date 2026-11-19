@@ -759,7 +759,8 @@ async function rotateLocked(job: Job): Promise<number> {
   apartNote(job, checked);
   const needsApproval =
     reset !== null || [...steps, ...pairSteps].some((step) => step.approval !== null);
-  if (job.plan) return planOnly(deps, "rotate", job.args, needsApproval);
+  if (job.plan)
+    return planOnly(deps, "rotate", reset ? terminalArgs(job.args) : job.args, needsApproval);
   if (job.yes && reset) {
     say(`\n${resetStop(deps, issuer, reset, vaultName(entry.ref, deps.vaults), job.args)}`);
     return 1;
@@ -912,8 +913,11 @@ function resetStop(
   const when = reset.unsaved
     ? `which keypin may have saved to ${vault} on ${reset.at} (it couldn't tell), so something may use it`
     : `which keypin saved on ${reset.at} before ${vault} went back to the key it replaced, and something may still use it`;
-  const terminal = args.filter((arg) => arg !== "--yes" && arg !== "--check");
-  return `Stopped: ${issuer.describe()} makes a new key by resetting key ${shown(issuer, reset.id)}, ${when}. --yes can't approve that. To rotate anyway, run this in a terminal:\n  ${commandLine(deps, "rotate", terminal)}\nNothing was created.`;
+  return `Stopped: ${issuer.describe()} makes a new key by resetting key ${shown(issuer, reset.id)}, ${when}. --yes can't approve that. To rotate anyway, run this in a terminal:\n  ${commandLine(deps, "rotate", terminalArgs(args))}\nNothing was created.`;
+}
+
+function terminalArgs(args: readonly string[]): string[] {
+  return args.filter((arg) => arg !== "--yes" && arg !== "--check");
 }
 
 function neverSaved(abandoned: Issued, spec: IssuerSpec, generation: string, state: State) {

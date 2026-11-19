@@ -662,7 +662,17 @@ async function rotateLocked(job: Job): Promise<number> {
     say("\nStopped: an account check failed. Nothing was created and nothing was written.");
     return 1;
   }
+  const reset = resetHeld(
+    issuer,
+    spec,
+    next.action === "create" ? next.abandoned : null,
+    generation,
+  );
   if (job.check) {
+    if (reset) {
+      say(`\n${resetStop(deps, issuer, reset, vaultName(entry.ref, deps.vaults), job.args)}`);
+      return 1;
+    }
     say(`${out.mark(true)} ${key.name} (${owner.environment}) is ready for keypin rotate --due.`);
     return 0;
   }
@@ -747,21 +757,11 @@ async function rotateLocked(job: Job): Promise<number> {
   ]);
   showRemoved(out, ready.removed);
   apartNote(job, checked);
-  const needsApproval = [...steps, ...pairSteps].some((step) => step.approval !== null);
+  const needsApproval =
+    reset !== null || [...steps, ...pairSteps].some((step) => step.approval !== null);
   if (job.plan) return planOnly(deps, "rotate", job.args, needsApproval);
-  const reset = issuer.createResetsOld && next.abandoned?.issuer === spec.kind && next.abandoned;
-  if (job.yes && reset && reset.old.generation === generation) {
-    const vault = vaultName(entry.ref, deps.vaults);
-    const when = reset.unsaved
-      ? `which keypin may have saved to ${vault} on ${reset.at} (it couldn't tell), so something may use it`
-      : `which keypin saved on ${reset.at} before ${vault} went back to the key it replaced, and something may still use it`;
-    say(
-      `\nStopped: ${issuer.describe()} makes a new key by resetting key ${shown(issuer, reset.id)}, ${when}. --yes can't approve that. To rotate anyway, run this in a terminal:\n  ${commandLine(
-        deps,
-        "rotate",
-        job.args.filter((arg) => arg !== "--yes"),
-      )}\nNothing was created.`,
-    );
+  if (job.yes && reset) {
+    say(`\n${resetStop(deps, issuer, reset, vaultName(entry.ref, deps.vaults), job.args)}`);
     return 1;
   }
   say("");
@@ -887,6 +887,33 @@ async function saveId(job: Job, pair: Pair, issuer: Issuer, id: string): Promise
     `Stopped: the new key ${shown(issuer, id)} is in ${vaultName(job.entry.ref, deps.vaults)}, but its ID isn't in ${formatReference(pair.entry.ref, deps.vaults)} yet. The old key still works. Run this again to save the ID and publish both:\n  ${commandLine(deps, "rotate", withoutPlan(job.args))}`,
   );
   return false;
+}
+
+function resetHeld(
+  issuer: { createResetsOld?: boolean },
+  spec: IssuerSpec,
+  abandoned: Issued | null,
+  generation: string,
+): Issued | null {
+  return issuer.createResetsOld &&
+    abandoned?.issuer === spec.kind &&
+    abandoned.old.generation === generation
+    ? abandoned
+    : null;
+}
+
+function resetStop(
+  deps: Deps,
+  issuer: Issuer,
+  reset: Issued,
+  vault: string,
+  args: readonly string[],
+): string {
+  const when = reset.unsaved
+    ? `which keypin may have saved to ${vault} on ${reset.at} (it couldn't tell), so something may use it`
+    : `which keypin saved on ${reset.at} before ${vault} went back to the key it replaced, and something may still use it`;
+  const terminal = args.filter((arg) => arg !== "--yes" && arg !== "--check");
+  return `Stopped: ${issuer.describe()} makes a new key by resetting key ${shown(issuer, reset.id)}, ${when}. --yes can't approve that. To rotate anyway, run this in a terminal:\n  ${commandLine(deps, "rotate", terminal)}\nNothing was created.`;
 }
 
 function neverSaved(abandoned: Issued, spec: IssuerSpec, generation: string, state: State) {

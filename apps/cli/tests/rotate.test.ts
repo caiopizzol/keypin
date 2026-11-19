@@ -1011,6 +1011,31 @@ describe("keypin rotate, for a key CI pulls from the vault", () => {
     expect(run.issuer.log.some((line) => line.startsWith("create "))).toBe(false);
   });
 
+  test("--check and --plan say the same reset needs a terminal, and create nothing", async () => {
+    const first = setup({ disk: pulled(MAP), resetsOld: true, answers: ["y"] });
+    expect(await first.run()).toBe(0);
+    const unsaved = writableVault({ "mailer resend key": NEW(1), "resend admin key": ADMIN }, true);
+    const failing = setup({
+      disk: first.disk,
+      vault: unsaved,
+      made: first.vault.made,
+      resetsOld: true,
+      answers: ["y"],
+    });
+    expect(await failing.run()).toBe(1);
+    const check = setup({ disk: first.disk, vault: first.vault, resetsOld: true, terminal: false });
+    expect(await cli(["rotate", "--check"], check.deps), check.stderr.text).toBe(1);
+    expect(check.stderr.text).toContain("Stopped: Resend makes a new key by resetting key key-2");
+    expect(check.stderr.text).not.toContain("is ready for keypin rotate --due");
+    const plan = setup({ disk: first.disk, vault: first.vault, resetsOld: true, terminal: false });
+    expect(await plan.run("--plan")).toBe(NEEDS_APPROVAL);
+    expect(plan.stderr.text).toContain(
+      "This plan needs approval in a terminal; --yes can't give it.",
+    );
+    for (const run of [check, plan])
+      expect(run.issuer.log.some((line) => line.startsWith("create "))).toBe(false);
+  });
+
   test("saves the new key to the vault, writes nowhere, and revokes the old key after a second y", async () => {
     const first = setup({ disk: pulled(MAP), answers: ["y"] });
     expect(await first.run()).toBe(0);

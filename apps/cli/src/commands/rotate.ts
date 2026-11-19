@@ -750,9 +750,13 @@ async function rotateLocked(job: Job): Promise<number> {
   const needsApproval = [...steps, ...pairSteps].some((step) => step.approval !== null);
   if (job.plan) return planOnly(deps, "rotate", job.args, needsApproval);
   const reset = issuer.createResetsOld && next.abandoned?.issuer === spec.kind && next.abandoned;
-  if (job.yes && reset && reset.old.generation === generation && !reset.unsaved) {
+  if (job.yes && reset && reset.old.generation === generation) {
+    const vault = vaultName(entry.ref, deps.vaults);
+    const when = reset.unsaved
+      ? `which keypin may have saved to ${vault} on ${reset.at} (it couldn't tell), so something may use it`
+      : `which keypin saved on ${reset.at} before ${vault} went back to the key it replaced, and something may still use it`;
     say(
-      `\nStopped: ${issuer.describe()} makes a new key by resetting key ${shown(issuer, reset.id)}, which keypin saved on ${reset.at} before ${vaultName(entry.ref, deps.vaults)} went back to the key it replaced, and something may still use it. --yes can't approve that. To rotate anyway, run this in a terminal:\n  ${commandLine(
+      `\nStopped: ${issuer.describe()} makes a new key by resetting key ${shown(issuer, reset.id)}, ${when}. --yes can't approve that. To rotate anyway, run this in a terminal:\n  ${commandLine(
         deps,
         "rotate",
         job.args.filter((arg) => arg !== "--yes"),

@@ -990,7 +990,7 @@ describe("keypin rotate, for a key CI pulls from the vault", () => {
     expect(run.issuer.log).toEqual(["check none"]);
   });
 
-  test("--yes resets a key keypin made but never saved", async () => {
+  test("--yes won't reset a key whose save keypin couldn't confirm", async () => {
     const first = setup({ disk: pulled(MAP), resetsOld: true, answers: ["y"] });
     expect(await first.run()).toBe(0);
     const unsaved = writableVault({ "mailer resend key": NEW(1), "resend admin key": ADMIN }, true);
@@ -1003,10 +1003,12 @@ describe("keypin rotate, for a key CI pulls from the vault", () => {
     });
     expect(await failing.run()).toBe(1);
     const run = setup({ disk: first.disk, vault: first.vault, resetsOld: true, terminal: false });
-    expect(await run.run("--yes")).toBe(NEEDS_APPROVAL);
-    expect(run.issuer.log).toContain(
-      "create RESEND_API_KEY prod 2026-11-09 12:00:00 a1b2c3 -> key-3",
+    expect(await run.run("--yes")).toBe(1);
+    expect(run.stderr.text).toContain(
+      "Stopped: Resend makes a new key by resetting key key-2, which keypin may have saved to 1Password on",
     );
+    expect(run.stderr.text).toContain("--yes can't approve that.");
+    expect(run.issuer.log.some((line) => line.startsWith("create "))).toBe(false);
   });
 
   test("saves the new key to the vault, writes nowhere, and revokes the old key after a second y", async () => {

@@ -12,15 +12,18 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/keypin"><img src="https://img.shields.io/npm/v/keypin?color=121311" alt="npm version"></a>
-  <img src="https://img.shields.io/badge/license-MIT-121311" alt="MIT">
+  <a href="https://keypin.dev">keypin.dev</a> · <a href="#docs">Docs</a> ·
+  <a href="https://keypin.dev/console/">Console</a> · <a href="https://keypin.dev/keys">API keys</a> ·
+  <a href="https://www.npmjs.com/package/keypin">npm</a>
 </p>
 
-keypin runs your apps with keys from your vault, and keeps one map of every key your team uses. Nothing to commit,
-paste in a chat, or leave on a laptop.
+> **Free:** the CLI for everyone, and the console for personal accounts and public repos.
 
-Each project lists its keys in a `keypin.toml`: names, vault items and destinations, never values. keypin runs your
-commands with the dev keys and publishes the prod keys. It reads a value only while a command runs.
+keypin is not a vault. It reads the one you already have, runs your apps with its keys, publishes them to CI and
+hosting, and rotates them. Nothing to commit, paste in a chat, or leave on a laptop.
+
+Each project lists its keys in a `keypin.toml`: names, vault items and destinations, never values. keypin reads a
+value only while a command runs.
 
 | Vaults              | Destinations       | Rotation                          |
 | ------------------- | ------------------ | --------------------------------- |
@@ -142,6 +145,8 @@ npx skills add caiopizzol/keypin -g    # all your projects
   in CI
 - [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md): destinations, approvals and
   `--plan`
+- [Scheduled rotation](https://github.com/caiopizzol/keypin/blob/main/docs/scheduled-rotation.md): rotating 1Password
+  keys in your GitHub Actions
 - [Notes](https://github.com/caiopizzol/keypin/blob/main/docs/notes.md): `wrangler dev`, signing in to Cloudflare, and
   the files keypin keeps
 - [API keys](https://keypin.dev/keys): where to get each key, how to set it and how to replace it

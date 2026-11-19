@@ -88,6 +88,7 @@ export interface Deps {
   lock: Lock;
   isTerminal: boolean;
   warnRunner(title: string, text: string): boolean;
+  maskInLog(values: readonly string[]): void;
   styled: { stdout: boolean; stderr: boolean };
   columns: () => number;
   ask(question: string): Promise<string>;

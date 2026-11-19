@@ -485,6 +485,19 @@ describe("keypin rotate --due after a person replaced a waiting key by hand", ()
   });
 });
 
+describe("keypin rotate --check in a terminal", () => {
+  test("a rotation left unfinished by a newly listed destination needs approval, and no value is read", async () => {
+    const w = await rotatedOnceOnALaptop();
+    w.repo.contents.set(MAP_FILE, TWO_REPOS);
+    w.inner.log.length = 0;
+    const laptop = machine(w, { terminal: true });
+    expect(await laptop.run("--check")).toBe(1);
+    expect(laptop.stderr.text).toContain(`Needs approval:\n  first write to ${WEB}`);
+    expect(w.inner.log.filter((line) => line.startsWith("read"))).toEqual([]);
+    expect(w.effects).toHaveLength(1);
+  });
+});
+
 describe("keypin rotate --check, the setup check a workflow runs before the first rotation", () => {
   const published = async () => {
     const w = await world();

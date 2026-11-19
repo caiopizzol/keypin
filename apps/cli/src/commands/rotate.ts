@@ -239,7 +239,11 @@ function jobFor(context: Context, keyId: string, flags: Flags): Omit<Job, "path"
   };
 }
 
-async function progressOf(context: Context, path: string, only?: string) {
+async function progressOf(
+  context: Context,
+  path: string,
+  { only, check = false }: { only?: string | undefined; check?: boolean } = {},
+) {
   const { map, environment, committed, deps } = context;
   const state = restoreIssued(await loadState(deps.files, path, deps.vaults), committed, map);
   const progress = new Map<string, Progress>();
@@ -256,7 +260,7 @@ async function progressOf(context: Context, path: string, only?: string) {
     const revokes = waitsForRevoke(issued);
     const kind = !everywhere || issued.held ? "unfinished" : revokes ? "waiting" : null;
     if (kind === null) continue;
-    if (issued.held || !(await replacedByHand(context, key, entry, state, issued)))
+    if (issued.held || !(await replacedByHand(context, key, entry, state, issued, check)))
       progress.set(key.name, { kind, since, revokes });
   }
   return (keyId: string): Progress => progress.get(keyId) ?? null;
@@ -268,9 +272,11 @@ async function replacedByHand(
   entry: EnvEntry,
   state: State,
   issued: Issued,
+  check: boolean,
 ): Promise<boolean> {
   const { deps, out } = context;
-  if (!deps.isTerminal && !(await readsRoutinely(context, key, entry, state))) return false;
+  const gated = check || !deps.isTerminal;
+  if (gated && !(await readsRoutinely(context, key, entry, state))) return false;
   const where = formatReference(entry.ref, deps.vaults);
   const read = await out.step(
     `Reading the key ${where}`,
@@ -366,7 +372,7 @@ async function checkDue(context: Context, path: string): Promise<number> {
     environment,
     today: localDay(deps.now()),
     metadata: (ref) => metadata.dates.get(refKey(ref)) ?? null,
-    progress: await progressOf(context, path),
+    progress: await progressOf(context, path, { check: true }),
   });
   const checks = (c: DueChoice) => c.action !== "skip" || c.date !== undefined;
   out.line(`\nKeys in ${environment}`);
@@ -456,7 +462,7 @@ async function approveAll(
 ): Promise<number> {
   const { map, environment, out } = context;
   if (keyId !== undefined) jobFor(context, keyId, NO_FLAGS);
-  const progress = await progressOf(context, path, keyId);
+  const progress = await progressOf(context, path, { only: keyId });
   const codes: number[] = [];
   for (const name of keyId === undefined ? map.keys.map((k) => k.name) : [keyId]) {
     const now = progress(name);

@@ -40,7 +40,7 @@ describe("maskInLog", () => {
   const LOG = fileURLToPath(new URL("../../src/github/log.ts", import.meta.url));
   const MASK = "::add-mask::sk-one\n";
   const CHILD = `import { maskInLog } from ${JSON.stringify(LOG)};
-await maskInLog(process.env, ["sk-one"], [process.stdout, process.stderr]);
+await maskInLog(process.env, ["sk-one"], process.stderr);
 process.stdout.write("out\\n");
 process.stderr.write("err\\n");`;
   let dir = "";
@@ -72,24 +72,21 @@ process.stderr.write("err\\n");`;
     }
   }
 
-  test("writes the masks on each stream the runner reads, before the command's output", () => {
-    expect(masks(["pipe", "pipe"])).toEqual({
-      stdout: `${MASK}out\n`,
-      stderr: `${MASK}err\n`,
-      file: "",
-    });
-  });
-
-  test("writes no masks on a stream redirected to a file", () => {
+  test("writes the masks on stderr before the command's output, and keeps stdout clean", () => {
+    expect(masks(["pipe", "pipe"])).toEqual({ stdout: "out\n", stderr: `${MASK}err\n`, file: "" });
     expect(masks(["file", "pipe"])).toEqual({ stdout: "", stderr: `${MASK}err\n`, file: "out\n" });
-    expect(masks(["pipe", "file"])).toEqual({ stdout: `${MASK}out\n`, stderr: "", file: "err\n" });
   });
 
-  test("writes the masks on a shell pipe", () => {
-    const child = spawnSync("sh", ["-c", '"$0" -e "$1" 2>&1 | cat', process.execPath, CHILD], {
+  test("writes no masks when stderr is redirected to a file", () => {
+    expect(masks(["pipe", "file"])).toEqual({ stdout: "out\n", stderr: "", file: "err\n" });
+  });
+
+  test("keeps stdout clean for command substitution and pipes", () => {
+    const child = spawnSync("sh", ["-c", '"$0" -e "$1" | cat', process.execPath, CHILD], {
       env: { PATH: process.env.PATH, GITHUB_ACTIONS: "true" },
     });
-    expect(String(child.stdout)).toBe(`${MASK}${MASK}out\nerr\n`);
+    expect(String(child.stdout)).toBe("out\n");
+    expect(String(child.stderr)).toBe(`${MASK}err\n`);
   });
 
   test("writes nothing to a terminal or other device", async () => {
@@ -97,7 +94,7 @@ process.stderr.write("err\\n");`;
     const written: string[] = [];
     const write = (chunk: string, done: () => void) => (written.push(chunk), done(), true);
     try {
-      await maskInLog({ GITHUB_ACTIONS: "true" }, ["sk-one"], [{ fd: device, write }]);
+      await maskInLog({ GITHUB_ACTIONS: "true" }, ["sk-one"], { fd: device, write });
     } finally {
       closeSync(device);
     }

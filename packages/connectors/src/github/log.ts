@@ -18,13 +18,10 @@ export function maskCommands(
 export async function maskInLog(
   env: Readonly<Record<string, string | undefined>>,
   values: readonly string[],
-  streams: readonly LogStream[],
+  stderr: LogStream,
 ): Promise<void> {
   const commands = maskCommands(env, values);
-  if (!commands) return;
-  await Promise.all(
-    streams.filter((stream) => readByRunner(stream.fd)).map((stream) => flushed(stream, commands)),
-  );
+  if (commands && readByRunner(stderr.fd)) await flushed(stderr, commands);
 }
 
 function readByRunner(fd: number): boolean {

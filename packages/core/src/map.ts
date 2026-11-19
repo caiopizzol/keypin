@@ -2,6 +2,7 @@ import { parse as parseToml, TomlError } from "smol-toml";
 import type { Environment, KeyId, KeyRef } from "./contracts";
 import { DEFAULT_ENVIRONMENTS } from "./contracts";
 import {
+  checkId,
   type DestinationKinds,
   placeId,
   type PublishTarget,
@@ -10,6 +11,7 @@ import {
 } from "./destination";
 import { idKeyOf, type IssuerKinds, type IssuerReader, type IssuerSpec } from "./issuer";
 import type { VaultKinds } from "./login";
+import { pullKindOf, type PullKinds, pullPlace, type PullReader } from "./pull";
 import { isRecord } from "./record";
 import { byKind, parseReference, referenceSchemes, sameItem, sameRef } from "./reference";
 import { periodDays } from "./days";
@@ -17,6 +19,7 @@ import { periodDays } from "./days";
 export interface EnvEntry {
   ref: KeyRef;
   publish: PublishTarget[];
+  pull: PullReader[];
   issuer?: IssuerSpec;
   idKey?: KeyId;
 }
@@ -73,6 +76,7 @@ export function parseMap(
   kinds: DestinationKinds,
   issuers: IssuerKinds,
   vaults: VaultKinds,
+  pulls: PullKinds = [],
 ): MapResult {
   let data: unknown;
   try {
@@ -83,7 +87,7 @@ export function parseMap(
       errors: [`${file}: not valid TOML: ${tomlProblem(error)}`],
     };
   }
-  return validateMap(data, file, { kinds, issuers, vaults });
+  return validateMap(data, file, { kinds, issuers, vaults, pulls });
 }
 
 type Table = Record<string, unknown>;
@@ -109,7 +113,7 @@ function filledIn(
 function validateMap(
   data: unknown,
   file: string,
-  { kinds, issuers, vaults }: Pick<MapContext, "kinds" | "issuers" | "vaults">,
+  { kinds, issuers, vaults, pulls }: Pick<MapContext, "kinds" | "issuers" | "vaults" | "pulls">,
 ): MapResult {
   const errors: string[] = [];
   const fail = (where: string, message: string) => errors.push(`${file}: ${where}${message}`);
@@ -134,7 +138,7 @@ function validateMap(
   else {
     Object.entries(rawKeys).forEach(([id, raw], index) => {
       const label = VARIABLE_NAME.test(id) ? `key "${id}"` : `keys[${index}]`;
-      const context = { pins, environments, kinds, issuers, vaults };
+      const context = { pins, environments, kinds, issuers, vaults, pulls };
       const entry = validateKey(id, raw, context, (where, message) =>
         fail(`${label}${where}: `, message),
       );
@@ -311,6 +315,10 @@ function pairedKeys(
         err(
           `"${name}" ${environment} publishes to different destinations; list the same destinations for both keys`,
         );
+      else if (entry.pull.length || pair.pull.length)
+        err(
+          `pulling a key and its key_id isn't supported yet: a job could read the new secret with the old ID between their two vault saves. Publish both keys instead of pulling them`,
+        );
       if (!owners.has(name)) owners.set(name, key.name);
     }
   }
@@ -326,6 +334,7 @@ interface MapContext {
   kinds: DestinationKinds;
   issuers: IssuerKinds;
   vaults: VaultKinds;
+  pulls: PullKinds;
 }
 
 function validateKey(
@@ -419,7 +428,7 @@ function validateEnv(
     failed = true;
     fail(message);
   };
-  unknownFields(raw, ["from", "publish", "issuer"], (field) =>
+  unknownFields(raw, ["from", "publish", "pull", "issuer"], (field) =>
     err(
       field === "vault" || field === "item"
         ? `"vault" and "item" are from keypin 0.4; use from = "op://<vault>/<item>/<field>" (${OLD_FORMAT})`
@@ -431,6 +440,7 @@ function validateEnv(
   const ref = reference(raw, "from", context, err);
 
   const publish: PublishTarget[] = [];
+  const publishedAt: number[] = [];
   const firstAt = new Map<string, number>();
   if (raw.publish !== undefined) {
     if (!Array.isArray(raw.publish)) err(`field "publish" must be a list`);
@@ -444,18 +454,84 @@ function validateEnv(
         else {
           firstAt.set(place, i);
           publish.push(target);
+          publishedAt.push(i);
         }
       });
     }
   }
+  const pull = readers(raw.pull, publish, publishedAt, context, err);
   const issuer =
     raw.issuer === undefined || !ref
       ? undefined
       : validateIssuer(raw.issuer, ref, context, (m) => err(`issuer: ${m}`));
   if (failed || !ref) return undefined;
-  if (!issuer) return { ref, publish };
+  if (!issuer) return { ref, publish, pull };
   const idKey = idKeyOf(context.issuers, issuer);
-  return idKey === null ? { ref, publish, issuer } : { ref, publish, issuer, idKey };
+  return idKey === null ? { ref, publish, pull, issuer } : { ref, publish, pull, issuer, idKey };
+}
+
+function readers(
+  raw: unknown,
+  publish: readonly PublishTarget[],
+  publishedAt: readonly number[],
+  { kinds, pulls }: MapContext,
+  fail: (message: string) => void,
+): PullReader[] {
+  const found: PullReader[] = [];
+  if (raw === undefined) return found;
+  if (!Array.isArray(raw)) {
+    fail(`field "pull" must be a list`);
+    return found;
+  }
+  const firstAt = new Map<string, number>();
+  raw.forEach((each: unknown, i: number) => {
+    const reader = pullReader(each, pulls, (m) => fail(`pull[${i}]: ${m}`));
+    if (!reader) return;
+    const place = pullPlace(reader, pulls);
+    const same = firstAt.get(place);
+    const pushed = publish.findIndex((target) => checkId(target, kinds) === place);
+    if (same !== undefined) fail(`pull[${i}]: the same place as pull[${same}]`);
+    else if (pushed !== -1)
+      fail(
+        `pull[${i}]: publish[${publishedAt[pushed]}] also writes the key to ${pullKindOf(pulls, reader.by).describe(reader)}; keep one of them. To pull it instead, delete that publish entry, and delete the copy publish wrote there`,
+      );
+    else {
+      firstAt.set(place, i);
+      found.push(reader);
+    }
+  });
+  return found;
+}
+
+function pullReader(
+  raw: unknown,
+  pulls: PullKinds,
+  fail: (message: string) => void,
+): PullReader | undefined {
+  if (!isRecord(raw)) {
+    fail("must be a table");
+    return undefined;
+  }
+  const by = requiredString(raw, "by", fail);
+  if (by === undefined) return undefined;
+  const kind = pulls.find((k) => k.kind === by);
+  if (!kind) {
+    fail(
+      `field "by" must be one of: ${pulls
+        .map((k) => k.kind)
+        .toSorted()
+        .join(", ")}`,
+    );
+    return undefined;
+  }
+  let failed = false;
+  const err = (message: string) => {
+    failed = true;
+    fail(message);
+  };
+  const reader = kind.parse(tableReader(raw, ["by"], kind.kind, err));
+  if (reader === undefined && !failed) err(`the "${kind.kind}" pull couldn't read this table`);
+  return failed ? undefined : reader;
 }
 
 function validateIssuer(

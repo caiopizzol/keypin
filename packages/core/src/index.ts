@@ -36,6 +36,14 @@ export {
   targetOf,
 } from "./destination";
 export {
+  type PullKind,
+  type PullKinds,
+  pullKindOf,
+  pullName,
+  pullPlace,
+  type PullReader,
+} from "./pull";
+export {
   connectIssuer,
   type IssuerKind,
   type IssuerKinds,

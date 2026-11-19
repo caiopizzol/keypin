@@ -19,7 +19,7 @@ import { infisicalRef } from "@keypin/connectors/infisical";
 import { fakeSignIn } from "@keypin/connectors/cloudflare/testing";
 import { day } from "@keypin/core/testing";
 import type { Deps, FolderEntry, Launch, Lock } from "../src/deps";
-import { destinations, issuers, vaults } from "../src/start";
+import { destinations, issuers, pulls, vaults } from "../src/start";
 
 export const SENTINEL = "sentinel-value-7f3a9c2e1d";
 
@@ -359,6 +359,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
     destinations,
     issuers,
     vaults,
+    pulls,
     destination: () => {
       throw new Error("this test publishes nothing");
     },

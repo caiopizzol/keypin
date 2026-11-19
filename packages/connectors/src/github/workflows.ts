@@ -75,12 +75,9 @@ export function workflowRefs(text: string): WorkflowRefs | null {
   };
   const passedByCaller = onlyWorkflowCall(isRecord(data) ? data.on : undefined);
   const jobs = isRecord(data) && isRecord(data.jobs) ? data.jobs : null;
+  const inherited = [...secretsIn(data, jobs, passedByCaller)];
   const uses: WorkflowRefs["uses"] = [
-    {
-      environment: null,
-      secrets: [...secretsIn(data, jobs, passedByCaller)],
-      fromCaller: passedByCaller,
-    },
+    { environment: null, secrets: inherited, fromCaller: passedByCaller },
   ];
   const runs: KeypinRun[] = [];
   for (const job of Object.values(jobs ?? {})) {
@@ -92,7 +89,7 @@ export function workflowRefs(text: string): WorkflowRefs | null {
       for (const run of keypinRuns(script))
         runs.push({ environment: named?.trim() ?? null, ...run });
     const secrets = [...secretsIn(job, null, passedByCaller && named === null)];
-    if (named?.includes("${{") && secrets.length) refs.hidesUses = true;
+    if (named?.includes("${{") && (secrets.length || inherited.length)) refs.hidesUses = true;
     uses.push({ environment: named?.trim() ?? null, secrets, fromCaller: passedByCaller });
   }
   return {

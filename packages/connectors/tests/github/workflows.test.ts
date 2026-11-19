@@ -273,6 +273,24 @@ jobs:
     expect(refs.hidesUses).toBe(true);
   });
 
+  test("an expression environment hides uses of secrets the job inherits from the workflow's env", () => {
+    const refs = workflowRefs(`
+env:
+  API_KEY: \${{ secrets.API_KEY }}
+jobs:
+  deploy:
+    strategy:
+      matrix:
+        target: [staging, production]
+    environment:
+      name: \${{ matrix.target }}
+    steps:
+      - run: ./deploy.sh
+`);
+    assert(refs);
+    expect(refs.hidesUses).toBe(true);
+  });
+
   test("an expression environment hides nothing when the job uses no secrets", () => {
     const refs = workflowRefs(`
 jobs:

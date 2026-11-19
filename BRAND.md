@@ -19,7 +19,7 @@ vault; one map says where every key comes from, where it goes and when it's due;
 while a command runs.
 
 Direction: get keys out of files, keep one map of every key, and rotate keys with the vault you already use. keypin
-reads five vaults, publishes to CI and hosting, and rotates keys at each issuer in the README. Scheduled rotation in CI
+reads five vaults, publishes to CI and hosting, and rotates keys at the issuers in the README. Scheduled rotation
 covers 1Password to GitHub Actions so far. Anything else stays out of the README until the code does it.
 
 ### Audience
@@ -85,7 +85,7 @@ Essence: one source, one map.
 ### Tagline & Slogans
 
 - Primary: "Key syncs and rotation for the vault you already use." Use it as the headline, everywhere. Name the
-  category, never a competitor: the obvious comparisons, such as Infisical and Doppler, are also vaults keypin reads.
+  category, never a competitor: Infisical and Doppler are vaults keypin reads.
 - Description: "keypin gets your keys out of `.env` files. It runs your apps with keys from your vault, publishes them
   to your CI and hosting, and rotates them when they're due."
 - Short description (60 characters or fewer): "Key syncs and rotation for the vault you already use."
@@ -98,7 +98,6 @@ Essence: one source, one map.
 
 ### Phrases
 
-- "Key syncs and rotation for the vault you already use."
 - "Get your team's keys out of `.env` files."
 - "Nothing to commit, paste in a chat, or leave on a laptop."
 - "Names, never values."

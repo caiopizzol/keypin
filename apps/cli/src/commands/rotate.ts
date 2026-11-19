@@ -551,12 +551,11 @@ async function rotateLocked(job: Job): Promise<number> {
     if (!job.plan) await saveState(deps.files, job.path, state);
   }
   if (job.discard && !unfinished) {
+    const vault = vaultName(entry.ref, deps.vaults);
+    const left = next.action === "create" ? next.abandoned : null;
+    const note = left ? abandonedNote(left, issuer, spec, vault) : null;
     say(
-      `Stopped: ${key.name} (${owner.environment}) has no unfinished rotation to discard. To replace the key ${vaultName(entry.ref, deps.vaults)} holds, run:\n  ${commandLine(
-        deps,
-        "rotate",
-        job.args.filter((arg) => arg !== "--discard"),
-      )}\nNothing was created.`,
+      `Stopped: ${key.name} (${owner.environment}) has no unfinished rotation to discard. ${note ?? `To replace the key ${vault} holds, run:\n  ${commandLine(deps, "rotate", withoutDiscard(job.args))}`}\nNothing was created.`,
     );
     return 1;
   }
@@ -604,8 +603,14 @@ async function rotateLocked(job: Job): Promise<number> {
     next = { action: "create", current: null, abandoned: null };
   }
   if (job.discard && next.action === "resume") {
-    if (!(await vaultTakesWrites(job))) return 1;
     const dropped = next.issued;
+    if (issuer.createResetsOld && waitsForRevoke(dropped) && dropped.old.id !== null) {
+      say(
+        `\nStopped: ${issuer.describe()} makes a new key by resetting key ${shown(issuer, dropped.old.id)}, the one key ${shown(issuer, dropped.id)} replaced, and a destination may still use it. Finish this rotation, then run it again to replace key ${shown(issuer, dropped.id)}:\n  ${commandLine(deps, "rotate", withoutDiscard(job.args))}\nNothing was created.`,
+      );
+      return 1;
+    }
+    if (!(await vaultTakesWrites(job))) return 1;
     say(
       out.dim(
         `\nDiscarding key ${shown(issuer, dropped.id)}, which keypin created at ${issuer.describe()} on ${dropped.at}: a new key replaces it everywhere.`,
@@ -683,6 +688,7 @@ async function rotateLocked(job: Job): Promise<number> {
     else mayHaveCreated(job, issuer, created.name);
     return 1;
   }
+  job = { ...job, discard: false, args: withoutDiscard(job.args) };
   const issued: Issued = {
     ...owner,
     issuer: spec.kind,
@@ -741,6 +747,10 @@ async function rotateLocked(job: Job): Promise<number> {
     { steps, pairSteps, idSaved: true },
     state,
   );
+}
+
+function withoutDiscard(args: readonly string[]): string[] {
+  return args.filter((arg) => arg !== "--discard");
 }
 
 function revokeOnly(next: NextRotation, steps: readonly PlanStep[], idSaved: boolean): boolean {

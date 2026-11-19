@@ -50,6 +50,7 @@ interface IssuerOptions {
   failCreate?: boolean;
   failRevoke?: boolean;
   noRevoke?: boolean;
+  resetsOld?: boolean;
   listed?: string[];
 }
 
@@ -86,6 +87,7 @@ function fakeIssuer(options: IssuerOptions, made: { count: number }) {
         log.push(`create ${name} -> key-${made.count}`);
         return { id: `key-${made.count}`, secret: new Secret(NEW(made.count)) };
       },
+      ...(options.resetsOld ? { createResetsOld: true as const } : {}),
       ...(options.noRevoke
         ? {}
         : {
@@ -898,6 +900,62 @@ describe("keypin rotate --discard", () => {
     expect((await run.state()).issued.map((i) => [i.id, i.old.id, i.old.revoked])).toEqual([
       ["key-3", null, true],
     ]);
+  });
+
+  test("a publish that fails after the fresh key is saved prints a rerun that resumes it", async () => {
+    const first = await unfinished();
+    const failing = setup({
+      disk: first.disk,
+      vault: first.vault,
+      failWrite: [GITHUB],
+      answers: ["y"],
+    });
+    expect(await failing.run("--discard")).toBe(1);
+    const printed = failing.stderr.text.split("To continue, run:\n  ")[1]?.split("\n")[0] ?? "";
+    expect(printed).toBe(
+      "cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts rotate RESEND_API_KEY",
+    );
+
+    const resumed = setup({ disk: first.disk, vault: first.vault, answers: ["y", "y"] });
+    expect(await resumed.run()).toBe(0);
+    expect(resumed.stderr.text).toContain("Resuming: keypin created key key-3");
+    expect(resumed.issuer.log, "no other key, and the discarded one is revoked").toEqual([
+      "check key-3",
+      "revoke key-2",
+    ]);
+  });
+
+  test("a key keypin made but never saved is named for deleting, and nothing is created", async () => {
+    const first = setup({ answers: ["y"] });
+    expect(await first.run()).toBe(0);
+    const unsaved = writableVault({ "mailer resend key": NEW(1), "resend admin key": ADMIN }, true);
+    const failing = setup({
+      disk: first.disk,
+      vault: unsaved,
+      made: first.vault.made,
+      answers: ["y"],
+    });
+    expect(await failing.run()).toBe(1);
+
+    const run = setup({ disk: first.disk, vault: first.vault, answers: ["y", "y"] });
+    expect(await run.run("--discard")).toBe(1);
+    expect(run.stderr.text).toContain(
+      `Stopped: RESEND_API_KEY (prod) has no unfinished rotation to discard. keypin created key key-2 at Resend on ${run.deps.now().toISOString()}, but 1Password doesn't hold it. If nothing uses it, delete it at https://resend.com/api-keys.\nNothing was created.`,
+    );
+    expect(run.issuer.log).toEqual([]);
+    expect(run.writes()).toEqual([]);
+  });
+
+  test("an issuer whose new key resets the old one stops while the old key may be in use", async () => {
+    const first = await unfinished({ resetsOld: true });
+    const run = setup({ disk: first.disk, vault: first.vault, resetsOld: true, answers: ["y"] });
+    expect(await run.run("--discard")).toBe(1);
+    expect(run.stderr.text).toContain(
+      "Stopped: Resend makes a new key by resetting key key-1, the one key key-2 replaced, and a destination may still use it. Finish this rotation, then run it again to replace key key-2:\n  cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts rotate RESEND_API_KEY\nNothing was created.",
+    );
+    expect(run.issuer.log).toEqual(["check key-2"]);
+    expect(run.asked).toEqual([]);
+    expect(run.writes()).toEqual([]);
   });
 
   test("takes one key, never --due, --approve-revoke or --check", async () => {

@@ -1002,6 +1002,19 @@ describe("keypin rotate, for a key CI pulls from the vault", () => {
     expect(again.leaked()).toBe(false);
   });
 
+  test("the plan for a rotation waiting to revoke still lists the jobs that pull the key", async () => {
+    const first = setup({ disk: pulled(MAP), answers: ["y"] });
+    expect(await first.run()).toBe(0);
+    const waiting = setup({ disk: first.disk, vault: first.vault, answers: ["y", "n"] });
+    expect(await waiting.run()).toBe(0);
+    const plan = setup({ disk: first.disk, vault: first.vault });
+    expect(await plan.run("--plan")).toBe(NEEDS_APPROVAL);
+    expect(plan.stderr.text).toContain("Resuming: keypin created key key-2");
+    expect(plan.stderr.text).toMatch(
+      /GitHub Actions acme\/jobs environment production +reads the new key from the vault at job time/,
+    );
+  });
+
   test("without a terminal, --yes saves the new key but never revokes", async () => {
     const first = setup({ disk: pulled(MAP), answers: ["y"] });
     expect(await first.run()).toBe(0);

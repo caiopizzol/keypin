@@ -1020,6 +1020,7 @@ async function resume(
   showPlan(out, [
     ...(pair && unsavedId ? [saveIdRow(job, pair)] : []),
     ...writeRows(job, steps, pairSteps),
+    ...pullRows(job),
     ...(old === null
       ? []
       : [

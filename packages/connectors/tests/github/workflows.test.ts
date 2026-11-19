@@ -272,4 +272,22 @@ jobs:
     assert(refs);
     expect(refs.hidesUses).toBe(true);
   });
+
+  test("an expression environment hides nothing when the job uses no secrets", () => {
+    const refs = workflowRefs(`
+jobs:
+  deploy:
+    strategy:
+      matrix:
+        target: [staging, production]
+    environment:
+      name: \${{ matrix.target }}
+    permissions:
+      id-token: write
+    steps:
+      - run: keypin run --env prod --only API_KEY -- ./deploy.sh
+`);
+    assert(refs);
+    expect(refs.hidesUses).toBe(false);
+  });
 });

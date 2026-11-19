@@ -88,15 +88,12 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     const name = isRecord(environment) ? environment.name : environment;
     const named = typeof name === "string" && name.trim() ? name : null;
     if (named !== null) refs.environments.add(named);
-    if (named?.includes("${{")) refs.hidesUses = true;
     for (const script of scripts(job))
       for (const run of keypinRuns(script))
         runs.push({ environment: named?.trim() ?? null, ...run });
-    uses.push({
-      environment: named?.trim() ?? null,
-      secrets: [...secretsIn(job, null, passedByCaller && named === null)],
-      fromCaller: passedByCaller,
-    });
+    const secrets = [...secretsIn(job, null, passedByCaller && named === null)];
+    if (named?.includes("${{") && secrets.length) refs.hidesUses = true;
+    uses.push({ environment: named?.trim() ?? null, secrets, fromCaller: passedByCaller });
   }
   return {
     secrets: [...refs.secrets],

@@ -148,3 +148,4 @@ export {
 } from "./login";
 export { findGaps, type Fix, type Gaps, type LocalFile, type Need, type ProjectScan } from "./gaps";
 export { signInVariables, withoutSignIn } from "./env";
+export { shellWord } from "./shell";

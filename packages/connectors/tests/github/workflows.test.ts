@@ -243,4 +243,33 @@ jobs:
       { environment: null, env: null, dynamicEnv: true, only: null },
     ]);
   });
+
+  test("keeps a quoted --only list with spaces as one word", () => {
+    const refs = workflowRefs(`
+jobs:
+  deploy:
+    steps:
+      - run: keypin run --only="FIRST, SECOND" --env="prod" -- ./deploy.sh
+`);
+    assert(refs);
+    expect(refs.runs).toEqual([
+      { environment: null, env: "prod", dynamicEnv: false, only: ["FIRST", "SECOND"] },
+    ]);
+  });
+
+  test("can't tell a job's secrets apart when its environment is an expression", () => {
+    const refs = workflowRefs(`
+jobs:
+  deploy:
+    strategy:
+      matrix:
+        target: [staging, production]
+    environment:
+      name: \${{ matrix.target }}
+    steps:
+      - run: echo \${{ secrets.EXAMPLE_TOKEN }}
+`);
+    assert(refs);
+    expect(refs.hidesUses).toBe(true);
+  });
 });

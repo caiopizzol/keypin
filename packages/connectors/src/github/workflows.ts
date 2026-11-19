@@ -88,6 +88,7 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     const name = isRecord(environment) ? environment.name : environment;
     const named = typeof name === "string" && name.trim() ? name : null;
     if (named !== null) refs.environments.add(named);
+    if (named?.includes("${{")) refs.hidesUses = true;
     for (const script of scripts(job))
       for (const run of keypinRuns(script))
         runs.push({ environment: named?.trim() ?? null, ...run });
@@ -127,7 +128,7 @@ const KEYPIN_RUN = /(?:^|[\s;&|(])(?:[\w.-]*\/)*keypin(?:@[\w.^~-]+)?\s+run(?=\s
 function keypinRuns(script: string): Omit<KeypinRun, "environment">[] {
   const runs: Omit<KeypinRun, "environment">[] = [];
   for (const match of script.replace(/\\\r?\n/g, " ").matchAll(KEYPIN_RUN)) {
-    const words = (match[1] ?? "").trim().split(/\s+/).map(unquoted);
+    const words = shellWords(match[1] ?? "");
     let env: string | null = null;
     let dynamicEnv = false;
     let only: string[] | null = null;
@@ -149,21 +150,34 @@ function keypinRuns(script: string): Omit<KeypinRun, "environment">[] {
   return runs;
 }
 
-function unquoted(word: string): string {
+function shellWords(line: string): string[] {
+  const words: string[] = [];
   let text = "";
+  let started = false;
   let quote: string | null = null;
-  for (let i = 0; i < word.length; i++) {
-    const c = word[i] ?? "";
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i] ?? "";
     if (quote === "'") {
       if (c === "'") quote = null;
       else text += c;
-    } else if (c === "\\" && (quote === null || /["\\$`]/.test(word[i + 1] ?? ""))) {
-      text += word[++i] ?? "";
+    } else if (c === "\\" && (quote === null || /["\\$`]/.test(line[i + 1] ?? ""))) {
+      text += line[++i] ?? "";
+      started = true;
     } else if (c === quote) quote = null;
-    else if (quote === null && (c === "'" || c === '"')) quote = c;
-    else text += c;
+    else if (quote === null && (c === "'" || c === '"')) {
+      quote = c;
+      started = true;
+    } else if (quote === null && /\s/.test(c)) {
+      if (started) words.push(text);
+      text = "";
+      started = false;
+    } else {
+      text += c;
+      started = true;
+    }
   }
-  return text;
+  if (started) words.push(text);
+  return words;
 }
 
 function onlyWorkflowCall(on: unknown): boolean {

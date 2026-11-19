@@ -311,6 +311,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
   const stdout = output();
   const stderr = output();
   const warnings: string[] = [];
+  const masked: string[] = [];
   const backend = setup.backend ?? fakeVault().vault;
   const deps: Deps = {
     cwd: "/work/billing",
@@ -372,6 +373,10 @@ export function fakeDeps(setup: FakeSetup = {}) {
       warnings.push(`${title}: ${text}`);
       return true;
     },
+    maskInLog: async (values) => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      masked.push(...values);
+    },
     styled: { stdout: false, stderr: false },
     columns: () => 80,
     ask: async () => {
@@ -379,7 +384,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
     },
     ...setup.deps,
   };
-  return { deps, disk, stdout, stderr, warnings };
+  return { deps, disk, stdout, stderr, warnings, masked };
 }
 
 function listMemoryFolder(disk: ReturnType<typeof memoryFiles>, path: string): FolderEntry[] {

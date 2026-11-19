@@ -270,6 +270,21 @@ prod = "op://Private/ci cloudflare token/credential"
     expect(leaks(before)).toBe(false);
   });
 
+  test("hides every value it passes in the CI log before the command starts", async () => {
+    const map = `${WEB_MAP}\n[keys.TLS_KEY]\ndev = "op://Private/web tls key/password"\n`;
+    const pem = `-----BEGIN KEY-----\n${SENTINEL}\n-----END KEY-----\n`;
+    const { deps, launcher, masked } = setup({
+      files: { "/work/web/keypin.toml": map },
+      values: { "web tls key": pem },
+    });
+    let maskedAtLaunch: string[] = [];
+    const launch = deps.launch;
+    deps.launch = (command, env) => ((maskedAtLaunch = [...masked]), launch(command, env));
+    expect(await cli(["run", "--", "true"], deps)).toBe(0);
+    expect(maskedAtLaunch).toEqual([SENTINEL, pem]);
+    expect(launcher.launches[0]?.env.TLS_KEY).toBe(pem);
+  });
+
   test("passes the child's exit code through", async () => {
     const { deps } = setup({ code: 42 });
     expect(await cli(["run", "--", "false"], deps)).toBe(42);

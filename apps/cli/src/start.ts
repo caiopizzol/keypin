@@ -28,7 +28,13 @@ import {
 import { convexDeployment } from "@keypin/connectors/convex";
 import { elevenlabsIssuer } from "@keypin/connectors/elevenlabs";
 import { flyApp } from "@keypin/connectors/fly";
-import { ghToken, githubActions, listRepoSecrets, sshHostname } from "@keypin/connectors/github";
+import {
+  ghToken,
+  githubActions,
+  listRepoSecrets,
+  maskInLog,
+  sshHostname,
+} from "@keypin/connectors/github";
 import { gitlabGroup, gitlabProject } from "@keypin/connectors/gitlab";
 import { googleIssuer, googleServiceAccountIssuer } from "@keypin/connectors/google";
 import { atlasIssuer } from "@keypin/connectors/mongodb-atlas";
@@ -286,6 +292,7 @@ export function realDeps(): Deps {
       process.stdout.write(`::warning title=${title}::${text}\n`);
       return true;
     },
+    maskInLog: (values) => maskInLog(process.env, values, process.stderr),
     styled: {
       stdout: isStyled(process.stdout.isTTY, process.env),
       stderr: isStyled(process.stderr.isTTY, process.env),

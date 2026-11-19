@@ -224,4 +224,23 @@ jobs:
     ]);
     expect(refs.uses).toEqual([]);
   });
+
+  test("reads --env and --only the way the shell passes them, quotes removed", () => {
+    const refs = workflowRefs(`
+jobs:
+  deploy:
+    steps:
+      - run: keypin run --env="prod" --only API_KEY -- ./deploy.sh
+      - run: keypin run --env 'prod' --only="API_KEY" -- ./deploy.sh
+      - run: keypin run "--env=prod" --only='API'_KEY -- ./deploy.sh
+      - run: keypin run --env="$KEYPIN_ENV" -- ./deploy.sh
+`);
+    assert(refs);
+    expect(refs.runs).toEqual([
+      { environment: null, env: "prod", dynamicEnv: false, only: ["API_KEY"] },
+      { environment: null, env: "prod", dynamicEnv: false, only: ["API_KEY"] },
+      { environment: null, env: "prod", dynamicEnv: false, only: ["API_KEY"] },
+      { environment: null, env: null, dynamicEnv: true, only: null },
+    ]);
+  });
 });

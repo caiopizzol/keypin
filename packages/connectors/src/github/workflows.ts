@@ -127,10 +127,7 @@ const KEYPIN_RUN = /(?:^|[\s;&|(])(?:[\w.-]*\/)*keypin(?:@[\w.^~-]+)?\s+run(?=\s
 function keypinRuns(script: string): Omit<KeypinRun, "environment">[] {
   const runs: Omit<KeypinRun, "environment">[] = [];
   for (const match of script.replace(/\\\r?\n/g, " ").matchAll(KEYPIN_RUN)) {
-    const words = (match[1] ?? "")
-      .trim()
-      .split(/\s+/)
-      .map((word) => word.replace(/^(["'])(.*)\1$/, "$2"));
+    const words = (match[1] ?? "").trim().split(/\s+/).map(unquoted);
     let env: string | null = null;
     let dynamicEnv = false;
     let only: string[] | null = null;
@@ -150,6 +147,23 @@ function keypinRuns(script: string): Omit<KeypinRun, "environment">[] {
     runs.push({ env, dynamicEnv, only });
   }
   return runs;
+}
+
+function unquoted(word: string): string {
+  let text = "";
+  let quote: string | null = null;
+  for (let i = 0; i < word.length; i++) {
+    const c = word[i] ?? "";
+    if (quote === "'") {
+      if (c === "'") quote = null;
+      else text += c;
+    } else if (c === "\\" && (quote === null || /["\\$`]/.test(word[i + 1] ?? ""))) {
+      text += word[++i] ?? "";
+    } else if (c === quote) quote = null;
+    else if (quote === null && (c === "'" || c === '"')) quote = c;
+    else text += c;
+  }
+  return text;
 }
 
 function onlyWorkflowCall(on: unknown): boolean {

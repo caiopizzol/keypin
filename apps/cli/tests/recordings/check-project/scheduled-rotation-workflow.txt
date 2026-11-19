@@ -25,7 +25,7 @@ name: rotate keys
 
 on:
   schedule:
-    - cron: "0 6 * * 1"
+    - cron: "17 6 * * *"
   workflow_dispatch:
     inputs:
       check_setup:

@@ -1238,14 +1238,6 @@ prod = ${id}
       `"KEY_ID" prod publishes to different destinations; list the same destinations for both keys`,
     ],
     [
-      "a key pulled by another reader",
-      map(
-        "KEY_ID",
-        ID.replace("] }", `], pull = [{ by = "github-actions", repo = "acme/api" }] }`),
-      ),
-      `"KEY_ID" prod is pulled by different readers; list the same pull entries for both keys`,
-    ],
-    [
       "a key with its own issuer",
       map(
         "KEY_ID",
@@ -1255,6 +1247,20 @@ prod = ${id}
     ],
   ])("refuses %s", (_, text, message) => {
     expect(errors(text)).toContain(`${where}${message}`);
+  });
+
+  describe("refuses a pull on either key of the pair", () => {
+    const PULL = `pull = [{ by = "github-actions", repo = "acme/api" }]`;
+    const pulledId = ID.replace("] }", `], ${PULL} }`);
+    test.each([
+      ["the key", map("KEY_ID", ID, PULL)],
+      ["its key_id", map("KEY_ID", pulledId)],
+      ["both", map("KEY_ID", pulledId, PULL)],
+    ])("%s", (_, text) => {
+      expect(errors(text)).toEqual([
+        `${where}pulling a key and its key_id isn't supported yet: a job could read the new secret with the old ID between their two vault saves. Publish both keys instead of pulling them`,
+      ]);
+    });
   });
 
   test("refuses two keys that name the same ID key", () => {
@@ -1385,6 +1391,15 @@ environment = "production"
     expect(errors(both)).toEqual([
       `${where}pull[0]: publish[0] also writes the key to Acme/web environment PRODUCTION; keep one of them. To pull it instead, delete that publish entry, and delete the copy publish wrote there`,
     ]);
+  });
+
+  test("names the conflicting publish entry by its place in the file", () => {
+    const skipped = map(
+      `{ from = "op://Private/api token/password", publish = [{ to = "github-actions" }, { to = "github-actions", repo = "acme/other" }, { to = "github-actions", repo = "acme/web" }], pull = [{ by = "github-actions", repo = "acme/web" }] }`,
+    );
+    expect(errors(skipped)).toContain(
+      `${where}pull[0]: publish[2] also writes the key to acme/web; keep one of them. To pull it instead, delete that publish entry, and delete the copy publish wrote there`,
+    );
   });
 
   test("a repo's secrets and one of its environments are different places", () => {

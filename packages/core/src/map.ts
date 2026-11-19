@@ -151,9 +151,7 @@ function validateMap(
   );
   sharedDestinations(keys, environments, kinds, (where, message) => fail(where, message));
   sharedClaims(keys, environments, issuers, (where, message) => fail(where, message));
-  pairedKeys(keys, environments, { kinds, vaults, pulls }, (where, message) =>
-    fail(where, message),
-  );
+  pairedKeys(keys, environments, { kinds, vaults }, (where, message) => fail(where, message));
   return errors.length
     ? { ok: false, errors }
     : { ok: true, map: { file, pins, environments, ignore, keys } };
@@ -278,13 +276,11 @@ function sharedClaims(
 function pairedKeys(
   keys: KeyEntry[],
   environments: readonly Environment[],
-  { kinds, vaults, pulls }: Pick<MapContext, "kinds" | "vaults" | "pulls">,
+  { kinds, vaults }: Pick<MapContext, "kinds" | "vaults">,
   fail: (where: string, message: string) => void,
 ) {
   const places = (entry: EnvEntry) =>
     new Set(entry.publish.map((target) => `${placeId(target, kinds)} ${target.account}`));
-  const readers = (entry: EnvEntry) =>
-    new Set(entry.pull.map((reader) => pullPlace(reader, pulls)));
   for (const environment of environments) {
     const owners = new Map<KeyId, KeyId>();
     for (const key of keys) {
@@ -319,9 +315,9 @@ function pairedKeys(
         err(
           `"${name}" ${environment} publishes to different destinations; list the same destinations for both keys`,
         );
-      else if (!sameSet(readers(pair), readers(entry)))
+      else if (entry.pull.length || pair.pull.length)
         err(
-          `"${name}" ${environment} is pulled by different readers; list the same pull entries for both keys`,
+          `pulling a key and its key_id isn't supported yet: a job could read the new secret with the old ID between their two vault saves. Publish both keys instead of pulling them`,
         );
       if (!owners.has(name)) owners.set(name, key.name);
     }
@@ -444,6 +440,7 @@ function validateEnv(
   const ref = reference(raw, "from", context, err);
 
   const publish: PublishTarget[] = [];
+  const publishedAt: number[] = [];
   const firstAt = new Map<string, number>();
   if (raw.publish !== undefined) {
     if (!Array.isArray(raw.publish)) err(`field "publish" must be a list`);
@@ -457,11 +454,12 @@ function validateEnv(
         else {
           firstAt.set(place, i);
           publish.push(target);
+          publishedAt.push(i);
         }
       });
     }
   }
-  const pull = readers(raw.pull, publish, context, err);
+  const pull = readers(raw.pull, publish, publishedAt, context, err);
   const issuer =
     raw.issuer === undefined || !ref
       ? undefined
@@ -475,6 +473,7 @@ function validateEnv(
 function readers(
   raw: unknown,
   publish: readonly PublishTarget[],
+  publishedAt: readonly number[],
   { kinds, pulls }: MapContext,
   fail: (message: string) => void,
 ): PullReader[] {
@@ -494,7 +493,7 @@ function readers(
     if (same !== undefined) fail(`pull[${i}]: the same place as pull[${same}]`);
     else if (pushed !== -1)
       fail(
-        `pull[${i}]: publish[${pushed}] also writes the key to ${pullKindOf(pulls, reader.by).describe(reader)}; keep one of them. To pull it instead, delete that publish entry, and delete the copy publish wrote there`,
+        `pull[${i}]: publish[${publishedAt[pushed]}] also writes the key to ${pullKindOf(pulls, reader.by).describe(reader)}; keep one of them. To pull it instead, delete that publish entry, and delete the copy publish wrote there`,
       );
     else {
       firstAt.set(place, i);

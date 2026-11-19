@@ -1,0 +1,76 @@
+$ keypin rotate RESEND_API_KEY --plan
+exit 3
+
+--- file /home/me/.local/state/keypin/state.json ---
+{
+  "version": 5,
+  "receipts": [],
+  "issued": [
+    {
+      "keyId": "RESEND_API_KEY",
+      "environment": "prod",
+      "mapFile": "/work/billing/keypin.toml",
+      "issuer": "resend",
+      "id": "key-1",
+      "generation": "66b4730b863ddbcb",
+      "at": "2026-11-09T12:00:00.000Z",
+      "old": {
+        "id": null,
+        "generation": "9819eb49e959be60",
+        "revoked": false
+      }
+    }
+  ],
+  "operations": []
+}
+
+--- file /work/billing/keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.RESEND_API_KEY]
+rotate_every = "90d"
+
+[keys.RESEND_API_KEY.prod]
+from = "op://Private/mailer resend key/credential"
+pull = [{ by = "github-actions", repo = "acme/jobs", environment = "production" }]
+issuer = { kind = "resend", admin = "op://Private/resend admin key/credential", permission = "sending_access" }
+
+--- given answers ---
+[
+  "y",
+  "y"
+]
+
+--- given terminal ---
+true
+
+--- calls issuer ---
+check key-1
+
+--- calls vault ---
+read mailer resend key
+read resend admin key
+
+--- calls destination ---
+
+--- calls asked ---
+
+--- stdout ---
+
+--- stderr ---
+RESEND_API_KEY prod  from op://Private/mailer resend key/credential in 1Password account my.1password.com
+ok     Read the key and the admin key op://Private/resend admin key/credential
+ok     Resend  the admin key lists 2 API keys
+
+Plan
+  + Resend                                           create a new key
+  ~ 1Password                                        save it to op://Private/mailer resend key/credential, rotated today
+  = GitHub Actions acme/jobs environment production  reads the new key from the vault at job time
+  - Resend                                           revoke the old key key-1, after a second y
+
+This plan is routine: --yes can approve it.
+Nothing was written: --plan only shows the plan.
+To approve, run this in a terminal:
+  cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts rotate RESEND_API_KEY

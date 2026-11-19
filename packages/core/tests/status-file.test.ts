@@ -25,6 +25,7 @@ function row(keyId: string, environment: string, rotated: string | null): Status
         stale: false,
       },
     ],
+    pull: [],
   };
 }
 

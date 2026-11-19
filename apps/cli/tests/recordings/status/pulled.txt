@@ -1,0 +1,35 @@
+$ keypin status
+exit 1
+
+--- file /home/me/.config/keypin/registry.json ---
+{"version":1,"projects":["/work/web"]}
+
+--- file /work/web/keypin.toml ---
+
+[1password]
+account = "my.1password.com"
+
+[keys.SESSION_SECRET]
+rotate_every = "180d"
+dev = "op://Private/web dev session secret/password"
+prod = { from = "op://Private/web prod session secret/password", pull = [{ by = "github-actions", repo = "acme/web" }, { by = "github-actions", repo = "acme/web", environment = "production" }], issuer = { kind = "resend", admin = "op://Private/resend admin/password", permission = "full_access" } }
+
+--- given rotated dates ---
+{
+  "web prod session secret": {
+    "rotated": "2026-05-01"
+  }
+}
+
+--- stdout ---
+web /work/web
+  SESSION_SECRET  dev   due in 180 days
+  SESSION_SECRET  prod  12 days overdue
+    GitHub Actions acme/web, GitHub Actions acme/web environment production read it from the vault at job time
+
+1 problem
+  web SESSION_SECRET (prod): was due 2026-10-28 (rotated 2026-05-01, every 180d)
+    Run keypin rotate SESSION_SECRET in /work/web.
+
+--- stderr ---
+ok     Read 2 rotated dates from 1Password account my.1password.com, not the values

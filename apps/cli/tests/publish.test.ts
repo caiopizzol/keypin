@@ -1282,3 +1282,59 @@ describe("keypin publish --all", () => {
     expect(again.disk.contents.get(STATE)).toBe(saved);
   });
 });
+
+describe("keypin publish, for a key CI pulls from the vault", () => {
+  const PULL = `pull = [{ by = "github-actions", repo = "acme/jobs" }]`;
+  const pulledOther = () =>
+    memoryFiles({
+      "/work/billing/keypin.toml": ALL_MAP.replace(
+        /\[keys\.OTHER_KEY\]\nprod = \{[^}]*\}[^}]*\}/,
+        `[keys.OTHER_KEY]\nprod = { from = "op://Private/billing other key/password", ${PULL} }`,
+      ),
+    });
+
+  test("a key only pulled has nothing to publish, reads nothing, and exits 0", async () => {
+    const run = setupAll({ terminal: "yes", disk: pulledOther() });
+    expect(await cli(["publish", "OTHER_KEY"], run.deps)).toBe(0);
+    expect(run.stderr.text).toContain(
+      "GitHub Actions acme/jobs reads OTHER_KEY (prod) from the vault at job time, so there's nothing to publish.",
+    );
+    expect(run.log).toEqual([]);
+    expect(run.calls).toEqual([]);
+  });
+
+  test("--all skips a key only pulled, and publishes the rest", async () => {
+    const run = setupAll({ terminal: "yes", disk: pulledOther() });
+    expect(await cli(["publish", "--all"], run.deps)).toBe(0);
+    expect(run.stderr.text).toContain(
+      "Not published, pulled from the vault at job time: OTHER_KEY",
+    );
+    expect(run.writes()).toEqual([
+      `write ${WORKER_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
+      `write ${GITHUB_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
+    ]);
+  });
+
+  test("--all with only pulled keys has nothing to publish, and exits 0", async () => {
+    const map = `[1password]\naccount = "my.1password.com"\n[keys.OTHER_KEY]\nprod = { from = "op://Private/billing other key/password", ${PULL} }\n`;
+    const run = setupAll({
+      terminal: "yes",
+      disk: memoryFiles({ "/work/billing/keypin.toml": map }),
+    });
+    expect(await cli(["publish", "--all"], run.deps)).toBe(0);
+    expect(run.calls).toEqual([]);
+  });
+
+  test("a key that is also pulled publishes only to its destinations", async () => {
+    const map = BILLING_MAP.replace(
+      '{ to = "github-actions", repo = "acme/billing" },\n] }',
+      `{ to = "github-actions", repo = "acme/billing" },\n], ${PULL} }`,
+    );
+    const run = setup({ terminal: "yes", disk: memoryFiles({ "/work/billing/keypin.toml": map }) });
+    expect(await cli(["publish", "STRIPE_API_KEY"], run.deps)).toBe(0);
+    expect(run.log.filter((l) => l.startsWith("write"))).toEqual([
+      `write ${WORKER_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
+      `write ${GITHUB_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
+    ]);
+  });
+});

@@ -50,6 +50,8 @@ import {
   planPublish,
   type PlanStep,
   publishEnvironment,
+  pullName,
+  reaches,
   recordIssued,
   type RemovedDestination,
   saveState,
@@ -209,9 +211,9 @@ function jobFor(context: Context, keyId: string, flags: Flags): Omit<Job, "path"
     throw new Error(
       `key "${keyId}" ${environment} has no issuer in ${map.file}, so keypin can't make a new key. Add one (see docs/configuration.md), or rotate it by hand.`,
     );
-  if (!entry.publish.length)
+  if (!reaches(entry))
     throw new Error(
-      `the map lists no destinations for ${keyId} (${environment}); add them first, so the new key reaches what uses it`,
+      `the map lists no destinations or pull entries for ${keyId} (${environment}); add them first, so the new key reaches what uses it`,
     );
   const pairKey = map.keys.find((k) => k.name === entry.idKey);
   const pairEntry = pairKey?.environments[environment];
@@ -381,7 +383,7 @@ async function checkDue(context: Context, path: string): Promise<number> {
   const picked = choices.filter(checks);
   if (!picked.length) {
     out.line(
-      `\nNothing to check: no key in ${environment} has an issuer, destinations and rotate_every. See docs/configuration.md.`,
+      `\nNothing to check: no key in ${environment} has an issuer, destinations or pull entries, and rotate_every. See docs/configuration.md.`,
     );
     return 1;
   }
@@ -728,6 +730,7 @@ async function rotateLocked(job: Job): Promise<number> {
     ),
     ...(job.pair ? [saveIdRow(job, job.pair)] : []),
     ...writeRows(job, steps, pairSteps),
+    ...pullRows(job),
     !issuer.revoke
       ? row("=", issuer.describe(), "nothing to revoke: the new value replaces the old one")
       : check.gone === undefined
@@ -932,6 +935,12 @@ function writeRows(job: Job, steps: PlanStep[], pairSteps: PlanStep[]): PlanRow[
   return rows.map((r, i) => ({ ...r, why: `${both[i]?.name ?? ""}: ${r.why}` }));
 }
 
+function pullRows({ entry, deps }: Job): PlanRow[] {
+  return entry.pull.map((reader) =>
+    row("=", pullName(reader, deps.pulls), "reads the new key from the vault at job time"),
+  );
+}
+
 function apartNote({ key, pair, deps, out }: Job, checked: Map<string, Checked>): void {
   if (!pair) return;
   const kinds = deps.destinations;
@@ -1089,10 +1098,7 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
   const { key, owner, deps, out } = job;
   const { issuer } = ready;
   const where = issuer.describe();
-  const listed = job.entry.publish.length;
-  out.line(
-    `\nRotated ${out.bold(key.name)} (${owner.environment}): the new key is in ${vaultName(job.entry.ref, job.deps.vaults)} and the ${listed === 1 ? "destination" : `${listed} destinations`} in the map.`,
-  );
+  out.line(`\nRotated ${out.bold(key.name)} (${owner.environment}): ${reached(job)}`);
   const recorded = removedBehind(
     job.committed,
     job.map,
@@ -1176,6 +1182,16 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
     recordIssued(state, { ...issued, old: { ...issued.old, revoked: true } }),
   );
   return 0;
+}
+
+function reached({ entry, deps }: Job): string {
+  const vault = vaultName(entry.ref, deps.vaults);
+  const listed = entry.publish.length;
+  const readers = entry.pull.map((reader) => pullName(reader, deps.pulls)).join(", ");
+  const pulled = `${readers} ${entry.pull.length === 1 ? "reads" : "read"} it from there at job time.`;
+  if (!listed) return `the new key is in ${vault}. ${pulled}`;
+  const pushed = `the new key is in ${vault} and the ${listed === 1 ? "destination" : `${listed} destinations`} in the map.`;
+  return entry.pull.length ? `${pushed} ${pulled}` : pushed;
 }
 
 function oldStays({ out }: Job, issuer: Issuer, issued: Issued): void {

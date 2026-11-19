@@ -340,6 +340,26 @@ dev = "op://Private/forever/password"
     );
   });
 
+  test("a key CI pulls lists its readers apart from destinations, and a due one names only the rotate", async () => {
+    const issuer = `issuer = { kind = "resend", admin = "op://Private/resend admin/password", permission = "full_access" }`;
+    const pull = `pull = [{ by = "github-actions", repo = "acme/web" }, { by = "github-actions", repo = "acme/web", environment = "production" }]`;
+    const run = fakeDeps({
+      disk: memoryFiles({
+        [REGISTRY]: registryWith("/work/web"),
+        "/work/web/keypin.toml": WEB_MAP.replace(
+          /publish = \[[\s\S]*?\] \}/,
+          `${pull}, ${issuer} }`,
+        ),
+      }),
+      backend: fakeVault({
+        metadata: { ...METADATA, "web prod session secret": { rotated: "2026-05-01" } },
+      }).vault,
+    });
+    const given = { "rotated dates": { "web prod session secret": { rotated: "2026-05-01" } } };
+    expect(await record("pulled", ["status"], run, { given })).toBe(1);
+    expect(run.stdout.text).not.toContain("not published");
+  });
+
   test("a 1Password service account is told to run keypin rotate too", async () => {
     const { deps, stdout } = dueWithIssuer({
       signIn: () => ({ mode: "service-account", address: "my.1password.com" }),

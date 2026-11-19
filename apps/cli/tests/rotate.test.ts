@@ -966,3 +966,70 @@ describe("keypin rotate --discard", () => {
     }
   });
 });
+
+describe("keypin rotate, for a key CI pulls from the vault", () => {
+  const READER = `{ by = "github-actions", repo = "acme/jobs", environment = "production" }`;
+  const pulled = (map: string) =>
+    memoryFiles({
+      "/work/billing/keypin.toml": map.replace(/publish = \[[^\]]*\]/, `pull = [${READER}]`),
+    });
+  const mixed = () =>
+    memoryFiles({
+      "/work/billing/keypin.toml": MAP.replace("\nissuer = ", `\npull = [${READER}]\nissuer = `),
+    });
+
+  test("saves the new key to the vault, writes nowhere, and revokes the old key after a second y", async () => {
+    const first = setup({ disk: pulled(MAP), answers: ["y"] });
+    expect(await first.run()).toBe(0);
+    const again = setup({ disk: first.disk, vault: first.vault, answers: ["y", "y"] });
+    expect(await again.record("pulled", "--plan")).toBe(NEEDS_APPROVAL);
+    expect(await again.run()).toBe(0);
+    expect(again.asked).toEqual([
+      "Rotate RESEND_API_KEY? [y/N] ",
+      "Revoke the old key at Resend? [y/N] ",
+    ]);
+    expect(again.issuer.log).toEqual([
+      "check key-1",
+      "check key-1",
+      "create RESEND_API_KEY prod 2026-11-09 12:00:00 a1b2c3 -> key-2",
+      "revoke key-1",
+    ]);
+    expect(again.destinations.log).toEqual([]);
+    expect(again.vault.values.get("mailer resend key")).toBe(NEW(2));
+    expect(again.stderr.text).toContain(
+      "Rotated RESEND_API_KEY (prod): the new key is in 1Password. GitHub Actions acme/jobs environment production reads it from there at job time.",
+    );
+    expect(again.leaked()).toBe(false);
+  });
+
+  test("without a terminal, --yes saves the new key but never revokes", async () => {
+    const first = setup({ disk: pulled(MAP), answers: ["y"] });
+    expect(await first.run()).toBe(0);
+    const due = setup({ disk: first.disk, vault: first.vault, terminal: false });
+    expect(await due.run("--yes")).toBe(NEEDS_APPROVAL);
+    expect(due.vault.values.get("mailer resend key")).toBe(NEW(2));
+    expect(due.issuer.log.some((l) => l.startsWith("revoke"))).toBe(false);
+    expect(due.stderr.text).toContain(
+      "The old key key-1 still works. Revoking it needs a y in a terminal.",
+    );
+  });
+
+  test("a key with destinations too revokes nothing until every destination has the new key", async () => {
+    const failing = setup({ disk: mixed(), failWrite: [GITHUB], answers: ["y", "y"] });
+    expect(await failing.run()).toBe(1);
+    const resumed = setup({ disk: failing.disk, vault: failing.vault, answers: ["y", "y"] });
+    expect(await resumed.run()).toBe(0);
+    expect(resumed.writes()).toEqual([`write ${GITHUB} RESEND_API_KEY (${NEW(1).length} chars)`]);
+    expect(resumed.stderr.text).toContain(
+      "the new key is in 1Password and the 2 destinations in the map. GitHub Actions acme/jobs environment production reads it from there at job time.",
+    );
+  });
+
+  test("a key nothing reads says to add a destination or a pull entry", async () => {
+    const run = setup({ disk: pulled(MAP.replace(/publish = \[[^\]]*\]\n/, "")) });
+    expect(await run.run()).toBe(1);
+    expect(run.stderr.text).toContain(
+      "the map lists no destinations or pull entries for RESEND_API_KEY (prod); add them first, so the new key reaches what uses it",
+    );
+  });
+});

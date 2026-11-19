@@ -62,6 +62,10 @@ export function pairedWith(
   return map.keys.find((key) => key.environments[environment]?.idKey === name);
 }
 
+export function reaches(entry: Pick<EnvEntry, "publish" | "pull">): boolean {
+  return entry.publish.length > 0 || entry.pull.length > 0;
+}
+
 export function isEnvironmentName(name: string): boolean {
   return ENVIRONMENT_NAME.test(name);
 }

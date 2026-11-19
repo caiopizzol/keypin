@@ -57,6 +57,7 @@ export {
   pairedWith,
   parseMap,
   publishEnvironment,
+  reaches,
   runEnvironment,
   type EnvEntry,
   type VaultPins,

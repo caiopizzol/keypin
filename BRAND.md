@@ -1,6 +1,6 @@
 ---
 name: "keypin"
-tagline: "Get your team's keys out of .env files."
+tagline: "Key syncs and rotation for the vault you already use."
 specVersion: "0.3.0"
 version: 1
 language: en
@@ -18,9 +18,9 @@ more copies sit in chats, notes and commits, and nobody has the full list. After
 vault; one map says where every key comes from, where it goes and when it's due; and keypin reads a value only
 while a command runs.
 
-Direction: get keys out of files, keep one map of every key, and rotate keys with the vault you already use. Today
-keypin reads 1Password and shows when a key is due; you rotate it. Rotation and other vaults, such as Infisical,
-come next, and stay out of the README until the code does them.
+Direction: get keys out of files, keep one map of every key, and rotate keys with the vault you already use. keypin
+reads five vaults, publishes to CI and hosting, and rotates keys at the issuers in the README. Scheduled rotation
+covers 1Password to GitHub Actions so far. Anything else stays out of the README until the code does it.
 
 ### Audience
 
@@ -65,7 +65,7 @@ dates, never a value. When keypin automates rotation, it will run in your own cl
 Your vault is the source for each key, and publishing sends it only to the destinations in the map. Nothing is
 published without a plan, and a first write or a changed account waits for you to answer `y`.
 
-Base message: get your team's keys out of `.env` files.
+Base message: key syncs and rotation for the vault you already use.
 
 ### Guardrails
 
@@ -84,10 +84,11 @@ Essence: one source, one map.
 
 ### Tagline & Slogans
 
-- Primary: "Get your team's keys out of `.env` files." Use it as the headline, everywhere.
-- Description: "keypin runs your apps with keys from your vault, and keeps one map of every key your team uses.
-  Nothing to commit, paste in a chat, or leave on a laptop."
-- Short description (60 characters or fewer): "Get your team's keys out of .env files."
+- Primary: "Key syncs and rotation for the vault you already use." Use it as the headline, everywhere. Name the
+  category, never a competitor: Infisical and Doppler are vaults keypin reads.
+- Description: "keypin gets your keys out of `.env` files. It runs your apps with keys from your vault, publishes them
+  to your CI and hosting, and rotates them."
+- Short description (60 characters or fewer): "Key syncs and rotation for the vault you already use."
 
 ### Message Pillars
 

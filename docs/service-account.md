@@ -19,9 +19,11 @@ On a server or in CI without the 1Password desktop app, keypin can sign in with 
 Without `KEYPIN_1PASSWORD=service-account`, keypin uses the desktop app even when the token is set. keypin never
 passes either variable to the command `keypin run` starts.
 
-In GitHub Actions, `keypin run` hides each value it passes in the job log, as GitHub does for `secrets`. It tells the
-runner on stderr, so stdout stays clean; don't send stderr to a file through a pipe (`2>&1 | tee`): the file gets the values. GitLab CI can't hide a value at run time, so make sure
-the command doesn't print one there.
+In GitHub Actions, `keypin run` asks the runner, on stderr, to hide each value it passes in the job log. This is
+best-effort: the runner reads stdout and stderr separately, so a value printed at once may show before it's hidden,
+and nothing is hidden when stderr goes to a file. Don't print the values, and don't send stderr through a pipe to a
+file (`2>&1 | tee`): the file gets them. GitLab CI can't hide a value at run time, so make sure the command doesn't
+print one there.
 
 Before it reads, keypin checks the token's sign-in address against a pinned address and refuses another account. A
 token has no account name or ID, so keypin can't check a pin by name or ID. Individual accounts share

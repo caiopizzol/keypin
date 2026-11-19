@@ -130,6 +130,7 @@ export {
   type ProjectEntry,
   type ProjectFiles,
   type ProjectReader,
+  type Pulled,
   type Scanned,
   type Slot,
   type StoreRead,

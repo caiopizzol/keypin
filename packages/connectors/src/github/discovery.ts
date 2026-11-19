@@ -7,6 +7,7 @@ import {
   messageOf,
   type Place,
   type ProjectReader,
+  type Pulled,
   type StoreRead,
 } from "@keypin/core";
 import { NOT_ENTERPRISE } from "./refusal";
@@ -30,6 +31,7 @@ interface Repo {
   read: StoreRead | null;
   organization: StoreRead | null;
   environments: { name: string; read: StoreRead }[];
+  pulled: { pulled: Pulled; repo: string; environment: string | null; read: StoreRead }[];
 }
 
 const REPO_PLACEHOLDER = "<owner>/<repo>";
@@ -81,7 +83,13 @@ async function lookUp(
       );
   const uses = usesSecrets(workflows);
   const origin = top ? await githubOrigin(host, project.root) : null;
-  const github: Repo = { repo: null, read: null, organization: null, environments: [] };
+  const github: Repo = {
+    repo: null,
+    read: null,
+    organization: null,
+    environments: [],
+    pulled: [],
+  };
   let login: string | null = null;
   const reading = (repo: string, environment?: string) =>
     host
@@ -90,7 +98,7 @@ async function lookUp(
   if (origin && "repo" in origin) {
     github.repo = origin.repo;
     if (uses) {
-      login = (await host.git(project.root, ["config", "--get", "github.account"]))?.trim() || null;
+      login = await configuredLogin(host, project);
       const read = await reading(origin.repo);
       github.read = read;
       if (!read.ok)
@@ -127,13 +135,60 @@ async function lookUp(
         : (origin?.reason ?? "the repository has no origin remote"),
     );
   }
+  if (project.pulled.some(({ reader }) => reader.by === "github-actions"))
+    await readPulled(project, host, github, login ?? (await configuredLogin(host, project)));
   return {
     files: workflows.map((w) => w.path),
-    used: uses,
+    used: uses || github.pulled.length > 0,
     about: github.repo ? `GitHub ${github.repo}` : null,
     report: { github: { repo: github.repo, login } },
     needs: (view) => needsOf(github, workflows, view),
   };
+}
+
+async function configuredLogin(host: WorkflowHost, project: ProjectReader) {
+  return (await host.git(project.root, ["config", "--get", "github.account"]))?.trim() || null;
+}
+
+async function readPulled(
+  project: ProjectReader,
+  host: WorkflowHost,
+  github: Repo,
+  login: string | null,
+): Promise<void> {
+  const reads = new Map<string, StoreRead>();
+  for (const pulled of project.pulled) {
+    const { by, repo, environment } = pulled.reader;
+    if (by !== "github-actions" || repo === undefined) continue;
+    const place = placeOf(repo, environment ?? null);
+    let read = reads.get(place) ?? knownRead(github, repo, environment ?? null);
+    if (read === undefined) {
+      read = await host
+        .githubSecrets(repo, login, environment)
+        .catch((error: unknown) => ({ ok: false as const, reason: messageOf(error) }));
+      if (!read.ok)
+        project.unknown(
+          `the Actions secrets of ${describePlace(repo, environment ?? null)}`,
+          `as ${describeLogin(login)}: ${read.reason}`,
+        );
+    }
+    reads.set(place, read);
+    github.pulled.push({ pulled, repo, environment: environment ?? null, read });
+  }
+}
+
+function knownRead(github: Repo, repo: string, environment: string | null): StoreRead | undefined {
+  if (github.repo?.toLowerCase() !== repo.toLowerCase()) return undefined;
+  if (environment === null) return github.read ?? undefined;
+  return github.environments.find((e) => e.name.toLowerCase() === environment.toLowerCase())?.read;
+}
+
+function placeOf(repo: string, environment: string | null): string {
+  return `${repo.toLowerCase()}${environment === null ? "" : `/environments/${environment.toLowerCase()}`}`;
+}
+
+function describePlace(repo: string, environment: string | null): string {
+  return environment === null ? repo : `${repo} environment ${environment}`;
 }
 
 function needsOf(github: Repo, workflows: Workflow[], view: MapView) {
@@ -150,9 +205,22 @@ function needsOf(github: Repo, workflows: Workflow[], view: MapView) {
   const needs: FoundNeed[] = [];
   const shared = namesOf(github.organization);
   const fromOrganization = new Map<string, { paths: string[]; environments: string[] }>();
+  const here = github.pulled.filter(
+    (p) => github.repo !== null && p.repo.toLowerCase() === github.repo.toLowerCase(),
+  );
+  const leftover = new Map<PulledAt, string[]>();
   for (const use of uses) {
     if (view.ignores(use.name)) {
       needs.push({ name: use.name, place: repo, usedBy: use.path });
+      continue;
+    }
+    const pulled = here.find(
+      (p) => p.pulled.key.toUpperCase() === use.name && reaches(p, use.environment),
+    );
+    if (pulled) {
+      const paths = leftover.get(pulled) ?? [];
+      if (!paths.includes(use.path)) paths.push(use.path);
+      leftover.set(pulled, paths);
       continue;
     }
     const literal = literalEnvironment(use.environment);
@@ -199,14 +267,18 @@ function needsOf(github: Repo, workflows: Workflow[], view: MapView) {
   const hidden = workflows.some((w) => w.refs.hidesUses);
   return {
     needs,
-    notes: [...fromOrganization].map(
-      ([name, { paths, environments }]) =>
-        `${name}: ${paths.join(", ")} uses it; ${repo.label} has it (org secret), which keypin.toml doesn't publish${
-          environments.length
-            ? ` (a secret of the environment ${environments.join(" or ")}, which check doesn't read, would take its place)`
-            : ""
-        }`,
-    ),
+    problems: leftovers(github, leftover),
+    notes: [
+      ...pullNotes(github.repo, here, workflows, view),
+      ...[...fromOrganization].map(
+        ([name, { paths, environments }]) =>
+          `${name}: ${paths.join(", ")} uses it; ${repo.label} has it (org secret), which keypin.toml doesn't publish${
+            environments.length
+              ? ` (a secret of the environment ${environments.join(" or ")}, which check doesn't read, would take its place)`
+              : ""
+          }`,
+      ),
+    ],
     notesAfter(found: readonly { name: string; place: string }[]) {
       if (!hidden || !github.read?.ok) return [];
       const unmapped = github.read.secrets
@@ -215,7 +287,10 @@ function needsOf(github: Repo, workflows: Workflow[], view: MapView) {
           (name) =>
             !found.some((n) => n.place === repo.id && n.name === name.toUpperCase()) &&
             !view.publishes(name.toUpperCase(), repo) &&
-            !view.ignores(name),
+            !view.ignores(name) &&
+            !here.some(
+              (p) => p.environment === null && p.pulled.key.toUpperCase() === name.toUpperCase(),
+            ),
         );
       return unmapped.length
         ? [
@@ -224,6 +299,86 @@ function needsOf(github: Repo, workflows: Workflow[], view: MapView) {
         : [];
     },
   };
+}
+
+type PulledAt = Repo["pulled"][number];
+
+function reaches(pulled: PulledAt, jobEnvironment: string | null): boolean {
+  if (pulled.environment === null) return true;
+  return literalEnvironment(jobEnvironment)?.toLowerCase() === pulled.environment.toLowerCase();
+}
+
+function leftovers(github: Repo, references: ReadonlyMap<PulledAt, string[]>): string[] {
+  const problems = new Map<string, string>();
+  for (const pulled of github.pulled) {
+    const { key, environment } = pulled.pulled;
+    const where = `${key} ${placeOf(pulled.repo, pulled.environment)}`;
+    if (problems.has(where)) continue;
+    const paths = github.pulled
+      .filter((p) => `${p.pulled.key} ${placeOf(p.repo, p.environment)}` === where)
+      .flatMap((p) => references.get(p) ?? []);
+    const stored =
+      pulled.read.ok && pulled.read.secrets.some((s) => s.name.toUpperCase() === key.toUpperCase());
+    if (!stored && !paths.length) continue;
+    const place = describePlace(pulled.repo, pulled.environment);
+    const facts = [
+      ...(paths.length
+        ? [
+            `${paths.join(", ")} still ${paths.length === 1 ? "uses" : "use"} secrets.${key.toUpperCase()}`,
+          ]
+        : []),
+      ...(stored ? [`${place} still has it as an Actions secret`] : []),
+    ];
+    const fixes = [
+      ...(paths.length
+        ? [`read it with keypin run --env ${environment} --only ${key} -- <command> instead`]
+        : []),
+      ...(stored
+        ? [
+            `delete the Actions secret: gh secret delete ${key} --repo ${pulled.repo}${pulled.environment === null ? "" : ` --env ${pulled.environment}`}`,
+          ]
+        : []),
+    ];
+    problems.set(
+      where,
+      `${key}: keypin.toml says jobs in ${place} pull it from the vault at job time, but ${facts.join(" and ")}; ${fixes.join(", then ")}`,
+    );
+  }
+  return [...problems.values()];
+}
+
+function pullNotes(
+  repo: string | null,
+  here: readonly PulledAt[],
+  workflows: readonly Workflow[],
+  view: MapView,
+): string[] {
+  if (repo === null || !workflows.length) return [];
+  const notes = new Set<string>();
+  for (const { path, refs } of workflows)
+    for (const run of refs.runs)
+      for (const key of run.only ?? []) {
+        if (here.some((p) => p.pulled.key === key && reaches(p, run.environment))) continue;
+        const literal = literalEnvironment(run.environment);
+        const fields = [`by = "github-actions"`, `repo = "${repo}"`];
+        if (literal !== null) fields.push(`environment = "${literal}"`);
+        notes.add(
+          `${key}: ${path} reads it with keypin run, but keypin.toml has no pull entry for ${describePlace(repo, literal)}; add [[keys.${key}.${run.env ?? view.runEnvironment}.pull]] with ${fields.join(", ")}`,
+        );
+      }
+  for (const pulled of here) {
+    const { key } = pulled.pulled;
+    const used = workflows.some(({ refs }) =>
+      refs.runs.some(
+        (run) => reaches(pulled, run.environment) && (run.only?.includes(key) ?? true),
+      ),
+    );
+    if (!used)
+      notes.add(
+        `${key}: keypin.toml says jobs in ${describePlace(pulled.repo, pulled.environment)} pull it, but no workflow there runs keypin run for it`,
+      );
+  }
+  return [...notes];
 }
 
 function githubPlace(

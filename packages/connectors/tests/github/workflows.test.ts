@@ -192,3 +192,34 @@ jobs:
     expect(workflowRefs("jobs: [unclosed")).toBeNull();
   });
 });
+
+describe("keypin run in a workflow", () => {
+  test("finds each keypin run, the keys it names, and the job's environment", () => {
+    const refs = workflowRefs(`
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npx keypin@0.33.1 run --env prod --only API_TOKEN,Other -- npm test
+  deploy:
+    environment: production
+    steps:
+      - name: deploy
+        run: |
+          keypin run \\
+            --only=DEPLOY_KEY --only "SECOND" -- ./deploy.sh
+      - run: keypin run -- ./all.sh
+      - run: keypin run --only "\${{ inputs.key }}" -- ./one.sh
+      - run: echo keypin status
+`);
+    assert(refs);
+    expect(refs.runs).toEqual([
+      { environment: null, env: "prod", only: ["API_TOKEN", "Other"] },
+      { environment: "production", env: null, only: ["DEPLOY_KEY", "SECOND"] },
+      { environment: "production", env: null, only: null },
+      { environment: "production", env: null, only: null },
+    ]);
+    expect(refs.uses).toEqual([]);
+  });
+});

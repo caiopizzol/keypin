@@ -154,7 +154,18 @@ async function build(
     : [];
   const signIn = mapSignIn(deps, parsed?.ok ? parsed.map : null, mapped);
   const root = found ? dirname(found.file) : folder;
-  const scanned = await scanProject(deps, root);
+  const pulled = parsed?.ok
+    ? parsed.map.keys.flatMap((key) =>
+        parsed.map.environments.flatMap((environment) =>
+          (key.environments[environment]?.pull ?? []).map((reader) => ({
+            key: key.name,
+            environment,
+            reader,
+          })),
+        ),
+      )
+    : [];
+  const scanned = await scanProject(deps, root, pulled);
   const head = {
     folder: root,
     map: found?.file ?? null,

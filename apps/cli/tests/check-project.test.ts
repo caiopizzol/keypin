@@ -2058,3 +2058,117 @@ describe("keypin check on Cloudflare cases", () => {
     expect(await run.record("published-key-in-vars", ["check", "--json"])).toBe(1);
   });
 });
+
+describe("keypin check, for a key CI pulls from the vault", () => {
+  const PULLED = `${MAPPED}
+[keys.STRIPE_API_KEY]
+rotate_every = "90d"
+
+[keys.STRIPE_API_KEY.prod]
+from = "op://Private/billing prod stripe api key/password"
+
+[[keys.STRIPE_API_KEY.prod.pull]]
+by = "github-actions"
+repo = "acme/billing"
+`;
+  const OIDC = `
+on: push
+permissions:
+  id-token: write
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: keypin run --env prod --only STRIPE_API_KEY -- ./deploy.sh
+`;
+  const project = (workflow: string, map = PULLED) => ({
+    [MAP]: map,
+    [`${ROOT}/.env`]: null,
+    [`${ROOT}/wrangler.toml`]: null,
+    [`${ROOT}/.github/workflows/deploy.yml`]: workflow,
+  });
+  const COPY: StoreRead = { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] };
+
+  test("a copy left in the repo is a problem, even when no workflow uses a secret", async () => {
+    const run = setup({ files: project(OIDC), github: COPY });
+    expect(await run.record("pulled-copy-left", ["check"])).toBe(1);
+    expect(run.calls).toContain("github acme/billing as null");
+  });
+
+  test("a workflow that still uses the secret is a problem, and check proposes no publish entry", async () => {
+    const run = setup({
+      files: project(PROJECT[`${ROOT}/.github/workflows/deploy.yml`] ?? ""),
+      github: COPY,
+    });
+    expect(await run.record("pulled-secret-still-used", ["check"])).toBe(1);
+    expect(run.stdout.text).not.toContain("[[keys.STRIPE_API_KEY.prod.publish]]");
+  });
+
+  test("a job that pulls the key, and no copy left, checks out", async () => {
+    const run = setup({ files: project(OIDC) });
+    expect(await cli(["check"], run.deps)).toBe(0);
+    expect(run.stdout.text).toContain("Everything checks out.");
+    expect(run.stdout.text).not.toContain("Note: STRIPE_API_KEY");
+  });
+
+  test("an unreadable repo is not checked, and nothing is reported about the copy", async () => {
+    const run = setup({ files: project(OIDC), github: { ok: false, reason: "HTTP 404" } });
+    await cli(["check", "--json"], run.deps);
+    const data = json(run.stdout.text);
+    expect(data.unknown).toEqual([
+      { what: "the Actions secrets of acme/billing", reason: "as the active gh login: HTTP 404" },
+    ]);
+    expect(JSON.stringify(data.problems)).not.toContain("STRIPE_API_KEY");
+  });
+
+  test("a pull entry for an environment covers only that environment's jobs", async () => {
+    const map = PULLED.replace(
+      'repo = "acme/billing"\n',
+      'repo = "acme/billing"\nenvironment = "production"\n',
+    );
+    const workflow = `
+on: push
+jobs:
+  deploy:
+    environment: production
+    steps:
+      - run: echo \${{ secrets.STRIPE_API_KEY }}
+  test:
+    steps:
+      - run: echo \${{ secrets.STRIPE_API_KEY }}
+`;
+    const run = setup({
+      files: project(workflow, map),
+      deps: {
+        githubSecrets: async (_repo, _login, environment) =>
+          environment === "production" ? COPY : { ok: true, secrets: [] },
+      },
+    });
+    await cli(["check", "--json"], run.deps);
+    const data = json(run.stdout.text);
+    expect(data.problems).toEqual(
+      expect.arrayContaining([
+        "STRIPE_API_KEY: keypin.toml says jobs in acme/billing environment production pull it from the vault at job time, but .github/workflows/deploy.yml still uses secrets.STRIPE_API_KEY and acme/billing environment production still has it as an Actions secret; read it with keypin run --env prod --only STRIPE_API_KEY -- <command> instead, then delete the Actions secret: gh secret delete STRIPE_API_KEY --repo acme/billing --env production",
+      ]),
+    );
+    expect(data.production).toEqual([
+      expect.objectContaining({ name: "STRIPE_API_KEY", place: "acme/billing", mapped: null }),
+    ]);
+  });
+
+  test("notes a keypin run with no pull entry, and a pull entry no workflow runs", async () => {
+    const workflow = OIDC.replace("--only STRIPE_API_KEY", "--only RESEND_API_KEY");
+    const map = PULLED.replace(
+      'by = "github-actions"\nrepo = "acme/billing"\n',
+      'by = "github-actions"\nrepo = "acme/billing"\nenvironment = "production"\n',
+    );
+    const run = setup({ files: project(workflow, map) });
+    await cli(["check", "--json"], run.deps);
+    expect(json(run.stdout.text).notes).toEqual(
+      expect.arrayContaining([
+        'RESEND_API_KEY: .github/workflows/deploy.yml reads it with keypin run, but keypin.toml has no pull entry for acme/billing; add [[keys.RESEND_API_KEY.prod.pull]] with by = "github-actions", repo = "acme/billing"',
+        "STRIPE_API_KEY: keypin.toml says jobs in acme/billing environment production pull it, but no workflow there runs keypin run for it",
+      ]),
+    );
+  });
+});

@@ -17,7 +17,8 @@ Actions.
    set to Read and write. The workflow's own `GITHUB_TOKEN` can't write secrets.
 4. Add the workflow below as `.github/workflows/rotate-keys.yml`. Every run, manual ones too, reads and pushes
    `.keypin/` on the default branch, so the workflow must be allowed to push to it. Pin the keypin version you run on
-   your laptop, and bump both together.
+   your laptop, and bump both together. It checks every day at 06:17 UTC, so a key rotates on the day it's due. Any
+   cron works; add `timezone:` to the schedule to use your own time zone.
 5. [Ignore](configuration.md#ignored-keys) the two secrets at the top of `keypin.toml`, or `keypin check` asks you to
    add them:
 
@@ -37,7 +38,7 @@ name: rotate keys
 
 on:
   schedule:
-    - cron: "0 6 * * 1"
+    - cron: "17 6 * * *"
   workflow_dispatch:
     inputs:
       check_setup:

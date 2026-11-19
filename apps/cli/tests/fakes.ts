@@ -373,7 +373,10 @@ export function fakeDeps(setup: FakeSetup = {}) {
       warnings.push(`${title}: ${text}`);
       return true;
     },
-    maskInLog: (values) => masked.push(...values),
+    maskInLog: async (values) => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      masked.push(...values);
+    },
     styled: { stdout: false, stderr: false },
     columns: () => 80,
     ask: async () => {

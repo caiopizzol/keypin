@@ -50,7 +50,7 @@ export async function run(args: string[], deps: Deps): Promise<number> {
       return 1;
     }
   }
-  deps.maskInLog([...found.values()].map((secret) => secret.reveal()));
+  await deps.maskInLog([...found.values()].map((secret) => secret.reveal()));
 
   const env = withoutSignIn(deps.env, signInNames);
   for (const [name, secret] of found) {

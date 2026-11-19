@@ -239,22 +239,93 @@ function jobFor(context: Context, keyId: string, flags: Flags): Omit<Job, "path"
   };
 }
 
-async function progressOf(context: Context, path: string) {
+async function progressOf(
+  context: Context,
+  path: string,
+  { only, check = false }: { only?: string | undefined; check?: boolean } = {},
+) {
   const { map, environment, committed, deps } = context;
   const state = restoreIssued(await loadState(deps.files, path, deps.vaults), committed, map);
-  return (keyId: string): Progress => {
-    const entry = rotates(map, keyId, environment);
-    const issued = issuedFor(state, { keyId, environment, mapFile: map.file });
-    if (!entry || !issued) return null;
-    const owner = { keyId, environment, mapFile: map.file };
+  const progress = new Map<string, Progress>();
+  for (const key of map.keys) {
+    if (only !== undefined && key.name !== only) continue;
+    const entry = rotates(map, key.name, environment);
+    const owner = { keyId: key.name, environment, mapFile: map.file };
+    const issued = issuedFor(state, owner);
+    if (!entry || !issued) continue;
     const everywhere = entry.publish.every((target) =>
       deliveredTo(committed, state.receipts, owner, target, issued.generation, deps.destinations),
     );
     const since = issued.at.slice(0, 10);
     const revokes = waitsForRevoke(issued);
-    if (!everywhere || issued.held) return { kind: "unfinished", since, revokes };
-    return revokes ? { kind: "waiting", since, revokes } : null;
-  };
+    const kind = !everywhere || issued.held ? "unfinished" : revokes ? "waiting" : null;
+    if (kind === null) continue;
+    if (issued.held || !(await replacedByHand(context, key, entry, state, issued, check)))
+      progress.set(key.name, { kind, since, revokes });
+  }
+  return (keyId: string): Progress => progress.get(keyId) ?? null;
+}
+
+async function replacedByHand(
+  context: Context,
+  key: KeyEntry,
+  entry: EnvEntry,
+  state: State,
+  issued: Issued,
+  check: boolean,
+): Promise<boolean> {
+  const { deps, out } = context;
+  const gated = check || !deps.isTerminal;
+  if (gated && !(await readsRoutinely(context, key, entry, state))) return false;
+  const where = formatReference(entry.ref, deps.vaults);
+  const read = await out.step(
+    `Reading the key ${where}`,
+    () =>
+      deps
+        .vault()
+        .read(entry.ref)
+        .then(generationOf)
+        .then(
+          (generation) => ({ generation }),
+          (error: unknown) => ({ failed: messageOf(error) }),
+        ),
+    (result) => ({
+      ok: "generation" in result,
+      text: "generation" in result ? `Read the key ${where}` : `Couldn't read ${where}`,
+    }),
+    approval(deps, [entry.ref]),
+  );
+  if (!("generation" in read)) {
+    out.line(`    ${read.failed}`);
+    return false;
+  }
+  return read.generation !== issued.generation && read.generation !== issued.old.generation;
+}
+
+async function readsRoutinely(
+  { map, environment, committed, deps, out }: Context,
+  key: KeyEntry,
+  entry: EnvEntry,
+  state: State,
+): Promise<boolean> {
+  const owner = { keyId: key.name, environment, mapFile: map.file };
+  try {
+    const [ids] = await lookUpIds([entry.ref], deps, out);
+    if (!ids) return false;
+    const { receipts } = await restoreReceipts({
+      state,
+      file: committed,
+      map,
+      kinds: deps.destinations,
+      owner,
+      ids: async () => ids,
+    });
+    const input = { kinds: deps.destinations, vaults: deps.vaults, key, receipts, ...owner };
+    return approvalsFor(input, ids).length === 0;
+  } catch (error) {
+    out.line(`    ${messageOf(error)}`);
+    return false;
+  }
 }
 
 async function rotateDue(context: Context, flags: Flags, path: string): Promise<number> {
@@ -301,7 +372,7 @@ async function checkDue(context: Context, path: string): Promise<number> {
     environment,
     today: localDay(deps.now()),
     metadata: (ref) => metadata.dates.get(refKey(ref)) ?? null,
-    progress: await progressOf(context, path),
+    progress: await progressOf(context, path, { check: true }),
   });
   const checks = (c: DueChoice) => c.action !== "skip" || c.date !== undefined;
   out.line(`\nKeys in ${environment}`);
@@ -391,7 +462,7 @@ async function approveAll(
 ): Promise<number> {
   const { map, environment, out } = context;
   if (keyId !== undefined) jobFor(context, keyId, NO_FLAGS);
-  const progress = await progressOf(context, path);
+  const progress = await progressOf(context, path, { only: keyId });
   const codes: number[] = [];
   for (const name of keyId === undefined ? map.keys.map((k) => k.name) : [keyId]) {
     const now = progress(name);

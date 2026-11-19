@@ -46,9 +46,10 @@ const TWO_REPOS = MAP.replace(
 async function world(map = MAP) {
   const keys = memoryKeys(["key-0"]);
   const effects: string[] = [];
+  const known: Record<string, string> = { [OLD]: "key-0" };
   const resend = resendFetch({
     admin: ADMIN,
-    known: { [OLD]: "key-0" },
+    known,
     tokenPrefix: "re_new_",
     keys,
     effect: (line) => effects.push(line),
@@ -77,7 +78,7 @@ async function world(map = MAP) {
   };
   const repo = memoryFiles({ [MAP_FILE]: map });
   const value = () => inner.values.get(ITEM) ?? "";
-  return { keys, effects, resend, gh, github, vault, dates, value, repo, inner };
+  return { keys, effects, resend, gh, github, vault, dates, value, repo, inner, known };
 }
 
 type World = Awaited<ReturnType<typeof world>>;
@@ -377,6 +378,123 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
     expect(await refused.run("--approve-revoke")).toBe(1);
     expect(refused.stderr.text).toContain("Stopped: something no longer in the map may still use");
     expect(w.effects, "nothing revoked").toHaveLength(2);
+  });
+});
+
+describe("keypin rotate --due after a person replaced a waiting key by hand", () => {
+  const HAND = "re_hand_sentinel_value_9a3d";
+
+  async function replacedByHand(rotated: string) {
+    const w = await rotatedOnceOnALaptop();
+    expect(await ci(w).run("--due", "--yes")).toBe(0);
+    expect(json(w, ROTATION)).toMatchObject({
+      issued: [{ id: "re-new-2", old: { id: "re-new-1", revoked: false } }],
+    });
+    w.known[HAND] = "hand-1";
+    w.keys.save({ ...w.keys.load(), live: ["key-0", "hand-1"] });
+    w.inner.values.set(ITEM, HAND);
+    w.dates.set(ITEM, rotated);
+    return w;
+  }
+
+  test("a due key rotates from the vault's value, and nothing the old record names is revoked", async () => {
+    const w = await replacedByHand("2026-08-01");
+    const run = ci(w);
+    expect(await run.run("--due", "--yes")).toBe(0);
+    expect(run.stderr.text).toContain("RESEND_API_KEY  rotate  was due 2026-10-30");
+    expect(run.warnings).toEqual([]);
+    expect(w.effects).toEqual([
+      "resend create re-new-1",
+      "resend create re-new-2",
+      "resend create re-new-3",
+    ]);
+    expect(w.github.value("acme/mailer", "RESEND_API_KEY")).toBe(w.value());
+    expect(json(w, ROTATION)).toMatchObject({ issued: [{ id: "re-new-3" }] });
+
+    const later = ci(w);
+    expect(await later.run("--due", "--yes")).toBe(0);
+    expect(later.stderr.text).toContain("RESEND_API_KEY  skip  not due until 2027-02-07");
+    expect(await later.run("--approve-revoke")).toBe(0);
+    expect(w.effects, "the hand-made key is never revoked").toHaveLength(3);
+    expect(w.keys.load().live).toContain("hand-1");
+  });
+
+  test("a key that isn't due is skipped for its date, not shown as waiting", async () => {
+    const w = await replacedByHand("2026-11-09");
+    const run = ci(w);
+    expect(await run.run("--due", "--yes")).toBe(0);
+    expect(run.stderr.text).toContain("RESEND_API_KEY  skip  not due until 2027-02-07");
+    expect(run.stderr.text).toContain("Nothing is due.\n");
+    expect(run.stderr.text).not.toContain("waits");
+    expect(run.warnings).toEqual([]);
+    expect(w.effects).toHaveLength(2);
+  });
+
+  test("--approve-revoke revokes nothing", async () => {
+    const w = await replacedByHand("2026-11-09");
+    const one = ci(w);
+    expect(await one.run("--approve-revoke", "RESEND_API_KEY")).toBe(1);
+    expect(one.stderr.text).toContain(
+      "Stopped: RESEND_API_KEY (prod) has no old key waiting for approval. Nothing was revoked.",
+    );
+    const all = ci(w);
+    expect(await all.run("--approve-revoke")).toBe(0);
+    expect(all.stderr.text).toContain("No old key waits for approval in prod.");
+    expect(w.effects).toHaveLength(2);
+    expect(w.keys.load().live).toEqual(["key-0", "hand-1"]);
+  });
+
+  test("a vault that can't be read keeps the old key waiting", async () => {
+    const w = await replacedByHand("2026-08-01");
+    w.inner.values.delete(ITEM);
+    const run = ci(w);
+    expect(await run.run("--due", "--yes")).toBe(0);
+    expect(run.stderr.text).toContain('no item "mailer resend key"');
+    expect(run.stderr.text).toContain(
+      "RESEND_API_KEY  wait  rotated 2026-11-09, the old key waits",
+    );
+    expect(w.effects).toHaveLength(2);
+  });
+
+  test("an item replaced under the same reference keeps the old key waiting, and its value isn't read", async () => {
+    const w = await replacedByHand("2026-08-01");
+    w.inner.itemIds.set(ITEM, "id-replaced");
+    w.inner.log.length = 0;
+    const run = ci(w);
+    expect(await run.run("--due", "--yes")).toBe(0);
+    expect(run.stderr.text).toContain(
+      "RESEND_API_KEY  wait  rotated 2026-11-09, the old key waits",
+    );
+    expect(await ci(w).run("--check")).toBe(1);
+    expect(w.inner.log.filter((line) => line.startsWith("read"))).toEqual([]);
+    expect(w.effects).toHaveLength(2);
+  });
+
+  test("a key published by hand after the rotation is skipped for its date, not finished", async () => {
+    const w = await replacedByHand("2026-11-09");
+    const laptop = machine(w, { terminal: true, answers: ["y"] });
+    laptop.disk.contents.set(MAP_FILE, MAP);
+    expect(await cli(["publish", "RESEND_API_KEY"], laptop.deps), laptop.stderr.text).toBe(0);
+    expect(await laptop.run("--due")).toBe(0);
+    expect(w.github.value("acme/mailer", "RESEND_API_KEY")).toBe(HAND);
+
+    const run = ci(w);
+    expect(await run.run("--due", "--yes")).toBe(0);
+    expect(run.stderr.text).toContain("RESEND_API_KEY  skip  not due until 2027-02-07");
+    expect(w.effects).toHaveLength(2);
+  });
+});
+
+describe("keypin rotate --check in a terminal", () => {
+  test("a rotation left unfinished by a newly listed destination needs approval, and no value is read", async () => {
+    const w = await rotatedOnceOnALaptop();
+    w.repo.contents.set(MAP_FILE, TWO_REPOS);
+    w.inner.log.length = 0;
+    const laptop = machine(w, { terminal: true });
+    expect(await laptop.run("--check")).toBe(1);
+    expect(laptop.stderr.text).toContain(`Needs approval:\n  first write to ${WEB}`);
+    expect(w.inner.log.filter((line) => line.startsWith("read"))).toEqual([]);
+    expect(w.effects).toHaveLength(1);
   });
 });
 

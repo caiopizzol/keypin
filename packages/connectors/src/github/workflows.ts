@@ -13,6 +13,7 @@ export interface WorkflowRefs {
 export interface KeypinRun {
   environment: string | null;
   env: string | null;
+  dynamicEnv: boolean;
   only: string[] | null;
 }
 
@@ -131,19 +132,22 @@ function keypinRuns(script: string): Omit<KeypinRun, "environment">[] {
       .split(/\s+/)
       .map((word) => word.replace(/^(["'])(.*)\1$/, "$2"));
     let env: string | null = null;
+    let dynamicEnv = false;
     let only: string[] | null = null;
     for (let i = 0; i < words.length; i++) {
       const [flag = "", inline] = (words[i] ?? "").split(/=(.*)/s);
       if (flag !== "--env" && flag !== "--only") break;
       const value = inline ?? words[++i] ?? "";
       const plain = !value.includes("$");
-      if (flag === "--env") env = plain ? value : null;
-      else if (!plain) {
+      if (flag === "--env") {
+        env = plain ? value : null;
+        dynamicEnv = !plain;
+      } else if (!plain) {
         only = null;
         break;
       } else only = [...(only ?? []), ...value.split(",").map((name) => name.trim())];
     }
-    runs.push({ env, only });
+    runs.push({ env, dynamicEnv, only });
   }
   return runs;
 }

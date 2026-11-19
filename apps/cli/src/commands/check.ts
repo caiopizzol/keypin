@@ -15,6 +15,7 @@ import {
   parseMap,
   type Prerequisite,
   type PublishTarget,
+  pullPlace,
   secretKey,
   sentence,
   SignInFailed,
@@ -161,6 +162,11 @@ async function build(
             key: key.name,
             environment,
             reader,
+            publishedIn: parsed.map.environments.filter((other) =>
+              key.environments[other]?.publish.some(
+                (target) => checkId(target, deps.destinations) === pullPlace(reader, deps.pulls),
+              ),
+            ),
           })),
         ),
       )

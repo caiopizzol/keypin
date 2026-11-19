@@ -19,6 +19,7 @@ export interface Pulled {
   readonly key: string;
   readonly environment: Environment;
   readonly reader: PullReader;
+  readonly publishedIn: readonly Environment[];
 }
 
 export interface ProjectReader {

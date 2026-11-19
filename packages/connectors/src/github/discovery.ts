@@ -8,11 +8,12 @@ import {
   type Place,
   type ProjectReader,
   type Pulled,
+  shellWord,
   type StoreRead,
 } from "@keypin/core";
 import { NOT_ENTERPRISE } from "./refusal";
 import { isSshName } from "./ssh";
-import { usesSecrets, type WorkflowRefs, workflowRefs } from "./workflows";
+import { type KeypinRun, usesSecrets, type WorkflowRefs, workflowRefs } from "./workflows";
 
 export interface WorkflowHost {
   git(folder: string, args: readonly string[]): Promise<string | null>;
@@ -314,28 +315,40 @@ function leftovers(github: Repo, references: ReadonlyMap<PulledAt, string[]>): s
     const { key, environment } = pulled.pulled;
     const where = `${key} ${placeOf(pulled.repo, pulled.environment)}`;
     if (problems.has(where)) continue;
-    const paths = github.pulled
-      .filter((p) => `${p.pulled.key} ${placeOf(p.repo, p.environment)}` === where)
-      .flatMap((p) => references.get(p) ?? []);
+    const group = github.pulled.filter(
+      (p) => `${p.pulled.key} ${placeOf(p.repo, p.environment)}` === where,
+    );
+    const place = describePlace(pulled.repo, pulled.environment);
+    const publishedIn = [...new Set(group.flatMap((p) => p.pulled.publishedIn))];
+    if (publishedIn.length) {
+      problems.set(
+        where,
+        `${key}: keypin.toml says jobs in ${place} pull it from the vault at job time, but also publishes it there for ${publishedIn.join(" and ")}; keep the pull entry or the publish entry, not both`,
+      );
+      continue;
+    }
+    const paths = group.flatMap((p) => references.get(p) ?? []);
     const stored =
       pulled.read.ok && pulled.read.secrets.some((s) => s.name.toUpperCase() === key.toUpperCase());
     if (!stored && !paths.length) continue;
-    const place = describePlace(pulled.repo, pulled.environment);
+    const secret = `secrets.${key.toUpperCase()}`;
     const facts = [
       ...(paths.length
-        ? [
-            `${paths.join(", ")} still ${paths.length === 1 ? "uses" : "use"} secrets.${key.toUpperCase()}`,
-          ]
+        ? [`${paths.join(", ")} still ${paths.length === 1 ? "uses" : "use"} ${secret}`]
         : []),
       ...(stored ? [`${place} still has it as an Actions secret`] : []),
     ];
+    const remove = `gh secret delete ${key} --repo ${pulled.repo}${pulled.environment === null ? "" : ` --env ${shellWord(pulled.environment)}`}`;
+    const seen = github.repo !== null && pulled.repo.toLowerCase() === github.repo.toLowerCase();
     const fixes = [
       ...(paths.length
         ? [`read it with keypin run --env ${environment} --only ${key} -- <command> instead`]
         : []),
       ...(stored
         ? [
-            `delete the Actions secret: gh secret delete ${key} --repo ${pulled.repo}${pulled.environment === null ? "" : ` --env ${pulled.environment}`}`,
+            seen
+              ? `delete the Actions secret: ${remove}`
+              : `check can't read the workflows of ${pulled.repo}, so it can't tell whether one still uses ${secret}; once none does, delete the Actions secret: ${remove}`,
           ]
         : []),
     ];
@@ -354,24 +367,30 @@ function pullNotes(
   view: MapView,
 ): string[] {
   if (repo === null || !workflows.length) return [];
+  const keypinEnv = (run: KeypinRun) => (run.dynamicEnv ? null : (run.env ?? view.runEnvironment));
+  const covers = (pulled: PulledAt, run: KeypinRun) => {
+    const env = keypinEnv(run);
+    return reaches(pulled, run.environment) && (env === null || env === pulled.pulled.environment);
+  };
   const notes = new Set<string>();
   for (const { path, refs } of workflows)
-    for (const run of refs.runs)
+    for (const run of refs.runs) {
+      const env = keypinEnv(run);
+      if (env === null) continue;
       for (const key of run.only ?? []) {
-        if (here.some((p) => p.pulled.key === key && reaches(p, run.environment))) continue;
+        if (here.some((p) => p.pulled.key === key && covers(p, run))) continue;
         const literal = literalEnvironment(run.environment);
         const fields = [`by = "github-actions"`, `repo = "${repo}"`];
         if (literal !== null) fields.push(`environment = "${literal}"`);
         notes.add(
-          `${key}: ${path} reads it with keypin run, but keypin.toml has no pull entry for ${describePlace(repo, literal)}; add [[keys.${key}.${run.env ?? view.runEnvironment}.pull]] with ${fields.join(", ")}`,
+          `${key}: ${path} reads it with keypin run, but keypin.toml has no pull entry for ${describePlace(repo, literal)}; add [[keys.${key}.${env}.pull]] with ${fields.join(", ")}`,
         );
       }
+    }
   for (const pulled of here) {
     const { key } = pulled.pulled;
     const used = workflows.some(({ refs }) =>
-      refs.runs.some(
-        (run) => reaches(pulled, run.environment) && (run.only?.includes(key) ?? true),
-      ),
+      refs.runs.some((run) => covers(pulled, run) && (run.only?.includes(key) ?? true)),
     );
     if (!used)
       notes.add(

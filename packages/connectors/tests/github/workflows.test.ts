@@ -211,14 +211,16 @@ jobs:
             --only=DEPLOY_KEY --only "SECOND" -- ./deploy.sh
       - run: keypin run -- ./all.sh
       - run: keypin run --only "\${{ inputs.key }}" -- ./one.sh
+      - run: keypin run --env "\${{ inputs.env }}" -- ./any.sh
       - run: echo keypin status
 `);
     assert(refs);
     expect(refs.runs).toEqual([
-      { environment: null, env: "prod", only: ["API_TOKEN", "Other"] },
-      { environment: "production", env: null, only: ["DEPLOY_KEY", "SECOND"] },
-      { environment: "production", env: null, only: null },
-      { environment: "production", env: null, only: null },
+      { environment: null, env: "prod", dynamicEnv: false, only: ["API_TOKEN", "Other"] },
+      { environment: "production", env: null, dynamicEnv: false, only: ["DEPLOY_KEY", "SECOND"] },
+      { environment: "production", env: null, dynamicEnv: false, only: null },
+      { environment: "production", env: null, dynamicEnv: false, only: null },
+      { environment: "production", env: null, dynamicEnv: true, only: null },
     ]);
     expect(refs.uses).toEqual([]);
   });

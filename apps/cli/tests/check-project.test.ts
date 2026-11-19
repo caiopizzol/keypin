@@ -2156,6 +2156,67 @@ jobs:
     ]);
   });
 
+  test("a copy the map also publishes from another environment is a conflict, not a copy to delete", async () => {
+    const map = PULLED.replace(
+      "[[keys.STRIPE_API_KEY.prod.pull]]",
+      `[keys.STRIPE_API_KEY.dev]
+from = "op://Private/billing dev stripe api key/password"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
+
+[[keys.STRIPE_API_KEY.prod.pull]]`,
+    );
+    const run = setup({ files: project(OIDC, map), github: COPY });
+    await cli(["check", "--json"], run.deps);
+    const problems = JSON.stringify(json(run.stdout.text).problems);
+    expect(problems).toContain(
+      "STRIPE_API_KEY: keypin.toml says jobs in acme/billing pull it from the vault at job time, but also publishes it there for dev; keep the pull entry or the publish entry, not both",
+    );
+    expect(problems).not.toContain("gh secret delete");
+  });
+
+  test("a copy in a repo whose workflows check can't read isn't called safe to delete", async () => {
+    const map = PULLED.replace('repo = "acme/billing"\n', 'repo = "acme/jobs"\n');
+    const run = setup({ files: project(OIDC, map), github: COPY });
+    await cli(["check", "--json"], run.deps);
+    expect(json(run.stdout.text).problems).toEqual(
+      expect.arrayContaining([
+        "STRIPE_API_KEY: keypin.toml says jobs in acme/jobs pull it from the vault at job time, but acme/jobs still has it as an Actions secret; check can't read the workflows of acme/jobs, so it can't tell whether one still uses secrets.STRIPE_API_KEY; once none does, delete the Actions secret: gh secret delete STRIPE_API_KEY --repo acme/jobs",
+      ]),
+    );
+  });
+
+  test("quotes a GitHub environment name in the delete command", async () => {
+    const map = PULLED.replace(
+      'repo = "acme/billing"\n',
+      'repo = "acme/billing"\nenvironment = "Production EU"\n',
+    );
+    const workflow = OIDC.replace("runs-on: ubuntu-latest", "environment: Production EU");
+    const run = setup({ files: project(workflow, map), github: COPY });
+    await cli(["check", "--json"], run.deps);
+    expect(JSON.stringify(json(run.stdout.text).problems)).toContain(
+      "gh secret delete STRIPE_API_KEY --repo acme/billing --env 'Production EU'",
+    );
+  });
+
+  test("a keypin run for another keypin environment doesn't count as the pull", async () => {
+    const workflow = OIDC.replace("--env prod", "--env dev");
+    const run = setup({ files: project(workflow) });
+    await cli(["check", "--json"], run.deps);
+    expect(json(run.stdout.text).notes).toEqual(
+      expect.arrayContaining([
+        'STRIPE_API_KEY: .github/workflows/deploy.yml reads it with keypin run, but keypin.toml has no pull entry for acme/billing; add [[keys.STRIPE_API_KEY.dev.pull]] with by = "github-actions", repo = "acme/billing"',
+        "STRIPE_API_KEY: keypin.toml says jobs in acme/billing pull it, but no workflow there runs keypin run for it",
+      ]),
+    );
+  });
+
+  test("a keypin run whose --env is an expression may be the pull", async () => {
+    const workflow = OIDC.replace("--env prod", '--env "${{ inputs.env }}"');
+    const run = setup({ files: project(workflow) });
+    await cli(["check", "--json"], run.deps);
+    expect(JSON.stringify(json(run.stdout.text).notes ?? [])).not.toContain("STRIPE_API_KEY");
+  });
+
   test("notes a keypin run with no pull entry, and a pull entry no workflow runs", async () => {
     const workflow = OIDC.replace("--only STRIPE_API_KEY", "--only RESEND_API_KEY");
     const map = PULLED.replace(

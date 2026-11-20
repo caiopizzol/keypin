@@ -51,7 +51,8 @@ function setup(
     jwt?: string;
     role?: string;
     account?: string;
-    github?: number;
+    github?: number[];
+    sts?: number[];
     echo?: boolean;
   } = {},
 ) {
@@ -84,8 +85,16 @@ function setup(
     if (url.startsWith(REQUEST_URL))
       return Promise.resolve(
         new Response(JSON.stringify({ value: `${JWT}:${parsed.searchParams.get("audience")}` }), {
-          status: options.github ?? 200,
+          status: options.github?.shift() ?? 200,
         }),
+      );
+    const outage = action === "AssumeRoleWithWebIdentity" ? options.sts?.shift() : undefined;
+    if (outage !== undefined && outage !== 200)
+      return Promise.resolve(
+        new Response(
+          "<ErrorResponse><Error><Code>ServiceUnavailable</Code><Message>try again</Message></Error></ErrorResponse>",
+          { status: outage },
+        ),
       );
     if (options.echo && action === "AssumeRoleWithWebIdentity")
       return Promise.resolve(
@@ -162,6 +171,38 @@ describe("signing in to AWS with GitHub Actions OIDC", () => {
     expect(run.calls.slice(5).map((c) => c.call)).toEqual([GITHUB, ASSUME, IDENTITY, READ]);
   });
 
+  test.each([
+    ["GitHub", { github: [500] }, [GITHUB]],
+    ["STS", { sts: [503] }, [GITHUB, ASSUME]],
+  ])("a failed sign-in at %s is tried again by the next read", async (_, outage, failed) => {
+    const run = setup(outage);
+    await failure(run.vault.read(REF));
+    expect(run.calls.map((c) => c.call)).toEqual(failed);
+    expect((await run.vault.read(REF)).equals(new Secret(SENTINEL))).toBe(true);
+    expect(run.calls.slice(failed.length).map((c) => c.call)).toEqual([
+      GITHUB,
+      ASSUME,
+      IDENTITY,
+      READ,
+    ]);
+  });
+
+  test("a failed refresh is tried again by the next read", async () => {
+    const run = setup({ sts: [200, 503] });
+    await run.vault.read(REF);
+    run.clock.now = new Date(Date.parse(WEB_IDENTITY_EXPIRATION) - 30_000);
+    await failure(run.vault.read(REF));
+    expect((await run.vault.read(REF)).equals(new Secret(SENTINEL))).toBe(true);
+    expect(run.calls.slice(4).map((c) => c.call)).toEqual([
+      GITHUB,
+      ASSUME,
+      GITHUB,
+      ASSUME,
+      IDENTITY,
+      READ,
+    ]);
+  });
+
   test("asks GitHub for the audience in KEYPIN_AWS_AUDIENCE", async () => {
     const run = setup({
       env: { KEYPIN_AWS_AUDIENCE: "https://github.com/acme" },
@@ -209,7 +250,7 @@ describe("signing in to AWS with GitHub Actions OIDC", () => {
   });
 
   test("GitHub's token endpoint failing stops sign-in before STS", async () => {
-    const run = setup({ github: 500 });
+    const run = setup({ github: [500] });
     const error = await failure(run.vault.read(REF));
     expect(error.message).toBe(
       `AWS account ${ACCOUNT} in eu-west-1: sign-in failed: couldn't get GitHub Actions' OIDC token: GitHub's OIDC token endpoint returned HTTP 500`,

@@ -153,8 +153,13 @@ export function secretsManagerBackend(
     }
     let next = sessions.get(key);
     if (!next || next === pending) {
-      next = signedIn(place);
-      sessions.set(key, next);
+      const started = signedIn(place);
+      sessions.set(key, started);
+      if ("role" in signIn)
+        started.catch(() => {
+          if (sessions.get(key) === started) sessions.delete(key);
+        });
+      next = started;
     }
     return (await next).credentials;
   }

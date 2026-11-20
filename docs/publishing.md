@@ -141,8 +141,9 @@ keypin never deletes a secret from a destination you remove from the map.
 
 A CI job can sign in to your vault and read a key itself, instead of getting a copy from `publish`. `pull` doesn't
 set up that sign-in (see [Service account](service-account.md) for 1Password, and Pulling in GitHub Actions for
-[AWS Secrets Manager](aws-secrets-manager.md#pulling-in-github-actions) and
-[Infisical](infisical.md#pulling-in-github-actions)); it lists the job, so the map still says who reads the key:
+[AWS Secrets Manager](aws-secrets-manager.md#pulling-in-github-actions),
+[Infisical](infisical.md#pulling-in-github-actions) and [Doppler](doppler.md#pulling-in-github-actions)); it lists the job, so
+the map still says who reads the key:
 
 ```toml
 [keys.API_TOKEN.prod]

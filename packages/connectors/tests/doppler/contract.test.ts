@@ -34,7 +34,7 @@ for (const token of Object.keys(TOKENS)) {
         config: "prd",
       };
       return {
-        vault: dopplerBackend(token, dopplerFetch(fake, store)),
+        vault: dopplerBackend({ token }, dopplerFetch(fake, store)),
         ref: { ...scope, name: "STRIPE_KEY" },
         scope,
         effects: store.effects,

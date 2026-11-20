@@ -59,7 +59,7 @@ function setup(
     calls.push(`${init.method} ${pathname}${searchParams.size ? `?${searchParams}` : ""}`);
     return fetch(url, init);
   };
-  return { vault: dopplerBackend(token, spy), store, calls };
+  return { vault: dopplerBackend(token === null ? null : { token }, spy), store, calls };
 }
 
 const failure = (promise: Promise<unknown>) =>
@@ -204,7 +204,7 @@ describe("writing", () => {
       projects: { billing: { prd: { STRIPE_KEY: { value: SENTINEL } } } },
       tokens: { [ACCOUNT]: { type: "service_account" } },
     };
-    const vault = dopplerBackend(ACCOUNT, dopplerFetch(fake, store));
+    const vault = dopplerBackend({ token: ACCOUNT }, dopplerFetch(fake, store));
     await expect(vault.write(REF, new Secret("x"))).rejects.toThrow(
       "keypin needs a service account token with write access to billing/prd",
     );
@@ -328,7 +328,7 @@ describe("writing", () => {
         },
       },
     };
-    const vault = dopplerBackend(token, dopplerFetch(fake, store));
+    const vault = dopplerBackend({ token }, dopplerFetch(fake, store));
     const branch = { ...REF, config: "prd_aws" };
     expect((await vault.read(branch)).equals(new Secret(SENTINEL))).toBe(true);
     const error = await failure(vault.write(branch, new Secret("x")));

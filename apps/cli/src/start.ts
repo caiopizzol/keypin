@@ -61,7 +61,11 @@ import {
 } from "@keypin/connectors/onepassword";
 import { credentialsFrom, infisicalBackend, infisicalVault } from "@keypin/connectors/infisical";
 import { accessTokenFrom, bitwardenBackend, bitwardenVault } from "@keypin/connectors/bitwarden";
-import { dopplerBackend, dopplerVault, tokenFrom } from "@keypin/connectors/doppler";
+import {
+  credentialsFrom as dopplerCredentials,
+  dopplerBackend,
+  dopplerVault,
+} from "@keypin/connectors/doppler";
 import { cli } from "./cli";
 import type { Deps, Publisher } from "./deps";
 import {
@@ -173,7 +177,11 @@ const vault = routedVault({
       warn: (text) => process.stderr.write(`keypin: warning: ${text}\n`),
     })),
   bitwarden: () => (bitwarden ??= bitwardenBackend(accessTokenFrom(process.env))),
-  doppler: () => (doppler ??= dopplerBackend(tokenFrom(process.env))),
+  doppler: () =>
+    (doppler ??= dopplerBackend(dopplerCredentials(process.env), globalThis.fetch, {
+      idToken: githubIdToken(process.env, globalThis.fetch),
+      warn: (text) => process.stderr.write(`keypin: warning: ${text}\n`),
+    })),
   awssm: () =>
     (secretsManager ??= secretsManagerBackend(awsSignIn(process.env, homedir(), readText), {
       idToken: githubIdToken(process.env, globalThis.fetch),

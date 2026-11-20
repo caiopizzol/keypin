@@ -1,5 +1,13 @@
 import { type SignInReason, sentence, type VaultKind } from "@keypin/core";
-import { NO_CREDENTIALS, TOKEN_VARIABLE, tokenFrom, tokenKind } from "./backend";
+import {
+  AUDIENCE,
+  credentialsFrom,
+  IDENTITY_ID,
+  NO_CREDENTIALS,
+  NO_JOB_TOKEN,
+  TOKEN_VARIABLE,
+  tokenKind,
+} from "./backend";
 import {
   account,
   decode,
@@ -16,12 +24,27 @@ export interface DopplerHost {
   readonly env: Readonly<Record<string, string | undefined>>;
 }
 
-function fixFor(failures: readonly SignInReason[]): string {
+function fixFor(failures: readonly SignInReason[], { env }: DopplerHost): string {
+  const credentials = credentialsFrom(env);
+  if (credentials && "problem" in credentials) return credentials.problem;
+  const oidc = credentials !== null && "identityId" in credentials;
   if (failures.some((reason) => reason.kind === "no-credentials"))
-    return `${NO_CREDENTIALS} (docs/doppler.md)`;
+    return oidc ? NO_JOB_TOKEN : `${NO_CREDENTIALS} (docs/doppler.md)`;
   if (failures.some((reason) => reason.kind === "wrong-account"))
-    return `use a token from the workplace keypin.toml pins under [doppler]`;
+    return oidc
+      ? `use an identity from a service account in the workplace keypin.toml pins under [doppler]`
+      : `use a token from the workplace keypin.toml pins under [doppler]`;
+  if (oidc)
+    return `check ${IDENTITY_ID}, the identity's claims and the workplace under [doppler] in keypin.toml (docs/doppler.md)`;
   return `check ${TOKEN_VARIABLE} and the workplace under [doppler] in keypin.toml`;
+}
+
+function signedInWith({ env }: DopplerHost): string | null {
+  const credentials = credentialsFrom(env);
+  if (!credentials || "problem" in credentials) return null;
+  if ("identityId" in credentials)
+    return `GitHub Actions OIDC, as the service account identity in ${IDENTITY_ID}`;
+  return `the ${tokenKind(credentials.token)} in ${TOKEN_VARIABLE}`;
 }
 
 export const dopplerVault: VaultKind<DopplerHost, DopplerRef, DopplerReference, DopplerPin> = {
@@ -37,7 +60,8 @@ export const dopplerVault: VaultKind<DopplerHost, DopplerRef, DopplerReference, 
   account,
   sameItem: (a, b) => a.project === b.project && a.config === b.config && a.name === b.name,
   stored: decode,
-  signInVariables: [TOKEN_VARIABLE],
+  signInVariables: [TOKEN_VARIABLE, IDENTITY_ID, AUDIENCE],
+  oidcVariables: [IDENTITY_ID],
   newValueByHand: "Put a new value in the Doppler secret",
   keepsRotated: false,
   addRotatedDate:
@@ -50,15 +74,15 @@ export const dopplerVault: VaultKind<DopplerHost, DopplerRef, DopplerReference, 
       ? `add the secrets in Doppler and map them with ${SCHEME} references (docs/doppler.md)`
       : undefined;
   },
-  itemNotes(refs, { env }) {
-    const token = tokenFrom(env);
-    return token && refs.some((ref) => ref.kind === "doppler")
-      ? [`keypin signs in to Doppler with the ${tokenKind(token)} in ${TOKEN_VARIABLE}`]
+  itemNotes(refs, host) {
+    const used = signedInWith(host);
+    return used && refs.some((ref) => ref.kind === "doppler")
+      ? [`keypin signs in to Doppler with ${used}`]
       : [];
   },
-  prerequisites({ failures }) {
+  prerequisites({ failures }, host) {
     if (!failures.length) return [];
-    const fix = fixFor(failures);
+    const fix = fixFor(failures, host);
     return [
       {
         name: "Doppler",

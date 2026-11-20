@@ -2324,6 +2324,16 @@ ${steps}`;
     expect(await notes(aws("    permissions:\n      id-token: write\n"))).toEqual([]);
   });
 
+  test("warns for a job that sets the Doppler identity", async () => {
+    const doppler = job("", "").replace(
+      "KEYPIN_INFISICAL_IDENTITY_ID: ${{ vars.INFISICAL_IDENTITY_ID }}",
+      "KEYPIN_DOPPLER_IDENTITY_ID: ${{ vars.DOPPLER_IDENTITY_ID }}",
+    );
+    expect(await notes(doppler)).toEqual([
+      missing(KEEP).replace("KEYPIN_INFISICAL_IDENTITY_ID", "KEYPIN_DOPPLER_IDENTITY_ID"),
+    ]);
+  });
+
   test("doesn't warn when the job grants id-token: write", async () => {
     expect(await notes(job("", "    permissions:\n      id-token: write\n"))).toEqual([]);
     expect(await notes(job("", "    permissions:\n      id-token: read\n"))).toEqual([

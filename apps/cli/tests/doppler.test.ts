@@ -1,11 +1,12 @@
 import { describe, expect, test } from "vite-plus/test";
-import { type Issuer, Secret } from "@keypin/core";
-import { dopplerBackend, tokenFrom } from "@keypin/connectors/doppler";
+import { type IdToken, type Issuer, NoIdToken, Secret } from "@keypin/core";
+import { credentialsFrom, dopplerBackend } from "@keypin/connectors/doppler";
 import {
   dopplerFetch,
   type FakeDoppler,
   type FakeToken,
   memoryStore,
+  OIDC_TOKEN,
 } from "@keypin/connectors/doppler/testing";
 import { cli } from "../src/cli";
 import { onePasswordFrom } from "../src/sign-in";
@@ -72,7 +73,12 @@ function world(tokens: Record<string, FakeToken> = {}): FakeDoppler {
 }
 
 function project(
-  options: { env?: Record<string, string>; map?: string; doppler?: FakeDoppler } = {},
+  options: {
+    env?: Record<string, string>;
+    map?: string;
+    doppler?: FakeDoppler;
+    idToken?: IdToken;
+  } = {},
 ) {
   const disk = memoryFiles({
     "/work/billing/keypin.toml": options.map ?? MAP,
@@ -90,7 +96,16 @@ function project(
         throw new Error("this test signs in with no service account");
       },
     });
-  const doppler = dopplerBackend(tokenFrom(env), dopplerFetch(options.doppler ?? world(), store));
+  const events: string[] = [];
+  const served = dopplerFetch(options.doppler ?? world(), store);
+  const doppler = dopplerBackend(
+    credentialsFrom(env),
+    (url, init) => {
+      events.push(`${init.method} ${new URL(url).pathname}`);
+      return served(url, init);
+    },
+    options.idToken ? { idToken: options.idToken } : {},
+  );
   const launcher = fakeLauncher();
   const destinations = fakeDestinations();
   const issued: string[] = [];
@@ -116,7 +131,10 @@ function project(
     deps: {
       env,
       signIn: () => signIn().signIn,
-      launch: launcher.launch,
+      launch: (command, childEnv) => {
+        events.push("launch");
+        return launcher.launch(command, childEnv);
+      },
       onSignals: launcher.onSignals,
       destination: destinations.build,
       issuer: () => issuer,
@@ -124,7 +142,7 @@ function project(
       ask: async () => "y",
     },
   });
-  return { ...fake, launcher, destinations, store, onePassword, issued };
+  return { ...fake, launcher, destinations, store, onePassword, issued, events };
 }
 
 describe("keypin with Doppler", () => {
@@ -319,5 +337,69 @@ describe("keypin with Doppler", () => {
     expect(run.store.effects).toEqual(["doppler update billing/prd_aws/STRIPE_API_KEY"]);
     expect(run.store.load()[0]?.secret).toEqual({ value: ISSUED });
     expect(run.issued).toEqual([expect.stringMatching(/^create /)]);
+  });
+});
+
+describe("keypin with Doppler, signed in with GitHub Actions OIDC", () => {
+  const IDENTITY = "8c2d4e6f-0000-4000-8000-000000000002";
+  const JWT = "github-jwt-sentinel-6a2e";
+  const OIDC = {
+    DOPPLER_TOKEN: "",
+    KEYPIN_DOPPLER_IDENTITY_ID: IDENTITY,
+    KEYPIN_DOPPLER_AUDIENCE: "https://github.com/acme",
+  };
+  const fresh = (): FakeDoppler => ({ ...world(), oidc: { identityId: IDENTITY, jwt: JWT } });
+  const idToken: IdToken = async () => JWT;
+
+  test("run revokes the token before the command starts, and passes it no OIDC setting", async () => {
+    const run = project({ env: OIDC, doppler: fresh(), idToken });
+    expect(await cli(["run", "--", "env"], run.deps)).toBe(0);
+    expect(run.events).toEqual([
+      "POST /v3/auth/oidc",
+      "GET /v3/me",
+      "GET /v3/configs/config/secret",
+      "POST /v3/auth/revoke",
+      "launch",
+    ]);
+    expect(run.launcher.launches[0]?.env).toEqual({ PATH: "/usr/bin", STRIPE_API_KEY: SENTINEL });
+    expect(run.stdout.text + run.stderr.text).not.toContain(JWT);
+    expect(run.stdout.text + run.stderr.text).not.toContain(OIDC_TOKEN);
+  });
+
+  test("run outside a job that can ask for a token says to grant id-token: write, and starts nothing", async () => {
+    const noJob: IdToken = () => Promise.reject(new NoIdToken("this job can't ask for a token"));
+    const run = project({ env: OIDC, doppler: fresh(), idToken: noJob });
+    expect(await cli(["run", "--", "env"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain(
+      "sign-in failed: KEYPIN_DOPPLER_IDENTITY_ID is set, but this job can't ask for a token, or unset KEYPIN_DOPPLER_IDENTITY_ID",
+    );
+    expect(run.launcher.launches).toEqual([]);
+    expect(run.events).toEqual([]);
+  });
+
+  test("run with DOPPLER_TOKEN set too names both, and starts nothing", async () => {
+    const run = project({
+      env: { ...OIDC, DOPPLER_TOKEN: ACCOUNT_TOKEN },
+      doppler: fresh(),
+      idToken,
+    });
+    expect(await cli(["run", "--", "env"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain("both KEYPIN_DOPPLER_IDENTITY_ID and DOPPLER_TOKEN are set");
+    expect(run.launcher.launches).toEqual([]);
+    expect(run.events).toEqual([]);
+  });
+
+  test("check says how it signed in, and gives the fix without a job token", async () => {
+    const signed = project({ env: OIDC, doppler: fresh(), idToken });
+    expect(await cli(["check"], signed.deps)).toBe(0);
+    expect(signed.events.at(-1)).toBe("POST /v3/auth/revoke");
+    expect(signed.stdout.text).toContain(
+      "Note: keypin signs in to Doppler with GitHub Actions OIDC, as the service account identity in KEYPIN_DOPPLER_IDENTITY_ID\n",
+    );
+    const unsigned = project({ env: OIDC, doppler: fresh() });
+    expect(await cli(["check"], unsigned.deps)).toBe(1);
+    expect(unsigned.stdout.text).toContain(
+      "Give the GitHub Actions job permissions: id-token: write, or unset KEYPIN_DOPPLER_IDENTITY_ID",
+    );
   });
 });

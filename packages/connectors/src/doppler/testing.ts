@@ -1,5 +1,7 @@
 import { type Fetch, isRecord } from "@keypin/core";
 
+export const OIDC_TOKEN = "dp.said.oidc-token-sentinel-5c8e";
+
 export interface FakeSecret {
   value: string;
   restricted?: boolean;
@@ -23,6 +25,8 @@ export interface FakeDoppler {
   tokens: Record<string, FakeToken>;
   inherits?: Record<string, FakeConfigName[]>;
   failWrites?: boolean;
+  oidc?: { identityId: string; jwt: string; expiresInSeconds?: number };
+  revoked?: string[];
 }
 
 export interface Stored {
@@ -92,16 +96,33 @@ export function dopplerFetch(fake: FakeDoppler, store: Store): Fetch {
     });
   return async (url, init) => {
     const parsed = new URL(url);
+    const sent: unknown = init.body ? JSON.parse(init.body) : null;
+    const body = isRecord(sent) ? sent : {};
+    if (init.method === "POST" && parsed.pathname === "/v3/auth/oidc") {
+      const { oidc } = fake;
+      if (!oidc || body.identity !== oidc.identityId || body.token !== oidc.jwt)
+        return fail(401, "Invalid OIDC token");
+      const lives = (oidc.expiresInSeconds ?? 300) * 1000;
+      return reply(200, {
+        token: OIDC_TOKEN,
+        expires_at: new Date(Date.now() + lives).toISOString(),
+      });
+    }
+    if (init.method === "POST" && parsed.pathname === "/v3/auth/revoke") {
+      if (typeof body.token !== "string") return fail(400, "Missing token");
+      (fake.revoked ??= []).push(body.token);
+      return reply(200, {});
+    }
     const bearer = init.headers.Authorization?.replace(/^Bearer /, "") ?? "";
-    const token = fake.tokens[bearer];
+    const minted: FakeToken | undefined =
+      fake.oidc && bearer === OIDC_TOKEN ? { type: "service_account" } : undefined;
+    const token = fake.revoked?.includes(bearer) ? undefined : (fake.tokens[bearer] ?? minted);
     if (!token) return fail(401, "Invalid Auth token");
     if (parsed.pathname === "/v3/me")
       return reply(200, {
         workplace: { slug: fake.workplace, name: `${fake.workplace} Inc` },
         type: token.type,
       });
-    const sent: unknown = init.body ? JSON.parse(init.body) : null;
-    const body = isRecord(sent) ? sent : {};
     const text = (value: unknown) => (typeof value === "string" ? value : "");
     const project = parsed.searchParams.get("project") ?? text(body.project);
     const config = parsed.searchParams.get("config") ?? text(body.config);

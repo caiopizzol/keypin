@@ -58,8 +58,8 @@ in the map with a [`pull`](configuration.md#pulling-in-ci) entry, then:
      --client-id-list sts.amazonaws.com
    ```
 
-2. Create a role that only your repo's branch can assume, and let it read the secret with the permissions above.
-   The trust policy's condition names the branch:
+2. Create a role that only your repo's branch can assume. Its policy needs only `secretsmanager:GetSecretValue` on
+   the secret, plus `kms:Decrypt` if the secret uses your own KMS key. The trust policy's condition names the branch:
 
    ```json
    "Condition": {
@@ -70,9 +70,12 @@ in the map with a [`pull`](configuration.md#pulling-in-ci) entry, then:
    }
    ```
 
-   Repos created after July 15, 2026 include the owner and repo IDs in the subject, which
-   `gh api repos/owner/repo --jq '"\(.owner.id) \(.id)"'` prints. Older repos use `repo:owner/repo:ref:refs/heads/main`;
-   see [GitHub's subject formats](https://docs.github.com/en/actions/reference/security/oidc).
+   Use the subject format your repo uses. Repos created after July 15, 2026, and older repos that opted in or were
+   renamed or transferred since, include the owner and repo IDs, which
+   `gh api repos/owner/repo --jq '"\(.owner.id) \(.id)"'` prints. Other repos use `repo:owner/repo:ref:refs/heads/main`.
+   A job with a GitHub `environment` gets an `environment:<name>` subject instead of the branch, so match that and
+   limit the branch with the environment's deployment rules. See
+   [GitHub's subject formats](https://docs.github.com/en/actions/reference/security/oidc).
 
 3. Sign the job in, then run keypin:
 
@@ -93,5 +96,5 @@ in the map with a [`pull`](configuration.md#pulling-in-ci) entry, then:
      - run: keypin run --env prod --only STRIPE_KEY -- <command>
    ```
 
-A job on another branch can't assume the role. A value you change in Secrets Manager reaches the next job without
-`publish`.
+A job on another branch can't assume the role. A value you change in Secrets Manager reaches the jobs without
+`publish`, once Secrets Manager returns the new version.

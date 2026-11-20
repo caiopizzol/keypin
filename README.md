@@ -105,6 +105,9 @@ keypin publish --all
 
 `publish` shows what it will write where and waits for you to answer `y`.
 
+A GitHub Actions job can instead read a key from your vault at job time, so no copy is stored. With AWS Secrets
+Manager it signs in with OIDC. See [Pulling in CI](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md#pulling-in-ci).
+
 To rotate a key, give it an
 [issuer](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md#rotating-a-key) and run `keypin rotate
 RESEND_API_KEY`. keypin creates the new key, saves and publishes it, and asks before it revokes the old one.

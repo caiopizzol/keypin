@@ -66,6 +66,7 @@ export interface VaultKind<
   readonly keepsRotated?: false;
   readonly holdsWrites?: boolean;
   readonly signInVariables?: readonly string[];
+  readonly oidcVariables?: readonly string[];
   addByHand?(map: KeysMap): string | undefined;
   signInNotes?(host: H): readonly string[];
   itemNotes?(refs: readonly KeyRef[], host: H): readonly string[];

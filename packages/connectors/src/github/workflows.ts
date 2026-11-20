@@ -7,7 +7,16 @@ export interface WorkflowRefs {
   environments: string[];
   uses: { environment: string | null; secrets: string[]; fromCaller: boolean }[];
   runs: KeypinRun[];
+  jobs: KeypinJob[];
   hidesUses: boolean;
+}
+
+export interface KeypinJob {
+  name: string;
+  env: string[];
+  idToken: boolean | null;
+  directOnly: boolean;
+  permissions: { at: "job" | "workflow"; map: boolean } | null;
 }
 
 export interface KeypinRun {
@@ -82,7 +91,9 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     { environment: null, secrets: inherited, fromCaller: passedByCaller },
   ];
   const runs: KeypinRun[] = [];
-  for (const job of Object.values(jobs ?? {})) {
+  const keypinJobs: KeypinJob[] = [];
+  const top: Record<string, unknown> = isRecord(data) ? data : {};
+  for (const [id, job] of Object.entries(jobs ?? {})) {
     const environment = isRecord(job) ? job.environment : undefined;
     const name = isRecord(environment) ? environment.name : environment;
     const named = typeof name === "string" && name.trim() ? name : null;
@@ -93,6 +104,18 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     const secrets = [...secretsIn(job, null, passedByCaller && named === null)];
     if (named?.includes("${{") && stored([...secrets, ...inherited])) refs.hidesUses = true;
     uses.push({ environment: named?.trim() ?? null, secrets, fromCaller: passedByCaller });
+    if (!isRecord(job) || job.uses !== undefined) continue;
+    const env = keypinEnv(top, job);
+    if (env === null) continue;
+    const at = "permissions" in job ? "job" : "permissions" in top ? "workflow" : null;
+    const permissions = at === "job" ? job.permissions : top.permissions;
+    keypinJobs.push({
+      name: id,
+      env,
+      idToken: at === null && onlyCalled(top.on) ? null : grantsIdToken(permissions),
+      directOnly: at === null && events(top.on).includes("workflow_call"),
+      permissions: at === null ? null : { at, map: isRecord(permissions) },
+    });
   }
   return {
     secrets: [...refs.secrets],
@@ -100,8 +123,32 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     environments: [...refs.environments],
     uses: uses.filter((use) => use.secrets.length),
     runs,
+    jobs: keypinJobs,
     hidesUses: refs.hidesUses,
   };
+}
+
+function keypinEnv(top: Record<string, unknown>, job: Record<string, unknown>): string[] | null {
+  const steps = Array.isArray(job.steps) ? job.steps.filter(isRecord) : [];
+  const running = steps.filter(
+    (step) => typeof step.run === "string" && keypinRuns(step.run).length > 0,
+  );
+  if (!running.length) return null;
+  const set = new Set<string>();
+  for (const step of running)
+    for (const [name, value] of Object.entries({ ...envOf(top), ...envOf(job), ...envOf(step) }))
+      if (value !== null && value !== undefined && value !== "") set.add(name);
+  return [...set];
+}
+
+function envOf(scope: Record<string, unknown>): Record<string, unknown> {
+  return isRecord(scope.env) ? scope.env : {};
+}
+
+function grantsIdToken(permissions: unknown): boolean {
+  return (
+    permissions === "write-all" || (isRecord(permissions) && permissions["id-token"] === "write")
+  );
 }
 
 function scripts(job: unknown): string[] {
@@ -176,10 +223,24 @@ function shellWords(line: string): string[] {
   return words;
 }
 
+function events(on: unknown): unknown[] {
+  return typeof on === "string"
+    ? [on]
+    : Array.isArray(on)
+      ? on
+      : isRecord(on)
+        ? Object.keys(on)
+        : [];
+}
+
 function onlyWorkflowCall(on: unknown): boolean {
-  const events =
-    typeof on === "string" ? [on] : Array.isArray(on) ? on : isRecord(on) ? Object.keys(on) : [];
-  return events.length === 1 && events[0] === "workflow_call";
+  const all = events(on);
+  return all.length === 1 && all[0] === "workflow_call";
+}
+
+function onlyCalled(on: unknown): boolean {
+  const triggers = events(on);
+  return triggers.length > 0 && triggers.every((event) => event === "workflow_call");
 }
 
 function expressions(text: string): string[] {

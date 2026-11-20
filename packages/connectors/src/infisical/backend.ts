@@ -245,7 +245,7 @@ export function infisicalBackend(
     if (login.status !== 200 || typeof token !== "string" || !token) {
       const audience = given.audience ?? "GitHub's default audience, https://github.com/<owner>";
       throw failed(
-        `Infisical refused GitHub's OIDC token for the machine identity ${given.identityId} (${problem(login)}); keypin asked GitHub for a token for ${audience}, so check that the identity's OIDC Auth lists it under Audiences and that its subject matches this job`,
+        `Infisical refused GitHub's OIDC token for the machine identity ${given.identityId} (${hidden(problem(login), jwt)}); keypin asked GitHub for a token for ${audience}, so check that the identity's OIDC Auth lists it under Audiences and that its subject matches this job`,
       );
     }
     const lives = [login.body.expiresIn, login.body.accessTokenMaxTTL].filter(
@@ -259,22 +259,23 @@ export function infisicalBackend(
   }
 
   async function revoke(place: Place, token: string): Promise<void> {
-    const why = await fetch(`${place.url}/api/v1/auth/token/revoke`, {
-      method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({ accessToken: token }),
-      redirect: "error",
-      signal: AbortSignal.timeout(REVOKE_WAIT_MS),
-    }).then(
-      async (response) => {
-        const body = parseObject(await response.text());
-        return response.status === 200 ? null : problem({ status: response.status, body });
-      },
-      (error: unknown) => messageOf(error),
-    );
+    let why: string | null;
+    try {
+      const response = await fetch(`${place.url}/api/v1/auth/token/revoke`, {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ accessToken: token }),
+        redirect: "error",
+        signal: AbortSignal.timeout(REVOKE_WAIT_MS),
+      });
+      const body = parseObject(await response.text());
+      why = response.status === 200 ? null : problem({ status: response.status, body });
+    } catch (error) {
+      why = messageOf(error);
+    }
     if (why !== null)
       warn(
-        `${account(place)}: couldn't revoke keypin's access token (${why}); it lasts until its TTL runs out`,
+        `${account(place)}: couldn't revoke keypin's access token (${hidden(why, token)}); it lasts until its TTL runs out`,
       );
   }
 
@@ -558,6 +559,10 @@ function originOf(text: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+function hidden(text: string, secret: string): string {
+  return text.replaceAll(secret, "[hidden]");
 }
 
 function problem(response: { status: number; body: Json }): string {

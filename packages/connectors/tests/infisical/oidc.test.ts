@@ -57,6 +57,8 @@ function setup(
     organization?: string;
     github?: number;
     revoke?: number;
+    echo?: boolean;
+    dropRevoke?: boolean;
   } = {},
 ) {
   const env = { ...JOB, ...options.env };
@@ -78,6 +80,23 @@ function setup(
     if (url.startsWith(REQUEST_URL))
       return Promise.resolve(
         new Response(JSON.stringify({ value: JWT }), { status: options.github ?? 200 }),
+      );
+    if (options.echo && parsed.pathname === "/api/v1/auth/oidc-auth/login")
+      return Promise.resolve(
+        new Response(JSON.stringify({ message: `Access denied for token ${JWT}` }), {
+          status: 401,
+        }),
+      );
+    if (options.dropRevoke && parsed.pathname === "/api/v1/auth/token/revoke")
+      return Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new Error(`connection dropped after ${OIDC_ACCESS_TOKEN}`));
+            },
+          }),
+          { status: 200 },
+        ),
       );
     if (options.revoke && parsed.pathname === "/api/v1/auth/token/revoke")
       return Promise.resolve(new Response("{}", { status: options.revoke }));
@@ -250,6 +269,24 @@ describe("signing in with GitHub Actions OIDC", () => {
     await run.vault.close?.();
     expect(run.warnings).toEqual([
       "Infisical organization acme at https://app.infisical.com: couldn't revoke keypin's access token (Infisical returned HTTP 500); it lasts until its TTL runs out",
+    ]);
+  });
+
+  test("a server message that echoes GitHub's token shows it hidden", async () => {
+    const run = setup({ echo: true });
+    const error = await failure(run.vault.read(REF));
+    expect(String(error)).toContain(
+      "Infisical returned HTTP 401: Access denied for token [hidden]",
+    );
+    showsNoToken(error);
+  });
+
+  test("a revoke whose response breaks off warns instead of failing, without the token", async () => {
+    const run = setup({ dropRevoke: true });
+    await run.vault.read(REF);
+    await run.vault.close?.();
+    expect(run.warnings).toEqual([
+      "Infisical organization acme at https://app.infisical.com: couldn't revoke keypin's access token (connection dropped after [hidden]); it lasts until its TTL runs out",
     ]);
   });
 

@@ -2,6 +2,7 @@ import {
   type Day,
   type Fetch,
   HeldForApproval,
+  hideSecrets,
   type IdToken,
   isRecord,
   type KeyRef,
@@ -137,15 +138,12 @@ export function infisicalBackend(
     }
     const body = parseObject(await response.text());
     if (typeof body.message === "string")
-      body.message = [
+      body.message = hideSecrets(body.message, [
         options.token,
         options.body?.jwt,
         options.body?.clientSecret,
         options.body?.secretValue,
-      ].reduce<string>(
-        (text, secret) => (typeof secret === "string" && secret ? hidden(text, secret) : text),
-        body.message,
-      );
+      ]);
     if (response.status === 404 && body.error === "Not Found")
       throw fail(
         options.always
@@ -287,7 +285,7 @@ export function infisicalBackend(
     }
     if (why !== null)
       warn(
-        `${account(place)}: couldn't revoke keypin's access token (${hidden(why, token)}); it lasts until its TTL runs out`,
+        `${account(place)}: couldn't revoke keypin's access token (${hideSecrets(why, [token])}); it lasts until its TTL runs out`,
       );
   }
 
@@ -571,12 +569,6 @@ function originOf(text: string | null): string | null {
   } catch {
     return null;
   }
-}
-
-function hidden(text: string, secret: string): string {
-  const forms = [...new Set([JSON.stringify(secret).slice(1, -1), secret])];
-  const pattern = forms.map((form) => form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
-  return text.replace(new RegExp(pattern, "g"), "[hidden]");
 }
 
 function problem(response: { status: number; body: Json }): string {

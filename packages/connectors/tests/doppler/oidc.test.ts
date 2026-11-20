@@ -298,6 +298,18 @@ describe("signing in with GitHub Actions OIDC", () => {
     },
   );
 
+  test("a write whose failure echoes a value with a quote and a newline, JSON-escaped, shows it hidden", async () => {
+    const value = 'say "hi"\nline2-sentinel-7b4c';
+    const escaped = JSON.stringify(value).slice(1, -1);
+    const run = setup({ echoing: "/v3/configs/config/secrets", echoStatus: 400 });
+    const error = await failure(run.vault.write(REF, new Secret(value)));
+    expect(String(error)).toContain('"secrets":{"STRIPE_KEY":"[hidden]"}');
+    expect(String(error)).not.toContain(value);
+    expect(String(error)).not.toContain(escaped);
+    expect(String(error)).not.toContain("line2-sentinel-7b4c");
+    showsNoToken(error);
+  });
+
   test("no error or warning shows GitHub's token, its request token or Doppler's token", async () => {
     const texts: unknown[] = [];
     for (const options of [

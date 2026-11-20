@@ -97,7 +97,9 @@ export function dopplerBackend(
 
   function hidden(text: string, also: readonly string[] = []): string {
     return [...secrets, ...also]
+      .flatMap((secret) => [secret, JSON.stringify(secret).slice(1, -1)])
       .filter(Boolean)
+      .sort((a, b) => b.length - a.length)
       .reduce((shown, secret) => shown.replaceAll(secret, "[hidden]"), text);
   }
 

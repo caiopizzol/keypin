@@ -310,6 +310,13 @@ describe("signing in with GitHub Actions OIDC", () => {
     showsNoToken(error);
   });
 
+  test("a written value that reads like the marker is hidden once", async () => {
+    const run = setup({ echoing: "/v3/configs/config/secrets", echoStatus: 400 });
+    const error = String(await failure(run.vault.write(REF, new Secret("hidden"))));
+    expect(error).toContain('"secrets":{"STRIPE_KEY":"[hidden]"}');
+    expect(error).not.toContain("[[hidden]]");
+  });
+
   test("no error or warning shows GitHub's token, its request token or Doppler's token", async () => {
     const texts: unknown[] = [];
     for (const options of [

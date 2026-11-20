@@ -96,11 +96,16 @@ export function dopplerBackend(
   const secrets = stored === null ? [] : [stored];
 
   function hidden(text: string, also: readonly string[] = []): string {
-    return [...secrets, ...also]
-      .flatMap((secret) => [secret, JSON.stringify(secret).slice(1, -1)])
+    const forms = [
+      ...new Set(
+        [...secrets, ...also].flatMap((secret) => [secret, JSON.stringify(secret).slice(1, -1)]),
+      ),
+    ]
       .filter(Boolean)
-      .sort((a, b) => b.length - a.length)
-      .reduce((shown, secret) => shown.replaceAll(secret, "[hidden]"), text);
+      .sort((a, b) => b.length - a.length);
+    if (!forms.length) return text;
+    const pattern = forms.map((form) => form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+    return text.replace(new RegExp(pattern, "g"), "[hidden]");
   }
 
   function problem(response: { status: number; body: Json }, also: readonly string[] = []): string {

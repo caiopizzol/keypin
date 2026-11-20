@@ -473,6 +473,49 @@ describe("writing", () => {
     expect(error).not.toContain(bearer);
   });
 
+  test("a failed write that echoes the value JSON-escaped shows it hidden", async () => {
+    const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": STRIPE } });
+    const value = 'quote"and\nnewline';
+    const escaped = JSON.stringify(value).slice(1, -1);
+    const fetch: Fetch = (url, init) =>
+      init.method === "PATCH"
+        ? Promise.resolve(
+            new Response(JSON.stringify({ message: `Invalid secretValue ${escaped}` }), {
+              status: 400,
+            }),
+          )
+        : fake.fetch(url, init);
+    const error = await infisicalBackend(CREDENTIALS, fetch)
+      .write(REF, new Secret(value), {})
+      .then(
+        () => null,
+        (failed: unknown) => String(failed),
+      );
+    expect(error).toContain("Infisical returned HTTP 400: Invalid secretValue [hidden]");
+    expect(error).not.toContain(value);
+    expect(error).not.toContain("quote");
+  });
+
+  test("a secret that reads like the marker is hidden once", async () => {
+    const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": STRIPE } });
+    const fetch: Fetch = (url, init) =>
+      init.method === "PATCH"
+        ? Promise.resolve(
+            new Response(JSON.stringify({ message: "Invalid secretValue hidden" }), {
+              status: 400,
+            }),
+          )
+        : fake.fetch(url, init);
+    const error = await infisicalBackend(CREDENTIALS, fetch)
+      .write(REF, new Secret("hidden"), {})
+      .then(
+        () => null,
+        (failed: unknown) => String(failed),
+      );
+    expect(error).toContain("Invalid secretValue [hidden]");
+    expect(error).not.toContain("[[hidden]]");
+  });
+
   test("a new secret is created, and newItem refuses one that exists", async () => {
     const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": STRIPE } });
     const vault = infisicalBackend(CREDENTIALS, fake.fetch);

@@ -74,4 +74,5 @@ also deploys.
 Details: [Configuration](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md),
 [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md),
 [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md),
+[Rotation](https://github.com/caiopizzol/keypin/blob/main/docs/rotation.md),
 [Notes](https://github.com/caiopizzol/keypin/blob/main/docs/notes.md).

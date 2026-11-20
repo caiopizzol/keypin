@@ -106,10 +106,10 @@ keypin publish --all
 `publish` shows what it will write where and waits for you to answer `y`.
 
 A GitHub Actions job can instead read a key from your vault at job time, without a copy published to it. With AWS
-Secrets Manager or Infisical it signs in with OIDC. See [Pulling in CI](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md#pulling-in-ci).
+Secrets Manager or Infisical it signs in with OIDC. See [Pulling in CI](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md#pulling-in-ci).
 
 To rotate a key, give it an
-[issuer](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md#rotating-a-key) and run `keypin rotate
+[issuer](https://github.com/caiopizzol/keypin/blob/main/docs/rotation.md) and run `keypin rotate
 RESEND_API_KEY`. keypin creates the new key, saves and publishes it, and asks before it revokes the old one.
 
 ## Commands
@@ -140,8 +140,8 @@ npx skills add caiopizzol/keypin -g    # all your projects
 
 ## Docs
 
-- [Configuration](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md): every field in
-  `keypin.toml`
+- [Configuration](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md): keys, environments and
+  vault items in `keypin.toml`
 - [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md): moving an env file's values into 1Password
 - [Infisical](https://github.com/caiopizzol/keypin/blob/main/docs/infisical.md),
   [Bitwarden](https://github.com/caiopizzol/keypin/blob/main/docs/bitwarden.md),
@@ -150,8 +150,9 @@ npx skills add caiopizzol/keypin -g    # all your projects
   from them instead
 - [Service account](https://github.com/caiopizzol/keypin/blob/main/docs/service-account.md): 1Password on a server or
   in CI
-- [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md): destinations, approvals and
-  `--plan`
+- [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md): destinations, approvals,
+  `--plan` and pulling in CI
+- [Rotation](https://github.com/caiopizzol/keypin/blob/main/docs/rotation.md): each issuer, and rotating by hand
 - [Scheduled rotation](https://github.com/caiopizzol/keypin/blob/main/docs/scheduled-rotation.md): rotating 1Password
   keys in your GitHub Actions
 - [Notes](https://github.com/caiopizzol/keypin/blob/main/docs/notes.md): `wrangler dev`, signing in to Cloudflare, and

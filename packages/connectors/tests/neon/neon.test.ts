@@ -317,7 +317,7 @@ describe("checkAccount", () => {
     expect(check).toMatchObject({
       ok: false,
       reason: "Neon branch br-main has no role app_b",
-      fix: "create app_b with SQL, in the same group role as the other (see docs/configuration.md#neon)",
+      fix: "create app_b with SQL, in the same group role as the other (see docs/rotation.md#neon)",
     });
     await expect(each.create()).rejects.toThrow("checkAccount hasn't passed");
     expect(effects).toEqual([]);

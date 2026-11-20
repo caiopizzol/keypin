@@ -34,8 +34,14 @@ const SERVICE = "secretsmanager";
 export const ROTATED_TAG = "keypin-rotated:";
 const CURRENT = "AWSCURRENT";
 const OIDC_SESSION_SECONDS = "900";
+const REFRESH_MARGIN_MS = 60_000;
 
 type Json = Record<string, unknown>;
+
+interface Session {
+  credentials: Credentials;
+  expires: number | null;
+}
 
 export interface SecretsManagerOptions {
   fetch?: Fetch;
@@ -51,18 +57,18 @@ export function secretsManagerBackend(
   const fetch = options.fetch ?? globalThis.fetch;
   const now = options.now ?? (() => new Date());
   const requestToken = options.requestToken ?? randomUUID;
-  const sessions = new Map<string, Promise<Credentials>>();
+  const sessions = new Map<string, Promise<Session>>();
   const versionSaved = new Map<string, string>();
   const secretKey = (ref: Ref) => `${ref.account}/${ref.region}/${ref.name}`;
 
-  async function signedIn(place: Scope): Promise<Credentials> {
+  async function signedIn(place: Scope): Promise<Session> {
     const where = account(place);
     if ("problem" in signIn)
       throw new SignInFailed(`${where}: sign-in failed: ${signIn.problem}`, signIn.reason);
-    const { credentials, source } =
+    const { credentials, source, expires } =
       "role" in signIn
-        ? { credentials: await assumed(place, signIn), source: `the role in ${ROLE_ARN}` }
-        : signIn;
+        ? { ...(await assumed(place, signIn)), source: `the role in ${ROLE_ARN}` }
+        : { ...signIn, expires: null };
     const reply = await query(
       fetch,
       "sts",
@@ -87,13 +93,13 @@ export function secretsManagerBackend(
         `${where}: sign-in failed: ${source} belongs to AWS account ${actual}, but keypin.toml pins ${place.account}`,
         { kind: "wrong-account", pinned: place.account, actual },
       );
-    return credentials;
+    return { credentials, expires };
   }
 
   async function assumed(
     place: Scope,
     { role, audience }: { role: string; audience: string },
-  ): Promise<Credentials> {
+  ): Promise<Session> {
     const failed = (why: string, reason: SignInReason = { kind: "other" }) =>
       new SignInFailed(`${account(place)}: sign-in failed: ${why}`, reason);
     const idToken =
@@ -131,19 +137,26 @@ export function secretsManagerBackend(
     const id = text(reply.xml, "AccessKeyId");
     const secret = text(reply.xml, "SecretAccessKey");
     const token = text(reply.xml, "SessionToken");
-    if (!id || !secret || !token)
+    const expires = Date.parse(text(reply.xml, "Expiration") ?? "");
+    if (!id || !secret || !token || !Number.isFinite(expires))
       throw failed("AWS's AssumeRoleWithWebIdentity reply has no credentials");
-    return { id, secret, token };
+    return { credentials: { id, secret, token }, expires };
   }
 
-  function session(place: Scope): Promise<Credentials> {
+  async function session(place: Scope): Promise<Credentials> {
     const key = `${place.account}/${place.region}`;
-    let pending = sessions.get(key);
-    if (!pending) {
-      pending = signedIn(place);
-      sessions.set(key, pending);
+    const pending = sessions.get(key);
+    if (pending) {
+      const current = await pending;
+      if (current.expires === null || current.expires - now().getTime() > REFRESH_MARGIN_MS)
+        return current.credentials;
     }
-    return pending;
+    let next = sessions.get(key);
+    if (!next || next === pending) {
+      next = signedIn(place);
+      sessions.set(key, next);
+    }
+    return (await next).credentials;
   }
 
   async function call(place: Scope, action: string, params: Json): Promise<JsonReply> {

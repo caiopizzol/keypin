@@ -95,8 +95,9 @@ in the map with a [`pull`](configuration.md#pulling-in-ci) entry, then:
          KEYPIN_AWS_ROLE_ARN: arn:aws:iam::123456789012:role/my-role
    ```
 
-   Set `KEYPIN_AWS_AUDIENCE` if the trust policy expects another audience. `keypin check` flags a job that sets the
-   ARN without `id-token: write`. If other steps need AWS credentials too, sign the job in with
+   Set `KEYPIN_AWS_AUDIENCE` for another audience, and add it to both the trust policy and the identity provider
+   (`aws iam add-client-id-to-open-id-connect-provider`). `keypin check` flags a job that sets the ARN without
+   `id-token: write`. If other steps need AWS credentials too, sign the job in with
    [`aws-actions/configure-aws-credentials`](https://github.com/aws-actions/configure-aws-credentials) instead, and
    leave `KEYPIN_AWS_ROLE_ARN` unset.
 

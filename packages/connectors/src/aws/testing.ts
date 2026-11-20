@@ -251,6 +251,8 @@ export interface FakeAwsSecret {
   previous?: string | null;
 }
 
+export const WEB_IDENTITY_EXPIRATION = "2026-11-20T12:15:00Z";
+
 export interface FakeWebIdentity {
   role: string;
   jwt: string;
@@ -308,7 +310,7 @@ export function secretsManagerFetch(fake: FakeSecretsManager, store: SecretsStor
     minted.push(credentials);
     return xml(
       200,
-      `<AssumeRoleWithWebIdentityResponse><AssumeRoleWithWebIdentityResult><Credentials><SessionToken>${credentials.token ?? ""}</SessionToken><SecretAccessKey>${credentials.secret}</SecretAccessKey><Expiration>2026-11-20T12:15:00Z</Expiration><AccessKeyId>${credentials.id}</AccessKeyId></Credentials></AssumeRoleWithWebIdentityResult></AssumeRoleWithWebIdentityResponse>`,
+      `<AssumeRoleWithWebIdentityResponse><AssumeRoleWithWebIdentityResult><Credentials><SessionToken>${credentials.token ?? ""}</SessionToken><SecretAccessKey>${credentials.secret}</SecretAccessKey><Expiration>${WEB_IDENTITY_EXPIRATION}</Expiration><AccessKeyId>${credentials.id}</AccessKeyId></Credentials></AssumeRoleWithWebIdentityResult></AssumeRoleWithWebIdentityResponse>`,
     );
   };
 

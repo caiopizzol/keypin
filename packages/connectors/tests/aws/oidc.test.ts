@@ -1,7 +1,13 @@
 import { describe, expect, test } from "vite-plus/test";
-import { type Fetch, type IdToken, NoIdToken, Secret, SignInFailed } from "@keypin/core";
+import { type Fetch, Secret, SignInFailed } from "@keypin/core";
 import { awsSignIn, secretsManagerBackend, type SecretsManagerRef } from "../../src/aws/index";
-import { type FakeSecretsManager, memorySecrets, secretsManagerFetch } from "../../src/aws/testing";
+import {
+  type FakeSecretsManager,
+  memorySecrets,
+  secretsManagerFetch,
+  WEB_IDENTITY_EXPIRATION,
+} from "../../src/aws/testing";
+import { githubIdToken } from "../../src/github/index";
 
 const ACCOUNT = "123456789012";
 const ROLE = "arn:aws:iam::123456789012:role/keypin-read";
@@ -31,23 +37,6 @@ const JOB = {
   ACTIONS_ID_TOKEN_REQUEST_URL: REQUEST_URL,
   ACTIONS_ID_TOKEN_REQUEST_TOKEN: REQUEST_TOKEN,
 };
-
-function jobToken(env: Record<string, string>, fetch: Fetch): IdToken {
-  return async (audience) => {
-    if (!env.ACTIONS_ID_TOKEN_REQUEST_URL)
-      throw new NoIdToken("this job can't ask GitHub Actions for an OIDC token");
-    const asked = new URL(REQUEST_URL);
-    if (audience !== null) asked.searchParams.set("audience", audience);
-    const response = await fetch(asked.href, {
-      method: "GET",
-      headers: { Authorization: `bearer ${REQUEST_TOKEN}` },
-      redirect: "error",
-    });
-    if (response.status !== 200)
-      throw new Error(`GitHub's OIDC token endpoint returned HTTP ${response.status}`);
-    return `${JWT}:${audience}`;
-  };
-}
 
 interface Call {
   call: string;
@@ -79,6 +68,7 @@ function setup(
   };
   const aws = secretsManagerFetch(fake, memorySecrets());
   const calls: Call[] = [];
+  const clock = { now: NOW };
   const fetch: Fetch = (url, init) => {
     const parsed = new URL(url);
     const form = new URLSearchParams(init.body ?? "");
@@ -92,7 +82,11 @@ function setup(
       redirect: init.redirect,
     });
     if (url.startsWith(REQUEST_URL))
-      return Promise.resolve(new Response("{}", { status: options.github ?? 200 }));
+      return Promise.resolve(
+        new Response(JSON.stringify({ value: `${JWT}:${parsed.searchParams.get("audience")}` }), {
+          status: options.github ?? 200,
+        }),
+      );
     if (options.echo && action === "AssumeRoleWithWebIdentity")
       return Promise.resolve(
         new Response(
@@ -106,11 +100,11 @@ function setup(
     awsSignIn(env, "/home/me", () => null),
     {
       fetch,
-      now: () => NOW,
-      idToken: jobToken(env, fetch),
+      now: () => clock.now,
+      idToken: githubIdToken(env, fetch),
     },
   );
-  return { vault, calls };
+  return { vault, calls, clock };
 }
 
 async function failure(pending: Promise<unknown>): Promise<SignInFailed> {
@@ -156,6 +150,18 @@ describe("signing in to AWS with GitHub Actions OIDC", () => {
     }
   });
 
+  test("mints new credentials a minute before the old ones expire, and checks the account again", async () => {
+    const run = setup();
+    const expires = Date.parse(WEB_IDENTITY_EXPIRATION);
+    await run.vault.read(REF);
+    run.clock.now = new Date(expires - 61_000);
+    await run.vault.read(REF);
+    expect(run.calls.map((c) => c.call)).toEqual([GITHUB, ASSUME, IDENTITY, READ, READ]);
+    run.clock.now = new Date(expires - 59_000);
+    expect((await run.vault.read(REF)).equals(new Secret(SENTINEL))).toBe(true);
+    expect(run.calls.slice(5).map((c) => c.call)).toEqual([GITHUB, ASSUME, IDENTITY, READ]);
+  });
+
   test("asks GitHub for the audience in KEYPIN_AWS_AUDIENCE", async () => {
     const run = setup({
       env: { KEYPIN_AWS_AUDIENCE: "https://github.com/acme" },
@@ -197,7 +203,7 @@ describe("signing in to AWS with GitHub Actions OIDC", () => {
     const error = await failure(run.vault.read(REF));
     expect(error.reason).toEqual({ kind: "no-credentials" });
     expect(error.message).toBe(
-      `AWS account ${ACCOUNT} in eu-west-1: sign-in failed: KEYPIN_AWS_ROLE_ARN is set, but this job can't ask GitHub Actions for an OIDC token, or unset KEYPIN_AWS_ROLE_ARN to sign in another way`,
+      `AWS account ${ACCOUNT} in eu-west-1: sign-in failed: KEYPIN_AWS_ROLE_ARN is set, but this job can't ask GitHub Actions for an OIDC token (ACTIONS_ID_TOKEN_REQUEST_URL and ACTIONS_ID_TOKEN_REQUEST_TOKEN aren't set); give it permissions: id-token: write, or unset KEYPIN_AWS_ROLE_ARN to sign in another way`,
     );
     expect(run.calls).toEqual([]);
   });
@@ -253,7 +259,9 @@ describe("signing in to AWS with GitHub Actions OIDC", () => {
       },
     });
     expect((await run.vault.read(REF)).equals(new Secret(SENTINEL))).toBe(true);
-    expect(run.calls.map((c) => c.call)).toEqual([IDENTITY, READ]);
+    run.clock.now = new Date(Date.parse(WEB_IDENTITY_EXPIRATION) + 3_600_000);
+    await run.vault.read(REF);
+    expect(run.calls.map((c) => c.call)).toEqual([IDENTITY, READ, READ]);
     expect(run.calls[0]?.headers.Authorization).toContain(`Credential=${STATIC.id}/`);
   });
 });

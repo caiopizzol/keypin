@@ -136,6 +136,11 @@ export function infisicalBackend(
       response = await send();
     }
     const body = parseObject(await response.text());
+    if (typeof body.message === "string")
+      body.message = [options.token, options.body?.jwt, options.body?.clientSecret].reduce<string>(
+        (text, secret) => (typeof secret === "string" && secret ? hidden(text, secret) : text),
+        body.message,
+      );
     if (response.status === 404 && body.error === "Not Found")
       throw fail(
         options.always
@@ -245,7 +250,7 @@ export function infisicalBackend(
     if (login.status !== 200 || typeof token !== "string" || !token) {
       const audience = given.audience ?? "GitHub's default audience, https://github.com/<owner>";
       throw failed(
-        `Infisical refused GitHub's OIDC token for the machine identity ${given.identityId} (${hidden(problem(login), jwt)}); keypin asked GitHub for a token for ${audience}, so check that the identity's OIDC Auth lists it under Audiences and that its subject matches this job`,
+        `Infisical refused GitHub's OIDC token for the machine identity ${given.identityId} (${problem(login)}); keypin asked GitHub for a token for ${audience}, so check that the identity's OIDC Auth lists it under Audiences and that its subject matches this job`,
       );
     }
     const lives = [login.body.expiresIn, login.body.accessTokenMaxTTL].filter(

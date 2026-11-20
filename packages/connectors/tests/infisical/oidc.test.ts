@@ -58,6 +58,7 @@ function setup(
     github?: number;
     revoke?: number;
     echo?: boolean;
+    echoAfterSignIn?: string;
     dropRevoke?: number;
   } = {},
 ) {
@@ -80,6 +81,12 @@ function setup(
     if (url.startsWith(REQUEST_URL))
       return Promise.resolve(
         new Response(JSON.stringify({ value: JWT }), { status: options.github ?? 200 }),
+      );
+    if (options.echoAfterSignIn && parsed.pathname.startsWith(options.echoAfterSignIn))
+      return Promise.resolve(
+        new Response(JSON.stringify({ message: `Forbidden for ${OIDC_ACCESS_TOKEN}` }), {
+          status: 403,
+        }),
       );
     if (options.echo && parsed.pathname === "/api/v1/auth/oidc-auth/login")
       return Promise.resolve(
@@ -279,6 +286,19 @@ describe("signing in with GitHub Actions OIDC", () => {
       "Infisical returned HTTP 401: Access denied for token [hidden]",
     );
     showsNoToken(error);
+  });
+
+  test("a server message after sign-in that echoes Infisical's access token shows it hidden", async () => {
+    for (const path of [
+      "/api/v1/identities/details",
+      "/api/v1/projects/slug/",
+      "/api/v4/secrets/",
+    ]) {
+      const run = setup({ echoAfterSignIn: path });
+      const error = await failure(run.vault.read(REF));
+      expect(String(error)).toContain("Forbidden for [hidden]");
+      showsNoToken(error);
+    }
   });
 
   test("a failed revoke whose response breaks off warns instead of failing, without the token", async () => {

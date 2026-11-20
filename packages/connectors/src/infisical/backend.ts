@@ -2,8 +2,11 @@ import {
   type Day,
   type Fetch,
   HeldForApproval,
+  type IdToken,
   isRecord,
   type KeyRef,
+  messageOf,
+  NoIdToken,
   parseDay,
   parseObject,
   Secret,
@@ -26,17 +29,35 @@ import {
 export const CLIENT_ID = "INFISICAL_UNIVERSAL_AUTH_CLIENT_ID";
 export const CLIENT_SECRET = "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET";
 export const ACCESS_TOKENS = ["INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN", "INFISICAL_TOKEN"];
+export const IDENTITY_ID = "KEYPIN_INFISICAL_IDENTITY_ID";
+export const AUDIENCE = "KEYPIN_INFISICAL_AUDIENCE";
+const CONFIRMED_URL = "KEYPIN_INFISICAL_URL";
 export const NO_CREDENTIALS = `set ${CLIENT_ID} and ${CLIENT_SECRET} to a machine identity's Universal Auth client ID and secret, or ${ACCESS_TOKENS.join(" or ")} to a machine identity's access token`;
+const ANOTHER_WAY = `or unset ${IDENTITY_ID} to sign in another way`;
+export const NO_JOB_TOKEN = `give the GitHub Actions job permissions: id-token: write, ${ANOTHER_WAY}`;
 const ROTATED = "rotated";
+const CLOUD = ["https://app.infisical.com", "https://us.infisical.com", "https://eu.infisical.com"];
+const LONGEST_TTL_SECONDS = 3600;
+const REVOKE_WAIT_MS = 5000;
 
 export type Credentials =
   | { clientId: string; clientSecret: string }
-  | { token: string; variable: string };
+  | { token: string; variable: string }
+  | { identityId: string; audience: string | null; confirmedUrl: string | null }
+  | { problem: string };
+
+export interface InfisicalOptions {
+  sleep?: (ms: number) => Promise<void>;
+  idToken?: IdToken;
+  warn?: (text: string) => void;
+}
 
 type Json = Record<string, unknown>;
 
 interface Session {
+  place: Place;
   token: string;
+  minted: boolean;
   projects: Map<string, Promise<string>>;
 }
 
@@ -45,6 +66,20 @@ const PROJECT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 export function credentialsFrom(
   env: Readonly<Record<string, string | undefined>>,
 ): Credentials | null {
+  const identityId = env[IDENTITY_ID] ?? "";
+  if (identityId) {
+    const others = [CLIENT_ID, CLIENT_SECRET, ...ACCESS_TOKENS].filter((name) => env[name]);
+    const listed = others.join(" and ");
+    if (others.length)
+      return {
+        problem: `both ${IDENTITY_ID} and ${listed} are set; unset ${listed} to sign in with GitHub Actions OIDC, or ${IDENTITY_ID} to sign in with ${others.length === 1 ? "it" : "them"}`,
+      };
+    return {
+      identityId,
+      audience: env[AUDIENCE] || null,
+      confirmedUrl: env[CONFIRMED_URL] || null,
+    };
+  }
   const clientId = env[CLIENT_ID] ?? "";
   const clientSecret = env[CLIENT_SECRET] ?? "";
   if (clientId && clientSecret) return { clientId, clientSecret };
@@ -58,9 +93,12 @@ const LONGEST_WAIT_SECONDS = 60;
 export function infisicalBackend(
   credentials: Credentials | null,
   fetch: Fetch = globalThis.fetch,
-  sleep: (ms: number) => Promise<void> = (ms) => new Promise((done) => setTimeout(done, ms)),
+  options: InfisicalOptions = {},
 ): VaultBackend {
+  const sleep = options.sleep ?? ((ms) => new Promise((done) => setTimeout(done, ms)));
+  const warn = options.warn ?? (() => {});
   const sessions = new Map<string, Promise<Session>>();
+  const strict = credentials !== null && "identityId" in credentials;
 
   async function request(
     place: Place,
@@ -88,6 +126,7 @@ export function infisicalBackend(
           ...(options.body ? { "Content-Type": "application/json" } : {}),
         },
         ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+        ...(strict ? { redirect: "error" as const } : {}),
       });
     let response = await send();
     const wait = Number(response.headers.get("Retry-After"));
@@ -116,7 +155,21 @@ export function infisicalBackend(
       throw new SignInFailed(`${where}: sign-in failed: ${NO_CREDENTIALS}`, {
         kind: "no-credentials",
       });
+    if ("problem" in credentials)
+      throw new SignInFailed(`${where}: sign-in failed: ${credentials.problem}`, { kind: "other" });
+    const minted = "identityId" in credentials;
     const token = await accessToken(place, credentials);
+    try {
+      await checkIdentity(place, token, credentials);
+    } catch (error) {
+      if (minted) await revoke(place, token);
+      throw error;
+    }
+    return { place, token, minted, projects: new Map() };
+  }
+
+  async function checkIdentity(place: Place, token: string, credentials: Credentials) {
+    const where = account(place);
     const details = await request(place, "GET", "/api/v1/identities/details", {
       token,
       signIn: true,
@@ -141,11 +194,14 @@ export function infisicalBackend(
         `${where}: sign-in failed: the machine identity belongs to the organization ${organization}, but keypin.toml pins ${place.organization}; keypin reads only from top-level organizations, not sub-organizations`,
         { kind: "wrong-account", pinned: place.organization, actual: organization },
       );
-    return { token, projects: new Map() };
   }
 
-  async function accessToken(place: Place, given: Credentials): Promise<string> {
+  async function accessToken(
+    place: Place,
+    given: Exclude<Credentials, { problem: string }>,
+  ): Promise<string> {
     if ("token" in given) return given.token;
+    if ("identityId" in given) return oidcToken(place, given);
     const login = await request(place, "POST", "/api/v1/auth/universal-auth/login", {
       body: { clientId: given.clientId, clientSecret: given.clientSecret },
       signIn: true,
@@ -157,6 +213,69 @@ export function infisicalBackend(
         kind: "other",
       });
     return token;
+  }
+
+  async function oidcToken(
+    place: Place,
+    given: { identityId: string; audience: string | null; confirmedUrl: string | null },
+  ): Promise<string> {
+    const failed = (why: string, kind: "no-credentials" | "other" = "other") =>
+      new SignInFailed(`${account(place)}: sign-in failed: ${why}`, { kind });
+    if (!CLOUD.includes(place.url) && originOf(given.confirmedUrl) !== place.url)
+      throw failed(
+        `keypin sends GitHub's OIDC token only to Infisical Cloud, and keypin.toml's url is ${place.url}; if that server is yours, set ${CONFIRMED_URL}=${place.url} in the job`,
+      );
+    const idToken =
+      options.idToken ??
+      (() => Promise.reject(new NoIdToken("keypin has no way to ask for an OIDC token here")));
+    let jwt: string;
+    try {
+      jwt = await idToken(given.audience);
+    } catch (error) {
+      throw error instanceof NoIdToken
+        ? failed(`${IDENTITY_ID} is set, but ${error.message}, ${ANOTHER_WAY}`, "no-credentials")
+        : failed(`couldn't get GitHub Actions' OIDC token: ${messageOf(error)}`);
+    }
+    const login = await request(place, "POST", "/api/v1/auth/oidc-auth/login", {
+      body: { identityId: given.identityId, jwt },
+      signIn: true,
+      always: true,
+    });
+    const token = login.body.accessToken;
+    if (login.status !== 200 || typeof token !== "string" || !token) {
+      const audience = given.audience ?? "GitHub's default audience, https://github.com/<owner>";
+      throw failed(
+        `Infisical refused GitHub's OIDC token for the machine identity ${given.identityId} (${problem(login)}); keypin asked GitHub for a token for ${audience}, so check that the identity's OIDC Auth lists it under Audiences and that its subject matches this job`,
+      );
+    }
+    const lives = [login.body.expiresIn, login.body.accessTokenMaxTTL].filter(
+      (seconds) => typeof seconds === "number",
+    );
+    if (lives.some((seconds) => seconds > LONGEST_TTL_SECONDS))
+      warn(
+        `the Infisical machine identity ${given.identityId} gives out access tokens that last more than an hour; set its Access Token TTL and Access Token Max TTL to a few minutes`,
+      );
+    return token;
+  }
+
+  async function revoke(place: Place, token: string): Promise<void> {
+    const why = await fetch(`${place.url}/api/v1/auth/token/revoke`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ accessToken: token }),
+      redirect: "error",
+      signal: AbortSignal.timeout(REVOKE_WAIT_MS),
+    }).then(
+      async (response) => {
+        const body = parseObject(await response.text());
+        return response.status === 200 ? null : problem({ status: response.status, body });
+      },
+      (error: unknown) => messageOf(error),
+    );
+    if (why !== null)
+      warn(
+        `${account(place)}: couldn't revoke keypin's access token (${why}); it lasts until its TTL runs out`,
+      );
   }
 
   function session(place: Place): Promise<Session> {
@@ -328,6 +447,17 @@ export function infisicalBackend(
       }));
     },
 
+    async close() {
+      const open = [...sessions.values()];
+      sessions.clear();
+      await Promise.all(
+        open.map(async (pending) => {
+          const current = await pending.catch(() => null);
+          if (current?.minted) await revoke(current.place, current.token);
+        }),
+      );
+    },
+
     async metadata(given) {
       const ref = own(given);
       const { secret } = await existing(ref, false);
@@ -419,6 +549,15 @@ function withRotated(metadata: Metadata[], rotated: Day | undefined): Metadata[]
     ...metadata.filter((entry) => entry.key !== ROTATED),
     { key: ROTATED, value: rotated, isEncrypted: true },
   ];
+}
+
+function originOf(text: string | null): string | null {
+  if (text === null) return null;
+  try {
+    return new URL(text).origin;
+  } catch {
+    return null;
+  }
 }
 
 function problem(response: { status: number; body: Json }): string {

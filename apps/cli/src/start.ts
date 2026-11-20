@@ -31,6 +31,7 @@ import { flyApp } from "@keypin/connectors/fly";
 import {
   ghToken,
   githubActions,
+  githubIdToken,
   githubPull,
   listRepoSecrets,
   maskInLog,
@@ -166,7 +167,11 @@ function workerReader(folder: string): CloudflareReader {
 
 const vault = routedVault({
   "1password": () => signedIn().vault,
-  infisical: () => (infisical ??= infisicalBackend(credentialsFrom(process.env))),
+  infisical: () =>
+    (infisical ??= infisicalBackend(credentialsFrom(process.env), globalThis.fetch, {
+      idToken: githubIdToken(process.env, globalThis.fetch),
+      warn: (text) => process.stderr.write(`keypin: warning: ${text}\n`),
+    })),
   bitwarden: () => (bitwarden ??= bitwardenBackend(accessTokenFrom(process.env))),
   doppler: () => (doppler ??= dopplerBackend(tokenFrom(process.env))),
   awssm: () =>

@@ -37,6 +37,8 @@ keypin can read keys from [Infisical](https://infisical.com) instead of 1Passwor
    export INFISICAL_TOKEN=$(infisical login --method=<method> ... --silent --plain)
    ```
 
+   In GitHub Actions, keypin can sign in with OIDC instead; see [below](#pulling-in-github-actions).
+
 keypin never passes these variables to the command `keypin run` starts. Before it reads, keypin checks that the
 identity belongs to the pinned organization and refuses another.
 
@@ -56,8 +58,8 @@ secret. List the job in the map with a [`pull`](configuration.md#pulling-in-ci) 
    Set **Access Token TTL** and **Access Token Max TTL** to a few minutes, enough for the job's reads; both default
    to 30 days.
 
-2. In the job, install keypin, then exchange GitHub's token for an Infisical access token and give it only to
-   `keypin run`:
+2. In the job, give keypin the identity's ID. keypin exchanges GitHub's token for a short-lived Infisical access
+   token, reads, and revokes it before the command starts:
 
    ```yaml
    permissions:
@@ -69,20 +71,12 @@ secret. List the job in the map with a [`pull`](configuration.md#pulling-in-ci) 
        with:
          node-version: 24
      - run: npm install -g keypin
-     - name: Sign in to Infisical and run keypin
+     - run: keypin run --env prod --only STRIPE_KEY -- <command>
        env:
-         IDENTITY_ID: <machine identity ID>
-       run: |
-         jwt=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value)
-         echo "::add-mask::$jwt"
-         token=$(curl -sS -X POST https://app.infisical.com/api/v1/auth/oidc-auth/login \
-           -H 'Content-Type: application/json' \
-           -d "$(jq -n --arg id "$IDENTITY_ID" --arg jwt "$jwt" '{identityId: $id, jwt: $jwt}')" | jq -r '.accessToken // empty')
-         test -n "$token"
-         echo "::add-mask::$token"
-         INFISICAL_TOKEN="$token" keypin run --env prod --only STRIPE_KEY -- <command>
+         KEYPIN_INFISICAL_IDENTITY_ID: <machine identity ID>
    ```
 
-   For EU Cloud or a self-hosted instance, use your `url` instead of `https://app.infisical.com`.
+   Set `KEYPIN_INFISICAL_AUDIENCE` if the identity expects another audience. keypin sends GitHub's token only to
+   Infisical Cloud; for a self-hosted `url`, also set `KEYPIN_INFISICAL_URL` to the same address.
 
 A job on another branch gets no access token. A value you change in Infisical reaches the jobs without `publish`.

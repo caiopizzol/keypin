@@ -63,6 +63,7 @@ export interface VaultBackend {
   checkWrite?(ref: KeyRef): Promise<void>;
   list(scope: VaultScope): Promise<VaultItem[]>;
   metadata(ref: KeyRef): Promise<VaultMetadata>;
+  close?(): Promise<void>;
 }
 
 export type AccountCheck = { publisher: string; expected: string } & (

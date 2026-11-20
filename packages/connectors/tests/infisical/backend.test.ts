@@ -347,7 +347,9 @@ describe("reading", () => {
       secrets: { "prod:/:STRIPE_KEY": STRIPE },
     });
     const waits: number[] = [];
-    const vault = infisicalBackend(CREDENTIALS, fake.fetch, async (ms) => void waits.push(ms));
+    const vault = infisicalBackend(CREDENTIALS, fake.fetch, {
+      sleep: async (ms) => void waits.push(ms),
+    });
     expect((await vault.read(REF)).equals(new Secret(SENTINEL))).toBe(true);
     expect(waits).toEqual([3000]);
   });
@@ -356,7 +358,9 @@ describe("reading", () => {
     for (const rateLimited of [{ times: 2, retryAfter: 3 }, { times: 1 }]) {
       const waits: number[] = [];
       const fake = fakeInfisical({ rateLimited, secrets: { "prod:/:STRIPE_KEY": STRIPE } });
-      const vault = infisicalBackend(CREDENTIALS, fake.fetch, async (ms) => void waits.push(ms));
+      const vault = infisicalBackend(CREDENTIALS, fake.fetch, {
+        sleep: async (ms) => void waits.push(ms),
+      });
       await expect(vault.read(REF)).rejects.toThrow(
         "Infisical is limiting how often keypin can ask (Infisical returned HTTP 429: Rate limit exceeded. Please try again in 3 seconds); wait, then run the command again".replace(
           "3",
@@ -371,7 +375,7 @@ describe("reading", () => {
     const limited = fakeInfisical({ rateLimited: { times: 2, retryAfter: 3 } });
     const missing = fakeInfisical({ missingRoutes: ["/api/v1/identities/details"] });
     for (const fake of [limited, missing]) {
-      const error = await infisicalBackend(CREDENTIALS, fake.fetch, async () => {})
+      const error = await infisicalBackend(CREDENTIALS, fake.fetch, { sleep: async () => {} })
         .read(REF)
         .catch((e: unknown) => e);
       expect(error).toBeInstanceOf(SignInFailed);

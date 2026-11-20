@@ -1,4 +1,5 @@
 export { GitHubSecretDestination, sealedBox } from "./github";
+export { githubIdToken } from "./id-token";
 export { ghToken } from "./token";
 export { listRepoSecrets } from "./list";
 export { maskInLog } from "./log";

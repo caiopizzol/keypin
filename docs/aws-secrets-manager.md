@@ -77,7 +77,8 @@ in the map with a [`pull`](configuration.md#pulling-in-ci) entry, then:
    rest, then limit the branch with the environment's deployment rules. See
    [GitHub's subject formats](https://docs.github.com/en/actions/reference/security/oidc).
 
-3. Sign the job in, then run keypin:
+3. In the job, give keypin the role's ARN. keypin exchanges GitHub's token for 15-minute credentials, which only
+   keypin uses, never the command:
 
    ```yaml
    permissions:
@@ -88,13 +89,16 @@ in the map with a [`pull`](configuration.md#pulling-in-ci) entry, then:
      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
        with:
          node-version: 24
-     - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
-       with:
-         role-to-assume: arn:aws:iam::123456789012:role/my-role
-         aws-region: eu-west-1
      - run: npm install -g keypin
      - run: keypin run --env prod --only STRIPE_KEY -- <command>
+       env:
+         KEYPIN_AWS_ROLE_ARN: arn:aws:iam::123456789012:role/my-role
    ```
+
+   Set `KEYPIN_AWS_AUDIENCE` if the trust policy expects another audience. `keypin check` flags a job that sets the
+   ARN without `id-token: write`. If other steps need AWS credentials too, sign the job in with
+   [`aws-actions/configure-aws-credentials`](https://github.com/aws-actions/configure-aws-credentials) instead, and
+   leave `KEYPIN_AWS_ROLE_ARN` unset.
 
 A job on another branch can't assume the role. A value you change in Secrets Manager reaches the jobs without
 `publish`, once Secrets Manager returns the new version.

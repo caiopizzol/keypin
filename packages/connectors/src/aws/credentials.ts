@@ -5,13 +5,19 @@ export const KEY_ID = "AWS_ACCESS_KEY_ID";
 export const SECRET_KEY = "AWS_SECRET_ACCESS_KEY";
 export const SESSION_TOKEN = "AWS_SESSION_TOKEN";
 export const PROFILE = "AWS_PROFILE";
+export const ROLE_ARN = "KEYPIN_AWS_ROLE_ARN";
+export const AUDIENCE = "KEYPIN_AWS_AUDIENCE";
+export const DEFAULT_AUDIENCE = "sts.amazonaws.com";
 const CREDENTIALS_FILE = "AWS_SHARED_CREDENTIALS_FILE";
 const CONFIG_FILE = "AWS_CONFIG_FILE";
 
 export const NO_CREDENTIALS = `set ${KEY_ID} and ${SECRET_KEY} (and ${SESSION_TOKEN} for temporary credentials), or ${PROFILE} to a profile with keys in ~/.aws/credentials`;
+export const ANOTHER_WAY = `or unset ${ROLE_ARN} to sign in another way`;
+export const NO_JOB_TOKEN = `give the GitHub Actions job permissions: id-token: write, ${ANOTHER_WAY}`;
 
 export type AwsSignIn =
   | { credentials: Credentials; source: string }
+  | { role: string; audience: string }
   | { problem: string; reason: SignInReason };
 
 const SIGNS_IN_ITSELF: readonly [string, string][] = [
@@ -30,6 +36,17 @@ export function awsSignIn(
   home: string,
   read: (path: string) => string | null,
 ): AwsSignIn {
+  const role = env[ROLE_ARN]?.trim() ?? "";
+  if (role) {
+    const others = [KEY_ID, SECRET_KEY, PROFILE].filter((name) => env[name]?.trim());
+    const listed = others.join(" and ");
+    if (others.length)
+      return {
+        problem: `both ${ROLE_ARN} and ${listed} are set; unset ${listed} to sign in with GitHub Actions OIDC, or ${ROLE_ARN} to sign in with ${others.length === 1 ? "it" : "them"}`,
+        reason: { kind: "other" },
+      };
+    return { role, audience: env[AUDIENCE]?.trim() || DEFAULT_AUDIENCE };
+  }
   const id = env[KEY_ID]?.trim() ?? "";
   const secret = env[SECRET_KEY]?.trim() ?? "";
   const token = env[SESSION_TOKEN]?.trim() ?? "";

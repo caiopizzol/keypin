@@ -2,20 +2,24 @@ import { randomUUID } from "node:crypto";
 import {
   type Day,
   type Fetch,
+  type IdToken,
   isRecord,
   type KeyRef,
   localDay,
+  messageOf,
+  NoIdToken,
   parseDay,
   parseObject,
   Secret,
   SignInFailed,
+  type SignInReason,
   type VaultBackend,
   type VaultItem,
   type VaultScope,
   WriteRefused,
 } from "@keypin/core";
-import { json, type JsonReply, query, returned, text } from "./api";
-import { type AwsSignIn, KEY_ID } from "./credentials";
+import { json, type JsonReply, query, returned, text, unsignedQuery } from "./api";
+import { ANOTHER_WAY, type AwsSignIn, KEY_ID, ROLE_ARN } from "./credentials";
 import type { Credentials } from "./sigv4";
 import {
   account,
@@ -29,6 +33,7 @@ import {
 const SERVICE = "secretsmanager";
 export const ROTATED_TAG = "keypin-rotated:";
 const CURRENT = "AWSCURRENT";
+const OIDC_SESSION_SECONDS = "900";
 
 type Json = Record<string, unknown>;
 
@@ -36,6 +41,7 @@ export interface SecretsManagerOptions {
   fetch?: Fetch;
   now?: () => Date;
   requestToken?: () => string;
+  idToken?: IdToken;
 }
 
 export function secretsManagerBackend(
@@ -53,7 +59,10 @@ export function secretsManagerBackend(
     const where = account(place);
     if ("problem" in signIn)
       throw new SignInFailed(`${where}: sign-in failed: ${signIn.problem}`, signIn.reason);
-    const { credentials, source } = signIn;
+    const { credentials, source } =
+      "role" in signIn
+        ? { credentials: await assumed(place, signIn), source: `the role in ${ROLE_ARN}` }
+        : signIn;
     const reply = await query(
       fetch,
       "sts",
@@ -79,6 +88,52 @@ export function secretsManagerBackend(
         { kind: "wrong-account", pinned: place.account, actual },
       );
     return credentials;
+  }
+
+  async function assumed(
+    place: Scope,
+    { role, audience }: { role: string; audience: string },
+  ): Promise<Credentials> {
+    const failed = (why: string, reason: SignInReason = { kind: "other" }) =>
+      new SignInFailed(`${account(place)}: sign-in failed: ${why}`, reason);
+    const idToken =
+      options.idToken ??
+      (() => Promise.reject(new NoIdToken("keypin has no way to ask for an OIDC token here")));
+    let jwt: string;
+    try {
+      jwt = await idToken(audience);
+    } catch (error) {
+      throw error instanceof NoIdToken
+        ? failed(`${ROLE_ARN} is set, but ${error.message}, ${ANOTHER_WAY}`, {
+            kind: "no-credentials",
+          })
+        : failed(`couldn't get GitHub Actions' OIDC token: ${messageOf(error)}`);
+    }
+    const reply = await unsignedQuery(
+      fetch,
+      "sts",
+      "AssumeRoleWithWebIdentity",
+      {
+        RoleArn: role,
+        RoleSessionName: `keypin-${randomUUID()}`,
+        WebIdentityToken: jwt,
+        DurationSeconds: OIDC_SESSION_SECONDS,
+      },
+      place.region,
+    );
+    if (reply.status !== 200) {
+      const message = text(reply.xml, "Message");
+      const said = `${returned("AssumeRoleWithWebIdentity", reply)}${message ? `: ${message}` : ""}`;
+      throw failed(
+        `AWS STS refused GitHub's OIDC token for the role ${role} (${hidden(said, jwt)}); keypin asked GitHub for a token for the audience ${audience}, so check that the role's trust policy allows that audience and this job's subject`,
+      );
+    }
+    const id = text(reply.xml, "AccessKeyId");
+    const secret = text(reply.xml, "SecretAccessKey");
+    const token = text(reply.xml, "SessionToken");
+    if (!id || !secret || !token)
+      throw failed("AWS's AssumeRoleWithWebIdentity reply has no credentials");
+    return { id, secret, token };
   }
 
   function session(place: Scope): Promise<Credentials> {
@@ -312,6 +367,10 @@ function problem(ref: Ref, action: string, reply: JsonReply): string {
   if (reply.code === "DecryptionFailure" || reply.code === "EncryptionFailure")
     return `the signed-in identity can't use the secret's KMS key (${said})`;
   return said;
+}
+
+function hidden(text: string, secret: string): string {
+  return text.replaceAll(secret, "[hidden]");
 }
 
 function refusedSignIn(reply: { status: number; code: string | null }, source: string): string {

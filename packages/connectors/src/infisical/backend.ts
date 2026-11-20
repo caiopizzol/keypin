@@ -268,8 +268,10 @@ export function infisicalBackend(
         redirect: "error",
         signal: AbortSignal.timeout(REVOKE_WAIT_MS),
       });
-      const body = parseObject(await response.text());
-      why = response.status === 200 ? null : problem({ status: response.status, body });
+      why =
+        response.status === 200
+          ? null
+          : problem({ status: response.status, body: parseObject(await response.text()) });
     } catch (error) {
       why = messageOf(error);
     }

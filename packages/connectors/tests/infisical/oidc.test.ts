@@ -58,7 +58,7 @@ function setup(
     github?: number;
     revoke?: number;
     echo?: boolean;
-    dropRevoke?: boolean;
+    dropRevoke?: number;
   } = {},
 ) {
   const env = { ...JOB, ...options.env };
@@ -95,7 +95,7 @@ function setup(
               controller.error(new Error(`connection dropped after ${OIDC_ACCESS_TOKEN}`));
             },
           }),
-          { status: 200 },
+          { status: options.dropRevoke },
         ),
       );
     if (options.revoke && parsed.pathname === "/api/v1/auth/token/revoke")
@@ -281,13 +281,20 @@ describe("signing in with GitHub Actions OIDC", () => {
     showsNoToken(error);
   });
 
-  test("a revoke whose response breaks off warns instead of failing, without the token", async () => {
-    const run = setup({ dropRevoke: true });
+  test("a failed revoke whose response breaks off warns instead of failing, without the token", async () => {
+    const run = setup({ dropRevoke: 500 });
     await run.vault.read(REF);
     await run.vault.close?.();
     expect(run.warnings).toEqual([
       "Infisical organization acme at https://app.infisical.com: couldn't revoke keypin's access token (connection dropped after [hidden]); it lasts until its TTL runs out",
     ]);
+  });
+
+  test("a revoke Infisical answers with 200 counts as done, even if the body breaks off", async () => {
+    const run = setup({ dropRevoke: 200 });
+    await run.vault.read(REF);
+    await run.vault.close?.();
+    expect(run.warnings).toEqual([]);
   });
 
   test("no error or warning shows GitHub's token, its request token or Infisical's access token", async () => {

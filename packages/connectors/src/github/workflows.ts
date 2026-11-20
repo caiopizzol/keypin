@@ -14,8 +14,8 @@ export interface WorkflowRefs {
 export interface KeypinJob {
   name: string;
   env: string[];
-  ownPermissions: boolean;
-  idToken: boolean;
+  idToken: boolean | null;
+  permissions: { at: "job" | "workflow"; map: boolean } | null;
 }
 
 export interface KeypinRun {
@@ -104,14 +104,15 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     if (named?.includes("${{") && stored([...secrets, ...inherited])) refs.hidesUses = true;
     uses.push({ environment: named?.trim() ?? null, secrets, fromCaller: passedByCaller });
     if (!isRecord(job) || job.uses !== undefined) continue;
-    const env = keypinEnv(job);
+    const env = keypinEnv(top, job);
     if (env === null) continue;
-    const ownPermissions = "permissions" in job;
+    const at = "permissions" in job ? "job" : "permissions" in top ? "workflow" : null;
+    const permissions = at === "job" ? job.permissions : top.permissions;
     keypinJobs.push({
       name: id,
-      env: [...new Set([...envNames(top.env), ...envNames(job.env), ...env])],
-      ownPermissions,
-      idToken: grantsIdToken(ownPermissions ? job.permissions : top.permissions),
+      env,
+      idToken: at === null && callable(top.on) ? null : grantsIdToken(permissions),
+      permissions: at === null ? null : { at, map: isRecord(permissions) },
     });
   }
   return {
@@ -125,16 +126,21 @@ export function workflowRefs(text: string): WorkflowRefs | null {
   };
 }
 
-function keypinEnv(job: Record<string, unknown>): string[] | null {
+function keypinEnv(top: Record<string, unknown>, job: Record<string, unknown>): string[] | null {
   const steps = Array.isArray(job.steps) ? job.steps.filter(isRecord) : [];
   const running = steps.filter(
     (step) => typeof step.run === "string" && keypinRuns(step.run).length > 0,
   );
-  return running.length ? running.flatMap((step) => envNames(step.env)) : null;
+  if (!running.length) return null;
+  const set = new Set<string>();
+  for (const step of running)
+    for (const [name, value] of Object.entries({ ...envOf(top), ...envOf(job), ...envOf(step) }))
+      if (value !== null && value !== undefined && value !== "") set.add(name);
+  return [...set];
 }
 
-function envNames(env: unknown): string[] {
-  return isRecord(env) ? Object.keys(env) : [];
+function envOf(scope: Record<string, unknown>): Record<string, unknown> {
+  return isRecord(scope.env) ? scope.env : {};
 }
 
 function grantsIdToken(permissions: unknown): boolean {
@@ -215,10 +221,23 @@ function shellWords(line: string): string[] {
   return words;
 }
 
+function events(on: unknown): unknown[] {
+  return typeof on === "string"
+    ? [on]
+    : Array.isArray(on)
+      ? on
+      : isRecord(on)
+        ? Object.keys(on)
+        : [];
+}
+
 function onlyWorkflowCall(on: unknown): boolean {
-  const events =
-    typeof on === "string" ? [on] : Array.isArray(on) ? on : isRecord(on) ? Object.keys(on) : [];
-  return events.length === 1 && events[0] === "workflow_call";
+  const all = events(on);
+  return all.length === 1 && all[0] === "workflow_call";
+}
+
+function callable(on: unknown): boolean {
+  return events(on).includes("workflow_call");
 }
 
 function expressions(text: string): string[] {

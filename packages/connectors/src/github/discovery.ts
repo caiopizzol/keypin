@@ -206,10 +206,12 @@ function idTokenNotes(workflows: readonly Workflow[], variables: readonly string
   return workflows.flatMap(({ path, refs }) =>
     refs.jobs.flatMap((job) => {
       const set = variables.filter((name) => job.env.includes(name));
-      if (!set.length || job.idToken) return [];
-      const where = job.ownPermissions ? "the job" : "the job or the workflow";
+      if (!set.length || job.idToken !== false) return [];
+      const fix = job.permissions?.map
+        ? `add id-token: write to the ${job.permissions.at}'s permissions`
+        : "grant id-token: write on the job (or workflow), keeping the permissions it needs";
       return [
-        `${path}: job ${job.name} sets ${set.join(", ")} for keypin run, but its permissions don't grant id-token: write; add permissions: id-token: write to ${where}`,
+        `${path}: job ${job.name} sets ${set.join(", ")} for keypin run, but its permissions don't grant id-token: write; ${fix}`,
       ];
     }),
   );

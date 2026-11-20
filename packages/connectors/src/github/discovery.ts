@@ -211,7 +211,7 @@ function idTokenNotes(workflows: readonly Workflow[], variables: readonly string
         ? `add id-token: write to the ${job.permissions.at}'s permissions`
         : "grant id-token: write on the job (or workflow), keeping the permissions it needs";
       return [
-        `${path}: job ${job.name} sets ${set.join(", ")} for keypin run, but its permissions don't grant id-token: write; ${fix}`,
+        `${path}: job ${job.name} sets ${set.join(", ")} for keypin run, but its permissions don't grant id-token: write${job.directOnly ? " when the workflow runs directly rather than through workflow_call" : ""}; ${fix}`,
       ];
     }),
   );

@@ -15,6 +15,7 @@ export interface KeypinJob {
   name: string;
   env: string[];
   idToken: boolean | null;
+  directOnly: boolean;
   permissions: { at: "job" | "workflow"; map: boolean } | null;
 }
 
@@ -112,6 +113,7 @@ export function workflowRefs(text: string): WorkflowRefs | null {
       name: id,
       env,
       idToken: at === null && onlyCalled(top.on) ? null : grantsIdToken(permissions),
+      directOnly: at === null && events(top.on).includes("workflow_call"),
       permissions: at === null ? null : { at, map: isRecord(permissions) },
     });
   }

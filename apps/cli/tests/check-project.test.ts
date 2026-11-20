@@ -2411,6 +2411,11 @@ jobs:
     ]);
     const alsoPushed = (top: string) =>
       job(top, "").replace("on: push", "on: [push, workflow_call]");
-    expect(await notes(caller, { [CALLED]: alsoPushed("") })).toEqual([missing(KEEP, CALLED)]);
+    expect(await notes(caller, { [CALLED]: alsoPushed("") })).toEqual([
+      missing(KEEP, CALLED).replace(
+        "id-token: write;",
+        "id-token: write when the workflow runs directly rather than through workflow_call;",
+      ),
+    ]);
   });
 });

@@ -138,9 +138,9 @@ The map says where a key goes, not who writes it, so every teammate publishes fr
 ## Pulling in CI
 
 A CI job can sign in to your vault and read a key itself, instead of getting a copy from `publish`. `pull` doesn't
-set up that sign-in (see [Service account](service-account.md) for 1Password, and
-[Pulling in GitHub Actions](aws-secrets-manager.md#pulling-in-github-actions) for AWS Secrets Manager); it lists the
-job, so the map still says who reads the key:
+set up that sign-in (see [Service account](service-account.md) for 1Password, and Pulling in GitHub Actions for
+[AWS Secrets Manager](aws-secrets-manager.md#pulling-in-github-actions) and
+[Infisical](infisical.md#pulling-in-github-actions)); it lists the job, so the map still says who reads the key:
 
 ```toml
 [keys.API_TOKEN.prod]

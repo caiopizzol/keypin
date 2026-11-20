@@ -42,3 +42,47 @@ identity belongs to the pinned organization and refuses another.
 
 For `keypin status`, add a `rotated` entry to each secret's metadata with the day the value last changed, as
 `YYYY-MM-DD`.
+
+## Pulling in GitHub Actions
+
+A GitHub Actions job can sign in to Infisical with OIDC and read a key itself, without a published copy or a client
+secret. List the job in the map with a [`pull`](configuration.md#pulling-in-ci) entry, then:
+
+1. Create a machine identity with [OIDC Auth](https://infisical.com/docs/documentation/platform/identities/oidc-auth/github)
+   instead of Universal Auth, and add it to the project with read access. Set the discovery URL and issuer to
+   `https://token.actions.githubusercontent.com`, the audience to `https://github.com/<owner>`, and the subject to
+   the one GitHub gives your repo's branch, such as `repo:owner@123456/repo@456789:ref:refs/heads/main`. See
+   [the subject formats](aws-secrets-manager.md#pulling-in-github-actions) for older repos and GitHub environments.
+   Set **Access Token TTL** and **Access Token Max TTL** to a few minutes, enough for the job's reads; both default
+   to 30 days.
+
+2. In the job, install keypin, then exchange GitHub's token for an Infisical access token and give it only to
+   `keypin run`:
+
+   ```yaml
+   permissions:
+     id-token: write
+     contents: read
+   steps:
+     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+       with:
+         node-version: 24
+     - run: npm install -g keypin
+     - name: Sign in to Infisical and run keypin
+       env:
+         IDENTITY_ID: <machine identity ID>
+       run: |
+         jwt=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -r .value)
+         echo "::add-mask::$jwt"
+         token=$(curl -sS -X POST https://app.infisical.com/api/v1/auth/oidc-auth/login \
+           -H 'Content-Type: application/json' \
+           -d "$(jq -n --arg id "$IDENTITY_ID" --arg jwt "$jwt" '{identityId: $id, jwt: $jwt}')" | jq -r '.accessToken // empty')
+         test -n "$token"
+         echo "::add-mask::$token"
+         INFISICAL_TOKEN="$token" keypin run --env prod --only STRIPE_KEY -- <command>
+   ```
+
+   For EU Cloud or a self-hosted instance, use your `url` instead of `https://app.infisical.com`.
+
+A job on another branch gets no access token. A value you change in Infisical reaches the jobs without `publish`.

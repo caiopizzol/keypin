@@ -38,6 +38,7 @@ function setup(
     echo?: boolean;
     dropRevoke?: number;
     echoing?: string;
+    echoStatus?: number;
   } = {},
 ) {
   const env = { ...JOB, ...options.env };
@@ -69,10 +70,13 @@ function setup(
       return Promise.resolve(
         new Response(
           JSON.stringify({
-            messages: [`Bad bearer ${init.headers.Authorization ?? ""} from ${JWT}`],
+            messages: [
+              `Bad bearer ${init.headers.Authorization ?? ""} from ${JWT}`,
+              ...(init.body ? [`for ${init.body}`] : []),
+            ],
             success: false,
           }),
-          { status: 500 },
+          { status: options.echoStatus ?? 500 },
         ),
       );
     if (options.echo && parsed.pathname === "/v3/auth/oidc")
@@ -279,6 +283,20 @@ describe("signing in with GitHub Actions OIDC", () => {
     );
     showsNoToken(error);
   });
+
+  test.each([400, 500])(
+    "a write Doppler fails with HTTP %i, echoing the new value and the token, shows both hidden",
+    async (status) => {
+      const value = "new-value-sentinel-3e9f";
+      const run = setup({ echoing: "/v3/configs/config/secrets", echoStatus: status });
+      const error = await failure(run.vault.write(REF, new Secret(value)));
+      expect(String(error)).toContain(
+        `Doppler returned HTTP ${status}: Bad bearer Bearer [hidden] from [hidden]; for {"project":"billing","config":"prd","secrets":{"STRIPE_KEY":"[hidden]"}}`,
+      );
+      expect(String(error)).not.toContain(value);
+      showsNoToken(error);
+    },
+  );
 
   test("no error or warning shows GitHub's token, its request token or Doppler's token", async () => {
     const texts: unknown[] = [];

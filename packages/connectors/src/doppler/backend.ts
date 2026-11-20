@@ -95,12 +95,14 @@ export function dopplerBackend(
   const held = strict ? `for the identity in ${IDENTITY_ID}` : `in ${TOKEN_VARIABLE}`;
   const secrets = stored === null ? [] : [stored];
 
-  function hidden(text: string): string {
-    return secrets.reduce((shown, secret) => shown.replaceAll(secret, "[hidden]"), text);
+  function hidden(text: string, also: readonly string[] = []): string {
+    return [...secrets, ...also]
+      .filter(Boolean)
+      .reduce((shown, secret) => shown.replaceAll(secret, "[hidden]"), text);
   }
 
-  function problem(response: { status: number; body: Json }): string {
-    return hidden(said(response));
+  function problem(response: { status: number; body: Json }, also: readonly string[] = []): string {
+    return hidden(said(response), also);
   }
 
   async function request(
@@ -395,18 +397,19 @@ export function dopplerBackend(
           `${describeRef(ref)}: the secret already exists; keypin doesn't overwrite it`,
         );
       if (!options.newItem) await ownSecret(ref, (message) => new WriteRefused(message));
+      const saved = value.reveal();
       const written = await signedIn(ref, "POST", "/v3/configs/config/secrets", {
-        body: { project: ref.project, config: ref.config, secrets: { [ref.name]: value.reveal() } },
+        body: { project: ref.project, config: ref.config, secrets: { [ref.name]: saved } },
       });
       if (written.status >= 400 && written.status < 500) {
         const readOnly =
           written.status === 403
             ? `; keypin needs a ${kind} with write access to ${ref.project}/${ref.config}${serviceToken ? ", so make a service token with read/write access" : ""}`
             : "";
-        throw new WriteRefused(`${describeRef(ref)}: ${problem(written)}${readOnly}`);
+        throw new WriteRefused(`${describeRef(ref)}: ${problem(written, [saved])}${readOnly}`);
       }
       if (written.status !== 200 || !isRecord(written.body.secrets))
-        throw new Error(`${describeRef(ref)}: ${problem(written)}`);
+        throw new Error(`${describeRef(ref)}: ${problem(written, [saved])}`);
     },
 
     async checkWrite(given) {

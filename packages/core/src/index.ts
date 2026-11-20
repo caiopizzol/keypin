@@ -1,5 +1,6 @@
 export { Secret, generationOf, hashText, keyIdText, type Generation } from "./secret";
 export { type Fetch } from "./fetch";
+export { type IdToken, NoIdToken } from "./id-token";
 export {
   DEFAULT_ENVIRONMENTS,
   type AccountCheck,

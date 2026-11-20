@@ -13,13 +13,22 @@ export const refKey = (ref: KeyRef) =>
       .map((field) => [field, ref[field]]),
   );
 
+export function closeVault(deps: { vault(): VaultBackend }): Promise<void> {
+  return Promise.resolve()
+    .then(() => deps.vault().close?.())
+    .catch(() => undefined);
+}
+
 export type Vaults = Readonly<Record<string, () => VaultBackend>>;
 
 export function routedVault(vaults: Vaults): VaultBackend {
+  const opened = new Set<() => VaultBackend>();
   const of = (thing: { kind: string }) => {
     const open = vaults[thing.kind];
     if (!open) throw new Error(`keypin has no vault for ${thing.kind} references`);
-    return open();
+    const backend = open();
+    opened.add(open);
+    return backend;
   };
   return {
     read: (ref) => of(ref).read(ref),
@@ -29,5 +38,10 @@ export function routedVault(vaults: Vaults): VaultBackend {
     checkWrite: async (ref) => of(ref).checkWrite?.(ref),
     list: (scope) => of(scope).list(scope),
     metadata: (ref) => of(ref).metadata(ref),
+    close: async () => {
+      const open = [...opened];
+      opened.clear();
+      await Promise.all(open.map(async (backend) => backend().close?.()));
+    },
   };
 }

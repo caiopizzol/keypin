@@ -9,6 +9,7 @@ import { status } from "./commands/status";
 import { unregister } from "./commands/unregister";
 import { type Deps, UsageError } from "./deps";
 import { errorCode } from "./errors";
+import { closeVault } from "./vault";
 import { version } from "../../../package.json";
 
 const COMMAND_USAGE: [string, string][] = [
@@ -172,6 +173,8 @@ export async function cli(argv: string[], deps: Deps): Promise<number> {
     }
     deps.stderr.write(`keypin ${name}: ${messageOf(error)}\n`);
     return 1;
+  } finally {
+    await closeVault(deps);
   }
 }
 

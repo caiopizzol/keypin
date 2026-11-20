@@ -1,6 +1,7 @@
 import { type Fetch, isRecord } from "@keypin/core";
 
 const INFISICAL_TOKEN = "infisical-access-token-5d8e";
+export const OIDC_ACCESS_TOKEN = "infisical-oidc-access-token-8b1f";
 
 export interface FakeMetadata {
   key: string;
@@ -32,6 +33,8 @@ export interface FakeInfisical {
   rateLimited?: { times: number; retryAfter?: number };
   hideValues?: boolean;
   requireEncryptedMetadata?: boolean;
+  oidc?: { identityId: string; jwt: string; expiresIn?: number; accessTokenMaxTTL?: number };
+  revoked?: string[];
 }
 
 export interface FakeImport {
@@ -133,10 +136,26 @@ export function infisicalFetch(fake: FakeInfisical, store: Store): Fetch {
       return fake.refuseLogin
         ? reply(fake.refuseLogin, { message: "Invalid credentials" })
         : reply(200, { accessToken: INFISICAL_TOKEN, expiresIn: 7200, tokenType: "Bearer" });
+    if (parsed.pathname === "/api/v1/auth/oidc-auth/login")
+      return fake.oidc && body.identityId === fake.oidc.identityId && body.jwt === fake.oidc.jwt
+        ? reply(200, {
+            accessToken: OIDC_ACCESS_TOKEN,
+            expiresIn: fake.oidc.expiresIn ?? 300,
+            accessTokenMaxTTL: fake.oidc.accessTokenMaxTTL ?? 300,
+            tokenType: "Bearer",
+          })
+        : reply(401, { message: "Access denied: OIDC audience not allowed." });
+    if (parsed.pathname === "/api/v1/auth/token/revoke") {
+      if (typeof body.accessToken !== "string") return reply(400, { message: "Bad request" });
+      (fake.revoked ??= []).push(body.accessToken);
+      return reply(200, { message: "Successfully revoked access token" });
+    }
     const bearer = init.headers.Authorization?.replace(/^Bearer /, "");
+    const minted = fake.oidc ? [OIDC_ACCESS_TOKEN] : [];
     if (
       bearer === undefined ||
-      ![INFISICAL_TOKEN, fake.accessToken, fake.userToken].includes(bearer)
+      fake.revoked?.includes(bearer) ||
+      ![INFISICAL_TOKEN, fake.accessToken, fake.userToken, ...minted].includes(bearer)
     )
       return reply(401, { message: "Unauthorized" });
     const user = bearer === fake.userToken;

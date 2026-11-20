@@ -1,5 +1,12 @@
 import { describe, expect, test } from "vite-plus/test";
-import { generationOf, type Issuer, loadState, Secret } from "@keypin/core";
+import {
+  generationOf,
+  type IdToken,
+  type Issuer,
+  loadState,
+  NoIdToken,
+  Secret,
+} from "@keypin/core";
 import { credentialsFrom, infisicalBackend } from "@keypin/connectors/infisical";
 import { cli } from "../src/cli";
 import { vaults } from "../src/start";
@@ -80,6 +87,7 @@ function project(
     after?: Earlier;
     failWrite?: string[];
     isTerminal?: boolean;
+    idToken?: IdToken;
   } = {},
 ) {
   const disk =
@@ -100,9 +108,15 @@ function project(
         throw new Error("this test signs in with no service account");
       },
     });
+  const events: string[] = [];
+  const served = infisicalFetch(options.infisical ?? INFISICAL, store);
   const infisical = infisicalBackend(
     credentialsFrom(env),
-    infisicalFetch(options.infisical ?? INFISICAL, store),
+    (url, init) => {
+      events.push(`${init.method} ${new URL(url).pathname}`);
+      return served(url, init);
+    },
+    options.idToken ? { idToken: options.idToken } : {},
   );
   const launcher = fakeLauncher();
   const destinations = fakeDestinations({ failWrite: options.failWrite ?? [] });
@@ -141,7 +155,10 @@ function project(
     deps: {
       env,
       signIn: () => signIn().signIn,
-      launch: launcher.launch,
+      launch: (command, childEnv) => {
+        events.push("launch");
+        return launcher.launch(command, childEnv);
+      },
       onSignals: launcher.onSignals,
       destination: destinations.build,
       issuer: () => issuer,
@@ -149,7 +166,7 @@ function project(
       ask: async () => "y",
     },
   });
-  return { ...fake, launcher, destinations, store, onePassword, issued, keys };
+  return { ...fake, launcher, destinations, store, onePassword, issued, keys, events };
 }
 
 describe("keypin with Infisical", () => {
@@ -205,6 +222,90 @@ describe("keypin with Infisical", () => {
     expect(run.stderr.text).toContain(
       "keypin.toml maps INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET, which keypin uses to sign in",
     );
+  });
+
+  describe("signed in with GitHub Actions OIDC", () => {
+    const IDENTITY = "4f1a9b2c-0000-4000-8000-000000000001";
+    const JWT = "github-jwt-sentinel-3f7c";
+    const OIDC = {
+      INFISICAL_UNIVERSAL_AUTH_CLIENT_ID: "",
+      INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET: "",
+      KEYPIN_INFISICAL_IDENTITY_ID: IDENTITY,
+      KEYPIN_INFISICAL_AUDIENCE: "https://github.com/acme",
+    };
+    const fresh = (): FakeInfisical => ({ ...INFISICAL, oidc: { identityId: IDENTITY, jwt: JWT } });
+    const idToken: IdToken = async () => JWT;
+
+    test("run revokes the access token before the command starts, and passes it no OIDC setting", async () => {
+      const run = project({ env: OIDC, infisical: fresh(), idToken });
+      expect(await cli(["run", "--", "env"], run.deps)).toBe(0);
+      expect(run.events).toEqual([
+        "POST /api/v1/auth/oidc-auth/login",
+        "GET /api/v1/identities/details",
+        "GET /api/v1/projects/slug/billing",
+        "GET /api/v4/secrets/STRIPE_API_KEY",
+        "POST /api/v1/auth/token/revoke",
+        "launch",
+      ]);
+      expect(run.launcher.launches[0]?.env).toEqual({ PATH: "/usr/bin", STRIPE_API_KEY: SENTINEL });
+      expect(run.stderr.text).not.toContain(JWT);
+    });
+
+    test("run outside a job that can ask for a token says to grant id-token: write, and starts nothing", async () => {
+      const noJob: IdToken = () => Promise.reject(new NoIdToken("this job can't ask for a token"));
+      const run = project({ env: OIDC, infisical: fresh(), idToken: noJob });
+      expect(await cli(["run", "--", "env"], run.deps)).toBe(1);
+      expect(run.stderr.text).toContain(
+        "sign-in failed: KEYPIN_INFISICAL_IDENTITY_ID is set, but this job can't ask for a token, or unset KEYPIN_INFISICAL_IDENTITY_ID",
+      );
+      expect(run.launcher.launches).toEqual([]);
+      expect(run.events).toEqual([]);
+    });
+
+    test("run with a stored credential set too names both, and starts nothing", async () => {
+      const run = project({
+        env: { ...OIDC, INFISICAL_TOKEN: "stored" },
+        infisical: fresh(),
+        idToken,
+      });
+      expect(await cli(["run", "--", "env"], run.deps)).toBe(1);
+      expect(run.stderr.text).toContain(
+        "both KEYPIN_INFISICAL_IDENTITY_ID and INFISICAL_TOKEN are set",
+      );
+      expect(run.launcher.launches).toEqual([]);
+      expect(run.events).toEqual([]);
+    });
+
+    test("run revokes the token when the organization is wrong, and starts nothing", async () => {
+      const run = project({
+        env: OIDC,
+        infisical: { ...fresh(), organization: "other" },
+        idToken,
+      });
+      expect(await cli(["run", "--", "env"], run.deps)).toBe(1);
+      expect(run.events).toEqual([
+        "POST /api/v1/auth/oidc-auth/login",
+        "GET /api/v1/identities/details",
+        "POST /api/v1/auth/token/revoke",
+      ]);
+    });
+
+    test("check revokes the token before it exits, and says how it signed in", async () => {
+      const run = project({ env: OIDC, infisical: fresh(), idToken });
+      expect(await cli(["check"], run.deps)).toBe(0);
+      expect(run.events.at(-1)).toBe("POST /api/v1/auth/token/revoke");
+      expect(run.stdout.text).toContain(
+        "Note: keypin signs in to Infisical with GitHub Actions OIDC, as the machine identity in KEYPIN_INFISICAL_IDENTITY_ID\n",
+      );
+    });
+
+    test("check without a job token gives the fix as the sign-in step", async () => {
+      const run = project({ env: OIDC, infisical: fresh() });
+      expect(await cli(["check"], run.deps)).toBe(1);
+      expect(run.stdout.text).toContain(
+        "Give the GitHub Actions job permissions: id-token: write, or unset KEYPIN_INFISICAL_IDENTITY_ID",
+      );
+    });
   });
 
   describe("signed in with an access token", () => {

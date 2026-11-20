@@ -17,6 +17,7 @@ import { errorCode } from "../errors";
 import { findMap, pickEnvironment } from "../project";
 import { type Output, output } from "../output";
 import { approval } from "../sign-in";
+import { closeVault } from "../vault";
 
 export async function run(args: string[], deps: Deps): Promise<number> {
   const { values, positionals } = parseArgs({
@@ -43,7 +44,9 @@ export async function run(args: string[], deps: Deps): Promise<number> {
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);
   const found = new Map<string, Secret>();
   if (keys.length) {
-    const failures = await readValues(keys, found, environment, deps, out);
+    const failures = await readValues(keys, found, environment, deps, out).finally(() =>
+      closeVault(deps),
+    );
     if (failures.length) {
       for (const failure of failures) out.line(`    ${failure}`);
       out.line("Stopped: couldn't read, so the command didn't start.");

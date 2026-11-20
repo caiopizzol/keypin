@@ -1,10 +1,13 @@
 import { type SignInReason, sentence, type VaultKind } from "@keypin/core";
 import {
   ACCESS_TOKENS,
+  AUDIENCE,
   CLIENT_ID,
   CLIENT_SECRET,
   credentialsFrom,
+  IDENTITY_ID,
   NO_CREDENTIALS,
+  NO_JOB_TOKEN,
 } from "./backend";
 import {
   account,
@@ -23,11 +26,15 @@ export interface InfisicalHost {
 }
 
 function fixFor(failures: readonly SignInReason[], { env }: InfisicalHost): string {
+  const credentials = credentialsFrom(env);
+  if (credentials && "problem" in credentials) return credentials.problem;
+  const oidc = credentials !== null && "identityId" in credentials;
   if (failures.some((reason) => reason.kind === "no-credentials"))
-    return `${NO_CREDENTIALS} (docs/infisical.md)`;
+    return oidc ? NO_JOB_TOKEN : `${NO_CREDENTIALS} (docs/infisical.md)`;
   if (failures.some((reason) => reason.kind === "wrong-account"))
     return "use a machine identity from the organization keypin.toml pins under [infisical]; keypin can't read from a sub-organization";
-  const credentials = credentialsFrom(env);
+  if (oidc)
+    return `check ${IDENTITY_ID}, the machine identity's OIDC Auth settings and the url under [infisical] in keypin.toml (docs/infisical.md)`;
   const variables =
     credentials && "variable" in credentials
       ? credentials.variable
@@ -37,7 +44,9 @@ function fixFor(failures: readonly SignInReason[], { env }: InfisicalHost): stri
 
 function signedInWith({ env }: InfisicalHost): string | null {
   const credentials = credentialsFrom(env);
-  if (!credentials) return null;
+  if (!credentials || "problem" in credentials) return null;
+  if ("identityId" in credentials)
+    return `GitHub Actions OIDC, as the machine identity in ${IDENTITY_ID}`;
   if ("variable" in credentials) return `the access token in ${credentials.variable}`;
   const ignored = ACCESS_TOKENS.filter((name) => env[name]);
   return `the Universal Auth client ID and secret${ignored.length ? `, not ${ignored.join(" or ")}` : ""}`;
@@ -65,7 +74,7 @@ export const infisicalVault: VaultKind<
     a.path === b.path &&
     a.name === b.name,
   stored: decode,
-  signInVariables: [CLIENT_ID, CLIENT_SECRET, ...ACCESS_TOKENS],
+  signInVariables: [CLIENT_ID, CLIENT_SECRET, ...ACCESS_TOKENS, IDENTITY_ID, AUDIENCE],
   newValueByHand: "Put a new value in the Infisical secret and set its rotated metadata to today",
   addRotatedDate:
     "Add rotated to the Infisical secret's metadata, with the day the value last changed as YYYY-MM-DD.",

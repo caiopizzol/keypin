@@ -20,6 +20,7 @@ export interface WorkflowHost {
   githubSecrets(repo: string, login: string | null, environment?: string): Promise<StoreRead>;
   organizationSecrets(repo: string, login: string | null): Promise<StoreRead>;
   sshHostname(destination: string): Promise<string | null>;
+  readonly vaults: readonly { readonly oidcVariables?: readonly string[] }[];
 }
 
 interface Workflow {
@@ -88,6 +89,10 @@ async function lookUp(
         "it passes secrets on (secrets: inherit or toJSON(secrets)) or names one by an expression (secrets[...]), so check can't tell which",
       );
   const uses = usesSecrets(workflows);
+  const oidc = idTokenNotes(
+    workflows,
+    host.vaults.flatMap((vault) => vault.oidcVariables ?? []),
+  );
   const origin = top ? await githubOrigin(host, project.root) : null;
   const github: Repo = {
     repo: null,
@@ -148,7 +153,7 @@ async function lookUp(
     used: uses || github.pulled.length > 0,
     about: github.repo ? `GitHub ${github.repo}` : null,
     report: { github: { repo: github.repo, login } },
-    needs: (view) => needsOf(github, workflows, complete, view),
+    needs: (view) => needsOf(github, workflows, complete, view, oidc),
   };
 }
 
@@ -197,7 +202,26 @@ function describePlace(repo: string, environment: string | null): string {
   return environment === null ? repo : `${repo} environment ${environment}`;
 }
 
-function needsOf(github: Repo, workflows: Workflow[], complete: boolean, view: MapView) {
+function idTokenNotes(workflows: readonly Workflow[], variables: readonly string[]): string[] {
+  return workflows.flatMap(({ path, refs }) =>
+    refs.jobs.flatMap((job) => {
+      const set = variables.filter((name) => job.env.includes(name));
+      if (!set.length || job.idToken) return [];
+      const where = job.ownPermissions ? "the job" : "the job or the workflow";
+      return [
+        `${path}: job ${job.name} sets ${set.join(", ")} for keypin run, but its permissions don't grant id-token: write; add permissions: id-token: write to ${where}`,
+      ];
+    }),
+  );
+}
+
+function needsOf(
+  github: Repo,
+  workflows: Workflow[],
+  complete: boolean,
+  view: MapView,
+  oidc: readonly string[],
+) {
   const declared = new Map<string, Set<string>>();
   const repo = githubPlace(github, null, declared, view);
   const uses = workflows.flatMap((workflow) =>
@@ -276,6 +300,7 @@ function needsOf(github: Repo, workflows: Workflow[], complete: boolean, view: M
     problems: leftovers(github, leftover, complete),
     notes: [
       ...pullNotes(github.repo, here, workflows, view),
+      ...oidc,
       ...[...fromOrganization].map(
         ([name, { paths, environments }]) =>
           `${name}: ${paths.join(", ")} uses it; ${repo.label} has it (org secret), which keypin.toml doesn't publish${

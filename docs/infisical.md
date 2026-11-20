@@ -77,6 +77,7 @@ secret. List the job in the map with a [`pull`](configuration.md#pulling-in-ci) 
    ```
 
    Set `KEYPIN_INFISICAL_AUDIENCE` if the identity expects another audience. keypin sends GitHub's token only to
-   Infisical Cloud; for a self-hosted `url`, also set `KEYPIN_INFISICAL_URL` to the same address.
+   Infisical Cloud; for a self-hosted `url`, also set `KEYPIN_INFISICAL_URL` to the same address. `keypin check`
+   flags a job that sets the ID without `id-token: write`.
 
 A job on another branch gets no access token. A value you change in Infisical reaches the jobs without `publish`.

@@ -7,7 +7,15 @@ export interface WorkflowRefs {
   environments: string[];
   uses: { environment: string | null; secrets: string[]; fromCaller: boolean }[];
   runs: KeypinRun[];
+  jobs: KeypinJob[];
   hidesUses: boolean;
+}
+
+export interface KeypinJob {
+  name: string;
+  env: string[];
+  ownPermissions: boolean;
+  idToken: boolean;
 }
 
 export interface KeypinRun {
@@ -82,7 +90,9 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     { environment: null, secrets: inherited, fromCaller: passedByCaller },
   ];
   const runs: KeypinRun[] = [];
-  for (const job of Object.values(jobs ?? {})) {
+  const keypinJobs: KeypinJob[] = [];
+  const top: Record<string, unknown> = isRecord(data) ? data : {};
+  for (const [id, job] of Object.entries(jobs ?? {})) {
     const environment = isRecord(job) ? job.environment : undefined;
     const name = isRecord(environment) ? environment.name : environment;
     const named = typeof name === "string" && name.trim() ? name : null;
@@ -93,6 +103,16 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     const secrets = [...secretsIn(job, null, passedByCaller && named === null)];
     if (named?.includes("${{") && stored([...secrets, ...inherited])) refs.hidesUses = true;
     uses.push({ environment: named?.trim() ?? null, secrets, fromCaller: passedByCaller });
+    if (!isRecord(job) || job.uses !== undefined) continue;
+    const env = keypinEnv(job);
+    if (env === null) continue;
+    const ownPermissions = "permissions" in job;
+    keypinJobs.push({
+      name: id,
+      env: [...new Set([...envNames(top.env), ...envNames(job.env), ...env])],
+      ownPermissions,
+      idToken: grantsIdToken(ownPermissions ? job.permissions : top.permissions),
+    });
   }
   return {
     secrets: [...refs.secrets],
@@ -100,8 +120,27 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     environments: [...refs.environments],
     uses: uses.filter((use) => use.secrets.length),
     runs,
+    jobs: keypinJobs,
     hidesUses: refs.hidesUses,
   };
+}
+
+function keypinEnv(job: Record<string, unknown>): string[] | null {
+  const steps = Array.isArray(job.steps) ? job.steps.filter(isRecord) : [];
+  const running = steps.filter(
+    (step) => typeof step.run === "string" && keypinRuns(step.run).length > 0,
+  );
+  return running.length ? running.flatMap((step) => envNames(step.env)) : null;
+}
+
+function envNames(env: unknown): string[] {
+  return isRecord(env) ? Object.keys(env) : [];
+}
+
+function grantsIdToken(permissions: unknown): boolean {
+  return (
+    permissions === "write-all" || (isRecord(permissions) && permissions["id-token"] === "write")
+  );
 }
 
 function scripts(job: unknown): string[] {

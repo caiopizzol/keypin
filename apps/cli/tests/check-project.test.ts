@@ -2269,3 +2269,93 @@ publish = [{ to = "github-actions", repo = "acme/billing" }]
     );
   });
 });
+
+describe("keypin check, for a job that signs in with OIDC", () => {
+  const WORKFLOW = ".github/workflows/deploy.yml";
+  const job = (
+    top: string,
+    permissions: string,
+    steps = "      - run: keypin run -- ./deploy.sh\n",
+  ) => `
+on: push
+${top}jobs:
+  deploy:
+    runs-on: ubuntu-latest
+${permissions}    env:
+      KEYPIN_INFISICAL_IDENTITY_ID: \${{ vars.INFISICAL_IDENTITY_ID }}
+    steps:
+${steps}`;
+  const missing = (where: string) =>
+    `${WORKFLOW}: job deploy sets KEYPIN_INFISICAL_IDENTITY_ID for keypin run, but its permissions don't grant id-token: write; add permissions: id-token: write to ${where}`;
+  const notes = async (workflow: string) => {
+    const run = setup({ files: { [MAP]: MAPPED, [`${ROOT}/${WORKFLOW}`]: workflow } });
+    await cli(["check", "--json"], run.deps);
+    const data = json(run.stdout.text);
+    const all: unknown = data.notes;
+    assert(Array.isArray(all));
+    return all.map(String).filter((note) => note.startsWith(`${WORKFLOW}: job`));
+  };
+
+  test("warns when neither the job nor the workflow sets permissions", async () => {
+    expect(await notes(job("", ""))).toEqual([missing("the job or the workflow")]);
+    const run = setup({ files: { [MAP]: MAPPED, [`${ROOT}/${WORKFLOW}`]: job("", "") } });
+    await cli(["check"], run.deps);
+    expect(run.stdout.text).toContain(`Note: ${missing("the job or the workflow")}`);
+    run.unchanged();
+  });
+
+  test("doesn't warn when the job grants id-token: write", async () => {
+    expect(await notes(job("", "    permissions:\n      id-token: write\n"))).toEqual([]);
+    expect(await notes(job("", "    permissions:\n      id-token: read\n"))).toEqual([
+      missing("the job"),
+    ]);
+  });
+
+  test("warns when the job's permissions replace the workflow's grant", async () => {
+    const workflow = job(
+      "permissions:\n  id-token: write\n",
+      "    permissions:\n      contents: read\n",
+    );
+    expect(await notes(workflow)).toEqual([missing("the job")]);
+  });
+
+  test("doesn't warn for write-all, and warns for read-all or {}", async () => {
+    expect(await notes(job("permissions: write-all\n", ""))).toEqual([]);
+    expect(await notes(job("", "    permissions: write-all\n"))).toEqual([]);
+    expect(await notes(job("permissions: read-all\n", ""))).toEqual([
+      missing("the job or the workflow"),
+    ]);
+    expect(await notes(job("", "    permissions: {}\n"))).toEqual([missing("the job")]);
+  });
+
+  test("doesn't warn when the job sets the identity but doesn't run keypin run", async () => {
+    expect(await notes(job("", "", "      - run: ./deploy.sh\n"))).toEqual([]);
+    expect(await notes(job("", "", "      - run: npx keypin run -- ./deploy.sh\n"))).toEqual([
+      missing("the job or the workflow"),
+    ]);
+  });
+
+  test("warns once for a job with several keypin runs", async () => {
+    const steps = "      - run: keypin run -- ./build.sh\n      - run: keypin run -- ./deploy.sh\n";
+    expect(await notes(job("", "", steps))).toEqual([missing("the job or the workflow")]);
+  });
+
+  test("doesn't warn for a job that calls a reusable workflow", async () => {
+    const workflow = `
+on: push
+env:
+  KEYPIN_INFISICAL_IDENTITY_ID: id
+jobs:
+  deploy:
+    uses: ./.github/workflows/reusable.yml
+    with:
+      run: keypin run -- ./deploy.sh
+`;
+    expect(await notes(workflow)).toEqual([]);
+    const steps = workflow.replace(
+      "    uses: ./.github/workflows/reusable.yml\n    with:\n      run:",
+      "    steps:\n      - run:",
+    );
+    expect(await notes(steps)).toEqual([missing("the job or the workflow")]);
+  });
+});

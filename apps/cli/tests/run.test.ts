@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { OIDC_TOKEN_REQUEST } from "@keypin/core";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { cli } from "../src/cli";
 import { diskFiles, listFolder } from "../src/disk";
@@ -174,6 +175,21 @@ prod = "op://Private/ci cloudflare token/credential"
         expect(launcher.launches).toHaveLength(0);
       }
     });
+  });
+
+  test("GitHub's OIDC token-request variables never reach the command, even when it reads no keys", async () => {
+    const oidc = Object.fromEntries(OIDC_TOKEN_REQUEST.map((name) => [name, SENTINEL]));
+    const map = `environments = ["dev", "prod", "ci"]\n${WEB_MAP}`;
+    for (const args of [[], ["--env", "ci"]]) {
+      const { deps, launcher, calls } = setup({
+        env: oidc,
+        files: { "/work/web/keypin.toml": map },
+      });
+      expect(await cli(["run", ...args, "--", "true"], deps)).toBe(0);
+      expect(calls).toHaveLength(args.length ? 0 : 1);
+      expect(Object.keys(launcher.launches[0]?.env ?? {})).not.toContain(OIDC_TOKEN_REQUEST[0]);
+      expect(Object.keys(launcher.launches[0]?.env ?? {})).not.toContain(OIDC_TOKEN_REQUEST[1]);
+    }
   });
 
   test("the first declared environment is the default", async () => {

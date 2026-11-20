@@ -153,7 +153,8 @@ environment = "production" # optional: only the jobs in this GitHub environment
 ```
 
 The job runs `keypin run --env prod --only API_TOKEN -- <command>`; without `--env`, `run` uses the first
-environment. `run` doesn't read `pull`: your vault decides which jobs it lets in.
+environment. `run` doesn't read `pull`: your vault decides which jobs it lets in. `run` doesn't pass GitHub's OIDC
+token-request variables to the command.
 
 - `publish` writes nothing for a key that is only pulled, and `publish --all` skips it.
 - `rotate` and `rotate --due` rotate it like a key with destinations. Once your vault holds the new key, the jobs

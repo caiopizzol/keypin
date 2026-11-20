@@ -73,8 +73,8 @@ in the map with a [`pull`](configuration.md#pulling-in-ci) entry, then:
    Use the subject format your repo uses. Repos created after July 15, 2026, and older repos that opted in or were
    renamed or transferred since, include the owner and repo IDs, which
    `gh api repos/owner/repo --jq '"\(.owner.id) \(.id)"'` prints. Other repos use `repo:owner/repo:ref:refs/heads/main`.
-   A job with a GitHub `environment` gets an `environment:<name>` subject instead of the branch, so match that and
-   limit the branch with the environment's deployment rules. See
+   For a job with a GitHub `environment`, replace `:ref:refs/heads/main` with `:environment:<name>` and keep the
+   rest, then limit the branch with the environment's deployment rules. See
    [GitHub's subject formats](https://docs.github.com/en/actions/reference/security/oidc).
 
 3. Sign the job in, then run keypin:

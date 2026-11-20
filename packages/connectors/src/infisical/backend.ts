@@ -137,7 +137,12 @@ export function infisicalBackend(
     }
     const body = parseObject(await response.text());
     if (typeof body.message === "string")
-      body.message = [options.token, options.body?.jwt, options.body?.clientSecret].reduce<string>(
+      body.message = [
+        options.token,
+        options.body?.jwt,
+        options.body?.clientSecret,
+        options.body?.secretValue,
+      ].reduce<string>(
         (text, secret) => (typeof secret === "string" && secret ? hidden(text, secret) : text),
         body.message,
       );

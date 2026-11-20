@@ -176,6 +176,27 @@ prod = "op://Private/ci cloudflare token/credential"
     });
   });
 
+  test("GitHub's OIDC token-request variables never reach the command, even when it reads no keys", async () => {
+    const oidc = {
+      ACTIONS_ID_TOKEN_REQUEST_URL: "https://pipelines.example/idtoken",
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: "request-token",
+    };
+    const map = `environments = ["dev", "prod", "ci"]\n${WEB_MAP}`;
+    for (const [args, expected] of [
+      [[], { PATH: "/usr/bin", SESSION_SECRET: SENTINEL }],
+      [["--env", "ci"], { PATH: "/usr/bin" }],
+    ] as const) {
+      const { deps, launcher, calls } = setup({
+        env: oidc,
+        files: { "/work/web/keypin.toml": map },
+      });
+      expect(await cli(["run", ...args, "--", "true"], deps)).toBe(0);
+      expect(calls).toHaveLength(args.length ? 0 : 1);
+      expect(launcher.launches).toHaveLength(1);
+      expect(launcher.launches[0]?.env).toEqual(expected);
+    }
+  });
+
   test("the first declared environment is the default", async () => {
     const map = `environments = ["local", "production"]\n${WEB_MAP.replace("\ndev = ", "\nlocal = ").replace("\nprod = ", "\nproduction = ")}`;
     const disk = memoryFiles({ "/work/web/keypin.toml": map });

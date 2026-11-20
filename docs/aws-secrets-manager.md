@@ -45,3 +45,53 @@ for a key you rotated by hand.
 keypin needs `secretsmanager:GetSecretValue`, `DescribeSecret` and `ListSecretVersionIds` to read, and
 `PutSecretValue` and `TagResource` to rotate, plus `kms:Decrypt` and `kms:GenerateDataKey` on the secret's key if
 it isn't the AWS managed one.
+
+## Pulling in GitHub Actions
+
+A GitHub Actions job can sign in to AWS with OIDC and read a key itself, so the repo stores no copy. List the job
+in the map with a [`pull`](configuration.md#pulling-in-ci) entry, then:
+
+1. Add GitHub as an identity provider, once per AWS account:
+
+   ```sh
+   aws iam create-open-id-connect-provider --url https://token.actions.githubusercontent.com \
+     --client-id-list sts.amazonaws.com
+   ```
+
+2. Create a role that only your repo's branch can assume, and let it read the secret with the permissions above.
+   The trust policy's condition names the branch:
+
+   ```json
+   "Condition": {
+     "StringEquals": {
+       "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+       "token.actions.githubusercontent.com:sub": "repo:owner@123456/repo@456789:ref:refs/heads/main"
+     }
+   }
+   ```
+
+   Repos created after July 15, 2026 include the owner and repo IDs in the subject, which
+   `gh api repos/owner/repo --jq '"\(.owner.id) \(.id)"'` prints. Older repos use `repo:owner/repo:ref:refs/heads/main`;
+   see [GitHub's subject formats](https://docs.github.com/en/actions/reference/security/oidc).
+
+3. Sign the job in, then run keypin:
+
+   ```yaml
+   permissions:
+     id-token: write
+     contents: read
+   steps:
+     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+       with:
+         node-version: 24
+     - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+       with:
+         role-to-assume: arn:aws:iam::123456789012:role/my-role
+         aws-region: eu-west-1
+     - run: npm install -g keypin
+     - run: keypin run --env prod --only STRIPE_KEY -- <command>
+   ```
+
+A job on another branch can't assume the role. A value you change in Secrets Manager reaches the next job without
+`publish`.

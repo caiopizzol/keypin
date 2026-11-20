@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
-import { type Fetch, type IdToken, isRecord, NoIdToken, Secret, SignInFailed } from "@keypin/core";
+import { type Fetch, isRecord, Secret, SignInFailed } from "@keypin/core";
 import { credentialsFrom, dopplerBackend, type DopplerRef } from "../../src/doppler/index";
+import { githubIdToken } from "../../src/github/index";
 import { dopplerFetch, type FakeDoppler, memoryStore, OIDC_TOKEN } from "../../src/doppler/testing";
 
 const IDENTITY = "8c2d4e6f-0000-4000-8000-000000000002";
@@ -27,22 +28,6 @@ const JOB = {
 const NO_JOB =
   "this job can't ask GitHub Actions for an OIDC token (ACTIONS_ID_TOKEN_REQUEST_URL and ACTIONS_ID_TOKEN_REQUEST_TOKEN aren't set); give it permissions: id-token: write";
 
-function jobToken(env: Record<string, string>, fetch: Fetch): IdToken {
-  return async (audience) => {
-    if (!env.ACTIONS_ID_TOKEN_REQUEST_URL) throw new NoIdToken(NO_JOB);
-    const asked = new URL(REQUEST_URL);
-    if (audience !== null) asked.searchParams.set("audience", audience);
-    const response = await fetch(asked.href, {
-      method: "GET",
-      headers: { Authorization: `bearer ${REQUEST_TOKEN}` },
-      redirect: "error",
-    });
-    if (response.status !== 200)
-      throw new Error(`GitHub's OIDC token endpoint returned HTTP ${response.status}`);
-    return JWT;
-  };
-}
-
 function setup(
   options: {
     env?: Record<string, string>;
@@ -52,6 +37,7 @@ function setup(
     revoke?: number;
     echo?: boolean;
     dropRevoke?: number;
+    echoing?: string;
   } = {},
 ) {
   const env = { ...JOB, ...options.env };
@@ -73,7 +59,21 @@ function setup(
     });
     if (url.startsWith(REQUEST_URL))
       return Promise.resolve(
-        new Response(JSON.stringify({ value: JWT }), { status: options.github ?? 200 }),
+        init.headers.Authorization === `bearer ${REQUEST_TOKEN}`
+          ? new Response(JSON.stringify({ count: 1, value: JWT }), {
+              status: options.github ?? 200,
+            })
+          : new Response("{}", { status: 401 }),
+      );
+    if (options.echoing === parsed.pathname)
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            messages: [`Bad bearer ${init.headers.Authorization ?? ""} from ${JWT}`],
+            success: false,
+          }),
+          { status: 500 },
+        ),
       );
     if (options.echo && parsed.pathname === "/v3/auth/oidc")
       return Promise.resolve(
@@ -98,7 +98,7 @@ function setup(
   };
   const warnings: string[] = [];
   const vault = dopplerBackend(credentialsFrom(env), fetch, {
-    idToken: jobToken(env, fetch),
+    idToken: githubIdToken(env, fetch),
     warn: (text) => void warnings.push(text),
   });
   return { vault, calls, warnings, fake };
@@ -261,6 +261,25 @@ describe("signing in with GitHub Actions OIDC", () => {
     showsNoToken(error);
   });
 
+  test("a failed workplace check that echoes Doppler's token shows it hidden, and revokes it", async () => {
+    const run = setup({ echoing: "/v3/me" });
+    const error = await failure(run.vault.read(REF));
+    expect(String(error)).toContain(
+      "couldn't read the service account identity token's workplace (Doppler returned HTTP 500: Bad bearer Bearer [hidden] from [hidden])",
+    );
+    showsNoToken(error);
+    expect(run.fake.revoked).toEqual([OIDC_TOKEN]);
+  });
+
+  test("a failed read that echoes Doppler's token shows it hidden", async () => {
+    const run = setup({ echoing: "/v3/configs/config/secret" });
+    const error = await failure(run.vault.read(REF));
+    expect(String(error)).toContain(
+      "doppler://billing/prd/STRIPE_KEY (Doppler workplace acme): Doppler returned HTTP 500: Bad bearer Bearer [hidden] from [hidden]",
+    );
+    showsNoToken(error);
+  });
+
   test("no error or warning shows GitHub's token, its request token or Doppler's token", async () => {
     const texts: unknown[] = [];
     for (const options of [
@@ -270,6 +289,8 @@ describe("signing in with GitHub Actions OIDC", () => {
       { oidc: { expiresInSeconds: 7200 } },
       { revoke: 500 },
       { echo: true },
+      { echoing: "/v3/me" },
+      { echoing: "/v3/configs/config/secret" },
     ]) {
       const run = setup(options);
       texts.push(
@@ -281,7 +302,7 @@ describe("signing in with GitHub Actions OIDC", () => {
       await run.vault.close?.();
       texts.push(...run.warnings);
     }
-    expect(texts.filter(Boolean)).toHaveLength(6);
+    expect(texts.filter(Boolean)).toHaveLength(8);
     showsNoToken(...texts);
   });
 });

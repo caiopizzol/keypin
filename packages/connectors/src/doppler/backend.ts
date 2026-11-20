@@ -93,6 +93,15 @@ export function dopplerBackend(
   const kind = strict ? IDENTITY_TOKEN : stored === null ? "token" : tokenKind(stored);
   const serviceToken = stored !== null && isServiceToken(stored);
   const held = strict ? `for the identity in ${IDENTITY_ID}` : `in ${TOKEN_VARIABLE}`;
+  const secrets = stored === null ? [] : [stored];
+
+  function hidden(text: string): string {
+    return secrets.reduce((shown, secret) => shown.replaceAll(secret, "[hidden]"), text);
+  }
+
+  function problem(response: { status: number; body: Json }): string {
+    return hidden(said(response));
+  }
 
   async function request(
     method: string,
@@ -186,14 +195,16 @@ export function dopplerBackend(
         ? failed(`${IDENTITY_ID} is set, but ${error.message}, ${ANOTHER_WAY}`, "no-credentials")
         : failed(`couldn't get GitHub Actions' OIDC token: ${messageOf(error)}`);
     }
+    secrets.push(jwt);
     const login = await request("POST", "/v3/auth/oidc", {
       body: { identity: given.identityId, token: jwt },
     });
     const token = login.body.token;
+    if (typeof token === "string" && token) secrets.push(token);
     if (login.status !== 200 || typeof token !== "string" || !token) {
       const audience = given.audience ?? "GitHub's default audience, https://github.com/<owner>";
       throw failed(
-        `Doppler refused GitHub's OIDC token for the identity ${given.identityId} (${hidden(problem(login), jwt)}); keypin asked GitHub for a token for ${audience}, so check that the identity's aud claim lists it and that its sub claim matches this job`,
+        `Doppler refused GitHub's OIDC token for the identity ${given.identityId} (${problem(login)}); keypin asked GitHub for a token for ${audience}, so check that the identity's aud claim lists it and that its sub claim matches this job`,
       );
     }
     const expires =
@@ -224,7 +235,7 @@ export function dopplerBackend(
     }
     if (why !== null)
       warn(
-        `${account(place)}: couldn't revoke keypin's ${IDENTITY_TOKEN} (${hidden(why, token)}); it lasts until its TTL runs out`,
+        `${account(place)}: couldn't revoke keypin's ${IDENTITY_TOKEN} (${hidden(why)}); it lasts until its TTL runs out`,
       );
   }
 
@@ -478,11 +489,7 @@ function referenceTo(ref: DopplerRef, inner: string): string {
   return format({ ...ref, project, config, name });
 }
 
-function hidden(text: string, secret: string): string {
-  return text.replaceAll(secret, "[hidden]");
-}
-
-function problem(response: { status: number; body: Json }): string {
+function said(response: { status: number; body: Json }): string {
   const { messages } = response.body;
   const said = Array.isArray(messages)
     ? messages.filter((message) => typeof message === "string").join("; ")

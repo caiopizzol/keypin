@@ -55,7 +55,8 @@ entry, then:
    environments. Keep the identity's token TTL to a few minutes.
 
 2. In the job, give keypin the identity's ID. keypin exchanges GitHub's token for a short-lived Doppler token,
-   reads, and revokes it before the command starts:
+   reads, and tries to revoke it before the command starts; if that fails, keypin warns and starts the command
+   anyway, and the token lasts until its TTL runs out:
 
    ```yaml
    permissions:

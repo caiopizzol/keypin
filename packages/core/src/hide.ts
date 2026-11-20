@@ -5,22 +5,24 @@ export function hideSecrets(text: string, secrets: readonly unknown[]): string {
       forms.add(secret);
       forms.add(JSON.stringify(secret).slice(1, -1));
     }
-  const spans: [number, number][] = [];
-  for (const form of forms)
-    for (let at = text.indexOf(form); at !== -1; at = text.indexOf(form, at + 1))
-      spans.push([at, at + form.length]);
-  spans.sort((a, b) => a[0] - b[0]);
-  const merged: [number, number][] = [];
-  for (const [from, to] of spans) {
-    const last = merged.at(-1);
-    if (last && from <= last[1]) last[1] = Math.max(last[1], to);
-    else merged.push([from, to]);
+  const covered = new Uint8Array(text.length);
+  let found = false;
+  for (const form of forms) {
+    let filled = 0;
+    for (let at = text.indexOf(form); at !== -1; at = text.indexOf(form, at + 1)) {
+      covered.fill(1, Math.max(at, filled), at + form.length);
+      filled = at + form.length;
+      found = true;
+    }
   }
+  if (!found) return text;
   let shown = "";
-  let kept = 0;
-  for (const [from, to] of merged) {
-    shown += `${text.slice(kept, from)}[hidden]`;
-    kept = to;
+  let at = 0;
+  while (at < text.length) {
+    const start = at;
+    const hidden = covered[at] === 1;
+    while (at < text.length && (covered[at] === 1) === hidden) at += 1;
+    shown += hidden ? "[hidden]" : text.slice(start, at);
   }
-  return shown + text.slice(kept);
+  return shown;
 }

@@ -23,3 +23,12 @@ test("overlapping matches leave no part of either secret visible", () => {
 test("ignores empty and non-string entries", () => {
   expect(hideSecrets("nothing here", ["", undefined, null, 3])).toBe("nothing here");
 });
+
+test("a large message full of matches stays small to hide", () => {
+  const text = "ab".repeat(512 * 1024);
+  const before = process.memoryUsage().heapUsed;
+  const shown = hideSecrets(text, ["ab", "ba"]);
+  const grown = process.memoryUsage().heapUsed - before;
+  expect(shown).toBe("[hidden]");
+  expect(grown).toBeLessThan(16 * 1024 * 1024);
+});

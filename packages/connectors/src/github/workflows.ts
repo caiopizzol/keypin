@@ -111,7 +111,7 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     keypinJobs.push({
       name: id,
       env,
-      idToken: at === null && callable(top.on) ? null : grantsIdToken(permissions),
+      idToken: at === null && onlyCalled(top.on) ? null : grantsIdToken(permissions),
       permissions: at === null ? null : { at, map: isRecord(permissions) },
     });
   }
@@ -236,8 +236,9 @@ function onlyWorkflowCall(on: unknown): boolean {
   return all.length === 1 && all[0] === "workflow_call";
 }
 
-function callable(on: unknown): boolean {
-  return events(on).includes("workflow_call");
+function onlyCalled(on: unknown): boolean {
+  const triggers = events(on);
+  return triggers.length > 0 && triggers.every((event) => event === "workflow_call");
 }
 
 function expressions(text: string): string[] {

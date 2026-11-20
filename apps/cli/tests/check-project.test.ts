@@ -2409,5 +2409,8 @@ jobs:
     expect(await notes(caller, { [CALLED]: called("permissions: read-all\n") })).toEqual([
       missing(KEEP, CALLED),
     ]);
+    const alsoPushed = (top: string) =>
+      job(top, "").replace("on: push", "on: [push, workflow_call]");
+    expect(await notes(caller, { [CALLED]: alsoPushed("") })).toEqual([missing(KEEP, CALLED)]);
   });
 });

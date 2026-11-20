@@ -446,6 +446,33 @@ describe("writing", () => {
     ).toBe("false");
   });
 
+  test("a failed write that echoes the new value or the token shows them hidden", async () => {
+    const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": STRIPE } });
+    let bearer = "";
+    const fetch: Fetch = (url, init) => {
+      if (init.method !== "PATCH") return fake.fetch(url, init);
+      bearer = init.headers.Authorization?.replace("Bearer ", "") ?? "";
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ message: `Invalid secretValue new-value-1234 for ${bearer}` }),
+          { status: 400 },
+        ),
+      );
+    };
+    const error = await infisicalBackend(CREDENTIALS, fetch)
+      .write(REF, new Secret("new-value-1234"), {})
+      .then(
+        () => null,
+        (failed: unknown) => String(failed),
+      );
+    expect(bearer).not.toBe("");
+    expect(error).toContain(
+      "Infisical returned HTTP 400: Invalid secretValue [hidden] for [hidden]",
+    );
+    expect(error).not.toContain("new-value-1234");
+    expect(error).not.toContain(bearer);
+  });
+
   test("a new secret is created, and newItem refuses one that exists", async () => {
     const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": STRIPE } });
     const vault = infisicalBackend(CREDENTIALS, fake.fetch);

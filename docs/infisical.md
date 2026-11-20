@@ -53,8 +53,11 @@ secret. List the job in the map with a [`pull`](configuration.md#pulling-in-ci) 
    `https://token.actions.githubusercontent.com`, the audience to `https://github.com/<owner>`, and the subject to
    the one GitHub gives your repo's branch, such as `repo:owner@123456/repo@456789:ref:refs/heads/main`. See
    [the subject formats](aws-secrets-manager.md#pulling-in-github-actions) for older repos and GitHub environments.
+   Set **Access Token TTL** and **Access Token Max TTL** to a few minutes, enough for the job's reads; both default
+   to 30 days.
 
-2. In the job, exchange GitHub's token for an Infisical access token, then run keypin:
+2. In the job, install keypin, then exchange GitHub's token for an Infisical access token and give it only to
+   `keypin run`:
 
    ```yaml
    permissions:
@@ -65,7 +68,8 @@ secret. List the job in the map with a [`pull`](configuration.md#pulling-in-ci) 
      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
        with:
          node-version: 24
-     - name: Sign in to Infisical
+     - run: npm install -g keypin
+     - name: Sign in to Infisical and run keypin
        env:
          IDENTITY_ID: <machine identity ID>
        run: |
@@ -76,9 +80,7 @@ secret. List the job in the map with a [`pull`](configuration.md#pulling-in-ci) 
            -d "$(jq -n --arg id "$IDENTITY_ID" --arg jwt "$jwt" '{identityId: $id, jwt: $jwt}')" | jq -r '.accessToken // empty')
          test -n "$token"
          echo "::add-mask::$token"
-         echo "INFISICAL_TOKEN=$token" >> "$GITHUB_ENV"
-     - run: npm install -g keypin
-     - run: keypin run --env prod --only STRIPE_KEY -- <command>
+         INFISICAL_TOKEN="$token" keypin run --env prod --only STRIPE_KEY -- <command>
    ```
 
    For EU Cloud or a self-hosted instance, use your `url` instead of `https://app.infisical.com`.

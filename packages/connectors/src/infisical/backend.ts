@@ -574,7 +574,8 @@ function originOf(text: string | null): string | null {
 }
 
 function hidden(text: string, secret: string): string {
-  return text.replaceAll(secret, "[hidden]");
+  const escaped = JSON.stringify(secret).slice(1, -1);
+  return text.replaceAll(escaped, "[hidden]").replaceAll(secret, "[hidden]");
 }
 
 function problem(response: { status: number; body: Json }): string {

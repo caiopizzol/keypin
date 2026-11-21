@@ -7,7 +7,7 @@ import {
   NO_JOB_TOKEN,
   TOKEN_VARIABLE,
   tokenKind,
-} from "./backend";
+} from "./credentials";
 import { type DopplerPin, type DopplerRef, type DopplerReference, SCHEME } from "./reference";
 import { dopplerVaultRules } from "./rules";
 

@@ -3,7 +3,6 @@ import {
   hideSecrets,
   type IdToken,
   isRecord,
-  type KeyRef,
   messageOf,
   NoIdToken,
   parseObject,
@@ -11,38 +10,42 @@ import {
   SignInFailed,
   type VaultBackend,
   type VaultItem,
-  type VaultScope,
   WriteRefused,
 } from "@keypin/core";
 import {
+  ANOTHER_WAY,
+  type Credentials,
+  IDENTITY_ID,
+  IDENTITY_TOKEN,
+  isServiceToken,
+  NO_CREDENTIALS,
+  TOKEN_VARIABLE,
+  tokenKind,
+} from "./credentials";
+import {
   account,
-  decode,
-  decodeScope,
   describe as describeRef,
   type DopplerPin as Place,
   type DopplerRef,
   type DopplerScope as Scope,
   format,
 } from "./reference";
+import {
+  idsOf,
+  isConfigName,
+  own,
+  ownScope,
+  referencedBy,
+  scopeOf,
+  sourceOf,
+} from "./secret-references";
 
-export const TOKEN_VARIABLE = "DOPPLER_TOKEN";
-export const IDENTITY_ID = "KEYPIN_DOPPLER_IDENTITY_ID";
-export const AUDIENCE = "KEYPIN_DOPPLER_AUDIENCE";
-export const NO_CREDENTIALS = `set ${TOKEN_VARIABLE} to a Doppler service token, service account token or personal token`;
-const ANOTHER_WAY = `or unset ${IDENTITY_ID} to sign in another way`;
-export const NO_JOB_TOKEN = `give the GitHub Actions job permissions: id-token: write, ${ANOTHER_WAY}`;
 const API = "https://api.doppler.com";
 const PAGE = 20;
-const IDENTITY_TOKEN = "service account identity token";
 const LONGEST_TTL_MS = 3600_000;
 const REVOKE_WAIT_MS = 5000;
 
 type Json = Record<string, unknown>;
-
-export type Credentials =
-  | { token: string }
-  | { identityId: string; audience: string | null }
-  | { problem: string };
 
 export interface DopplerOptions {
   idToken?: IdToken;
@@ -54,33 +57,6 @@ interface Session {
   token: string;
   minted: boolean;
 }
-
-const TOKEN_KINDS: readonly [string, string][] = [
-  ["dp.st.", "service token"],
-  ["dp.sa.", "service account token"],
-  ["dp.said.", IDENTITY_TOKEN],
-  ["dp.pt.", "personal token"],
-  ["dp.ct.", "CLI token"],
-];
-
-export function credentialsFrom(
-  env: Readonly<Record<string, string | undefined>>,
-): Credentials | null {
-  const identityId = env[IDENTITY_ID]?.trim() ?? "";
-  const token = env[TOKEN_VARIABLE]?.trim() ?? "";
-  if (identityId && token)
-    return {
-      problem: `both ${IDENTITY_ID} and ${TOKEN_VARIABLE} are set; unset ${TOKEN_VARIABLE} to sign in with GitHub Actions OIDC, or ${IDENTITY_ID} to sign in with it`,
-    };
-  if (identityId) return { identityId, audience: env[AUDIENCE]?.trim() || null };
-  return token ? { token } : null;
-}
-
-export function tokenKind(token: string): string {
-  return TOKEN_KINDS.find(([prefix]) => token.startsWith(prefix))?.[1] ?? "token";
-}
-
-const isServiceToken = (token: string) => token.startsWith("dp.st.");
 
 export function dopplerBackend(
   credentials: Credentials | null,
@@ -441,54 +417,6 @@ export function dopplerBackend(
       );
     },
   };
-}
-
-function own(ref: KeyRef): DopplerRef {
-  const mine = decode(ref);
-  if (!mine)
-    throw new Error(`keypin's Doppler vault can't read this reference, which is for ${ref.kind}`);
-  return mine;
-}
-
-function ownScope(scope: VaultScope): Scope {
-  const mine = decodeScope(scope);
-  if (!mine) throw new Error(`keypin's Doppler vault can't list ${scope.kind} items`);
-  return mine;
-}
-
-function scopeOf(ref: DopplerRef): Scope {
-  return { kind: ref.kind, workplace: ref.workplace, project: ref.project, config: ref.config };
-}
-
-function isConfigName(entry: unknown): entry is { project: string; config: string } {
-  return isRecord(entry) && typeof entry.project === "string" && typeof entry.config === "string";
-}
-
-function sourceOf(sources: string[]): string {
-  const [only] = sources;
-  return sources.length === 1 && only ? only : "the source secret";
-}
-
-function idsOf(ref: DopplerRef) {
-  return { vault: `${ref.project}/${ref.config}`, item: ref.name };
-}
-
-const REFERENCE = /\$\{([^}]+)\}/g;
-const QUOTED = /^(?:(.*)\.)?"([^"]*)"$/;
-
-function referencedBy(ref: DopplerRef, raw: string): string[] {
-  return [
-    ...new Set([...raw.matchAll(REFERENCE)].map(([, inner = ""]) => referenceTo(ref, inner))),
-  ];
-}
-
-function referenceTo(ref: DopplerRef, inner: string): string {
-  const quoted = QUOTED.exec(inner);
-  const parts = quoted ? (quoted[1]?.split(".") ?? []) : inner.split(".");
-  const name = quoted ? (quoted[2] ?? "") : (parts.pop() ?? "");
-  const config = parts.pop() ?? ref.config;
-  const project = parts.pop() ?? ref.project;
-  return format({ ...ref, project, config, name });
 }
 
 function said(response: { status: number; body: Json }): string {

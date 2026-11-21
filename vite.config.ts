@@ -2,14 +2,7 @@ import { defineConfig } from "vite-plus";
 
 const TESTING_ONLY = [
   {
-    group: [
-      "@keypin/**/testing",
-      "./testing",
-      "./testing/*",
-      "./testing-*",
-      "../testing",
-      "../testing/*",
-    ],
+    group: ["@keypin/**/testing", "**/testing", "**/testing/*", "**/testing-*"],
     message: "testing modules hold fakes for tests; production code must not import them",
   },
 ];

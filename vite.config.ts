@@ -2,7 +2,14 @@ import { defineConfig } from "vite-plus";
 
 const TESTING_ONLY = [
   {
-    group: ["@keypin/**/testing", "./testing", "./testing/*", "../testing", "../testing/*"],
+    group: [
+      "@keypin/**/testing",
+      "./testing",
+      "./testing/*",
+      "./testing-*",
+      "../testing",
+      "../testing/*",
+    ],
     message: "testing modules hold fakes for tests; production code must not import them",
   },
 ];
@@ -148,6 +155,10 @@ export default defineConfig({
             { patterns: [...TESTING_ONLY, ...ONLY_CORE_IN_CONNECTORS] },
           ],
         },
+      },
+      {
+        files: ["packages/connectors/src/*/testing.ts", "packages/connectors/src/*/testing-*.ts"],
+        rules: { "no-restricted-imports": ["error", { patterns: ONLY_CORE_IN_CONNECTORS }] },
       },
       {
         files: ["apps/cli/src/**"],

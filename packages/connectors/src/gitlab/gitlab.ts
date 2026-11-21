@@ -8,21 +8,15 @@ import {
   parseObject,
   type Secret,
 } from "@keypin/core";
+import { DEFAULT_HOST, HOST, NAME, type Owner, PATH } from "./rules";
 import { type SignInVia, TOKEN_VARIABLE, tokensPage } from "./token";
 
-export const DEFAULT_HOST = "gitlab.com";
-export const HOST =
-  /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*(:[0-9]{1,5})?$/;
-export const PATH = /^[A-Za-z0-9_][A-Za-z0-9_.-]*(\/[A-Za-z0-9_][A-Za-z0-9_.-]*)*$/;
-export const NAME = /^[A-Za-z0-9_]{1,255}$/;
 export const NEXT_PIPELINE =
   "GitLab uses the new value from the next pipeline; keypin doesn't start one";
 const MASKABLE = /^\S{8,}$/;
 const MASKABLE_EXPANDED = /^[A-Za-z0-9_+=/@:.~-]{8,}$/;
 const JOB_TOKEN = "glcbt-";
 const NEEDS_API = "changing CI/CD variables needs a token with the api scope";
-
-export type Owner = "project" | "group";
 
 const ROLE: Record<Owner, string> = { project: "Maintainer", group: "Owner" };
 const REST: Record<Owner, string> = { project: "projects", group: "groups" };

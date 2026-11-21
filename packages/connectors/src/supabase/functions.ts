@@ -7,22 +7,12 @@ import {
   type Secret,
 } from "@keypin/core";
 import { type Reply, supabaseRequest, TOKEN_DOCS, TOKENS } from "./api";
+import { REF, refusedName } from "./rules";
 import { TOKEN_VARIABLE } from "./token";
 
-export const REF = /^[a-z]{20}$/;
 export const LIVE = "Edge Functions read the new value at once, with no redeploy";
-const RESERVED = "SUPABASE_";
-const NAME_LIMIT = 256;
 const VALUE_LIMIT = 24576;
 const PERMISSION = "Edge Function Secrets Read-write";
-
-export function refusedName(name: string): string | undefined {
-  if (name.startsWith(RESERVED))
-    return `Supabase reserves names that start with ${RESERVED} for the variables it sets itself`;
-  if (name.length > NAME_LIMIT)
-    return `Supabase takes secret names of up to ${NAME_LIMIT} characters`;
-  return undefined;
-}
 
 export interface SupabaseSecretsOptions {
   projectRef: string;

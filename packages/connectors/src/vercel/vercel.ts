@@ -8,11 +8,10 @@ import {
   parseObject,
   type Secret,
 } from "@keypin/core";
+import { NAME, STANDARD } from "./rules";
 import { TOKEN_VARIABLE, TOKENS_PAGE } from "./token";
 
 const API = "https://api.vercel.com";
-export const NAME = /^[A-Za-z0-9._-]{1,100}$/;
-export const STANDARD = ["production", "preview", "development"];
 export const REDEPLOY = "Vercel uses the new value only in new deployments; redeploy to use it";
 const SECRET = { type: "sensitive", visibility: "secret" };
 

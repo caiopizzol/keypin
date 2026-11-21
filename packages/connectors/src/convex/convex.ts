@@ -6,27 +6,12 @@ import {
   parseObject,
   type Secret,
 } from "@keypin/core";
+import { deploymentOf, refusedName } from "./rules";
 import { keyKind, PERMISSION, SETTINGS_PAGE, TOKEN_VARIABLE } from "./token";
 
-export const URL_PATTERN = /^https:\/\/([a-z0-9-]+)(\.[a-z0-9-]+)?\.convex\.cloud\/?$/;
 export const INVALIDATES =
   "Convex invalidates every subscription when a variable changes; cron definitions read it only on the next deploy";
-const NAME = /^[A-Za-z][A-Za-z0-9_]*$/;
-const NAME_LIMIT = 256;
 const VALUE_LIMIT = 8 * 1024;
-const SYSTEM = new Set(["CONVEX_CLOUD_URL", "CONVEX_SITE_URL"]);
-
-export function refusedName(name: string): string | undefined {
-  if (SYSTEM.has(name)) return `Convex sets ${name} itself`;
-  if (!NAME.test(name))
-    return "Convex names must start with a letter and use only letters, digits and _";
-  if (name.length > NAME_LIMIT) return `Convex takes names of up to ${NAME_LIMIT} characters`;
-  return undefined;
-}
-
-export function deploymentOf(url: string): string | undefined {
-  return URL_PATTERN.exec(url)?.[1];
-}
 
 export interface ConvexEnvOptions {
   url: string;

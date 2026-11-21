@@ -1,20 +1,27 @@
 import type { IssuerRules, IssuerSpec } from "@keypin/core";
 import { awsIssuerRules, secretsManagerVaultRules } from "./aws/rules";
 import { bitwardenVaultRules } from "./bitwarden/rules";
-import { cloudflareIssuerRules } from "./cloudflare/rules";
+import { cloudflareIssuerRules, cloudflareWorkerRules } from "./cloudflare/rules";
+import { convexDeploymentRules } from "./convex/rules";
 import { dopplerVaultRules } from "./doppler/rules";
 import { elevenlabsIssuerRules } from "./elevenlabs/rules";
+import { flyAppRules } from "./fly/rules";
+import { githubActionsRules, githubPull } from "./github/rules";
+import { gitlabGroupRules, gitlabProjectRules } from "./gitlab/rules";
 import { googleIssuerRules, googleServiceAccountIssuerRules } from "./google/rules";
 import { infisicalVaultRules } from "./infisical/rules";
 import { atlasIssuerRules } from "./mongodb-atlas/rules";
+import { netlifyProjectRules } from "./netlify/rules";
 import { neonIssuerRules } from "./neon/rules";
 import { onePasswordVaultRules } from "./onepassword/rules";
 import { openaiIssuerRules } from "./openai/rules";
 import { openrouterIssuerRules } from "./openrouter/rules";
+import { railwayServiceRules } from "./railway/rules";
 import { resendIssuerRules } from "./resend/rules";
 import { sendgridIssuerRules } from "./sendgrid/rules";
-import { supabaseIssuerRules } from "./supabase/rules";
+import { supabaseFunctionsRules, supabaseIssuerRules } from "./supabase/rules";
 import { twilioIssuerRules } from "./twilio/rules";
+import { vercelProjectRules } from "./vercel/rules";
 import { xaiIssuerRules } from "./xai/rules";
 
 const ENCODINGS = ["base64", "hex"] as const;
@@ -44,6 +51,21 @@ export const randomIssuerRules = {
       ? `Better Auth encrypts two-factor secrets and OAuth tokens with it, and a new value can't read them. Add a version to BETTER_AUTH_SECRETS by hand instead: ${BETTER_AUTH_DOCS}`
       : undefined,
 } satisfies IssuerRules<RandomSpec>;
+
+export const destinations = [
+  githubActionsRules,
+  cloudflareWorkerRules,
+  vercelProjectRules,
+  supabaseFunctionsRules,
+  netlifyProjectRules,
+  railwayServiceRules,
+  convexDeploymentRules,
+  flyAppRules,
+  gitlabProjectRules,
+  gitlabGroupRules,
+];
+
+export const pulls = [githubPull];
 
 export const vaults = [
   infisicalVaultRules,
@@ -76,20 +98,31 @@ export {
   awsIssuerRules,
   bitwardenVaultRules,
   cloudflareIssuerRules,
+  cloudflareWorkerRules,
+  convexDeploymentRules,
   dopplerVaultRules,
   elevenlabsIssuerRules,
+  flyAppRules,
+  githubActionsRules,
+  githubPull,
+  gitlabGroupRules,
+  gitlabProjectRules,
   googleIssuerRules,
   googleServiceAccountIssuerRules,
   infisicalVaultRules,
   neonIssuerRules,
+  netlifyProjectRules,
   onePasswordVaultRules,
   openaiIssuerRules,
   openrouterIssuerRules,
+  railwayServiceRules,
   resendIssuerRules,
   secretsManagerVaultRules,
   sendgridIssuerRules,
+  supabaseFunctionsRules,
   supabaseIssuerRules,
   twilioIssuerRules,
+  vercelProjectRules,
   xaiIssuerRules,
 };
 export type { AtlasSpec } from "./mongodb-atlas/rules";
@@ -110,3 +143,12 @@ export type { DopplerRef } from "./doppler/reference";
 export type { InfisicalRef } from "./infisical/reference";
 export type { OnePasswordRef } from "./onepassword/reference";
 export type { SecretsManagerRef } from "./aws/reference";
+export type { ConvexTarget } from "./convex/rules";
+export type { FlyTarget } from "./fly/rules";
+export type { GitHubPull, GitHubTarget } from "./github/rules";
+export type { GitLabGroupTarget, GitLabProjectTarget } from "./gitlab/rules";
+export type { NetlifyTarget } from "./netlify/rules";
+export type { RailwayTarget } from "./railway/rules";
+export type { SupabaseFunctionsTarget } from "./supabase/rules";
+export type { VercelTarget } from "./vercel/rules";
+export type { WorkerTarget } from "./cloudflare/rules";

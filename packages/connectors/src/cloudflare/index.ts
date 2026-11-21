@@ -10,7 +10,7 @@ export {
 } from "./token";
 export { CloudflareReader } from "./list";
 export { calledAcross, wranglerWorkers } from "./wrangler";
-export { cloudflareWorker, type WorkerHost, type WorkerPublisher, type WorkerTarget } from "./kind";
+export { cloudflareWorker, type WorkerHost, type WorkerPublisher } from "./kind";
 export { CloudflareIssuer, type CloudflareIssuerOptions } from "./issuer";
 export { cloudflareIssuer } from "./kind-issuer";
-export { type CloudflareTokenSpec } from "./rules";
+export { type CloudflareTokenSpec, type WorkerTarget } from "./rules";

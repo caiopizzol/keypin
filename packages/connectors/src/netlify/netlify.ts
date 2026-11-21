@@ -8,10 +8,10 @@ import {
   parseObject,
   type Secret,
 } from "@keypin/core";
+import { CONTEXTS } from "./rules";
 import { TOKEN_VARIABLE, TOKENS_PAGE } from "./token";
 
 const API = "https://api.netlify.com/api/v1";
-export const CONTEXTS = ["production", "deploy-preview", "branch-deploy", "dev-server"];
 export const REBUILD =
   "Netlify uses the new value only from the next build and deploy; redeploy to use it";
 const SCOPES = ["builds", "functions", "runtime"];

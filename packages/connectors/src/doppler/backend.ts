@@ -1,7 +1,11 @@
 import {
   type Fetch,
+  hideSecrets,
+  type IdToken,
   isRecord,
   type KeyRef,
+  messageOf,
+  NoIdToken,
   parseObject,
   Secret,
   SignInFailed,
@@ -22,22 +26,54 @@ import {
 } from "./reference";
 
 export const TOKEN_VARIABLE = "DOPPLER_TOKEN";
+export const IDENTITY_ID = "KEYPIN_DOPPLER_IDENTITY_ID";
+export const AUDIENCE = "KEYPIN_DOPPLER_AUDIENCE";
 export const NO_CREDENTIALS = `set ${TOKEN_VARIABLE} to a Doppler service token, service account token or personal token`;
+const ANOTHER_WAY = `or unset ${IDENTITY_ID} to sign in another way`;
+export const NO_JOB_TOKEN = `give the GitHub Actions job permissions: id-token: write, ${ANOTHER_WAY}`;
 const API = "https://api.doppler.com";
 const PAGE = 20;
+const IDENTITY_TOKEN = "service account identity token";
+const LONGEST_TTL_MS = 3600_000;
+const REVOKE_WAIT_MS = 5000;
 
 type Json = Record<string, unknown>;
+
+export type Credentials =
+  | { token: string }
+  | { identityId: string; audience: string | null }
+  | { problem: string };
+
+export interface DopplerOptions {
+  idToken?: IdToken;
+  warn?: (text: string) => void;
+}
+
+interface Session {
+  place: Place;
+  token: string;
+  minted: boolean;
+}
 
 const TOKEN_KINDS: readonly [string, string][] = [
   ["dp.st.", "service token"],
   ["dp.sa.", "service account token"],
-  ["dp.said.", "service account identity token"],
+  ["dp.said.", IDENTITY_TOKEN],
   ["dp.pt.", "personal token"],
   ["dp.ct.", "CLI token"],
 ];
 
-export function tokenFrom(env: Readonly<Record<string, string | undefined>>): string | null {
-  return env[TOKEN_VARIABLE]?.trim() || null;
+export function credentialsFrom(
+  env: Readonly<Record<string, string | undefined>>,
+): Credentials | null {
+  const identityId = env[IDENTITY_ID]?.trim() ?? "";
+  const token = env[TOKEN_VARIABLE]?.trim() ?? "";
+  if (identityId && token)
+    return {
+      problem: `both ${IDENTITY_ID} and ${TOKEN_VARIABLE} are set; unset ${TOKEN_VARIABLE} to sign in with GitHub Actions OIDC, or ${IDENTITY_ID} to sign in with it`,
+    };
+  if (identityId) return { identityId, audience: env[AUDIENCE]?.trim() || null };
+  return token ? { token } : null;
 }
 
 export function tokenKind(token: string): string {
@@ -47,38 +83,82 @@ export function tokenKind(token: string): string {
 const isServiceToken = (token: string) => token.startsWith("dp.st.");
 
 export function dopplerBackend(
-  token: string | null,
+  credentials: Credentials | null,
   fetch: Fetch = globalThis.fetch,
+  options: DopplerOptions = {},
 ): VaultBackend {
-  const sessions = new Map<string, Promise<void>>();
-  const kind = token === null ? "token" : tokenKind(token);
+  const warn = options.warn ?? (() => {});
+  const sessions = new Map<string, Promise<Session>>();
+  const strict = credentials !== null && "identityId" in credentials;
+  const stored = credentials !== null && "token" in credentials ? credentials.token : null;
+  const kind = strict ? IDENTITY_TOKEN : stored === null ? "token" : tokenKind(stored);
+  const serviceToken = stored !== null && isServiceToken(stored);
+  const held = strict ? `for the identity in ${IDENTITY_ID}` : `in ${TOKEN_VARIABLE}`;
+  const secrets = stored === null ? [] : [stored];
+
+  function hidden(text: string, also: readonly string[] = []): string {
+    return hideSecrets(text, [...secrets, ...also]);
+  }
+
+  function problem(response: { status: number; body: Json }, also: readonly string[] = []): string {
+    return hidden(said(response), also);
+  }
 
   async function request(
     method: string,
     path: string,
-    options: { query?: Record<string, string>; body?: Json } = {},
+    options: { token?: string; query?: Record<string, string>; body?: Json } = {},
   ): Promise<{ status: number; body: Json }> {
     const query = options.query ? `?${new URLSearchParams(options.query)}` : "";
     const response = await fetch(`${API}${path}${query}`, {
       method,
       headers: {
         Accept: "application/json",
-        Authorization: `Bearer ${token ?? ""}`,
+        ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}),
         ...(options.body ? { "Content-Type": "application/json" } : {}),
       },
       ...(options.body ? { body: JSON.stringify(options.body) } : {}),
+      ...(strict ? { redirect: "error" as const } : {}),
     });
     return { status: response.status, body: parseObject(await response.text()) };
   }
 
-  async function signIn(place: Place): Promise<void> {
+  async function signedIn(
+    place: Place,
+    method: string,
+    path: string,
+    options: { query?: Record<string, string>; body?: Json } = {},
+  ): Promise<{ status: number; body: Json }> {
+    const { token } = await session(place);
+    return request(method, path, { ...options, token });
+  }
+
+  async function signIn(place: Place): Promise<Session> {
     const where = account(place);
-    if (token === null)
+    if (!credentials)
       throw new SignInFailed(`${where}: sign-in failed: ${NO_CREDENTIALS}`, {
         kind: "no-credentials",
       });
-    const me = await request("GET", "/v3/me");
-    if (me.status === 401)
+    if ("problem" in credentials)
+      throw new SignInFailed(`${where}: sign-in failed: ${credentials.problem}`, { kind: "other" });
+    if ("token" in credentials) {
+      await checkWorkplace(place, credentials.token);
+      return { place, token: credentials.token, minted: false };
+    }
+    const token = await oidcToken(place, credentials);
+    try {
+      await checkWorkplace(place, token);
+    } catch (error) {
+      await revoke(place, token);
+      throw error;
+    }
+    return { place, token, minted: true };
+  }
+
+  async function checkWorkplace(place: Place, token: string): Promise<void> {
+    const where = account(place);
+    const me = await request("GET", "/v3/me", { token });
+    if (me.status === 401 && !strict)
       throw new SignInFailed(
         `${where}: sign-in failed: Doppler refused the ${kind} in ${TOKEN_VARIABLE} (HTTP 401); it may be revoked or expired, so make a new one`,
         { kind: "other" },
@@ -93,13 +173,74 @@ export function dopplerBackend(
     if (slug !== place.workplace) {
       const name = typeof workplace.name === "string" ? `${workplace.name} (${slug})` : slug;
       throw new SignInFailed(
-        `${where}: sign-in failed: the ${kind} in ${TOKEN_VARIABLE} belongs to the workplace ${name}, but keypin.toml pins ${place.workplace}`,
+        `${where}: sign-in failed: the ${kind} ${held} belongs to the workplace ${name}, but keypin.toml pins ${place.workplace}`,
         { kind: "wrong-account", pinned: place.workplace, actual: slug },
       );
     }
   }
 
-  function session(place: Place): Promise<void> {
+  async function oidcToken(
+    place: Place,
+    given: { identityId: string; audience: string | null },
+  ): Promise<string> {
+    const failed = (why: string, kind: "no-credentials" | "other" = "other") =>
+      new SignInFailed(`${account(place)}: sign-in failed: ${why}`, { kind });
+    const idToken =
+      options.idToken ??
+      (() => Promise.reject(new NoIdToken("keypin has no way to ask for an OIDC token here")));
+    let jwt: string;
+    try {
+      jwt = await idToken(given.audience);
+    } catch (error) {
+      throw error instanceof NoIdToken
+        ? failed(`${IDENTITY_ID} is set, but ${error.message}, ${ANOTHER_WAY}`, "no-credentials")
+        : failed(`couldn't get GitHub Actions' OIDC token: ${messageOf(error)}`);
+    }
+    secrets.push(jwt);
+    const login = await request("POST", "/v3/auth/oidc", {
+      body: { identity: given.identityId, token: jwt },
+    });
+    const token = login.body.token;
+    if (typeof token === "string" && token) secrets.push(token);
+    if (login.status !== 200 || typeof token !== "string" || !token) {
+      const audience = given.audience ?? "GitHub's default audience, https://github.com/<owner>";
+      throw failed(
+        `Doppler refused GitHub's OIDC token for the identity ${given.identityId} (${problem(login)}); keypin asked GitHub for a token for ${audience}, so check that the identity's aud claim lists it and that its sub claim matches this job`,
+      );
+    }
+    const expires =
+      typeof login.body.expires_at === "string" ? Date.parse(login.body.expires_at) : Number.NaN;
+    if (expires - Date.now() > LONGEST_TTL_MS)
+      warn(
+        `the Doppler identity ${given.identityId} gives out tokens that last more than an hour; set its token TTL to a few minutes`,
+      );
+    return token;
+  }
+
+  async function revoke(place: Place, token: string): Promise<void> {
+    let why: string | null;
+    try {
+      const response = await fetch(`${API}/v3/auth/revoke`, {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+        redirect: "error",
+        signal: AbortSignal.timeout(REVOKE_WAIT_MS),
+      });
+      why =
+        response.status === 200
+          ? null
+          : problem({ status: response.status, body: parseObject(await response.text()) });
+    } catch (error) {
+      why = messageOf(error);
+    }
+    if (why !== null)
+      warn(
+        `${account(place)}: couldn't revoke keypin's ${IDENTITY_TOKEN} (${hidden(why)}); it lasts until its TTL runs out`,
+      );
+  }
+
+  function session(place: Place): Promise<Session> {
     let pending = sessions.get(place.workplace);
     if (!pending) {
       pending = signIn(place);
@@ -110,15 +251,14 @@ export function dopplerBackend(
 
   function refused(scope: Scope, found: { status: number; body: Json }): string {
     const scoped =
-      found.status === 403 && token !== null && isServiceToken(token)
+      found.status === 403 && serviceToken
         ? `; a service token reads only the config it was made for, so use one made for ${scope.project}/${scope.config}, or a service account token`
         : "";
     return `${problem(found)}${scoped}`;
   }
 
   async function secretOf(ref: DopplerRef): Promise<{ raw: unknown; computed: unknown }> {
-    await session(ref);
-    const found = await request("GET", "/v3/configs/config/secret", {
+    const found = await signedIn(ref, "GET", "/v3/configs/config/secret", {
       query: { project: ref.project, config: ref.config, name: ref.name },
     });
     const value = isRecord(found.body.value) ? found.body.value : null;
@@ -128,8 +268,7 @@ export function dopplerBackend(
   }
 
   async function names(scope: Scope): Promise<string[]> {
-    await session(scope);
-    const found = await request("GET", "/v3/configs/config/secrets/names", {
+    const found = await signedIn(scope, "GET", "/v3/configs/config/secrets/names", {
       query: { project: scope.project, config: scope.config },
     });
     if (found.status !== 200 || !Array.isArray(found.body.names))
@@ -168,7 +307,7 @@ export function dopplerBackend(
       );
     const holders: string[] = [];
     for (const parent of await parentsOf(ref, fail)) {
-      const found = await request("GET", "/v3/configs/config/secrets/names", {
+      const found = await signedIn(ref, "GET", "/v3/configs/config/secrets/names", {
         query: { project: parent.project, config: parent.config },
       });
       if (found.status !== 200 || !Array.isArray(found.body.names))
@@ -189,14 +328,14 @@ export function dopplerBackend(
 
   function unknownSource(ref: DopplerRef, what: string, found: { status: number; body: Json }) {
     const scoped =
-      found.status === 403 && token !== null && isServiceToken(token)
+      found.status === 403 && serviceToken
         ? "; a service token reads only the config it was made for, so use a service account token or personal token that can read it"
         : "";
     return `${describeRef(ref)}: keypin can't read ${what}, so it can't tell whether the secret is inherited from another config: ${problem(found)}${scoped}`;
   }
 
   async function parentsOf(ref: DopplerRef, fail: (message: string) => Error): Promise<Scope[]> {
-    const found = await request("GET", "/v3/configs/config", {
+    const found = await signedIn(ref, "GET", "/v3/configs/config", {
       query: { project: ref.project, config: ref.config },
     });
     const config = isRecord(found.body.config) ? found.body.config : {};
@@ -220,7 +359,7 @@ export function dopplerBackend(
     fail: (message: string) => Error,
   ): Promise<Scope> {
     for (let page = 1; ; page++) {
-      const found = await request("GET", "/v3/configs", {
+      const found = await signedIn(ref, "GET", "/v3/configs", {
         query: { project: ref.project, environment, page: String(page), per_page: String(PAGE) },
       });
       const configs = Array.isArray(found.body.configs)
@@ -257,18 +396,19 @@ export function dopplerBackend(
           `${describeRef(ref)}: the secret already exists; keypin doesn't overwrite it`,
         );
       if (!options.newItem) await ownSecret(ref, (message) => new WriteRefused(message));
-      const written = await request("POST", "/v3/configs/config/secrets", {
-        body: { project: ref.project, config: ref.config, secrets: { [ref.name]: value.reveal() } },
+      const saved = value.reveal();
+      const written = await signedIn(ref, "POST", "/v3/configs/config/secrets", {
+        body: { project: ref.project, config: ref.config, secrets: { [ref.name]: saved } },
       });
       if (written.status >= 400 && written.status < 500) {
         const readOnly =
           written.status === 403
-            ? `; keypin needs a ${kind} with write access to ${ref.project}/${ref.config}${token !== null && isServiceToken(token) ? ", so make a service token with read/write access" : ""}`
+            ? `; keypin needs a ${kind} with write access to ${ref.project}/${ref.config}${serviceToken ? ", so make a service token with read/write access" : ""}`
             : "";
-        throw new WriteRefused(`${describeRef(ref)}: ${problem(written)}${readOnly}`);
+        throw new WriteRefused(`${describeRef(ref)}: ${problem(written, [saved])}${readOnly}`);
       }
       if (written.status !== 200 || !isRecord(written.body.secrets))
-        throw new Error(`${describeRef(ref)}: ${problem(written)}`);
+        throw new Error(`${describeRef(ref)}: ${problem(written, [saved])}`);
     },
 
     async checkWrite(given) {
@@ -288,6 +428,17 @@ export function dopplerBackend(
     async metadata(given) {
       await existing(own(given));
       return { rotated: null };
+    },
+
+    async close() {
+      const open = [...sessions.values()];
+      sessions.clear();
+      await Promise.all(
+        open.map(async (pending) => {
+          const current = await pending.catch(() => null);
+          if (current?.minted) await revoke(current.place, current.token);
+        }),
+      );
     },
   };
 }
@@ -340,7 +491,7 @@ function referenceTo(ref: DopplerRef, inner: string): string {
   return format({ ...ref, project, config, name });
 }
 
-function problem(response: { status: number; body: Json }): string {
+function said(response: { status: number; body: Json }): string {
   const { messages } = response.body;
   const said = Array.isArray(messages)
     ? messages.filter((message) => typeof message === "string").join("; ")

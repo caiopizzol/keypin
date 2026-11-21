@@ -47,7 +47,7 @@ import { credentialsFrom, infisicalBackend } from "@keypin/connectors/infisical"
 import { fileStore, infisicalFetch } from "@keypin/connectors/infisical/testing";
 import { accessTokenFrom, bitwardenBackend } from "@keypin/connectors/bitwarden";
 import { bitwardenFetch, fileStore as bitwardenStore } from "@keypin/connectors/bitwarden/testing";
-import { dopplerBackend, tokenFrom } from "@keypin/connectors/doppler";
+import { credentialsFrom as dopplerCredentials, dopplerBackend } from "@keypin/connectors/doppler";
 import { dopplerFetch, fileStore as dopplerStore } from "@keypin/connectors/doppler/testing";
 import { cli } from "../../src/cli";
 import { pairedKind } from "../paired";
@@ -302,7 +302,7 @@ const bitwarden = bitwardenBackend(
 );
 const DOPPLER = join(sandbox, "doppler.json");
 const doppler = dopplerBackend(
-  tokenFrom(process.env),
+  dopplerCredentials(process.env),
   dopplerFetch(
     run.doppler ?? { workplace: "", projects: {}, tokens: {} },
     dopplerStore(

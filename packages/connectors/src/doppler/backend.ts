@@ -1,5 +1,6 @@
 import {
   type Fetch,
+  hideSecrets,
   type IdToken,
   isRecord,
   type KeyRef,
@@ -96,16 +97,7 @@ export function dopplerBackend(
   const secrets = stored === null ? [] : [stored];
 
   function hidden(text: string, also: readonly string[] = []): string {
-    const forms = [
-      ...new Set(
-        [...secrets, ...also].flatMap((secret) => [secret, JSON.stringify(secret).slice(1, -1)]),
-      ),
-    ]
-      .filter(Boolean)
-      .sort((a, b) => b.length - a.length);
-    if (!forms.length) return text;
-    const pattern = forms.map((form) => form.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
-    return text.replace(new RegExp(pattern, "g"), "[hidden]");
+    return hideSecrets(text, [...secrets, ...also]);
   }
 
   function problem(response: { status: number; body: Json }, also: readonly string[] = []): string {

@@ -48,7 +48,7 @@ For `keypin status`, add a `rotated` entry to each secret's metadata with the da
 ## Pulling in GitHub Actions
 
 A GitHub Actions job can sign in to Infisical with OIDC and read a key itself, without a published copy or a client
-secret. List the job in the map with a [`pull`](configuration.md#pulling-in-ci) entry, then:
+secret. List the job in the map with a [`pull`](publishing.md#pulling-in-ci) entry, then:
 
 1. Create a machine identity with [OIDC Auth](https://infisical.com/docs/documentation/platform/identities/oidc-auth/github)
    instead of Universal Auth, and add it to the project with read access. Set the discovery URL and issuer to

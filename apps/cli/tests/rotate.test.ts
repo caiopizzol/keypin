@@ -659,7 +659,7 @@ describe("keypin rotate", () => {
     run.disk.contents.set("/work/billing/keypin.toml", MAP.replace(/\nissuer = .*\n/, "\n"));
     expect(await run.run()).toBe(1);
     expect(run.stderr.text).toContain(
-      'key "RESEND_API_KEY" prod has no issuer in /work/billing/keypin.toml, so keypin can\'t make a new key. Add one (see docs/configuration.md), or rotate it by hand.',
+      'key "RESEND_API_KEY" prod has no issuer in /work/billing/keypin.toml, so keypin can\'t make a new key. Add one (see docs/rotation.md), or rotate it by hand.',
     );
   });
 

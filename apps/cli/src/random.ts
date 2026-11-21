@@ -9,7 +9,7 @@ import {
 const BYTES = 32;
 const ENCODINGS = ["base64", "hex"] as const;
 type Encoding = (typeof ENCODINGS)[number];
-const DOCS = "docs/configuration.md#random";
+const DOCS = "docs/rotation.md#random";
 const BETTER_AUTH = ["BETTER_AUTH_SECRET", "BETTER_AUTH_SECRETS"];
 const BETTER_AUTH_DOCS = "https://better-auth.com/docs/reference/options#secrets";
 

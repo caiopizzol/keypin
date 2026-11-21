@@ -1527,7 +1527,7 @@ describe("keypin rotate in a real terminal", () => {
       const result = await drive({ scenario: "neon-one-role", args: ["rotate", "DATABASE_URL"] });
       expect(result.exit).toBe(1);
       expect(result.screen).toContain(
-        "    Neon branch br-main-a1b2c3d4 has no role app_b\n    fix: create app_b with SQL, in the same group role as the other (see docs/configuration.md#neon)",
+        "    Neon branch br-main-a1b2c3d4 has no role app_b\n    fix: create app_b with SQL, in the same group role as the other (see docs/rotation.md#neon)",
       );
       expect(result.effects).toEqual([]);
       clean(result);

@@ -2,7 +2,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
-import { BASELINE, baselineAt, mentions, problems, raised } from "./check-provider-literals";
+import { baselineAt } from "./baseline";
+import { BASELINE, mentions, problems } from "./check-provider-literals";
 
 const HOW =
   "Move the text into the provider's kind in packages/connectors (DestinationKind, IssuerKind or VaultKind). See docs/development.md#guardrails.";
@@ -43,7 +44,7 @@ describe("mentions", () => {
 describe("problems", () => {
   test("the current tree passes", () => {
     const repo = join(import.meta.dirname, "..");
-    expect(problems(repo, baselineAt(repo))).toEqual([]);
+    expect(problems(repo, baselineAt(repo, BASELINE))).toEqual([]);
   });
 
   test("a file at its baseline passes", () => {
@@ -103,27 +104,5 @@ describe("problems", () => {
     expect(problems(root, {})).toEqual([
       `apps/cli/src/commands/deep/where.ts: names a provider once (wrangler ×1). ${HOW}`,
     ]);
-  });
-});
-
-describe("raised", () => {
-  test("a count raised since the base branch fails", () => {
-    expect(
-      raised({ "apps/cli/src/commands/import.ts": 36 }, { "apps/cli/src/commands/import.ts": 37 }),
-    ).toEqual([`apps/cli/src/commands/import.ts: ${BASELINE} raises it to 37, from 36.`]);
-  });
-
-  test("a file added since the base branch fails", () => {
-    expect(raised({}, { "packages/core/src/vault.ts": 1 })).toEqual([
-      `packages/core/src/vault.ts: ${BASELINE} raises it to 1, from 0.`,
-    ]);
-  });
-
-  test("a lowered or unchanged count passes", () => {
-    expect(raised({ "a.ts": 3, "b.ts": 2 }, { "a.ts": 3, "b.ts": 1 })).toEqual([]);
-  });
-
-  test("a base branch without a baseline passes, so the first one can land", () => {
-    expect(raised(null, { "a.ts": 3 })).toEqual([]);
   });
 });

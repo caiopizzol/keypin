@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { baselineAt, raisedSinceBase } from "./baseline";
+import { baselineAt, raisedSinceBase, raisedTotal } from "./baseline";
 
 const SHARED = ["packages/core/src", "apps/cli/src"];
 const COMPOSITION = new Set(["apps/cli/src/start.ts", "apps/cli/src/sign-in.ts"]);
@@ -66,17 +66,17 @@ export function problems(root: string, baseline: Record<string, number>): string
 }
 
 if (import.meta.main) {
-  const up = raisedSinceBase(".", BASELINE);
+  const up = raisedSinceBase(".", BASELINE, raisedTotal);
   if (up.length > 0) {
     process.stderr.write(
-      `The counts in ${BASELINE} only go down, so a change can't raise them.\n${up.join("\n")}\n${HOW}\n`,
+      `The total in ${BASELINE} only goes down, so a change can't raise it. Moving code may move its count to another file.\n${up.join("\n")}\n${HOW}\n`,
     );
     process.exitCode = 1;
   }
   const found = problems(".", baselineAt(".", BASELINE));
   if (found.length > 0) {
     process.stderr.write(
-      `Core and the CLI outside start.ts and sign-in.ts name no provider; the counts in ${BASELINE} only go down.\n${found.join("\n")}\n`,
+      `Core and the CLI outside start.ts and sign-in.ts name no provider. Each entry in ${BASELINE} matches its file. If you moved code, move its count to the new file; the total only goes down.\n${found.join("\n")}\n`,
     );
     process.exitCode = 1;
   }

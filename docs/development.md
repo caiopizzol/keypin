@@ -46,7 +46,8 @@ bun run typecheck  # tsc in every package
   the shared contract in `tests/<provider>/contract.test.ts` (`scripts/check-connectors.ts`), so each connector
   behaves the same way.
 - Core and `apps/cli/src` outside `start.ts` and `sign-in.ts` name no provider, such as `1Password` or `op://`. Put
-  that text in the provider's kind. `scripts/provider-literals.json` lists today's counts, which may only go down.
+  that text in the provider's kind. `scripts/provider-literals.json` lists today's counts. Their total may only go
+  down, and code you move takes its count along.
 - A `.ts` file in a package's `src` has at most 400 lines. When one grows past that, split it into a folder with one
   file per job, like `apps/cli/src/commands/rotate/`. `scripts/file-sizes.json` lists today's larger files, which may
   only shrink.

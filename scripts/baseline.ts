@@ -22,12 +22,21 @@ export function raised(before: Counts | null, after: Counts, file: string): stri
     .map(([path, n]) => `${path}: ${file} raises it to ${n}, from ${before[path] ?? 0}.`);
 }
 
+const sum = (counts: Counts) => Object.values(counts).reduce((total, n) => total + n, 0);
+
+export function raisedTotal(before: Counts | null, after: Counts, file: string): string[] {
+  if (before === null || sum(after) <= sum(before)) return [];
+  return [`${file} raises the total to ${sum(after)}, from ${sum(before)}.`];
+}
+
+type Compare = typeof raised;
+
 function git(...args: string[]): string | null {
   const result = Bun.spawnSync(["git", ...args], { stderr: "ignore" });
   return result.exitCode === 0 ? result.stdout.toString() : null;
 }
 
-export function raisedSinceBase(root: string, file: string): string[] {
+export function raisedSinceBase(root: string, file: string, compare: Compare = raised): string[] {
   const target = `origin/${process.env.GITHUB_BASE_REF || "main"}`;
   const base = git("-C", root, "merge-base", "HEAD", target)?.trim() || null;
   if (base === null && process.env.GITHUB_BASE_REF) {
@@ -36,5 +45,5 @@ export function raisedSinceBase(root: string, file: string): string[] {
     return [];
   }
   const text = base === null ? null : git("-C", root, "show", `${base}:${file}`);
-  return raised(text === null ? null : parse(text), baselineAt(root, file), file);
+  return compare(text === null ? null : parse(text), baselineAt(root, file), file);
 }

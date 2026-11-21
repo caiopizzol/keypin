@@ -8,16 +8,12 @@ import {
   parseObject,
   type Secret,
 } from "@keypin/core";
+import { refusedName } from "./rules";
 import { TOKEN_VARIABLE, TOKENS_PAGE } from "./token";
 
 const API = "https://api.machines.dev/v1";
 export const STAGED =
   "Fly.io stages the new value; Machines use it only after fly secrets deploy or the app's next deploy, which keypin doesn't run";
-export const NAME = /^[A-Za-z0-9_]+$/;
-
-export function refusedName(name: string): string | undefined {
-  return NAME.test(name) ? undefined : "Fly.io names use only letters, digits and _";
-}
 
 export interface FlySecretsOptions {
   app: string;

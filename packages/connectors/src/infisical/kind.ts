@@ -9,17 +9,8 @@ import {
   NO_CREDENTIALS,
   NO_JOB_TOKEN,
 } from "./backend";
-import {
-  account,
-  decode,
-  format,
-  type InfisicalPin,
-  type InfisicalRef,
-  type InfisicalReference,
-  parse,
-  readPin,
-  SCHEME,
-} from "./reference";
+import { type InfisicalPin, type InfisicalRef, type InfisicalReference, SCHEME } from "./reference";
+import { infisicalVaultRules } from "./rules";
 
 export interface InfisicalHost {
   readonly env: Readonly<Record<string, string | undefined>>;
@@ -58,27 +49,12 @@ export const infisicalVault: VaultKind<
   InfisicalReference,
   InfisicalPin
 > = {
-  kind: "infisical",
-  name: "Infisical",
-  scheme: SCHEME,
-  placeholder: "the project's slug, the environment's slug, and the secret's name",
-  needsPin: `needs your Infisical organization: add [infisical] with organization = "..."`,
-  readPin,
-  parse,
-  pinned: (reference, pin) => ({ ...reference, ...pin }),
-  format,
-  account,
-  sameItem: (a, b) =>
-    a.project === b.project &&
-    a.environment === b.environment &&
-    a.path === b.path &&
-    a.name === b.name,
-  stored: decode,
-  signInVariables: [CLIENT_ID, CLIENT_SECRET, ...ACCESS_TOKENS, IDENTITY_ID, AUDIENCE],
-  oidcVariables: [IDENTITY_ID],
+  ...infisicalVaultRules,
   newValueByHand: "Put a new value in the Infisical secret and set its rotated metadata to today",
   addRotatedDate:
     "Add rotated to the Infisical secret's metadata, with the day the value last changed as YYYY-MM-DD.",
+  signInVariables: [CLIENT_ID, CLIENT_SECRET, ...ACCESS_TOKENS, IDENTITY_ID, AUDIENCE],
+  oidcVariables: [IDENTITY_ID],
   holdsWrites: true,
   addByHand: (map) => {
     const refs = map.keys.flatMap((key) =>

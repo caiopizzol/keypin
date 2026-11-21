@@ -10,17 +10,12 @@ import {
   SECRET_KEY,
 } from "./credentials";
 import {
-  account,
-  decode,
-  format,
-  parse,
-  readPin,
   SCHEME,
   type SecretsManagerPin,
   type SecretsManagerRef,
   type SecretsManagerReference,
 } from "./reference";
-import { awsIssuerRules, type AwsSpec } from "./rules";
+import { awsIssuerRules, type AwsSpec, secretsManagerVaultRules } from "./rules";
 import { ROTATED_TAG } from "./secrets-manager";
 
 export const awsIssuer: IssuerKind<AwsSpec> = {
@@ -41,23 +36,11 @@ export const secretsManagerVault: VaultKind<
   SecretsManagerReference,
   SecretsManagerPin
 > = {
-  kind: "awssm",
-  name: "AWS Secrets Manager",
-  scheme: SCHEME,
-  placeholder: "the secret's region and name",
-  needsPin: `needs your AWS account: add [awssm] with account = "..."`,
-  readPin,
-  parse,
-  pinned: (reference, pin) => ({ ...reference, ...pin }),
-  format,
-  account,
-  sameItem: (a, b) => a.region === b.region && a.name === b.name,
-  sameField: (a, b) => a.field === b.field,
-  stored: decode,
-  signInVariables: [ROLE_ARN, AUDIENCE],
-  oidcVariables: [ROLE_ARN],
+  ...secretsManagerVaultRules,
   newValueByHand: "Put a new value in the AWS secret",
   addRotatedDate: `Tag the AWS secret with ${ROTATED_TAG}<JSON key>, set to the day that key last changed as YYYY-MM-DD (${DOCS}).`,
+  signInVariables: [ROLE_ARN, AUDIENCE],
+  oidcVariables: [ROLE_ARN],
   addByHand: (map) => {
     const refs = map.keys.flatMap((key) =>
       Object.values(key.environments).flatMap((entry) => (entry ? [entry.ref] : [])),

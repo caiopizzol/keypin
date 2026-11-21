@@ -1,82 +1,31 @@
-import { basename, join, resolve } from "node:path";
-import { parseArgs } from "node:util";
+import { basename, resolve } from "node:path";
 import {
   DEFAULT_ENVIRONMENTS,
-  type Environment,
   envFileKind,
   envFlag,
   envValues,
-  formatReference,
-  isEnvironmentName,
   isVariableName,
-  type KeyRef,
-  type KeysMap,
   localDay,
   messageOf,
   parseMap,
   runEnvironment,
   type Secret,
-  type VaultKinds,
-  vaultAccounts,
 } from "@keypin/core";
-import { type Deps, UsageError } from "../deps";
-import { MAP_FILE } from "../project";
-import { count, type Output, output } from "../output";
-import { confirmed, NEEDS_APPROVAL } from "../approval";
-import { approval } from "../sign-in";
-import { registerProject, TEMPLATE } from "./init";
-
-const ROTATE_EVERY = "90d";
-
-function draftItemName(project: string, environment: Environment, name: string): string {
-  const folder = project.replace(/[^A-Za-z0-9 ._-]/g, "-");
-  return `${folder} ${environment} ${name.toLowerCase().replaceAll("_", " ").trim()}`;
-}
-
-type OnePasswordRef = {
-  kind: "1password";
-  account: string;
-  vault: string;
-  item: string;
-  section: null;
-  field: string;
-};
-
-interface Request {
-  envFile: string;
-  names: string[];
-  vault: string;
-  account: string | undefined;
-  env: string | undefined;
-  yes: boolean;
-  args: string[];
-}
-
-interface Import {
-  name: string;
-  ref: OnePasswordRef;
-  value: Secret;
-  existing: boolean;
-}
-
-type Entry = Pick<Import, "name" | "ref" | "existing">;
-
-interface Skip {
-  name: string;
-  reason: string;
-  onlyInFile: boolean;
-  exists?: boolean;
-  mapped?: { ref: KeyRef; value: Secret };
-  mappedEmpty?: boolean;
-}
-
-interface Target {
-  file: string;
-  found: string | null;
-  map: KeysMap | null;
-  account: string;
-  vaults: VaultKinds;
-}
+import { type Deps, UsageError } from "../../deps";
+import { count, output } from "../../output";
+import { confirmed, NEEDS_APPROVAL } from "../../approval";
+import { approval } from "../../sign-in";
+import { registerProject } from "../init";
+import { parseRequest } from "./request";
+import { draftItemName, type Import, type Skip, refFor, planRows, compareMapped } from "./plan";
+import {
+  readTarget,
+  chosenEnvironment,
+  extendsKey,
+  mapAddition,
+  mapText,
+  writeMap,
+} from "./target";
 
 const DOLLAR = "the value has a $, which some loaders expand to another variable's value";
 
@@ -343,77 +292,6 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
   return failed.length || existed ? 1 : 0;
 }
 
-function planRows(
-  imports: readonly Import[],
-  stored: readonly Import[],
-  skips: readonly Skip[],
-  today: string,
-  out: Output,
-  vaults: VaultKinds,
-): string[] {
-  const width = Math.max(0, ...[...imports, ...stored, ...skips].map((row) => row.name.length));
-  const refs = [...imports, ...stored].map((entry) => formatReference(entry.ref, vaults));
-  const refWidth = Math.max(0, ...refs.map((ref) => ref.length));
-  const planned = (mark: string, entry: Import, why: string) =>
-    `${mark} ${entry.name.padEnd(width)}  ${formatReference(entry.ref, vaults).padEnd(refWidth)}  ${why}`;
-  return [
-    ...imports.map((entry) => planned("+", entry, `create, rotated ${today}`)),
-    ...(imports.length ? [] : [out.dim("nothing to create")]),
-    ...stored.map((entry) => planned("=", entry, "exists with the same value; map it")),
-    ...skips.map((skip) => {
-      const text = `- ${skip.name.padEnd(width)}  skipped: ${skip.reason}`;
-      return skip.exists ? text : out.dim(text);
-    }),
-  ];
-}
-
-async function compareMapped(deps: Deps, out: Output, skips: readonly Skip[]): Promise<Skip[]> {
-  const refs = skips.flatMap((skip) => (skip.mapped ? [skip.mapped.ref] : []));
-  if (!refs.length) return [...skips];
-  const values = `${count(refs.length, "mapped value")} from ${vaultAccounts(refs, deps.vaults)}, to compare with the file`;
-  const { compared } = await out.step(
-    `Reading ${count(refs.length, "mapped value")}`,
-    () => compareEach(deps, skips),
-    ({ unread }) => ({
-      ok: !unread,
-      text: `Read ${values}  ${out.dim(refs.map((ref) => formatReference(ref, deps.vaults)).join(", "))}`,
-    }),
-    approval(deps, refs),
-  );
-  return compared;
-}
-
-async function compareEach(
-  deps: Deps,
-  skips: readonly Skip[],
-): Promise<{ compared: Skip[]; unread: number }> {
-  const compared: Skip[] = [];
-  let unread = 0;
-  for (const skip of skips) {
-    if (!skip.mapped) {
-      compared.push(skip);
-      continue;
-    }
-    const { ref, value } = skip.mapped;
-    try {
-      const same = (await deps.vault().read(ref)).equals(value);
-      compared.push({
-        ...skip,
-        reason: `${skip.reason}, and it ${same ? "matches" : "differs from"} the vault`,
-        onlyInFile: !same,
-      });
-    } catch (error) {
-      unread++;
-      compared.push({
-        ...skip,
-        reason: `${skip.reason}, and ${formatReference(ref, deps.vaults)} couldn't be read to compare: ${messageOf(error)}`,
-        onlyInFile: true,
-      });
-    }
-  }
-  return { compared, unread };
-}
-
 function selected(
   file: Map<string, Secret>,
   wanted: readonly string[],
@@ -428,176 +306,4 @@ function selected(
 
 function names(list: readonly string[]): string {
   return list.length ? list.join(", ") : "none";
-}
-
-function parseRequest(args: string[]): Request {
-  const { values, positionals } = parseArgs({
-    args,
-    options: {
-      vault: { type: "string" },
-      account: { type: "string" },
-      env: { type: "string" },
-      yes: { type: "boolean", default: false },
-    },
-    allowPositionals: true,
-  });
-  const [envFile, ...names] = positionals;
-  if (envFile === undefined)
-    throw new UsageError("keypin import takes an env file, such as .env or .dev.vars");
-  const vault = values.vault?.trim();
-  if (!vault)
-    throw new UsageError("--vault is required: the 1Password vault to create the items in");
-  if (vault.includes("/")) throw new UsageError("--vault is a vault name, without /");
-  const account = values.account?.trim();
-  if (values.account !== undefined && !account)
-    throw new UsageError("--account is your 1Password sign-in address, such as my.1password.com");
-  return {
-    envFile,
-    names: [...new Set(names)],
-    vault,
-    account,
-    env: values.env,
-    yes: values.yes,
-    args,
-  };
-}
-
-function chosenEnvironment(
-  requested: string | undefined,
-  environments: readonly Environment[],
-  runs: Environment,
-  target: Target,
-): Environment {
-  if (requested === undefined || environments.includes(requested)) return requested ?? runs;
-  if (!isEnvironmentName(requested))
-    throw new UsageError(
-      `--env is an environment name: a lowercase letter, then lowercase letters, digits and dashes`,
-    );
-  const last = environments.at(-1);
-  const listed =
-    environments.length > 1 && last !== undefined
-      ? [...environments.slice(0, -1), requested, last]
-      : [...environments, requested];
-  const known = environments.map((name) => `"${name}"`).join(", ");
-  const line = `environments = [${listed.map(str).join(", ")}]`;
-  throw new UsageError(
-    `--env ${requested} isn't ${target.map ? `one of ${target.file}'s environments` : "a default environment"} (${known}). To add it, ${target.found === null ? `create ${target.file} with the line ${line}` : `put ${line} at the top of ${target.file}`}`,
-  );
-}
-
-async function readTarget(deps: Deps, request: Request): Promise<Target> {
-  const file = join(deps.cwd, MAP_FILE);
-  const found = await deps.files.read(file);
-  if (found === null || found === TEMPLATE) {
-    if (!request.account)
-      throw new UsageError(
-        `--account is required: ${file} doesn't name a 1Password account yet, so give its sign-in address, such as my.1password.com`,
-      );
-    return { file, found, map: null, account: request.account, vaults: deps.vaults };
-  }
-  const parsed = parseMap(found, file, deps.destinations, deps.issuers, deps.vaults, deps.pulls);
-  if (!parsed.ok) throw new Error(`fix ${file} first: ${parsed.errors.join("; ")}`);
-  const pinned = parsed.map.pins["1password"];
-  const account = typeof pinned === "string" ? pinned : request.account;
-  const other = deps.vaults.find(
-    (vault) => !vault.newKeys && parsed.map.pins[vault.kind] !== undefined,
-  );
-  if (pinned === undefined && other)
-    throw new Error(
-      `import creates 1Password items, and ${file} reads from ${other.name}; ${other.addByHand?.(parsed.map) ?? `add the secrets in ${other.name} and map them with ${other.scheme} references`}`,
-    );
-  if (!account)
-    throw new UsageError(
-      `--account is required: ${file} has no [1password] account, so give its sign-in address, such as my.1password.com`,
-    );
-  if (request.account && request.account !== account)
-    throw new UsageError(
-      `${file} uses 1Password account ${account}, not ${request.account}; drop --account`,
-    );
-  return { file, found, map: parsed.map, account, vaults: deps.vaults };
-}
-
-function extendsKey(
-  deps: Deps,
-  target: Target,
-  {
-    name,
-    vault,
-    item,
-    environment,
-  }: { name: string; vault: string; item: string; environment: string },
-): boolean {
-  const entry: Entry = { name, ref: refFor(target.account, vault, item), existing: true };
-  return parseMap(
-    mapText(target, [entry], environment),
-    target.file,
-    deps.destinations,
-    deps.issuers,
-    deps.vaults,
-    deps.pulls,
-  ).ok;
-}
-
-function refFor(account: string, vault: string, item: string): OnePasswordRef {
-  return { kind: "1password", account, vault, item, section: null, field: "password" };
-}
-
-function keyTables(target: Target, imports: readonly Entry[], environment: string): string {
-  const runs = runEnvironment(target.map ?? { environments: DEFAULT_ENVIRONMENTS });
-  return imports
-    .map(({ name, ref, existing }) => {
-      const key = `\n[keys.${name}]\nrotate_every = ${str(ROTATE_EVERY)}\n`;
-      const from = str(formatReference(ref, target.vaults));
-      if (!existing && environment === runs) return `${key}${environment} = ${from}\n`;
-      return `${existing ? "" : key}\n[keys.${name}.${environment}]\nfrom = ${from}\n`;
-    })
-    .join("");
-}
-
-function mapBase(target: Target): string {
-  if (!target.map || target.found === null) return "";
-  return target.found.endsWith("\n") || !target.found ? target.found : `${target.found}\n`;
-}
-
-function mapAddition(target: Target, imports: readonly Entry[], environment: string): string {
-  const account = `[1password]\naccount = ${str(target.account)}\n`;
-  const tables = keyTables(target, imports, environment);
-  if (!target.map)
-    return `# Written by keypin import. The values are in 1Password; this file holds only references.\n\n${account}${tables}`;
-  return `${target.map.pins["1password"] ? "" : `\n${account}`}${tables}`;
-}
-
-function mapText(target: Target, imports: readonly Entry[], environment: string): string {
-  return `${mapBase(target)}${mapAddition(target, imports, environment)}`;
-}
-
-async function writeMap(
-  deps: Deps,
-  target: Target,
-  imports: readonly Import[],
-  environment: string,
-): Promise<void> {
-  const text = mapText(target, imports, environment);
-  const check = parseMap(
-    text,
-    target.file,
-    deps.destinations,
-    deps.issuers,
-    deps.vaults,
-    deps.pulls,
-  );
-  if (!check.ok)
-    throw new Error(`the new ${target.file} doesn't parse: ${check.errors.join("; ")}`);
-  const result =
-    target.found === null
-      ? await deps.createFile(target.file, text)
-      : await deps.replaceFile(target.file, target.found, text);
-  if (result === "link")
-    throw new Error(`${target.file} is a symbolic link; keypin import doesn't follow one`);
-  if (result === "exists" || result === "changed")
-    throw new Error(`${target.file} changed while import ran, so it wasn't written`);
-}
-
-function str(value: string): string {
-  return JSON.stringify(value);
 }

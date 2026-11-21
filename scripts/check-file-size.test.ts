@@ -2,11 +2,10 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
-import { baselineAt } from "./baseline";
-import { BASELINE, LIMIT, lineCount, problems, sizes } from "./check-file-size";
+import { BASELINE, exceptionsAt, LIMIT, lineCount, problems, sizes } from "./check-file-size";
 
-const HOW =
-  "Split it into a folder with one file per job, like apps/cli/src/commands/rotate/. See docs/development.md#guardrails.";
+const HOW = `Split it into a folder with one file per job, like apps/cli/src/commands/rotate/. If it is one job that doesn't split cleanly, add it to ${BASELINE} with its line count and why. See docs/development.md#guardrails.`;
+const WHY = "one closure over shared state";
 
 let root = "";
 const put = (path: string, lines: number) => {
@@ -31,7 +30,7 @@ describe("lineCount", () => {
 describe("problems", () => {
   test("the current tree passes", () => {
     const repo = join(import.meta.dirname, "..");
-    expect(problems(repo, baselineAt(repo, BASELINE))).toEqual([]);
+    expect(problems(repo, exceptionsAt(repo))).toEqual([]);
   });
 
   test("a new file at the limit passes", () => {
@@ -50,31 +49,53 @@ describe("problems", () => {
 
   test("a listed file at its size passes", () => {
     put("packages/core/src/map.ts", 700);
-    expect(problems(root, { "packages/core/src/map.ts": 700 })).toEqual([]);
+    expect(problems(root, { "packages/core/src/map.ts": { lines: 700, why: WHY } })).toEqual([]);
   });
 
-  test("a listed file that grows fails", () => {
+  test("a listed file may grow or shrink if its entry follows", () => {
     put("packages/core/src/map.ts", 701);
-    expect(problems(root, { "packages/core/src/map.ts": 700 })).toEqual([
-      `packages/core/src/map.ts: 701 lines, more than the 700 in ${BASELINE}. ${HOW}`,
+    put("packages/core/src/gaps.ts", 650);
+    expect(
+      problems(root, {
+        "packages/core/src/gaps.ts": { lines: 700, why: WHY },
+        "packages/core/src/map.ts": { lines: 700, why: WHY },
+      }),
+    ).toEqual([
+      `packages/core/src/gaps.ts: 650 lines now, not the 700 in ${BASELINE}. Set "lines" to 650.`,
+      `packages/core/src/map.ts: 701 lines now, not the 700 in ${BASELINE}. Set "lines" to 701.`,
     ]);
   });
 
-  test("a listed file that shrinks must lower its entry", () => {
-    put("packages/core/src/map.ts", 650);
-    expect(problems(root, { "packages/core/src/map.ts": 700 })).toEqual([
-      `packages/core/src/map.ts: 650 lines now, fewer than the 700 in ${BASELINE}. Lower it to 650 so it stays there.`,
+  test("a listed file needs a why", () => {
+    put("packages/core/src/map.ts", 700);
+    expect(problems(root, { "packages/core/src/map.ts": { lines: 700, why: "" } })).toEqual([
+      `packages/core/src/map.ts: its entry in ${BASELINE} has no "why". Say why it stays one file, or split it.`,
     ]);
   });
 
   test("a listed file back under the limit, or deleted, must leave the list", () => {
     put("packages/core/src/map.ts", LIMIT);
     expect(
-      problems(root, { "packages/core/src/map.ts": 700, "apps/cli/src/gone.ts": 500 }),
+      problems(root, {
+        "packages/core/src/map.ts": { lines: 700, why: WHY },
+        "apps/cli/src/gone.ts": { lines: 500, why: WHY },
+      }),
     ).toEqual([
       `apps/cli/src/gone.ts: ${LIMIT} lines or fewer now. Remove its entry from ${BASELINE}.`,
       `packages/core/src/map.ts: ${LIMIT} lines or fewer now. Remove its entry from ${BASELINE}.`,
     ]);
+  });
+
+  test("entries are read with their size and why", () => {
+    mkdirSync(join(root, "scripts"));
+    writeFileSync(
+      join(root, BASELINE),
+      JSON.stringify({ "a.ts": { lines: 401, why: " one job " }, "b.ts": 402 }),
+    );
+    expect(exceptionsAt(root)).toEqual({
+      "a.ts": { lines: 401, why: "one job" },
+      "b.ts": { lines: 0, why: "" },
+    });
   });
 
   test("tests, scripts and other files aren't counted", () => {

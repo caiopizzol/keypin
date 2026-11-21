@@ -1,5 +1,4 @@
 {
-  "apps/cli/src/commands/rotate/rotate-key.ts": 460,
   "packages/connectors/src/aws/secrets-manager.ts": 418,
   "packages/connectors/src/aws/testing.ts": 515,
   "packages/connectors/src/bitwarden/backend.ts": 405,

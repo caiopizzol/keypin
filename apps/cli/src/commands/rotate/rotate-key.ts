@@ -3,31 +3,22 @@ import {
   restoreReceipts,
   waitsForRevoke,
   approvalsFor,
-  destinationId,
-  envFlag,
   formatReference,
   generationOf,
   type Issued,
   issuedFor,
-  type IssuerSpec,
   type ItemIds,
   type KeyEntry,
   keyIdText,
-  type NextRotation,
   loadState,
   messageOf,
-  ownedBy,
-  placeId,
   nextRotation,
   planNewValue,
   type PlanInput,
   planPublish,
-  type PlanStep,
-  publishEnvironment,
   recordIssued,
   saveState,
   Secret,
-  type State,
   vaultAccount,
   vaultName,
   vaultKindOf,
@@ -39,7 +30,7 @@ import {
   planOnly,
   unattendedApproval,
 } from "../../approval";
-import { type Checked, checkAccounts, lookUpIds, showPlan, showRemoved } from "../../publishing";
+import { checkAccounts, lookUpIds, showPlan, showRemoved } from "../../publishing";
 import { type Job, type Ready, withoutDiscard, terminalArgs } from "./job";
 import { resume, publishThenRevoke } from "./finish";
 import {
@@ -69,32 +60,9 @@ import {
   heldSteps,
   resetStop,
 } from "./messages";
-
-async function routineWrites(
-  job: Job,
-  approvals: (ids: readonly (ItemIds | null)[]) => readonly { approval: string }[],
-  looked: ItemIds[] | undefined,
-): Promise<boolean> {
-  const { key, entry, pair, owner, map, deps, out } = job;
-  let ids = looked;
-  if (ids === undefined || pair) {
-    try {
-      ids = await lookUpIds(pair ? [entry.ref, pair.entry.ref] : [entry.ref], deps, out);
-    } catch (error) {
-      out.line(`Couldn't find the item: ${messageOf(error)}.`);
-      return false;
-    }
-  }
-  const needed = approvals(ids);
-  if (!needed.length) return true;
-  out.line("Needs approval:");
-  for (const { approval: what } of needed) out.line(`  ${what}`);
-  const env = envFlag(owner.environment, publishEnvironment(map));
-  out.line(
-    `A scheduled run would stop here. Publish ${key.name} from your laptop (keypin publish ${key.name}${env}), run keypin rotate --due${env} there, and commit .keypin/.`,
-  );
-  return false;
-}
+import { routineWrites } from "./routine-check";
+import { revokeOnly, resetHeld, neverSaved } from "./unfinished-rotation";
+import { pairChecks } from "./pair-checks";
 
 export async function rotateLocked(job: Job): Promise<number> {
   const { key, entry, spec, owner, deps, out } = job;
@@ -413,48 +381,4 @@ export async function rotateLocked(job: Job): Promise<number> {
     { steps, pairSteps, idSaved: true },
     state,
   );
-}
-
-function revokeOnly(next: NextRotation, steps: readonly PlanStep[], idSaved: boolean): boolean {
-  return (
-    next.action === "resume" &&
-    waitsForRevoke(next.issued) &&
-    !next.issued.held &&
-    idSaved &&
-    steps.every((step) => step.action === "skip")
-  );
-}
-
-function resetHeld(
-  issuer: { createResetsOld?: boolean },
-  spec: IssuerSpec,
-  abandoned: Issued | null,
-  generation: string,
-): Issued | null {
-  return issuer.createResetsOld &&
-    abandoned?.issuer === spec.kind &&
-    abandoned.old.generation === generation
-    ? abandoned
-    : null;
-}
-
-function neverSaved(abandoned: Issued, spec: IssuerSpec, generation: string, state: State) {
-  return (
-    abandoned.issuer === spec.kind &&
-    abandoned.old.generation === generation &&
-    !state.receipts.some((r) => ownedBy(r, abandoned) && r.generation === abandoned.generation)
-  );
-}
-
-function pairChecks({ pair, deps }: Job, checked: Map<string, Checked>): Map<string, Checked> {
-  const found = new Map<string, Checked>();
-  if (!pair) return found;
-  const kinds = deps.destinations;
-  for (const target of pair.entry.publish) {
-    const same = [...checked.values()].find(
-      (c) => placeId(c.target, kinds) === placeId(target, kinds),
-    );
-    if (same) found.set(destinationId(target, pair.key.name, kinds), same);
-  }
-  return found;
 }

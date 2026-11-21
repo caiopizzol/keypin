@@ -6,7 +6,5 @@
   "packages/connectors/src/elevenlabs/elevenlabs.ts": 442,
   "packages/connectors/src/google/testing.ts": 401,
   "packages/connectors/src/infisical/backend.ts": 577,
-  "packages/connectors/src/neon/neon.ts": 437,
-  "packages/connectors/src/openrouter/openrouter.ts": 463,
-  "packages/connectors/src/xai/xai.ts": 528
+  "packages/connectors/src/neon/neon.ts": 437
 }

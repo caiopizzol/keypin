@@ -8,54 +8,16 @@ import {
   parseObject,
   Secret,
 } from "@keypin/core";
-
-const API = "https://api.x.ai";
-const MANAGEMENT = "https://management-api.x.ai";
-const DASHBOARD = "https://console.x.ai/team/default/api-keys";
-const MANAGEMENT_KEYS = "https://console.x.ai/team/default/management-keys";
-const PAGE = 100;
-const PAGES = 100;
-const POLL_MS = 2000;
-const POLLS = 30;
-const DAY = 86_400_000;
+import { API, DASHBOARD, MANAGEMENT, MANAGEMENT_KEYS, PAGE, PAGES, POLL_MS, POLLS } from "./api";
+import { type Copy, copies, plural, timestamp } from "./copy";
+import { idOf, type Listed, listed, parseId, text, type VaultKey } from "./keys";
+import { failure, type Reply, refused } from "./reply";
 
 export interface XaiIssuerOptions {
   admin: () => Promise<Secret>;
   fetch?: Fetch;
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
-}
-
-interface Reply {
-  status: number;
-  body: Record<string, unknown>;
-}
-
-interface Listed {
-  id: string;
-  name: string;
-  disabled: boolean;
-  acls: string[];
-  qps: number | null;
-  qpm: number | null;
-  tpm: string | null;
-  createTime: string | null;
-  expireTime: string | null;
-}
-
-interface Copy {
-  team: string;
-  acls: string[];
-  qps: number | null;
-  qpm: number | null;
-  tpm: string | null;
-  lifetime: number | null;
-}
-
-interface VaultKey {
-  id: string;
-  team: string;
-  off: string | null;
 }
 
 export class XaiIssuer implements Issuer {
@@ -434,95 +396,4 @@ export class XaiIssuer implements Issuer {
     });
     return { status: response.status, body: parseObject(await response.text()) };
   }
-}
-
-function refused(reply: Reply, team: string): IssuerCheck {
-  const facts = `xAI answered HTTP ${reply.status}`;
-  const fix = `use a management key from team ${team} that can list, create and delete API keys; create one at ${MANAGEMENT_KEYS}`;
-  if (reply.status === 400 || reply.status === 401)
-    return { ok: false, facts, reason: "xAI doesn't accept the management key", fix };
-  if (reply.status === 403)
-    return {
-      ok: false,
-      facts,
-      reason: `the management key can't list the API keys of team ${team}: it's for another team or organization, or lacks that permission`,
-      fix,
-    };
-  if (reply.status === 404)
-    return {
-      ok: false,
-      facts,
-      reason: `the management key's organization has no team ${team}`,
-      fix,
-    };
-  throw failure("GET", "/auth/teams/<team_id>/api-keys", reply);
-}
-
-const idOf = (team: string, key: string) => `${team}/${key}`;
-
-function parseId(id: string): { team: string; key: string } | null {
-  const at = id.indexOf("/");
-  if (at <= 0 || at === id.length - 1 || id.indexOf("/", at + 1) !== -1) return null;
-  return { team: id.slice(0, at), key: id.slice(at + 1) };
-}
-
-function listed(item: unknown): Listed[] {
-  if (!isRecord(item)) return [];
-  const id = text(item, "apiKeyId");
-  if (!id) return [];
-  const acls = item.aclStrings ?? item.acl_strings;
-  return [
-    {
-      id,
-      name: text(item, "name") ?? "",
-      disabled: item.disabled === true || item.disabled === "true",
-      acls: Array.isArray(acls) ? acls.filter((acl): acl is string => typeof acl === "string") : [],
-      qps: count(item.qps),
-      qpm: count(item.qpm),
-      tpm: count(item.tpm) === null ? null : String(count(item.tpm)),
-      createTime: text(item, "createTime"),
-      expireTime: text(item, "expireTime"),
-    },
-  ];
-}
-
-function count(value: unknown): number | null {
-  const n = typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value;
-  return typeof n === "number" && Number.isInteger(n) && n > 0 ? n : null;
-}
-
-function text(record: Record<string, unknown>, field: string): string | null {
-  const value = record[field];
-  return typeof value === "string" && value ? value : null;
-}
-
-function copies(copy: Copy): string {
-  const acls = copy.acls.length ? `ACLs ${copy.acls.join(", ")}` : "no ACLs";
-  const limits = [
-    ...(copy.qps === null ? [] : [`${copy.qps} requests a second`]),
-    ...(copy.qpm === null ? [] : [`${copy.qpm} requests a minute`]),
-    ...(copy.tpm === null ? [] : [`${copy.tpm} tokens a minute`]),
-  ];
-  const expires =
-    copy.lifetime === null
-      ? "no expiry"
-      : `expiring ${plural(Math.ceil(copy.lifetime / DAY), "day")} after it's made`;
-  return `with ${acls}; ${limits.length ? limits.join(", ") : "no rate limits"}; ${expires}`;
-}
-
-function plural(n: number, word: string): string {
-  return `${n} ${word}${n === 1 ? "" : "s"}`;
-}
-
-function timestamp(ms: number): string {
-  return new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
-}
-
-function failure(
-  method: string,
-  path: string,
-  reply: Reply,
-  type: new (message: string) => Error = Error,
-): Error {
-  return new type(`xAI ${method} ${path} returned HTTP ${reply.status}`);
 }

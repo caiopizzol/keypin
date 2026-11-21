@@ -19,7 +19,7 @@ import {
   WriteRefused,
 } from "@keypin/core";
 import { json, type JsonReply, query, returned, text, unsignedQuery } from "./api";
-import { ANOTHER_WAY, type AwsSignIn, KEY_ID, ROLE_ARN } from "./credentials";
+import { ANOTHER_WAY, type AwsSignIn, ROLE_ARN } from "./credentials";
 import type { Credentials } from "./sigv4";
 import {
   account,
@@ -29,14 +29,22 @@ import {
   type SecretsManagerRef as Ref,
   type SecretsManagerScope as Scope,
 } from "./reference";
+import { hidden, problem, refusedSignIn } from "./secrets-manager-problems";
+import {
+  dateOf,
+  type Fail,
+  fieldOf,
+  type Json,
+  plain,
+  refused,
+  tagsOf,
+} from "./secrets-manager-values";
 
 const SERVICE = "secretsmanager";
 export const ROTATED_TAG = "keypin-rotated:";
 const CURRENT = "AWSCURRENT";
 const OIDC_SESSION_SECONDS = "900";
 const REFRESH_MARGIN_MS = 60_000;
-
-type Json = Record<string, unknown>;
 
 interface Session {
   credentials: Credentials;
@@ -337,69 +345,6 @@ export function secretsManagerBackend(
         `${describeRef(ref)}: keypin saved the new value, but couldn't set the tag ${key} to ${rotated} (${returned("TagResource", tagged)}); set it by hand, and give keypin secretsmanager:TagResource`,
       );
   }
-}
-
-type Fail = (message: string) => Error;
-const plain: Fail = (message) => new Error(message);
-const refused: Fail = (message) => new WriteRefused(message);
-
-function fieldOf(ref: Ref, value: string, fail: Fail): string {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value);
-  } catch {
-    parsed = null;
-  }
-  if (!isRecord(parsed))
-    throw fail(
-      `${describeRef(ref)}: the secret isn't a JSON object, so it has no key ${ref.field}`,
-    );
-  const found = parsed[ref.field ?? ""];
-  if (found === undefined)
-    throw fail(`${describeRef(ref)}: the secret's JSON has no key ${ref.field}`);
-  if (typeof found !== "string")
-    throw fail(`${describeRef(ref)}: the JSON key ${ref.field} holds a ${typeof found}, not text`);
-  return found;
-}
-
-function tagsOf(entry: Json): { Key: string; Value: string }[] {
-  return Array.isArray(entry.Tags)
-    ? entry.Tags.flatMap((pair) =>
-        isRecord(pair) && typeof pair.Key === "string"
-          ? [{ Key: pair.Key, Value: typeof pair.Value === "string" ? pair.Value : "" }]
-          : [],
-      )
-    : [];
-}
-
-function dateOf(value: unknown): Date | null {
-  return typeof value === "number" && Number.isFinite(value) ? new Date(value * 1000) : null;
-}
-
-function problem(ref: Ref, action: string, reply: JsonReply): string {
-  const said = returned(action, reply);
-  if (reply.code === "ResourceNotFoundException")
-    return `no secret ${ref.name} in ${ref.region} (${said}); check the region and the name`;
-  if (reply.code === "AccessDeniedException")
-    return `the signed-in identity isn't allowed secretsmanager:${action} on the secret, or its KMS key (${said})`;
-  if (reply.code === "DecryptionFailure" || reply.code === "EncryptionFailure")
-    return `the signed-in identity can't use the secret's KMS key (${said})`;
-  return said;
-}
-
-function hidden(text: string, secret: string): string {
-  return text.replaceAll(secret, "[hidden]");
-}
-
-function refusedSignIn(reply: { status: number; code: string | null }, source: string): string {
-  const said = returned("GetCallerIdentity", reply);
-  if (reply.code === "ExpiredToken")
-    return `the temporary credentials in ${source} expired (${said}); get new ones`;
-  if (reply.code === "SignatureDoesNotMatch")
-    return `the secret access key in ${source} doesn't match its key ID, or this computer's clock is off (${said})`;
-  if (reply.code === "InvalidClientTokenId")
-    return `AWS doesn't accept ${source}: the key was deleted or deactivated, or ${KEY_ID} isn't a key ID (${said})`;
-  return said;
 }
 
 function own(ref: KeyRef): Ref {

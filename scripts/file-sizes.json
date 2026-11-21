@@ -1,6 +1,4 @@
 {
-  "packages/connectors/src/aws/secrets-manager.ts": 418,
-  "packages/connectors/src/aws/testing.ts": 515,
   "packages/connectors/src/bitwarden/backend.ts": 405,
   "packages/connectors/src/doppler/backend.ts": 500,
   "packages/connectors/src/elevenlabs/elevenlabs.ts": 442,

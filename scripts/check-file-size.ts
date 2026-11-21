@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { baselineAt, type Counts, raisedSinceBase } from "./baseline";
 
@@ -11,19 +11,34 @@ export function lineCount(text: string): number {
   return text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
 }
 
+function sourceFiles(root: string): string[] {
+  const listed = Bun.spawnSync(
+    [
+      "git",
+      "-C",
+      root,
+      "ls-files",
+      "-z",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "--",
+    ].concat(["apps", "packages"].map((group) => `:(glob)${group}/*/src/**/*.ts`)),
+  );
+  if (listed.exitCode !== 0)
+    throw new Error(`git ls-files failed in ${root}: ${listed.stderr.toString()}`);
+  return listed.stdout
+    .toString()
+    .split("\0")
+    .filter(
+      (path) => path !== "" && existsSync(join(root, path)) && statSync(join(root, path)).isFile(),
+    );
+}
+
 export function sizes(root: string): Counts {
   const found: Counts = {};
-  for (const group of ["apps", "packages"]) {
-    if (!existsSync(join(root, group))) continue;
-    for (const name of readdirSync(join(root, group))) {
-      const src = `${group}/${name}/src`;
-      if (!existsSync(join(root, src))) continue;
-      for (const file of readdirSync(join(root, src), { recursive: true, encoding: "utf8" })) {
-        const path = `${src}/${file.replaceAll("\\", "/")}`;
-        if (path.endsWith(".ts")) found[path] = lineCount(readFileSync(join(root, path), "utf8"));
-      }
-    }
-  }
+  for (const path of sourceFiles(root))
+    found[path] = lineCount(readFileSync(join(root, path), "utf8"));
   return found;
 }
 

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { baselineAt } from "./baseline";
-import { BASELINE, LIMIT, lineCount, problems } from "./check-file-size";
+import { BASELINE, LIMIT, lineCount, problems, sizes } from "./check-file-size";
 
 const HOW =
   "Split it into a folder with one file per job, like apps/cli/src/commands/rotate/. See docs/development.md#guardrails.";
@@ -16,6 +16,7 @@ const put = (path: string, lines: number) => {
 
 beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), "keypin-file-size-"));
+  Bun.spawnSync(["git", "init", "-q", root]);
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
@@ -85,5 +86,14 @@ describe("problems", () => {
     ])
       put(path, LIMIT + 1);
     expect(problems(root, {})).toEqual([]);
+  });
+
+  test("ignored files and folders named .ts aren't counted", () => {
+    writeFileSync(join(root, ".gitignore"), "dist/\n");
+    put("packages/connectors/src/neon/dist/generated.d.ts", LIMIT + 1);
+    mkdirSync(join(root, "packages/core/src/fixtures.ts"), { recursive: true });
+    put("packages/core/src/fixtures.ts/inner.ts", 3);
+    expect(problems(root, {})).toEqual([]);
+    expect(sizes(root)).toEqual({ "packages/core/src/fixtures.ts/inner.ts": 3 });
   });
 });

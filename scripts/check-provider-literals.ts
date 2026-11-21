@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { baselineAt, raisedSinceBase } from "./baseline";
+import { baselineAt, raisedSinceBase, raisedTotal } from "./baseline";
 
 const SHARED = ["packages/core/src", "apps/cli/src"];
 const COMPOSITION = new Set(["apps/cli/src/start.ts", "apps/cli/src/sign-in.ts"]);
@@ -66,10 +66,10 @@ export function problems(root: string, baseline: Record<string, number>): string
 }
 
 if (import.meta.main) {
-  const up = raisedSinceBase(".", BASELINE);
+  const up = raisedSinceBase(".", BASELINE, raisedTotal);
   if (up.length > 0) {
     process.stderr.write(
-      `The counts in ${BASELINE} only go down, so a change can't raise them.\n${up.join("\n")}\n${HOW}\n`,
+      `The total in ${BASELINE} only goes down, so a change can't raise it. Moving code may move its count to another file.\n${up.join("\n")}\n${HOW}\n`,
     );
     process.exitCode = 1;
   }

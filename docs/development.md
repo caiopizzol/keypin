@@ -47,6 +47,9 @@ bun run typecheck  # tsc in every package
   behaves the same way.
 - Core and `apps/cli/src` outside `start.ts` and `sign-in.ts` name no provider, such as `1Password` or `op://`. Put
   that text in the provider's kind. `scripts/provider-literals.json` lists today's counts, which may only go down.
+- A `.ts` file in a package's `src` has at most 400 lines. When one grows past that, split it into a folder with one
+  file per job, like `apps/cli/src/commands/rotate/`. `scripts/file-sizes.json` lists today's larger files, which may
+  only shrink.
 - README.md and skills/keypin/SKILL.md grow by at most 5 lines per PR (`scripts/check-docs-growth.ts`), per
   [AGENTS.md](../AGENTS.md). Remove a line for each one you add, or add a `Docs-Growth: <reason>` trailer to a commit.
 

@@ -40,3 +40,6 @@ apps/cli/packages
 
 # keypin terminal verification evidence (apps/cli/tests/terminal/drive.ts)
 .verify/
+
+# @keypin/rules npm package (bun run pack in packages/rules)
+packages/rules/npm

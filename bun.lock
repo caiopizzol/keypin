@@ -6,6 +6,7 @@
       "name": "keys",
       "devDependencies": {
         "@keypin/connectors": "workspace:*",
+        "@keypin/core": "workspace:*",
         "@types/bun": "1.4.4",
         "typescript": "7.0.2",
         "vite": "catalog:",
@@ -48,6 +49,9 @@
         "@types/bun": "1.4.4",
       },
     },
+    "packages/rules": {
+      "name": "@keypin/rules",
+    },
   },
   "overrides": {
     "vite": "catalog:",
@@ -80,6 +84,8 @@
     "@keypin/connectors": ["@keypin/connectors@workspace:packages/connectors"],
 
     "@keypin/core": ["@keypin/core@workspace:packages/core"],
+
+    "@keypin/rules": ["@keypin/rules@workspace:packages/rules"],
 
     "@oxc-project/runtime": ["@oxc-project/runtime@0.157.0", "", {}, "sha512-srnUknwVoji5JdmU664pA4XyjBJXmgxP8rWlnZhFovzw6XQxaICGWAuScZdlLmIHI+ZRc7WgeiC2CURF4tAszQ=="],
 

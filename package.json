@@ -26,6 +26,7 @@
   },
   "devDependencies": {
     "@keypin/connectors": "workspace:*",
+    "@keypin/core": "workspace:*",
     "@types/bun": "1.4.4",
     "typescript": "7.0.2",
     "vite": "catalog:",

@@ -8,17 +8,8 @@ import {
   TOKEN_VARIABLE,
   tokenKind,
 } from "./backend";
-import {
-  account,
-  decode,
-  type DopplerPin,
-  type DopplerRef,
-  type DopplerReference,
-  format,
-  parse,
-  readPin,
-  SCHEME,
-} from "./reference";
+import { type DopplerPin, type DopplerRef, type DopplerReference, SCHEME } from "./reference";
+import { dopplerVaultRules } from "./rules";
 
 export interface DopplerHost {
   readonly env: Readonly<Record<string, string | undefined>>;
@@ -48,24 +39,13 @@ function signedInWith({ env }: DopplerHost): string | null {
 }
 
 export const dopplerVault: VaultKind<DopplerHost, DopplerRef, DopplerReference, DopplerPin> = {
-  kind: "doppler",
-  name: "Doppler",
-  scheme: SCHEME,
-  placeholder: "the project's name, the config's name, and the secret's name",
-  needsPin: `needs your Doppler workplace: add [doppler] with workplace = "..."`,
-  readPin,
-  parse,
-  pinned: (reference, pin) => ({ ...reference, ...pin }),
-  format,
-  account,
-  sameItem: (a, b) => a.project === b.project && a.config === b.config && a.name === b.name,
-  stored: decode,
-  signInVariables: [TOKEN_VARIABLE, IDENTITY_ID, AUDIENCE],
-  oidcVariables: [IDENTITY_ID],
+  ...dopplerVaultRules,
   newValueByHand: "Put a new value in the Doppler secret",
-  keepsRotated: false,
   addRotatedDate:
     "Doppler keeps no rotated date on a secret, so keypin can't tell when this key is due (docs/doppler.md).",
+  signInVariables: [TOKEN_VARIABLE, IDENTITY_ID, AUDIENCE],
+  oidcVariables: [IDENTITY_ID],
+  keepsRotated: false,
   addByHand: (map) => {
     const refs = map.keys.flatMap((key) =>
       Object.values(key.environments).flatMap((entry) => (entry ? [entry.ref] : [])),

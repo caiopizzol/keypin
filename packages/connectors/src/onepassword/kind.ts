@@ -1,15 +1,6 @@
 import { type Prerequisite, type SignInReason, sentence, type VaultKind } from "@keypin/core";
-import {
-  account,
-  decode,
-  format,
-  type OnePasswordRef,
-  type OnePasswordReference,
-  parse,
-  readPin,
-  SCHEME,
-  sameName,
-} from "./reference";
+import { decode, type OnePasswordRef, type OnePasswordReference } from "./reference";
+import { onePasswordVaultRules } from "./rules";
 import { isSharedAddress, pinKind, pinnedAddress } from "./service-account";
 
 export type SignIn =
@@ -60,32 +51,11 @@ export const onePasswordVault: VaultKind<
   OnePasswordReference,
   string
 > = {
-  kind: "1password",
-  name: "1Password",
-  scheme: SCHEME,
-  placeholder:
-    "the field's secret reference (in 1Password, open the field's menu and select Copy Secret Reference)",
-  needsPin: `needs your 1Password account: add [1password] with account = "..."`,
-  readPin,
-  parse,
-  pinned: (reference, pinned) => ({ ...reference, account: pinned }),
-  format,
-  account,
-  accounts: (refs) => [
-    `1Password account ${[...new Set(refs.map((ref) => ref.account))].join(", ")}`,
-  ],
-  sameItem: (a, b) => sameName(a.vault, b.vault) && sameName(a.item, b.item),
-  sameField: (a, b) => sameName(a.section, b.section) && sameName(a.field, b.field),
-  stored: decode,
-  signInVariables: ["OP_SERVICE_ACCOUNT_TOKEN", "KEYPIN_1PASSWORD"],
+  ...onePasswordVaultRules,
   newValueByHand: "Put a new value in the 1Password item and set rotated to today",
   addRotatedDate:
     "Add a rotated Date field to the 1Password item, with the day the value last changed.",
-  newKeys: {
-    reference: "<vault>/<item>/<field>",
-    pin: { account: "<1Password sign-in address>" },
-    options: "--vault <vault>",
-  },
+  signInVariables: ["OP_SERVICE_ACCOUNT_TOKEN", "KEYPIN_1PASSWORD"],
   signInNotes: ({ signIn }) =>
     signIn?.mode === "desktop" && signIn.tokenIgnored
       ? [

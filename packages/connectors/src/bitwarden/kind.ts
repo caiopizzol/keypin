@@ -1,16 +1,7 @@
 import { type SignInReason, sentence, type VaultKind } from "@keypin/core";
 import { ACCESS_TOKEN, NO_CREDENTIALS } from "./backend";
-import {
-  account,
-  type BitwardenPin,
-  type BitwardenRef,
-  type BitwardenReference,
-  decode,
-  format,
-  parse,
-  readPin,
-  SCHEME,
-} from "./reference";
+import { type BitwardenPin, type BitwardenRef, type BitwardenReference, SCHEME } from "./reference";
+import { bitwardenVaultRules } from "./rules";
 
 function fixFor(failures: readonly SignInReason[]): string {
   if (failures.some((reason) => reason.kind === "no-credentials"))
@@ -21,22 +12,11 @@ function fixFor(failures: readonly SignInReason[]): string {
 }
 
 export const bitwardenVault: VaultKind<unknown, BitwardenRef, BitwardenReference, BitwardenPin> = {
-  kind: "bitwarden",
-  name: "Bitwarden",
-  scheme: SCHEME,
-  placeholder: "the project's name or ID, and the secret's name",
-  needsPin: `needs your Bitwarden organization: add [bitwarden] with organization = "..."`,
-  readPin,
-  parse,
-  pinned: (reference, pin) => ({ ...reference, ...pin }),
-  format,
-  account,
-  sameItem: (a, b) => a.project === b.project && a.name === b.name,
-  stored: decode,
-  signInVariables: [ACCESS_TOKEN],
+  ...bitwardenVaultRules,
   newValueByHand: "Put a new value in the Bitwarden secret and set rotated in its note to today",
   addRotatedDate:
     "Add a line rotated: YYYY-MM-DD to the Bitwarden secret's note, with the day the value last changed.",
+  signInVariables: [ACCESS_TOKEN],
   addByHand: (map) => {
     const refs = map.keys.flatMap((key) =>
       Object.values(key.environments).flatMap((entry) => (entry ? [entry.ref] : [])),

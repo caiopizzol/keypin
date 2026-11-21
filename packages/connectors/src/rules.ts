@@ -1,10 +1,14 @@
 import type { IssuerRules, IssuerSpec } from "@keypin/core";
-import { awsIssuerRules } from "./aws/rules";
+import { awsIssuerRules, secretsManagerVaultRules } from "./aws/rules";
+import { bitwardenVaultRules } from "./bitwarden/rules";
 import { cloudflareIssuerRules } from "./cloudflare/rules";
+import { dopplerVaultRules } from "./doppler/rules";
 import { elevenlabsIssuerRules } from "./elevenlabs/rules";
 import { googleIssuerRules, googleServiceAccountIssuerRules } from "./google/rules";
+import { infisicalVaultRules } from "./infisical/rules";
 import { atlasIssuerRules } from "./mongodb-atlas/rules";
 import { neonIssuerRules } from "./neon/rules";
+import { onePasswordVaultRules } from "./onepassword/rules";
 import { openaiIssuerRules } from "./openai/rules";
 import { openrouterIssuerRules } from "./openrouter/rules";
 import { resendIssuerRules } from "./resend/rules";
@@ -41,6 +45,14 @@ export const randomIssuerRules = {
       : undefined,
 } satisfies IssuerRules<RandomSpec>;
 
+export const vaults = [
+  infisicalVaultRules,
+  bitwardenVaultRules,
+  dopplerVaultRules,
+  secretsManagerVaultRules,
+  onePasswordVaultRules,
+];
+
 export const issuers = [
   resendIssuerRules,
   neonIssuerRules,
@@ -62,14 +74,19 @@ export const issuers = [
 export {
   atlasIssuerRules,
   awsIssuerRules,
+  bitwardenVaultRules,
   cloudflareIssuerRules,
+  dopplerVaultRules,
   elevenlabsIssuerRules,
   googleIssuerRules,
   googleServiceAccountIssuerRules,
+  infisicalVaultRules,
   neonIssuerRules,
+  onePasswordVaultRules,
   openaiIssuerRules,
   openrouterIssuerRules,
   resendIssuerRules,
+  secretsManagerVaultRules,
   sendgridIssuerRules,
   supabaseIssuerRules,
   twilioIssuerRules,
@@ -88,3 +105,8 @@ export type { SendGridSpec } from "./sendgrid/rules";
 export type { SupabaseSpec } from "./supabase/rules";
 export type { TwilioSpec } from "./twilio/rules";
 export type { XaiSpec } from "./xai/rules";
+export type { BitwardenRef } from "./bitwarden/reference";
+export type { DopplerRef } from "./doppler/reference";
+export type { InfisicalRef } from "./infisical/reference";
+export type { OnePasswordRef } from "./onepassword/reference";
+export type { SecretsManagerRef } from "./aws/reference";

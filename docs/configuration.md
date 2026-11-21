@@ -69,3 +69,12 @@ the key is due.
 The hosted console can't read your vault. For it to show when each key is due, run `keypin status --write` in the
 project and commit `.keypin/status.json`. It holds each key's `rotated` day per environment, or `null`, and the day
 it was written; no values or vault references.
+
+## Pulling in CI
+
+Moved to [Publishing](publishing.md#pulling-in-ci).
+
+## Rotating a key
+
+Moved to [Rotation](rotation.md), with each issuer, such as <a name="neon"></a>[Neon](rotation.md#neon) and
+<a name="random"></a>[`random`](rotation.md#random).

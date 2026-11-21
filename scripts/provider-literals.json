@@ -7,5 +7,6 @@
   "apps/cli/src/deps.ts": 2,
   "apps/cli/src/publisher.ts": 1,
   "packages/core/src/login.ts": 2,
-  "packages/core/src/map.ts": 4
+  "packages/core/src/map/index.ts": 2,
+  "packages/core/src/map/key.ts": 2
 }

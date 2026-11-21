@@ -1,18 +1,9 @@
-import type { IssuerKind, IssuerSpec } from "@keypin/core";
+import type { IssuerKind } from "@keypin/core";
 import { OpenRouterIssuer } from "./openrouter";
-
-export interface OpenRouterSpec extends IssuerSpec {
-  readonly kind: "openrouter";
-}
+import { openrouterIssuerRules, type OpenRouterSpec } from "./rules";
 
 export const openrouterIssuer: IssuerKind<OpenRouterSpec> = {
-  kind: "openrouter",
-  parse(read) {
-    read.only([]);
-    const admin = read.admin();
-    if (!admin) return undefined;
-    return { kind: "openrouter", admin };
-  },
+  ...openrouterIssuerRules,
   connect: (_spec, admin, fetch) =>
     new OpenRouterIssuer({
       admin: async () => admin,

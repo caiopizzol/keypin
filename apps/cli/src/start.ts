@@ -7,6 +7,7 @@ import {
   type Destination,
   type Fetch,
   type Issuer,
+  type IssuerKind,
   type IssuerSpec,
   type PublishTarget,
   type Secret,
@@ -51,7 +52,7 @@ import { supabaseFunctions, supabaseIssuer } from "@keypin/connectors/supabase";
 import { twilioIssuer } from "@keypin/connectors/twilio";
 import { vercelProject } from "@keypin/connectors/vercel";
 import { xaiIssuer } from "@keypin/connectors/xai";
-import { randomIssuer } from "./random";
+import { randomIssuerRules, type RandomSpec } from "@keypin/connectors/rules";
 import {
   type Connect,
   desktopConnect,
@@ -84,6 +85,7 @@ import { hostTarget, launchedBinary } from "./layout";
 import { isStyled } from "./output";
 import { selfCommand } from "./runtime";
 import { selfFor } from "./self";
+import { RandomIssuer } from "./random";
 import { onePasswordFrom } from "./sign-in";
 import { routedVault } from "./vault";
 
@@ -120,6 +122,11 @@ export const signInNames = signInVariables([...vaults, ...destinations]);
 export function destination(target: PublishTarget, publisher: Publisher): Destination {
   return connectTo<Publisher>(destinations, target, publisher);
 }
+
+const randomIssuer: IssuerKind<RandomSpec> = {
+  ...randomIssuerRules,
+  connect: ({ encoding }) => new RandomIssuer(encoding),
+};
 
 export const issuers = [
   resendIssuer,

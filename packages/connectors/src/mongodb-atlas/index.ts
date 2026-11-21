@@ -1,2 +1,3 @@
 export { AtlasIssuer, type AtlasIssuerOptions } from "./atlas";
-export { atlasIssuer, type AtlasSpec } from "./kind";
+export { atlasIssuer } from "./kind";
+export { type AtlasSpec } from "./rules";

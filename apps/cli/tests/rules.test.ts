@@ -1,0 +1,41 @@
+import { fileURLToPath } from "node:url";
+import { describe, expect, test } from "vite-plus/test";
+import { issuers as issuerRules } from "@keypin/connectors/rules";
+import { issuers } from "../src/start";
+
+const RULES = fileURLToPath(new URL("../../../packages/connectors/src/rules.ts", import.meta.url));
+const PURE = new Set(["@keypin/core", "smol-toml"]);
+
+async function browserBuild(entry: string): Promise<{ imports: string[]; text: string }> {
+  const found = new Set<string>();
+  const result = await Bun.build({
+    entrypoints: [entry],
+    target: "browser",
+    plugins: [
+      {
+        name: "imports",
+        setup(build) {
+          build.onResolve({ filter: /^[^./]/ }, ({ path }) => {
+            found.add(path);
+            return undefined;
+          });
+        },
+      },
+    ],
+  });
+  const text = (await Promise.all(result.outputs.map((output) => output.text()))).join("\n");
+  return { imports: [...found].toSorted(), text };
+}
+
+describe("the rules half of every kind", () => {
+  test("the CLI's issuers are the rules issuers, in the same order", () => {
+    expect(issuers.map((kind) => kind.kind)).toEqual(issuerRules.map((kind) => kind.kind));
+    expect(issuers).toMatchObject(issuerRules);
+  });
+
+  test("a browser build of the rules imports no Node module or SDK", async () => {
+    const { imports, text } = await browserBuild(RULES);
+    expect(imports.filter((name) => !PURE.has(name))).toEqual([]);
+    expect(text).not.toContain("node:");
+  });
+});

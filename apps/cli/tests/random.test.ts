@@ -1,7 +1,8 @@
 import { describe, expect, test } from "vite-plus/test";
 import { generationOf, loadState, Secret } from "@keypin/core";
 import { cli } from "../src/cli";
-import { RandomIssuer, type RandomSpec } from "../src/random";
+import type { RandomSpec } from "@keypin/connectors/rules";
+import { RandomIssuer } from "../src/random";
 import { issuer, vaults } from "../src/start";
 import { NEEDS_APPROVAL } from "../src/approval";
 import {

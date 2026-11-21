@@ -90,3 +90,7 @@ create one. Before the first release, the owner does this once:
 3. Make `release.yml` each package's trusted publisher: `npm trust github @keypin/cli-<target> --repo
    caiopizzol/keypin --file release.yml --allow-publish` (npm 11.15 or later, with 2FA). Then merge the release PR
    within 2 days, or the trusted publisher expires.
+
+`@keypin/rules` (`packages/rules`), the map rules keypin.dev calls, ships last at the same version and is skipped
+until it's on npm: run `bun run pack` there and publish a placeholder from `packages/rules/npm` as in step 2, then do
+step 3 for `@keypin/rules`.

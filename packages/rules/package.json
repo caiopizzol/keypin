@@ -1,0 +1,9 @@
+{
+  "name": "@keypin/rules",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "pack": "vp pack && bun ./pack.ts",
+    "typecheck": "tsc && tsc -p tests"
+  }
+}

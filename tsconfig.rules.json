@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": []
+  },
+  "include": [
+    "packages/rules/src",
+    "packages/core/src",
+    "packages/connectors/src/rules.ts",
+    "packages/connectors/src/*/rules.ts",
+    "packages/connectors/src/*/reference.ts"
+  ],
+  "exclude": ["packages/core/src/testing"]
+}

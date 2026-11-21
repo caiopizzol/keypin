@@ -102,7 +102,15 @@ export {
   type StatusInput,
   type StatusRow,
 } from "./status";
-export { type StatusFile, statusDates, statusFile, writeStatusFile } from "./status-file";
+export {
+  type RotationRead,
+  type StatusEntryRead,
+  statusDates,
+  statusEntries,
+  type StatusFile,
+  statusFile,
+  writeStatusFile,
+} from "./status-file";
 export {
   deliveredTo,
   loadRotationFile,

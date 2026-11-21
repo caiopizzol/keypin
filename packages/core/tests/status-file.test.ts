@@ -1,5 +1,14 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type StatusRow, statusFile, writeStatusFile } from "../src/index";
+import {
+  objectField,
+  parseObject,
+  type RotationRecord,
+  statusDates,
+  statusEntries,
+  type StatusRow,
+  statusFile,
+  writeStatusFile,
+} from "../src/index";
 import { day } from "../src/testing/day";
 import { fakeFiles, KEY } from "./fixtures";
 
@@ -107,5 +116,126 @@ describe("the status file", () => {
     const file = statusFile(ROWS, ["dev", "prod"], day("2026-11-09"));
     expect(await writeStatusFile(files, path, file)).toBe("written");
     expect(contents.get(path)).toContain('"version": 1');
+  });
+});
+
+const RECORDS: Record<string, RotationRecord> = {
+  "STRIPE_API_KEY prod": {
+    at: "2026-10-23T09:00:00.000Z",
+    published: ["github-actions:acme/billing"],
+    unpublished: [],
+    old: "waiting for approval",
+  },
+  "API_TOKEN prod": {
+    at: "2026-11-01T09:00:00.000Z",
+    published: [],
+    unpublished: ["github-actions:acme/billing"],
+    old: "still in use",
+  },
+  "API_TOKEN dev": {
+    at: "2026-10-30T09:00:00.000Z",
+    published: ["github-actions:acme/billing"],
+    unpublished: [],
+    old: "revoked",
+  },
+  "MAIL_KEY prod": {
+    at: "2026-11-05T09:00:00.000Z",
+    published: [],
+    unpublished: ["github-actions:acme/billing"],
+    old: "unknown",
+  },
+};
+
+const WRITTEN = JSON.stringify(
+  statusFile(
+    [
+      ...ROWS,
+      row("API_TOKEN", "dev", "2026-10-30"),
+      row("MAIL_KEY", "prod", "2026-11-05"),
+      row("QUIET_KEY", "prod", "2026-09-01"),
+    ],
+    ["dev", "prod"],
+    day("2026-11-09"),
+    (keyId, environment) => RECORDS[`${keyId} ${environment}`] ?? null,
+  ),
+  null,
+  2,
+);
+
+function edited(change: (keys: Record<string, unknown>) => void): string {
+  const file = parseObject(WRITTEN);
+  change(objectField(file, "keys"));
+  return JSON.stringify(file, null, 2);
+}
+
+function readRecording(text: string): string {
+  return `--- file ---\n${text}\n--- read ---\n${JSON.stringify(statusEntries(text), null, 2)}\n`;
+}
+
+describe("reading the status file back", () => {
+  test("gives each key's rotated day and rotation per environment, as keypin wrote them", async () => {
+    await expect(readRecording(WRITTEN)).toMatchFileSnapshot(
+      "./recordings/status-file/rotations.txt",
+    );
+  });
+
+  test("agrees with statusDates on every rotated day", () => {
+    const dates = statusDates(WRITTEN);
+    for (const [keyId, environments] of Object.entries(statusEntries(WRITTEN) ?? {}))
+      for (const [environment, entry] of Object.entries(environments))
+        expect(entry.rotated).toBe(dates(keyId, environment));
+  });
+
+  test("drops only the entries it can't read and keeps the rest", async () => {
+    const text = edited((keys) => {
+      keys.STRIPE_API_KEY = {
+        dev: { rotated: 20261023 },
+        prod: { rotated: "2026-10-23", rotation: { old: "gone" } },
+      };
+      Object.assign(objectField(keys, "API_TOKEN"), {
+        prod: {
+          rotated: "2026-11-01",
+          rotation: { at: "2026-11-01T09:00:00.000Z", published: [], old: "still in use" },
+        },
+      });
+      Object.assign(objectField(keys, "QUIET_KEY"), {
+        dev: "2026-09-01",
+        staging: { rotated: "2026-02-30" },
+      });
+      keys.MAIL_KEY = { prod: {}, dev: { rotated: "2026-11-05T09:00:00Z" } };
+      keys.LOST_KEY = "2026-09-01";
+    });
+    await expect(readRecording(text)).toMatchFileSnapshot(
+      "./recordings/status-file/bad-entries.txt",
+    );
+  });
+
+  test("reads nothing from a missing file, invalid JSON or another version", () => {
+    expect(statusEntries(null)).toBeNull();
+    expect(statusEntries("{ not json")).toBeNull();
+    expect(statusEntries(JSON.stringify({ version: 2, keys: {} }))).toBeNull();
+  });
+
+  test("keeps keys and environments named __proto__, constructor or toString as ordinary names", async () => {
+    const text = JSON.stringify(
+      statusFile(
+        [row("__proto__", "constructor", "2026-10-23"), row("toString", "prod", "2026-11-01")],
+        ["constructor", "prod"],
+        day("2026-11-09"),
+      ),
+      null,
+      2,
+    );
+    const entries = statusEntries(text);
+    await expect(readRecording(text)).toMatchFileSnapshot(
+      "./recordings/status-file/special-names.txt",
+    );
+    expect(Object.keys(entries ?? {})).toEqual(["__proto__", "toString"]);
+    const key = (keyId: string) => entries?.[keyId];
+    expect(key("__proto__")?.["constructor"]?.rotated).toBe("2026-10-23");
+    expect(key("toString")?.["constructor"]).toBeUndefined();
+    expect(key("__proto__")?.["toString"]).toBeUndefined();
+    expect(key("constructor")).toBeUndefined();
+    expect(key("hasOwnProperty")).toBeUndefined();
   });
 });

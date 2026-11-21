@@ -1,0 +1,81 @@
+--- file ---
+{
+  "version": 1,
+  "written": "2026-11-09",
+  "keys": {
+    "API_TOKEN": {
+      "dev": {
+        "rotated": "2026-10-30",
+        "rotation": {
+          "at": "2026-10-30T09:00:00.000Z",
+          "published": [
+            "github-actions:acme/billing"
+          ],
+          "unpublished": [],
+          "old": "revoked"
+        }
+      },
+      "prod": {
+        "rotated": "2026-11-01",
+        "rotation": {
+          "at": "2026-11-01T09:00:00.000Z",
+          "published": [],
+          "old": "still in use"
+        }
+      }
+    },
+    "MAIL_KEY": {
+      "prod": {},
+      "dev": {
+        "rotated": "2026-11-05T09:00:00Z"
+      }
+    },
+    "QUIET_KEY": {
+      "prod": {
+        "rotated": "2026-09-01"
+      },
+      "dev": "2026-09-01",
+      "staging": {
+        "rotated": "2026-02-30"
+      }
+    },
+    "STRIPE_API_KEY": {
+      "dev": {
+        "rotated": 20261023
+      },
+      "prod": {
+        "rotated": "2026-10-23",
+        "rotation": {
+          "old": "gone"
+        }
+      }
+    },
+    "LOST_KEY": "2026-09-01"
+  }
+}
+--- read ---
+{
+  "API_TOKEN": {
+    "dev": {
+      "rotated": "2026-10-30",
+      "rotation": {
+        "at": "2026-10-30T09:00:00.000Z",
+        "published": [
+          "github-actions:acme/billing"
+        ],
+        "unpublished": [],
+        "old": "revoked",
+        "waiting": false,
+        "unfinished": false
+      }
+    }
+  },
+  "MAIL_KEY": {},
+  "QUIET_KEY": {
+    "prod": {
+      "rotated": "2026-09-01",
+      "rotation": null
+    }
+  },
+  "STRIPE_API_KEY": {}
+}

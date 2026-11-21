@@ -1,0 +1,136 @@
+--- file ---
+{
+  "version": 1,
+  "written": "2026-11-09",
+  "keys": {
+    "API_TOKEN": {
+      "dev": {
+        "rotated": "2026-10-30",
+        "rotation": {
+          "at": "2026-10-30T09:00:00.000Z",
+          "published": [
+            "github-actions:acme/billing"
+          ],
+          "unpublished": [],
+          "old": "revoked"
+        }
+      },
+      "prod": {
+        "rotated": "2026-11-01",
+        "rotation": {
+          "at": "2026-11-01T09:00:00.000Z",
+          "published": [],
+          "unpublished": [
+            "github-actions:acme/billing"
+          ],
+          "old": "still in use"
+        }
+      }
+    },
+    "MAIL_KEY": {
+      "prod": {
+        "rotated": "2026-11-05",
+        "rotation": {
+          "at": "2026-11-05T09:00:00.000Z",
+          "published": [],
+          "unpublished": [
+            "github-actions:acme/billing"
+          ],
+          "old": "unknown"
+        }
+      }
+    },
+    "QUIET_KEY": {
+      "prod": {
+        "rotated": "2026-09-01"
+      }
+    },
+    "STRIPE_API_KEY": {
+      "dev": {
+        "rotated": null
+      },
+      "prod": {
+        "rotated": "2026-10-23",
+        "rotation": {
+          "at": "2026-10-23T09:00:00.000Z",
+          "published": [
+            "github-actions:acme/billing"
+          ],
+          "unpublished": [],
+          "old": "waiting for approval"
+        }
+      }
+    }
+  }
+}
+--- read ---
+{
+  "API_TOKEN": {
+    "dev": {
+      "rotated": "2026-10-30",
+      "rotation": {
+        "at": "2026-10-30T09:00:00.000Z",
+        "published": [
+          "github-actions:acme/billing"
+        ],
+        "unpublished": [],
+        "old": "revoked",
+        "waiting": false,
+        "unfinished": false
+      }
+    },
+    "prod": {
+      "rotated": "2026-11-01",
+      "rotation": {
+        "at": "2026-11-01T09:00:00.000Z",
+        "published": [],
+        "unpublished": [
+          "github-actions:acme/billing"
+        ],
+        "old": "still in use",
+        "waiting": false,
+        "unfinished": true
+      }
+    }
+  },
+  "MAIL_KEY": {
+    "prod": {
+      "rotated": "2026-11-05",
+      "rotation": {
+        "at": "2026-11-05T09:00:00.000Z",
+        "published": [],
+        "unpublished": [
+          "github-actions:acme/billing"
+        ],
+        "old": "unknown",
+        "waiting": false,
+        "unfinished": true
+      }
+    }
+  },
+  "QUIET_KEY": {
+    "prod": {
+      "rotated": "2026-09-01",
+      "rotation": null
+    }
+  },
+  "STRIPE_API_KEY": {
+    "dev": {
+      "rotated": null,
+      "rotation": null
+    },
+    "prod": {
+      "rotated": "2026-10-23",
+      "rotation": {
+        "at": "2026-10-23T09:00:00.000Z",
+        "published": [
+          "github-actions:acme/billing"
+        ],
+        "unpublished": [],
+        "old": "waiting for approval",
+        "waiting": true,
+        "unfinished": false
+      }
+    }
+  }
+}

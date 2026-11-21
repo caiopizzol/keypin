@@ -72,9 +72,86 @@ export function statusDates(
   return (keyId, environment) => {
     const dates = keys?.[keyId];
     const entry = isRecord(dates) ? dates[environment] : undefined;
-    if (!isRecord(entry)) return undefined;
-    if (entry.rotated === null) return null;
-    return typeof entry.rotated === "string" ? (parseDay(entry.rotated) ?? undefined) : undefined;
+    return isRecord(entry) ? rotatedOf(entry) : undefined;
+  };
+}
+
+export interface RotationRead extends RotationRecord {
+  waiting: boolean;
+  unfinished: boolean;
+}
+
+export interface StatusEntryRead {
+  rotated: Day | null;
+  rotation: RotationRead | null;
+}
+
+export function statusEntries(
+  text: string | null,
+): Record<string, Record<string, StatusEntryRead>> | null {
+  const keys = parsed(text);
+  if (keys === null) return null;
+  return dictionary(
+    Object.entries(keys).flatMap(([keyId, dates]) =>
+      isRecord(dates) ? [[keyId, entriesOf(dates)] as const] : [],
+    ),
+  );
+}
+
+function entriesOf(dates: Record<string, unknown>): Record<string, StatusEntryRead> {
+  return dictionary(
+    Object.entries(dates).flatMap(([environment, entry]) => {
+      const read = readEntry(entry);
+      return read ? [[environment, read] as const] : [];
+    }),
+  );
+}
+
+function dictionary<T>(entries: readonly (readonly [string, T])[]): Record<string, T> {
+  const result: Record<string, T> = {};
+  Reflect.setPrototypeOf(result, null);
+  for (const [name, value] of entries) result[name] = value;
+  return result;
+}
+
+function rotatedOf(entry: Record<string, unknown>): Day | null | undefined {
+  if (entry.rotated === null) return null;
+  return typeof entry.rotated === "string" ? (parseDay(entry.rotated) ?? undefined) : undefined;
+}
+
+function readEntry(entry: unknown): StatusEntryRead | null {
+  if (!isRecord(entry)) return null;
+  const rotated = rotatedOf(entry);
+  const rotation = entry.rotation === undefined ? null : readRotation(entry.rotation);
+  if (rotated === undefined || rotation === undefined) return null;
+  return { rotated, rotation };
+}
+
+const OLD: readonly RotationRecord["old"][] = [
+  "revoked",
+  "waiting for approval",
+  "still in use",
+  "unknown",
+];
+
+const isOld = (value: unknown): value is RotationRecord["old"] => OLD.some((old) => old === value);
+
+const isTextList = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((item) => typeof item === "string");
+
+function readRotation(value: unknown): RotationRead | undefined {
+  if (!isRecord(value)) return undefined;
+  const { at, published, unpublished, old } = value;
+  if (typeof at !== "string" || !isTextList(published) || !isTextList(unpublished))
+    return undefined;
+  if (!isOld(old)) return undefined;
+  return {
+    at,
+    published,
+    unpublished,
+    old,
+    waiting: old === "waiting for approval",
+    unfinished: unpublished.length > 0,
   };
 }
 

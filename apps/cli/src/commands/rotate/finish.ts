@@ -14,7 +14,7 @@ import { confirm } from "../../output";
 import { commandLine, confirmed, NEEDS_APPROVAL, planOnly } from "../../approval";
 import { showPlan, showRemoved, writeEach, writesFor } from "../../publishing";
 import { type Job, type Ready } from "./job";
-import { saveId, itemIdsAfterSave } from "./steps";
+import { saveId, itemIdsAfterSave } from "./vault-and-issuer";
 import {
   revokeRow,
   revokeWhen,

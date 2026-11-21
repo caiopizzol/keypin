@@ -54,7 +54,7 @@ import {
   vaultTakesWrites,
   issuerLists,
   revokeOrphan,
-} from "./steps";
+} from "./vault-and-issuer";
 import {
   row,
   revokeRow,

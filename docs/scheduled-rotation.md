@@ -67,7 +67,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.repository.default_branch }}
-      - run: npm install -g keypin@0.38.0 # x-release-please-version
+      - run: npm install -g keypin@0.39.0 # x-release-please-version
       - run: gh auth login --hostname github.com --with-token <<< "$TOKEN"
         env:
           TOKEN: ${{ secrets.KEYPIN_GITHUB_TOKEN }}

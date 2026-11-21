@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { type Issuer, Secret } from "@keypin/core";
+import { type IdToken, type Issuer, NoIdToken, Secret } from "@keypin/core";
 import { awsSignIn, secretsManagerBackend } from "@keypin/connectors/aws";
 import {
   type FakeSecretsManager,
@@ -77,19 +77,26 @@ function world(): FakeSecretsManager {
 }
 
 function project(
-  options: { env?: Record<string, string>; map?: string; aws?: FakeSecretsManager } = {},
+  options: {
+    env?: Record<string, string>;
+    map?: string;
+    aws?: FakeSecretsManager;
+    idToken?: IdToken;
+  } = {},
 ) {
   const disk = memoryFiles({
     "/work/billing/keypin.toml": options.map ?? MAP,
     [REGISTRY]: registryWith("/work/billing"),
   });
   const store = memorySecrets();
-  const env = {
-    PATH: "/usr/bin",
-    AWS_ACCESS_KEY_ID: KEY.id,
-    AWS_SECRET_ACCESS_KEY: KEY.secret,
-    ...options.env,
-  };
+  const env = Object.fromEntries(
+    Object.entries({
+      PATH: "/usr/bin",
+      AWS_ACCESS_KEY_ID: KEY.id,
+      AWS_SECRET_ACCESS_KEY: KEY.secret,
+      ...options.env,
+    }).filter(([, value]) => value !== ""),
+  );
   const onePassword = fakeVault();
   const signIn = () =>
     onePasswordFrom(env, {
@@ -105,6 +112,7 @@ function project(
     {
       fetch: secretsManagerFetch(options.aws ?? world(), store),
       now: () => new Date("2026-11-09T12:00:00Z"),
+      ...(options.idToken ? { idToken: options.idToken } : {}),
     },
   );
   const launcher = fakeLauncher();
@@ -291,4 +299,70 @@ describe("keypin with AWS Secrets Manager", () => {
       expect(run.stderr.text + run.stdout.text).not.toContain(ISSUED);
     },
   );
+
+  describe("signed in with GitHub Actions OIDC", () => {
+    const ROLE = "arn:aws:iam::123456789012:role/keypin-read";
+    const JWT = "github-jwt-sentinel-0e3d";
+    const MINTED = {
+      id: "ASIAMINTEDMINTED0001",
+      secret: "minted-secret-sentinel-6b2c",
+      token: "minted-session-sentinel-8f1a",
+    };
+    const OIDC = {
+      AWS_ACCESS_KEY_ID: "",
+      AWS_SECRET_ACCESS_KEY: "",
+      KEYPIN_AWS_ROLE_ARN: ROLE,
+      KEYPIN_AWS_AUDIENCE: "sts.amazonaws.com",
+    };
+    const oidcWorld = (): FakeSecretsManager => ({
+      ...world(),
+      webIdentity: { role: ROLE, jwt: JWT, minted: MINTED },
+    });
+    const idToken: IdToken = async () => JWT;
+    const hidesSecrets = (text: string) => {
+      for (const secret of [JWT, MINTED.secret, MINTED.token]) expect(text).not.toContain(secret);
+    };
+
+    test("run reads with the role, and gives the command neither the role nor its credentials", async () => {
+      const run = project({ env: OIDC, aws: oidcWorld(), idToken });
+      expect(await cli(["run", "--", "env"], run.deps)).toBe(0);
+      expect(run.launcher.launches[0]?.env).toEqual({ PATH: "/usr/bin", STRIPE_API_KEY: SENTINEL });
+      hidesSecrets(run.stdout.text + run.stderr.text);
+    });
+
+    test("run with stored credentials too names both, and starts nothing", async () => {
+      const run = project({ env: { ...OIDC, AWS_PROFILE: "work" }, aws: oidcWorld(), idToken });
+      expect(await cli(["run", "--", "env"], run.deps)).toBe(1);
+      expect(run.stderr.text).toContain("both KEYPIN_AWS_ROLE_ARN and AWS_PROFILE are set");
+      expect(run.launcher.launches).toEqual([]);
+    });
+
+    test("check says how it signs in", async () => {
+      const run = project({ env: OIDC, aws: oidcWorld(), idToken });
+      expect(await cli(["check"], run.deps)).toBe(0);
+      expect(run.stdout.text).toContain(
+        "Note: keypin signs in to AWS with GitHub Actions OIDC, as the role in KEYPIN_AWS_ROLE_ARN\n",
+      );
+      hidesSecrets(run.stdout.text + run.stderr.text);
+    });
+
+    test("check without a job token gives the fix as the sign-in step", async () => {
+      const noJob: IdToken = () => Promise.reject(new NoIdToken("this job can't ask for a token"));
+      const run = project({ env: OIDC, aws: oidcWorld(), idToken: noJob });
+      expect(await cli(["check"], run.deps)).toBe(1);
+      expect(run.stdout.text).toContain(
+        "Give the GitHub Actions job permissions: id-token: write, or unset KEYPIN_AWS_ROLE_ARN to sign in another way.",
+      );
+    });
+
+    test("check after STS refuses the token points at the role's trust policy", async () => {
+      const refused = { ...oidcWorld(), webIdentity: { role: "other", jwt: JWT, minted: MINTED } };
+      const run = project({ env: OIDC, aws: refused, idToken });
+      expect(await cli(["check"], run.deps)).toBe(1);
+      expect(run.stdout.text).toContain(
+        "Check KEYPIN_AWS_ROLE_ARN, KEYPIN_AWS_AUDIENCE and the role's trust policy (docs/aws-secrets-manager.md).",
+      );
+      hidesSecrets(run.stdout.text + run.stderr.text);
+    });
+  });
 });

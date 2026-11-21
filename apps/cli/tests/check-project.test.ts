@@ -2312,6 +2312,18 @@ ${steps}`;
     run.unchanged();
   });
 
+  test("warns for a job that sets KEYPIN_AWS_ROLE_ARN without id-token: write", async () => {
+    const aws = (permissions: string) =>
+      job("", permissions).replace(
+        "KEYPIN_INFISICAL_IDENTITY_ID: ${{ vars.INFISICAL_IDENTITY_ID }}",
+        "KEYPIN_AWS_ROLE_ARN: arn:aws:iam::123456789012:role/my-role",
+      );
+    expect(await notes(aws(""))).toEqual([
+      missing(KEEP).replace("KEYPIN_INFISICAL_IDENTITY_ID", "KEYPIN_AWS_ROLE_ARN"),
+    ]);
+    expect(await notes(aws("    permissions:\n      id-token: write\n"))).toEqual([]);
+  });
+
   test("doesn't warn when the job grants id-token: write", async () => {
     expect(await notes(job("", "    permissions:\n      id-token: write\n"))).toEqual([]);
     expect(await notes(job("", "    permissions:\n      id-token: read\n"))).toEqual([

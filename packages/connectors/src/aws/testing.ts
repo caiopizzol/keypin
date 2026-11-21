@@ -251,9 +251,18 @@ export interface FakeAwsSecret {
   previous?: string | null;
 }
 
+export const WEB_IDENTITY_EXPIRATION = "2026-11-20T12:15:00Z";
+
+export interface FakeWebIdentity {
+  role: string;
+  jwt: string;
+  minted: FakeAwsCredentials;
+}
+
 export interface FakeSecretsManager {
   account: string;
   credentials: FakeAwsCredentials[];
+  webIdentity?: FakeWebIdentity;
   secrets: Record<string, FakeAwsSecret>;
   denied?: readonly string[];
   failPut?: number;
@@ -284,12 +293,38 @@ export function secretsManagerFetch(fake: FakeSecretsManager, store: SecretsStor
       `<ErrorResponse><Error><Type>Sender</Type><Code>${code}</Code><Message>${message}</Message></Error></ErrorResponse>`,
     );
   const seconds = (iso: string) => Date.parse(iso) / 1000;
+  const minted: FakeAwsCredentials[] = [];
+  const assumeRole = (form: URLSearchParams) => {
+    const given = fake.webIdentity;
+    if (!given || form.get("Version") !== "2011-06-15")
+      return stsError(400, "InvalidAction", "unknown action");
+    if (form.get("WebIdentityToken") !== given.jwt)
+      return stsError(400, "InvalidIdentityToken", "Incorrect token audience");
+    if (form.get("RoleArn") !== given.role)
+      return stsError(
+        403,
+        "AccessDenied",
+        "Not authorized to perform sts:AssumeRoleWithWebIdentity",
+      );
+    const credentials = given.minted;
+    minted.push(credentials);
+    return xml(
+      200,
+      `<AssumeRoleWithWebIdentityResponse><AssumeRoleWithWebIdentityResult><Credentials><SessionToken>${credentials.token ?? ""}</SessionToken><SecretAccessKey>${credentials.secret}</SecretAccessKey><Expiration>${WEB_IDENTITY_EXPIRATION}</Expiration><AccessKeyId>${credentials.id}</AccessKeyId></Credentials></AssumeRoleWithWebIdentityResult></AssumeRoleWithWebIdentityResponse>`,
+    );
+  };
 
   return async (url, init) => {
     const host = SM_HOST.exec(url);
     if (!host || init.method !== "POST") return fail(404, "NotFound", "no such endpoint");
     const [, service = "", region = ""] = host;
-    const keys = fake.credentials.map((c) => ({ ...c, status: "Active" as const }));
+    const form = new URLSearchParams(init.body ?? "");
+    if (service === "sts" && form.get("Action") === "AssumeRoleWithWebIdentity")
+      return assumeRole(form);
+    const keys = [...fake.credentials, ...minted].map((c) => ({
+      ...c,
+      status: "Active" as const,
+    }));
     const checked = verify(url, init, service, region, keys);
     const account = "signer" in checked ? (checked.signer.account ?? fake.account) : "";
     if (service === "sts") {
@@ -300,7 +335,6 @@ export function secretsManagerFetch(fake: FakeSecretsManager, store: SecretsStor
           "ExpiredToken",
           "The security token included in the request is expired",
         );
-      const form = new URLSearchParams(init.body ?? "");
       if (form.get("Action") !== "GetCallerIdentity")
         return stsError(400, "InvalidAction", "unknown action");
       return xml(

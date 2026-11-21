@@ -175,7 +175,9 @@ const vault = routedVault({
   bitwarden: () => (bitwarden ??= bitwardenBackend(accessTokenFrom(process.env))),
   doppler: () => (doppler ??= dopplerBackend(tokenFrom(process.env))),
   awssm: () =>
-    (secretsManager ??= secretsManagerBackend(awsSignIn(process.env, homedir(), readText))),
+    (secretsManager ??= secretsManagerBackend(awsSignIn(process.env, homedir(), readText), {
+      idToken: githubIdToken(process.env, globalThis.fetch),
+    })),
 });
 
 async function ask(question: string): Promise<string> {

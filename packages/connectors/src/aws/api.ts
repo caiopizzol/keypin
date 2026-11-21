@@ -51,7 +51,27 @@ export async function query(
     { region: region ?? REGION, service },
     now,
   );
-  const response = await fetch(url, { method: "POST", headers, body });
+  return xmlReply(await fetch(url, { method: "POST", headers, body }));
+}
+
+export async function unsignedQuery(
+  fetch: Fetch,
+  service: Service,
+  action: string,
+  params: Readonly<Record<string, string>>,
+  region: string,
+): Promise<Reply> {
+  const { version } = SERVICES[service];
+  const response = await fetch(endpoint(service, region), {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded; charset=utf-8" },
+    body: new URLSearchParams({ Action: action, Version: version, ...params }).toString(),
+    redirect: "error",
+  });
+  return xmlReply(response);
+}
+
+async function xmlReply(response: Response): Promise<Reply> {
   const xml = await response.text();
   const code = response.status === 200 ? null : text(xml, "Code");
   return { status: response.status, xml, code: errorCode(code) };

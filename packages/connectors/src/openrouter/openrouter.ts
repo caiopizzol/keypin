@@ -8,14 +8,14 @@ import {
   parseObject,
   Secret,
 } from "@keypin/core";
+import { type Copy, copies, fitName, plural, timestamp } from "./copy";
+import { type Listed, listed, shownAs, text, type VaultKey } from "./keys";
 
 const API = "https://openrouter.ai/api/v1";
 const DASHBOARD = "https://openrouter.ai/settings/keys";
 const MANAGEMENT_KEYS = "https://openrouter.ai/settings/management-keys";
 const PAGE = 100;
 const PAGES = 100;
-const NAME_LIMIT = 256;
-const DAY = 86_400_000;
 
 export interface OpenRouterIssuerOptions {
   admin: () => Promise<Secret>;
@@ -26,38 +26,6 @@ export interface OpenRouterIssuerOptions {
 interface Reply {
   status: number;
   body: Record<string, unknown>;
-}
-
-interface Listed {
-  hash: string;
-  name: string;
-  label: string;
-  disabled: boolean;
-  limit: number | null;
-  limitReset: string | null;
-  includeByok: boolean;
-  limitRemaining: number | null;
-  createdAt: string | null;
-  expiresAt: string | null;
-  workspaceId: string | null;
-  creatorUserId: string | null;
-}
-
-interface VaultKey {
-  label: string;
-  management: boolean;
-  organizationId: string | null;
-  workspaceId: string | null;
-  keyBudget: boolean;
-}
-
-interface Copy {
-  limit: number | null;
-  limitReset: string | null;
-  includeByok: boolean;
-  lifetime: number | null;
-  workspaceId: string | null;
-  creatorUserId: string | null;
 }
 
 export class OpenRouterIssuer implements Issuer {
@@ -392,72 +360,4 @@ export class OpenRouterIssuer implements Issuer {
     });
     return { status: response.status, body: parseObject(await response.text()) };
   }
-}
-
-function listed(item: unknown): Listed | null {
-  if (!isRecord(item) || typeof item.hash !== "string" || !item.hash) return null;
-  const amount = (field: string) => {
-    const value = item[field];
-    return typeof value === "number" ? value : null;
-  };
-  return {
-    hash: item.hash,
-    name: text(item, "name") ?? "",
-    label: text(item, "label") ?? "",
-    disabled: item.disabled === true,
-    limit: amount("limit"),
-    limitReset: text(item, "limit_reset"),
-    includeByok: item.include_byok_in_limit === true,
-    limitRemaining: amount("limit_remaining"),
-    createdAt: text(item, "created_at"),
-    expiresAt: text(item, "expires_at"),
-    workspaceId: text(item, "workspace_id"),
-    creatorUserId: text(item, "creator_user_id"),
-  };
-}
-
-function text(record: Record<string, unknown>, field: string): string | null {
-  const value = record[field];
-  return typeof value === "string" && value ? value : null;
-}
-
-function shownAs(label: string, current: Secret): boolean {
-  const shown = /^(.+?)\.{3}(.+)$/.exec(label);
-  if (!shown) return false;
-  const [, start = "", end = ""] = shown;
-  const value = current.reveal();
-  return value.length > start.length + end.length && value.startsWith(start) && value.endsWith(end);
-}
-
-function copies(copy: Copy, remaining: number | null): string {
-  const limit =
-    copy.limit === null
-      ? "no credit limit"
-      : copy.limitReset === null
-        ? `the old key's ${money(copy.limit)} limit, which never resets, starting at $0 spent${remaining === null ? "" : ` (the old key has ${money(remaining)} left)`}`
-        : `the old key's ${money(copy.limit)} limit, reset ${copy.limitReset}`;
-  const byok = copy.limit !== null && copy.includeByok ? ", counting BYOK usage" : "";
-  const expires =
-    copy.lifetime === null
-      ? "no expiry"
-      : `expiring ${plural(Math.ceil(copy.lifetime / DAY), "day")} after it's made`;
-  const owner = copy.creatorUserId === null ? "" : ", for the same member";
-  const place = copy.workspaceId === null ? "" : `, in the same workspace${owner}`;
-  return `with ${limit}${byok}; ${expires}${place}`;
-}
-
-function money(usd: number): string {
-  return `$${Number.isInteger(usd) ? usd : usd.toFixed(2)}`;
-}
-
-function plural(n: number, word: string): string {
-  return `${n} ${word}${n === 1 ? "" : "s"}`;
-}
-
-function timestamp(ms: number): string {
-  return new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
-}
-
-function fitName(name: string): string {
-  return name.length <= NAME_LIMIT ? name : `…${name.slice(name.length - NAME_LIMIT + 1)}`;
 }

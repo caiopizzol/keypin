@@ -13,6 +13,5 @@
   "packages/connectors/src/neon/neon.ts": 437,
   "packages/connectors/src/openrouter/openrouter.ts": 463,
   "packages/connectors/src/xai/xai.ts": 528,
-  "packages/core/src/gaps.ts": 461,
-  "packages/core/src/map.ts": 726
+  "packages/core/src/gaps.ts": 461
 }

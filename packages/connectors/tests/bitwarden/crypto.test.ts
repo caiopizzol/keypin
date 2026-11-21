@@ -9,7 +9,7 @@ import {
   keyBytes,
   keyFrom,
 } from "../../src/bitwarden/crypto";
-import { accessTokenFrom } from "../../src/bitwarden/backend";
+import { accessTokenFrom } from "../../src/bitwarden/access-token";
 
 const CLIENTS = "https://github.com/bitwarden/clients/blob";
 const CLIENTS_VECTOR_SOURCE = `${CLIENTS}/5461fdc587fcb5208b91eec111c676a54a579459/libs/importer/src/importers/spec-data/bitwarden-json/account-encrypted-v1.json.ts#L13-L54`;

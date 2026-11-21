@@ -1,5 +1,5 @@
 import { type SignInReason, sentence, type VaultKind } from "@keypin/core";
-import { ACCESS_TOKEN, NO_CREDENTIALS } from "./backend";
+import { ACCESS_TOKEN, NO_CREDENTIALS } from "./access-token";
 import { type BitwardenPin, type BitwardenRef, type BitwardenReference, SCHEME } from "./reference";
 import { bitwardenVaultRules } from "./rules";
 

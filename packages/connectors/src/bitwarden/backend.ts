@@ -12,7 +12,8 @@ import {
   type VaultScope,
   WriteRefused,
 } from "@keypin/core";
-import { accessTokenKey, decrypt, decryptBytes, encrypt, type Key, keyFrom } from "./crypto";
+import { ACCESS_TOKEN, type AccessToken, NO_CREDENTIALS } from "./access-token";
+import { decrypt, decryptBytes, encrypt, type Key, keyFrom } from "./crypto";
 import {
   account,
   type BitwardenPin as Place,
@@ -25,17 +26,9 @@ import {
   UUID,
 } from "./reference";
 
-export const ACCESS_TOKEN = "BWS_ACCESS_TOKEN";
-export const NO_CREDENTIALS = `set ${ACCESS_TOKEN} to a machine account's access token`;
 const ROTATED = /^rotated:[ \t]*(.*?)[ \t]*$/m;
 const DEVICE_SDK = "21";
 const LONGEST_WAIT_SECONDS = 60;
-
-export interface AccessToken {
-  id: string;
-  secret: string;
-  key: Key;
-}
 
 type Json = Record<string, unknown>;
 
@@ -59,21 +52,6 @@ interface Full extends Found {
   sealed: unknown;
   note: string;
   write: boolean;
-}
-
-export function accessTokenFrom(
-  env: Readonly<Record<string, string | undefined>>,
-): AccessToken | string | null {
-  const text = env[ACCESS_TOKEN] ?? "";
-  if (text === "") return null;
-  const [head = "", seed = "", ...more] = text.split(":");
-  const [version, id = "", secret = "", ...extra] = head.split(".");
-  const key = /^[A-Za-z0-9+/]+={0,2}$/.test(seed)
-    ? accessTokenKey(Buffer.from(seed, "base64"))
-    : null;
-  if (version !== "0" || more.length || extra.length || !UUID.test(id) || !secret || !key)
-    return `${ACCESS_TOKEN} isn't a Bitwarden Secrets Manager access token, which looks like 0.<id>.<secret>:<key>; copy it again from the machine account's Access tokens tab`;
-  return { id, secret, key };
 }
 
 export function bitwardenBackend(

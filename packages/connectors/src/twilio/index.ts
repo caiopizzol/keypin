@@ -1,2 +1,3 @@
 export { TwilioIssuer, type TwilioIssuerOptions } from "./twilio";
-export { twilioIssuer, type TwilioSpec } from "./kind";
+export { twilioIssuer } from "./kind";
+export { type TwilioSpec } from "./rules";

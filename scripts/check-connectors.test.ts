@@ -72,8 +72,14 @@ describe("connectors", () => {
     connector("acme", "vaultContract");
     put(`${PACKAGE}/src/shared.ts`, "export {};\n");
     expect(strays(root)).toEqual([
-      `${PACKAGE}/src/shared.ts: ${PACKAGE}/src holds one folder per provider. Move it into its provider's folder, or into packages/core if providers share it.`,
+      `${PACKAGE}/src/shared.ts: ${PACKAGE}/src holds one folder per provider, plus rules.ts. Move it into its provider's folder, or into packages/core if providers share it.`,
     ]);
+  });
+
+  test("rules.ts, which lists every kind's rules, passes", () => {
+    connector("acme", "vaultContract");
+    put(`${PACKAGE}/src/rules.ts`, "export {};\n");
+    expect(strays(root)).toEqual([]);
   });
 });
 

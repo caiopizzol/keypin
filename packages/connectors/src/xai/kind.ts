@@ -1,18 +1,9 @@
-import type { IssuerKind, IssuerSpec } from "@keypin/core";
+import type { IssuerKind } from "@keypin/core";
 import { XaiIssuer } from "./xai";
-
-export interface XaiSpec extends IssuerSpec {
-  readonly kind: "xai";
-}
+import { xaiIssuerRules, type XaiSpec } from "./rules";
 
 export const xaiIssuer: IssuerKind<XaiSpec> = {
-  kind: "xai",
-  parse(read) {
-    read.only([]);
-    const admin = read.admin();
-    if (!admin) return undefined;
-    return { kind: "xai", admin };
-  },
+  ...xaiIssuerRules,
   connect: (_spec, admin, fetch) =>
     new XaiIssuer({
       admin: async () => admin,

@@ -1,2 +1,3 @@
-export { openrouterIssuer, type OpenRouterSpec } from "./kind";
+export { openrouterIssuer } from "./kind";
+export { type OpenRouterSpec } from "./rules";
 export { OpenRouterIssuer, type OpenRouterIssuerOptions } from "./openrouter";

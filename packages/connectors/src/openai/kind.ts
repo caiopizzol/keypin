@@ -1,26 +1,9 @@
-import type { IssuerKind, IssuerSpec } from "@keypin/core";
+import type { IssuerKind } from "@keypin/core";
 import { OpenAIIssuer } from "./openai";
-
-export interface OpenAISpec extends IssuerSpec {
-  readonly kind: "openai";
-  readonly projectId: string;
-  readonly scopes: readonly string[];
-}
+import { openaiIssuerRules, type OpenAISpec } from "./rules";
 
 export const openaiIssuer: IssuerKind<OpenAISpec> = {
-  kind: "openai",
-  parse(read) {
-    read.only(["project_id", "scopes"]);
-    const admin = read.admin();
-    const projectId = read.filledIn(
-      read.required("project_id"),
-      "project_id",
-      "the OpenAI project ID",
-    );
-    const scopes = read.list("scopes");
-    if (!admin || !projectId || !scopes) return undefined;
-    return { kind: "openai", admin, projectId, scopes };
-  },
+  ...openaiIssuerRules,
   connect: ({ projectId, scopes }, admin, fetch) =>
     new OpenAIIssuer({
       admin: async () => admin,

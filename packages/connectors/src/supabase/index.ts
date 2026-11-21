@@ -1,4 +1,5 @@
-export { supabaseIssuer, type SupabaseSpec } from "./kind";
+export { supabaseIssuer } from "./kind";
+export { type SupabaseSpec } from "./rules";
 export { SupabaseIssuer, type SupabaseIssuerOptions } from "./supabase";
 export { SupabaseSecretsDestination, type SupabaseSecretsOptions } from "./functions";
 export {

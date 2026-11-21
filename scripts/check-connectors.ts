@@ -131,10 +131,10 @@ export function strays(root: string): string[] {
   const src = join(root, PACKAGE, "src");
   if (!existsSync(src)) return [];
   return readdirSync(src, { withFileTypes: true })
-    .filter((entry) => !entry.isDirectory())
+    .filter((entry) => !entry.isDirectory() && entry.name !== "rules.ts")
     .map(
       ({ name }) =>
-        `${PACKAGE}/src/${name}: ${PACKAGE}/src holds one folder per provider. Move it into its provider's folder, or into packages/core if providers share it.`,
+        `${PACKAGE}/src/${name}: ${PACKAGE}/src holds one folder per provider, plus rules.ts. Move it into its provider's folder, or into packages/core if providers share it.`,
     );
 }
 

@@ -12,4 +12,5 @@ export { CloudflareReader } from "./list";
 export { calledAcross, wranglerWorkers } from "./wrangler";
 export { cloudflareWorker, type WorkerHost, type WorkerPublisher, type WorkerTarget } from "./kind";
 export { CloudflareIssuer, type CloudflareIssuerOptions } from "./issuer";
-export { cloudflareIssuer, type CloudflareTokenSpec } from "./kind-issuer";
+export { cloudflareIssuer } from "./kind-issuer";
+export { type CloudflareTokenSpec } from "./rules";

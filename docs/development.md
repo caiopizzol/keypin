@@ -25,7 +25,8 @@ bun run typecheck  # tsc in every package
 `bun run check` fails when code breaks one of these, so the code keeps its shape:
 
 - Each provider is a folder in `packages/connectors/src`, imported as `@keypin/connectors/<provider>`. `packages/core`
-  never imports it. Core defines the contracts; register connectors in `apps/cli/src/start.ts`.
+  never imports it. Core defines the contracts; register connectors in `apps/cli/src/start.ts`, and the parse
+  half of each kind, its `rules.ts`, in `packages/connectors/src/rules.ts`.
 - Among keypin code, a provider folder imports only its own files and `@keypin/core`, never another provider. Put
   shared code in core.
 - In `apps/cli/src`, only `start.ts` and `sign-in.ts` import connectors. Elsewhere, take them from `deps`. A

@@ -1,47 +1,12 @@
-import {
-  type IssuedKey,
-  type Issuer,
-  type IssuerCheck,
-  type IssuerKind,
-  Secret,
-} from "@keypin/core";
+import { type IssuedKey, type Issuer, type IssuerCheck, Secret } from "@keypin/core";
 
 const BYTES = 32;
-const ENCODINGS = ["base64", "hex"] as const;
-type Encoding = (typeof ENCODINGS)[number];
 const DOCS = "docs/rotation.md#random";
-const BETTER_AUTH = ["BETTER_AUTH_SECRET", "BETTER_AUTH_SECRETS"];
-const BETTER_AUTH_DOCS = "https://better-auth.com/docs/reference/options#secrets";
-
-export interface RandomSpec {
-  readonly kind: "random";
-  readonly encoding: Encoding;
-}
-
-export const randomIssuer: IssuerKind<RandomSpec> = {
-  kind: "random",
-  admin: false,
-  parse(read) {
-    read.only(["encoding"]);
-    const given = read.optional("encoding");
-    const encoding = given === undefined ? "base64" : ENCODINGS.find((known) => known === given);
-    if (encoding === undefined) {
-      read.fail(`field "encoding" must be one of: ${ENCODINGS.join(", ")}`);
-      return undefined;
-    }
-    return { kind: "random", encoding };
-  },
-  refuses: (keyName) =>
-    BETTER_AUTH.includes(keyName)
-      ? `Better Auth encrypts two-factor secrets and OAuth tokens with it, and a new value can't read them. Add a version to BETTER_AUTH_SECRETS by hand instead: ${BETTER_AUTH_DOCS}`
-      : undefined,
-  connect: ({ encoding }) => new RandomIssuer(encoding),
-};
 
 export class RandomIssuer implements Issuer {
-  readonly #encoding: Encoding;
+  readonly #encoding: "base64" | "hex";
 
-  constructor(encoding: Encoding) {
+  constructor(encoding: "base64" | "hex") {
     this.#encoding = encoding;
   }
 

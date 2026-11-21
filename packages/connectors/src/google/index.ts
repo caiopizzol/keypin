@@ -1,8 +1,4 @@
 export { GoogleIssuer, type GoogleIssuerOptions } from "./google";
-export {
-  type GoogleServiceAccountSpec,
-  type GoogleSpec,
-  googleIssuer,
-  googleServiceAccountIssuer,
-} from "./kind";
+export { googleIssuer, googleServiceAccountIssuer } from "./kind";
+export { type GoogleServiceAccountSpec, type GoogleSpec } from "./rules";
 export { ServiceAccountKeyIssuer, type ServiceAccountKeyIssuerOptions } from "./service-account";

@@ -15,13 +15,6 @@ export function baselineAt(root: string, file: string): Counts {
   return parse(readFileSync(join(root, file), "utf8"));
 }
 
-export function raised(before: Counts | null, after: Counts, file: string): string[] {
-  if (before === null) return [];
-  return Object.entries(after)
-    .filter(([path, n]) => n > (before[path] ?? 0))
-    .map(([path, n]) => `${path}: ${file} raises it to ${n}, from ${before[path] ?? 0}.`);
-}
-
 const sum = (counts: Counts) => Object.values(counts).reduce((total, n) => total + n, 0);
 
 export function raisedTotal(before: Counts | null, after: Counts, file: string): string[] {
@@ -29,14 +22,12 @@ export function raisedTotal(before: Counts | null, after: Counts, file: string):
   return [`${file} raises the total to ${sum(after)}, from ${sum(before)}.`];
 }
 
-type Compare = typeof raised;
-
 function git(...args: string[]): string | null {
   const result = Bun.spawnSync(["git", ...args], { stderr: "ignore" });
   return result.exitCode === 0 ? result.stdout.toString() : null;
 }
 
-export function raisedSinceBase(root: string, file: string, compare: Compare = raised): string[] {
+export function raisedSinceBase(root: string, file: string): string[] {
   const target = `origin/${process.env.GITHUB_BASE_REF || "main"}`;
   const base = git("-C", root, "merge-base", "HEAD", target)?.trim() || null;
   if (base === null && process.env.GITHUB_BASE_REF) {
@@ -45,5 +36,5 @@ export function raisedSinceBase(root: string, file: string, compare: Compare = r
     return [];
   }
   const text = base === null ? null : git("-C", root, "show", `${base}:${file}`);
-  return compare(text === null ? null : parse(text), baselineAt(root, file), file);
+  return raisedTotal(text === null ? null : parse(text), baselineAt(root, file), file);
 }

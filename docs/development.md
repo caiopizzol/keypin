@@ -49,8 +49,8 @@ bun run typecheck  # tsc in every package
   that text in the provider's kind. `scripts/provider-literals.json` lists today's counts. Their total may only go
   down, and code you move takes its count along.
 - A `.ts` file in a package's `src` has at most 400 lines. When one grows past that, split it into a folder with one
-  file per job, like `apps/cli/src/commands/rotate/`. `scripts/file-sizes.json` lists today's larger files, which may
-  only shrink.
+  file per job, like `apps/cli/src/commands/rotate/`. If it is one job that doesn't split cleanly, list it in
+  `scripts/file-sizes.json` with its line count and why, so reviewers see each change to its size.
 - README.md and skills/keypin/SKILL.md grow by at most 5 lines per PR (`scripts/check-docs-growth.ts`), per
   [AGENTS.md](../AGENTS.md). Remove a line for each one you add, or add a `Docs-Growth: <reason>` trailer to a commit.
 

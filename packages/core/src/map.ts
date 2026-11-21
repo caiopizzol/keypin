@@ -3,14 +3,14 @@ import type { Environment, KeyId, KeyRef } from "./contracts";
 import { DEFAULT_ENVIRONMENTS } from "./contracts";
 import {
   checkId,
-  type DestinationKinds,
+  type DestinationRules,
   placeId,
   type PublishTarget,
   secretKey,
   type TableReader,
 } from "./destination";
-import { idKeyOf, type IssuerKinds, type IssuerReader, type IssuerSpec } from "./issuer";
-import type { VaultKinds } from "./login";
+import { idKeyOf, type IssuerReader, type IssuerRules, type IssuerSpec } from "./issuer";
+import type { VaultRules } from "./login";
 import { pullKindOf, type PullKinds, pullPlace, type PullReader } from "./pull";
 import { isRecord } from "./record";
 import { byKind, parseReference, referenceSchemes, sameItem, sameRef } from "./reference";
@@ -77,9 +77,9 @@ export function isVariableName(name: string): boolean {
 export function parseMap(
   text: string,
   file: string,
-  kinds: DestinationKinds,
-  issuers: IssuerKinds,
-  vaults: VaultKinds,
+  kinds: readonly DestinationRules[],
+  issuers: readonly IssuerRules[],
+  vaults: readonly VaultRules[],
   pulls: PullKinds = [],
 ): MapResult {
   let data: unknown;
@@ -189,7 +189,7 @@ function validateIgnore(
 
 function validatePins(
   data: Table,
-  vaults: VaultKinds,
+  vaults: readonly VaultRules[],
   fail: (where: string, message: string) => void,
 ): VaultPins {
   const pins: Record<string, unknown> = {};
@@ -235,7 +235,7 @@ function validateEnvironments(
 function sharedDestinations(
   keys: KeyEntry[],
   environments: readonly Environment[],
-  kinds: DestinationKinds,
+  kinds: readonly DestinationRules[],
   fail: (where: string, message: string) => void,
 ) {
   const owners = new Map<string, string>();
@@ -255,7 +255,7 @@ function sharedDestinations(
 function sharedClaims(
   keys: KeyEntry[],
   environments: readonly Environment[],
-  issuers: IssuerKinds,
+  issuers: readonly IssuerRules[],
   fail: (where: string, message: string) => void,
 ) {
   const owners = new Map<string, string>();
@@ -335,9 +335,9 @@ function sameSet(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
 interface MapContext {
   pins: VaultPins;
   environments: readonly Environment[];
-  kinds: DestinationKinds;
-  issuers: IssuerKinds;
-  vaults: VaultKinds;
+  kinds: readonly DestinationRules[];
+  issuers: readonly IssuerRules[];
+  vaults: readonly VaultRules[];
   pulls: PullKinds;
 }
 
@@ -616,7 +616,7 @@ function reference(
 
 function destination(
   raw: unknown,
-  kinds: DestinationKinds,
+  kinds: readonly DestinationRules[],
   fail: (message: string) => void,
 ): PublishTarget | undefined {
   if (typeof raw === "string") {

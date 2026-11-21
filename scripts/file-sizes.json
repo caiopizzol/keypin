@@ -1,6 +1,5 @@
 {
   "packages/connectors/src/bitwarden/backend.ts": 405,
   "packages/connectors/src/doppler/backend.ts": 500,
-  "packages/connectors/src/google/testing.ts": 401,
   "packages/connectors/src/infisical/backend.ts": 577
 }

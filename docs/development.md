@@ -78,6 +78,7 @@ binary is for; the `check` workflow runs it for all four.
 Release Please keeps a release PR open. Approve its workflows so `check` runs, then merge it as an admin: pullfrog
 doesn't review release PRs, so `pullfrog-approval` never passes. The `release` workflow posts the PR's `pr-title`
 check, then, after the merge, builds and checks each binary and publishes the four platform packages before `keypin`.
+It also attaches `keypin-rules-<version>.tgz` to the GitHub release: `@keypin/rules`, the map rules keypin.dev installs.
 
 The workflow fails before building if a platform package doesn't exist on npm yet, since trusted publishing can't
 create one. Before the first release, the owner does this once:
@@ -90,7 +91,3 @@ create one. Before the first release, the owner does this once:
 3. Make `release.yml` each package's trusted publisher: `npm trust github @keypin/cli-<target> --repo
    caiopizzol/keypin --file release.yml --allow-publish` (npm 11.15 or later, with 2FA). Then merge the release PR
    within 2 days, or the trusted publisher expires.
-
-`@keypin/rules` (`packages/rules`), the map rules keypin.dev calls, ships last at the same version and is skipped
-until it's on npm: run `bun run pack` there and publish a placeholder from `packages/rules/npm` as in step 2, then do
-step 3 for `@keypin/rules`.

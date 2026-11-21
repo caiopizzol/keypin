@@ -19,6 +19,7 @@ jobs:
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       sha: ${{ steps.release.outputs.sha }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
@@ -152,23 +153,32 @@ jobs:
               (cd "$package" && npm publish --access public)
             fi
           done
-      - name: publish @keypin/rules once it is on npm
+
+  rules-tarball:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.sha }}
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: bun install --frozen-lockfile
+      - run: bun run pack
         working-directory: packages/rules
-        run: |
-          status=$(curl -sS -o /dev/null -w '%{http_code}' "https://registry.npmjs.org/@keypin%2frules")
-          case $status in
-            200) ;;
-            404)
-              echo "::warning::@keypin/rules isn't on npm yet, so this release skipped it. Publish a first version by hand and add release.yml as its trusted publisher (docs/development.md, Releases)."
-              exit 0
-              ;;
-            *) echo "::error::npm answered $status for @keypin/rules"; exit 1 ;;
-          esac
-          bun run pack
-          cd npm
-          spec=$(node -p "const p = require('./package.json'); p.name + '@' + p.version")
-          if npm view "$spec" version >/dev/null 2>&1; then
-            echo "$spec is already on npm"
-          else
-            npm publish --access public
-          fi
+      - name: attach the @keypin/rules tarball for keypin.dev
+        working-directory: packages/rules
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: gh release upload "$TAG" "keypin-rules-${TAG#v}.tgz" --repo "$REPO"

@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test";
 import { destinations, issuers, pulls, vaults } from "@keypin/connectors/rules";
 import { parseMap } from "@keypin/core";
 import root from "../../../package.json";
-import { PACKAGE as FOLDER } from "../pack";
+import { TARBALL } from "../pack";
 
 const PACKAGE = fileURLToPath(new URL("..", import.meta.url));
 const TSC = fileURLToPath(new URL("../../../node_modules/.bin/tsc", import.meta.url));
@@ -58,7 +58,6 @@ const COMPILER = {
 
 let out = "";
 let consumer = "";
-let tarball = "";
 
 function run(command: string[], cwd: string): { code: number; output: string } {
   const result = Bun.spawnSync(command, { cwd, stdout: "pipe", stderr: "pipe" });
@@ -69,13 +68,10 @@ beforeAll(async () => {
   out = await mkdtemp(join(tmpdir(), "keypin-rules-"));
   const build = run(["bun", "run", "pack"], PACKAGE);
   if (build.code !== 0) throw new Error(build.output);
-  const pack = run(["npm", "pack", "--pack-destination", out], FOLDER);
-  if (pack.code !== 0) throw new Error(pack.output);
   consumer = join(out, "consumer");
   const scope = join(consumer, "node_modules", "@keypin");
   await mkdir(scope, { recursive: true });
-  tarball = join(out, (await readdir(out)).find((name) => name.endsWith(".tgz")) ?? "");
-  const extract = run(["tar", "-xzf", tarball, "-C", scope], out);
+  const extract = run(["tar", "-xzf", TARBALL, "-C", scope], out);
   if (extract.code !== 0) throw new Error(extract.output);
   await rename(join(scope, "package"), join(scope, "rules"));
   await writeFile(join(consumer, "package.json"), `{ "type": "module" }\n`);
@@ -102,6 +98,24 @@ afterAll(async () => {
 });
 
 describe("@keypin/rules", () => {
+  test("the release attaches this tarball, under its version's name", async () => {
+    const release = await readFile(join(PACKAGE, "../../.github/workflows/release.yml"), "utf8");
+    const config = await readFile(join(PACKAGE, "../../release-please-config.json"), "utf8");
+    expect(TARBALL).toBe(join(PACKAGE, `keypin-rules-${root.version}.tgz`));
+    expect(release).toContain(
+      "      - run: bun run pack\n        working-directory: packages/rules\n",
+    );
+    expect(release).toContain(`gh release upload "$TAG" "keypin-rules-\${TAG#v}.tgz"`);
+    expect(JSON.parse(config)).toMatchObject({ "include-v-in-tag": true });
+  });
+
+  test("can't be published to npm by accident", async () => {
+    const packed: unknown = JSON.parse(
+      await readFile(join(consumer, "node_modules/@keypin/rules/package.json"), "utf8"),
+    );
+    expect(packed).toMatchObject({ private: true });
+  });
+
   test("ships at the CLI's version", async () => {
     const packed: unknown = JSON.parse(
       await readFile(join(consumer, "node_modules/@keypin/rules/package.json"), "utf8"),
@@ -110,7 +124,7 @@ describe("@keypin/rules", () => {
   });
 
   test("packs only its built JavaScript, its types and the license", () => {
-    const list = run(["tar", "-tzf", tarball], out);
+    const list = run(["tar", "-tzf", TARBALL], out);
     expect(list.output.trim().split("\n").toSorted()).toEqual([
       "package/LICENSE",
       "package/dist/index.d.ts",

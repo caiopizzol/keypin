@@ -1,5 +1,4 @@
 {
-  "apps/cli/src/commands/check.ts": 635,
   "apps/cli/src/commands/import.ts": 603,
   "apps/cli/src/commands/rotate/rotate-key.ts": 460,
   "packages/connectors/src/aws/secrets-manager.ts": 418,

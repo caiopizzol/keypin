@@ -31,7 +31,7 @@ bun run typecheck  # tsc in every package
   shared code in core.
 - In `apps/cli/src`, only `start.ts` and `sign-in.ts` import connectors. Elsewhere, take them from `deps`. A
   connector's sign-in checks and project discovery for `keypin check` live in its kind (`prerequisites`,
-  `discovery`), not in `check.ts` or core.
+  `discovery`), not in `commands/check` or core.
 - Core and `apps/cli/src/commands` don't import Node or Bun I/O modules (`fs`, `child_process`, `net`, `process`,
   `os`, `crypto`, `bun`…), and don't use `process`, global `fetch`, `Bun` or the global object (`globalThis`,
   `self`, `window`, `global`). Take files, env, launch and vault from `deps` so tests can fake them.

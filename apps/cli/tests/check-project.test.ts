@@ -6,7 +6,8 @@ import { CloudflareReader } from "@keypin/connectors/cloudflare";
 import { fakeSignIn } from "@keypin/connectors/cloudflare/testing";
 import { cli } from "../src/cli";
 import { destinations, issuers, vaults } from "../src/start";
-import { AFTER_IMPORT, PASTE, THEN } from "../src/commands/check";
+import { THEN } from "../src/commands/check/render";
+import { AFTER_IMPORT, PASTE } from "../src/commands/check/steps";
 import { TEMPLATE } from "../src/commands/init";
 import type { Deps } from "../src/deps";
 import {

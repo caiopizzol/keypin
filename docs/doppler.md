@@ -75,5 +75,3 @@ entry, then:
 
    Set `KEYPIN_DOPPLER_AUDIENCE` if the identity expects another audience. Leave `DOPPLER_TOKEN` unset; keypin
    refuses both. `keypin check` flags a job that sets the ID without `id-token: write`.
-
-keypin follows Doppler's documented API for this; it hasn't been tested against a live Doppler account yet.

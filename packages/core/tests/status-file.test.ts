@@ -216,10 +216,26 @@ describe("reading the status file back", () => {
     expect(statusEntries(JSON.stringify({ version: 2, keys: {} }))).toBeNull();
   });
 
-  test("keeps a key named __proto__ as an ordinary key", () => {
+  test("keeps keys and environments named __proto__, constructor or toString as ordinary names", async () => {
     const text = JSON.stringify(
-      statusFile([row("__proto__", "prod", "2026-10-23")], ["prod"], day("2026-11-09")),
+      statusFile(
+        [row("__proto__", "constructor", "2026-10-23"), row("toString", "prod", "2026-11-01")],
+        ["constructor", "prod"],
+        day("2026-11-09"),
+      ),
+      null,
+      2,
     );
-    expect(Object.keys(statusEntries(text) ?? {})).toEqual(["__proto__"]);
+    const entries = statusEntries(text);
+    await expect(readRecording(text)).toMatchFileSnapshot(
+      "./recordings/status-file/special-names.txt",
+    );
+    expect(Object.keys(entries ?? {})).toEqual(["__proto__", "toString"]);
+    const key = (keyId: string) => entries?.[keyId];
+    expect(key("__proto__")?.["constructor"]?.rotated).toBe("2026-10-23");
+    expect(key("toString")?.["constructor"]).toBeUndefined();
+    expect(key("__proto__")?.["toString"]).toBeUndefined();
+    expect(key("constructor")).toBeUndefined();
+    expect(key("hasOwnProperty")).toBeUndefined();
   });
 });

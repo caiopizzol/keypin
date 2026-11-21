@@ -1,0 +1,32 @@
+--- file ---
+{
+  "version": 1,
+  "written": "2026-11-09",
+  "keys": {
+    "__proto__": {
+      "constructor": {
+        "rotated": "2026-10-23"
+      }
+    },
+    "toString": {
+      "prod": {
+        "rotated": "2026-11-01"
+      }
+    }
+  }
+}
+--- read ---
+{
+  "__proto__": {
+    "constructor": {
+      "rotated": "2026-10-23",
+      "rotation": null
+    }
+  },
+  "toString": {
+    "prod": {
+      "rotated": "2026-11-01",
+      "rotation": null
+    }
+  }
+}

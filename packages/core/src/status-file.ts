@@ -91,7 +91,7 @@ export function statusEntries(
 ): Record<string, Record<string, StatusEntryRead>> | null {
   const keys = parsed(text);
   if (keys === null) return null;
-  return Object.fromEntries(
+  return dictionary(
     Object.entries(keys).flatMap(([keyId, dates]) =>
       isRecord(dates) ? [[keyId, entriesOf(dates)] as const] : [],
     ),
@@ -99,12 +99,19 @@ export function statusEntries(
 }
 
 function entriesOf(dates: Record<string, unknown>): Record<string, StatusEntryRead> {
-  return Object.fromEntries(
+  return dictionary(
     Object.entries(dates).flatMap(([environment, entry]) => {
       const read = readEntry(entry);
       return read ? [[environment, read] as const] : [];
     }),
   );
+}
+
+function dictionary<T>(entries: readonly (readonly [string, T])[]): Record<string, T> {
+  const result: Record<string, T> = {};
+  Reflect.setPrototypeOf(result, null);
+  for (const [name, value] of entries) result[name] = value;
+  return result;
 }
 
 function rotatedOf(entry: Record<string, unknown>): Day | null | undefined {

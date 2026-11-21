@@ -76,7 +76,7 @@ if (import.meta.main) {
   const found = problems(".", baselineAt(".", BASELINE));
   if (found.length > 0) {
     process.stderr.write(
-      `Core and the CLI outside start.ts and sign-in.ts name no provider; the counts in ${BASELINE} only go down.\n${found.join("\n")}\n`,
+      `Core and the CLI outside start.ts and sign-in.ts name no provider. Each entry in ${BASELINE} matches its file. If you moved code, move its count to the new file; the total only goes down.\n${found.join("\n")}\n`,
     );
     process.exitCode = 1;
   }

@@ -13,15 +13,16 @@ export interface IssuerReader extends TableReader {
   idKey(): KeyId | undefined;
 }
 
-interface IssuerKindBase<T extends IssuerSpec> {
+export interface IssuerRules<T extends IssuerSpec = IssuerSpec> {
   readonly kind: T["kind"];
+  readonly admin?: boolean;
   parse(read: IssuerReader): T | undefined;
   claims?(spec: T): readonly string[];
   idKey?(spec: T): KeyId;
   refuses?(keyName: KeyId): string | undefined;
 }
 
-export type IssuerKind<T extends IssuerSpec = IssuerSpec> = IssuerKindBase<T> &
+export type IssuerKind<T extends IssuerSpec = IssuerSpec> = IssuerRules<T> &
   (
     | { readonly admin?: true; connect(spec: T, admin: Secret, fetch?: Fetch): Issuer }
     | { readonly admin: false; connect(spec: T): Issuer }
@@ -47,6 +48,6 @@ export function connectIssuer(
   return found.connect(spec, admin, fetch);
 }
 
-export function idKeyOf(kinds: IssuerKinds, spec: IssuerSpec): KeyId | null {
+export function idKeyOf(kinds: readonly IssuerRules[], spec: IssuerSpec): KeyId | null {
   return kinds.find((k) => k.kind === spec.kind)?.idKey?.(spec) ?? null;
 }

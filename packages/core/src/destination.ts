@@ -17,11 +17,7 @@ export interface TableReader {
   fail(message: string): void;
 }
 
-export interface DestinationKind<
-  T extends PublishTarget = PublishTarget,
-  P = unknown,
-  H = unknown,
-> {
+export interface DestinationRules<T extends PublishTarget = PublishTarget> {
   readonly kind: T["to"];
   readonly label: string;
   parse(read: TableReader): T | undefined;
@@ -31,20 +27,27 @@ export interface DestinationKind<
   fromId(place: string, pinned: string): T | undefined;
   describe(target: T): string;
   named(target: T): string;
+  refuses?(secretName: string): string | undefined;
+}
+
+export interface DestinationKind<
+  T extends PublishTarget = PublishTarget,
+  P = unknown,
+  H = unknown,
+> extends DestinationRules<T> {
   where(target: T): string;
   login(target: T, publisher: P): string;
   readonly signInVariables?: readonly string[];
   readonly writeNote?: string;
   publisher?(host: H, folder: string): Promise<PublisherPart<P>>;
   prerequisites?(project: LoginProject<T>, host: H): Promise<readonly Prerequisite[]>;
-  refuses?(secretName: string): string | undefined;
   discovery?: Discovery<H>;
   connect(target: T, publisher: P): Destination;
 }
 
 export type DestinationKinds = readonly DestinationKind[];
 
-export function kindOf<K extends DestinationKind>(kinds: readonly K[], to: string): K {
+export function kindOf<K extends DestinationRules>(kinds: readonly K[], to: string): K {
   const kind = kinds.find((k) => k.kind === to);
   if (!kind) throw new Error(`keypin has no destination kind "${to}"`);
   return kind;
@@ -58,14 +61,14 @@ export function connectTo<P>(
   return kindOf(kinds, target.to).connect(target, publisher);
 }
 
-export function placeId(target: PublishTarget, kinds: DestinationKinds): string {
+export function placeId(target: PublishTarget, kinds: readonly DestinationRules[]): string {
   return `${target.to}:${kindOf(kinds, target.to).id(target)}`;
 }
 
 export function destinationId(
   target: PublishTarget,
   secretName: string,
-  kinds: DestinationKinds,
+  kinds: readonly DestinationRules[],
 ): string {
   return `${placeId(target, kinds)}:${secretName}`;
 }
@@ -73,16 +76,16 @@ export function destinationId(
 export function secretKey(
   target: PublishTarget,
   secretName: string,
-  kinds: DestinationKinds,
+  kinds: readonly DestinationRules[],
 ): string {
   return `${target.to}:${kindOf(kinds, target.to).secretId(target, secretName)}`;
 }
 
-export function checkId(target: PublishTarget, kinds: DestinationKinds): string {
+export function checkId(target: PublishTarget, kinds: readonly DestinationRules[]): string {
   return `${target.to}:${kindOf(kinds, target.to).checkId(target)}`;
 }
 
-export function targetOf<K extends DestinationKind>(
+export function targetOf<K extends DestinationRules>(
   id: string,
   pinned: string,
   kinds: readonly K[],
@@ -96,7 +99,7 @@ export function targetOf<K extends DestinationKind>(
 
 export function receiptSecretKey(
   receipt: { destinationId: string; account: { pinned: string } },
-  kinds: DestinationKinds,
+  kinds: readonly DestinationRules[],
 ): string {
   const found = targetOf(receipt.destinationId, receipt.account.pinned, kinds);
   return found ? secretKey(found.target, found.secretName, kinds) : receipt.destinationId;

@@ -40,12 +40,7 @@ export interface NewKeys {
   readonly options: string;
 }
 
-export interface VaultKind<
-  H = unknown,
-  R extends KeyRef = KeyRef,
-  U extends KeyRef = KeyRef,
-  P = unknown,
-> {
+export interface VaultRules<R extends KeyRef = KeyRef, U extends KeyRef = KeyRef, P = unknown> {
   readonly kind: R["kind"];
   readonly name: string;
   readonly scheme: string;
@@ -61,6 +56,14 @@ export interface VaultKind<
   sameField?(a: R, b: R): boolean;
   stored(value: Readonly<Record<string, unknown>>): R | null;
   readonly newKeys?: NewKeys;
+}
+
+export interface VaultKind<
+  H = unknown,
+  R extends KeyRef = KeyRef,
+  U extends KeyRef = KeyRef,
+  P = unknown,
+> extends VaultRules<R, U, P> {
   readonly newValueByHand: string;
   readonly addRotatedDate: string;
   readonly keepsRotated?: false;

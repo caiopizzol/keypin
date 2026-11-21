@@ -1,5 +1,13 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type DestinationKind, type IssuerKind, type IssuerSpec, parseMap } from "../src/index";
+import {
+  type DestinationKind,
+  type DestinationRules,
+  type IssuerKind,
+  type IssuerRules,
+  type IssuerSpec,
+  parseMap,
+  type VaultRules,
+} from "../src/index";
 import { ISSUERS, KINDS, MAP_FILE, PULLS, VALID_MAP, VAULT_KINDS } from "./fixtures";
 
 const VAULTS = `
@@ -1417,5 +1425,80 @@ environment = "production"
       `${VAULTS}[keys.A]\nprod = { from = "op://Private/a/password", ${reader} }\n[keys.B]\nprod = { from = "op://Private/b/password", ${reader} }\n`,
     );
     expect(result.ok).toBe(true);
+  });
+});
+
+describe("the parse half of each kind", () => {
+  const place: DestinationRules<{ to: "place"; account: string; name: string }> = {
+    kind: "place",
+    label: "Place",
+    parse: (read) => {
+      read.only(["name"]);
+      const name = read.required("name");
+      return name === undefined ? undefined : { to: "place", account: "", name };
+    },
+    id: (target) => target.name,
+    secretId: (target, secretName) => `${target.name}:${secretName}`,
+    checkId: (target) => target.name,
+    fromId: (name) => ({ to: "place", account: "", name }),
+    describe: (target) => target.name,
+    named: (target) => target.name,
+    refuses: (secretName) => (secretName.startsWith("PLACE_") ? "it's reserved" : undefined),
+  };
+  const counter: IssuerRules<{ kind: "counter" }> = {
+    kind: "counter",
+    admin: false,
+    parse: (read) => {
+      read.only([]);
+      return { kind: "counter" };
+    },
+  };
+  const box: VaultRules<
+    { kind: "box"; account: string; name: string },
+    { kind: "box"; name: string },
+    string
+  > = {
+    kind: "box",
+    name: "Box",
+    scheme: "box://",
+    placeholder: "the secret's name",
+    needsPin: `needs your Box account: add [box] with account = "..."`,
+    readPin: (read) => {
+      read.only(["account"]);
+      return read.required("account");
+    },
+    parse: (rest) => (rest ? { kind: "box", name: rest } : "must be box://<name>"),
+    pinned: (reference, account) => ({ ...reference, account }),
+    format: (ref) => `box://${ref.name}`,
+    account: (ref) => ref.account,
+    sameItem: (a, b) => a.name === b.name,
+    stored: () => null,
+  };
+  const BOX = `[box]\naccount = "acme"\n`;
+  const parse = (body: string) => parseMap(`${BOX}${body}`, MAP_FILE, [place], [counter], [box]);
+
+  test("reads a map with kinds that can't connect", () => {
+    const result = parse(
+      `[keys.API_KEY.prod]\nfrom = "box://api"\nissuer = { kind = "counter" }\npublish = [{ to = "place", name = "web" }]\n`,
+    );
+    assert(result.ok);
+    expect(result.map.keys[0]?.environments.prod).toMatchObject({
+      ref: { kind: "box", account: "acme", name: "api" },
+      issuer: { kind: "counter" },
+      publish: [{ to: "place", account: "", name: "web" }],
+    });
+  });
+
+  test("still refuses what the rules refuse", () => {
+    expect(
+      parse(
+        `[keys.PLACE_KEY.prod]\nfrom = "box://api"\npublish = [{ to = "place", name = "web" }]\n`,
+      ),
+    ).toEqual({
+      ok: false,
+      errors: [
+        `${MAP_FILE}: key "PLACE_KEY" prod: publish[0]: place can't take this key, because it's reserved`,
+      ],
+    });
   });
 });

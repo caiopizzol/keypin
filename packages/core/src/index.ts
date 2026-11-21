@@ -29,6 +29,7 @@ export {
   destinationId,
   type DestinationKind,
   type DestinationKinds,
+  type DestinationRules,
   kindOf,
   placeId,
   type PublishTarget,
@@ -49,6 +50,7 @@ export {
   type IssuerKind,
   type IssuerKinds,
   type IssuerReader,
+  type IssuerRules,
   type IssuerSpec,
 } from "./issuer";
 export {
@@ -67,7 +69,15 @@ export {
   type MapResult,
 } from "./map";
 export { addDays, type Day, localDay, parseDay, periodDays } from "./days";
-export { formatReference, vaultAccount, vaultAccounts, vaultKindOf, vaultName } from "./reference";
+export {
+  formatReference,
+  sameItem,
+  sameRef,
+  vaultAccount,
+  vaultAccounts,
+  vaultKindOf,
+  vaultName,
+} from "./reference";
 export { type Files } from "./files";
 export { messageOf } from "./error";
 export { isRecord, objectField, parseObject } from "./record";
@@ -153,6 +163,7 @@ export {
   sentence,
   type VaultKind,
   type VaultKinds,
+  type VaultRules,
   type VaultUse,
 } from "./login";
 export { findGaps, type Fix, type Gaps, type LocalFile, type Need, type ProjectScan } from "./gaps";

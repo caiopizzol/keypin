@@ -1,0 +1,18 @@
+{
+  "apps/cli/src/commands/check.ts": 635,
+  "apps/cli/src/commands/import.ts": 603,
+  "apps/cli/src/commands/rotate/rotate-key.ts": 460,
+  "packages/connectors/src/aws/secrets-manager.ts": 418,
+  "packages/connectors/src/aws/testing.ts": 515,
+  "packages/connectors/src/bitwarden/backend.ts": 405,
+  "packages/connectors/src/doppler/backend.ts": 500,
+  "packages/connectors/src/elevenlabs/elevenlabs.ts": 442,
+  "packages/connectors/src/github/discovery.ts": 564,
+  "packages/connectors/src/google/testing.ts": 401,
+  "packages/connectors/src/infisical/backend.ts": 577,
+  "packages/connectors/src/neon/neon.ts": 437,
+  "packages/connectors/src/openrouter/openrouter.ts": 463,
+  "packages/connectors/src/xai/xai.ts": 528,
+  "packages/core/src/gaps.ts": 461,
+  "packages/core/src/map.ts": 726
+}

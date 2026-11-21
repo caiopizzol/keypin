@@ -79,6 +79,8 @@ Release Please keeps a release PR open. Approve its workflows so `check` runs, t
 doesn't review release PRs, so `pullfrog-approval` never passes. The `release` workflow posts the PR's `pr-title`
 check, then, after the merge, builds and checks each binary and publishes the four platform packages before `keypin`.
 It also attaches `keypin-rules-<version>.tgz` to the GitHub release: `@keypin/rules`, the map rules keypin.dev installs.
+If that upload fails, use Re-run failed jobs, not all jobs. If you can't, check out `v<version>`, run `bun install
+--frozen-lockfile`, then `bun run pack && gh release upload v<version> keypin-rules-<version>.tgz` in `packages/rules`.
 
 The workflow fails before building if a platform package doesn't exist on npm yet, since trusted publishing can't
 create one. Before the first release, the owner does this once:

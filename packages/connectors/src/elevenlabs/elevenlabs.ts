@@ -9,12 +9,12 @@ import {
   parseObject,
   Secret,
 } from "@keypin/core";
+import { idOf, type Listed, listedKeys, numberIn, parseId } from "./keys";
+import { ADMIN_FIX, missingPermission, refusedAdmin, type Reply, returned } from "./refusal";
 
 const API = "https://api.elevenlabs.io/v1";
 const DASHBOARD = "https://elevenlabs.io/app/workspace";
 const SERVICE_ACCOUNTS = `Workspace settings → Service Accounts (${DASHBOARD})`;
-const ADMIN_FIX =
-  "put a workspace admin's API key in the admin item; a restricted key needs access to service accounts";
 const MAX_LIFETIME = 90 * 86_400;
 const DAY = 86_400;
 
@@ -22,27 +22,6 @@ export interface ElevenLabsIssuerOptions {
   admin: () => Promise<Secret>;
   fetch?: Fetch;
   now?: () => Date;
-}
-
-interface Reply {
-  status: number;
-  body: Record<string, unknown>;
-}
-
-interface Listed {
-  account: string;
-  accountName: string;
-  keyId: string;
-  name: string;
-  disabled: boolean;
-  disableReason: string | null;
-  permissions: string[] | null;
-  characterLimit: number | null;
-  allowedIps: string[] | null;
-  thirdPartyDisable: boolean | null;
-  limits: Record<string, unknown>;
-  createdAt: number | null;
-  expiresAt: number | null;
 }
 
 interface Copy {
@@ -323,83 +302,6 @@ export class ElevenLabsIssuer implements Issuer {
   }
 }
 
-function refusedAdmin(reply: Reply): IssuerCheck {
-  const facts = `ElevenLabs answered HTTP ${reply.status}`;
-  if (reply.status === 401 && !missingPermission(reply))
-    return {
-      ok: false,
-      facts,
-      reason:
-        "ElevenLabs doesn't accept the admin key: it was deleted, disabled or expired, or the item holds another value",
-      fix: ADMIN_FIX,
-    };
-  if (reply.status === 403 && !missingPermission(reply))
-    return {
-      ok: false,
-      facts,
-      reason:
-        "ElevenLabs refused the admin key from this machine: its IP allowlist may not include this address, or it can't list service accounts",
-      fix: `run this from an address the admin key allows, or check its IP allowlist; ${ADMIN_FIX}`,
-    };
-  if (reply.status === 401 || reply.status === 403)
-    return {
-      ok: false,
-      facts,
-      reason:
-        "the admin key can't list service accounts: only a workspace admin's key with access to service accounts can",
-      fix: ADMIN_FIX,
-    };
-  throw new Error(returned("GET", "/v1/service-accounts", reply));
-}
-
-function missingPermission(reply: Reply): boolean {
-  const detail = objectField(reply.body, "detail");
-  return detail.code === "missing_permissions" || detail.status === "missing_permissions";
-}
-
-function listedKeys(body: Record<string, unknown>): Listed[] {
-  const accounts = Array.isArray(body["service-accounts"]) ? body["service-accounts"] : [];
-  return accounts.filter(isRecord).flatMap((account) => {
-    const id = text(account, "service_account_user_id");
-    if (id === null) return [];
-    const accountName = text(account, "name") ?? id;
-    const keys = Array.isArray(account["api-keys"]) ? account["api-keys"] : [];
-    return keys.filter(isRecord).flatMap((key) => {
-      const keyId = text(key, "key_id");
-      if (keyId === null) return [];
-      return [
-        {
-          account: text(key, "service_account_user_id") ?? id,
-          accountName,
-          keyId,
-          name: text(key, "name") ?? "",
-          disabled: key.is_disabled === true,
-          disableReason: text(key, "disable_reason"),
-          permissions: strings(key.permissions),
-          characterLimit: number(key.character_limit),
-          allowedIps: strings(key.allowed_ips)?.length ? strings(key.allowed_ips) : null,
-          thirdPartyDisable:
-            typeof key.third_party_disable_allowed === "boolean"
-              ? key.third_party_disable_allowed
-              : null,
-          limits: objectField(key, "platform_limits"),
-          createdAt: number(key.created_at_unix),
-          expiresAt: number(key.expires_at_unix),
-        },
-      ];
-    });
-  });
-}
-
-function idOf(key: Listed): string {
-  return `${key.account}/${key.keyId}`;
-}
-
-function parseId(id: string): { account: string; keyId: string } | null {
-  const parsed = /^([^/]+)\/([^/]+)$/.exec(id);
-  return parsed?.[1] && parsed[2] ? { account: parsed[1], keyId: parsed[2] } : null;
-}
-
 function copies(copy: Copy, accountName: string): string {
   const limit =
     copy.characterLimit === null
@@ -415,28 +317,6 @@ function copies(copy: Copy, accountName: string): string {
   return `for service account "${accountName}", with the old key's ${plural(copy.permissions.length, "permission")}, ${limit}${ips}${concurrent}; ${expires}`;
 }
 
-function numberIn(limit: Record<string, unknown>): number | null {
-  return number(limit.limit);
-}
-
-function number(value: unknown): number | null {
-  return typeof value === "number" ? value : null;
-}
-
-function strings(value: unknown): string[] | null {
-  return Array.isArray(value) && value.every((item) => typeof item === "string") ? value : null;
-}
-
-function text(record: Record<string, unknown>, field: string): string | null {
-  const value = record[field];
-  return typeof value === "string" && value ? value : null;
-}
-
 function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
-}
-
-function returned(method: string, path: string, reply: Reply): string {
-  const code = objectField(reply.body, "detail").code;
-  return `ElevenLabs ${method} ${path} returned HTTP ${reply.status}${typeof code === "string" && code ? ` ${code}` : ""}`;
 }

@@ -8,6 +8,16 @@ import {
   parseObject,
   Secret,
 } from "@keypin/core";
+import {
+  codeOf,
+  endpointIds,
+  failure,
+  type Operation,
+  operationsOf,
+  passwordTimes,
+  type Reply,
+} from "./replies";
+import { databaseOf, endpointOf, parseUrl, userOf } from "./url";
 
 const API = "https://console.neon.tech/api/v2";
 const KEYS_DOCS = "https://neon.com/docs/manage/api-keys";
@@ -27,17 +37,6 @@ export interface NeonIssuerOptions {
   roles: readonly [string, string];
   fetch?: Fetch;
   sleep?: (ms: number) => Promise<void>;
-}
-
-interface Reply {
-  status: number;
-  body: Record<string, unknown>;
-}
-
-interface Operation {
-  id: string;
-  action: string;
-  status: string;
 }
 
 export class NeonIssuer implements Issuer {
@@ -354,84 +353,4 @@ function parseId(id: string): { role: string; at: string } | null {
   const split = id.lastIndexOf("@");
   if (split <= 0 || split === id.length - 1) return null;
   return { role: id.slice(0, split), at: id.slice(split + 1) };
-}
-
-function passwordTimes(body: Record<string, unknown>): Map<string, string> {
-  const roles = Array.isArray(body.roles) ? body.roles : [];
-  return new Map(
-    roles.flatMap((role: unknown) =>
-      isRecord(role) && typeof role.name === "string" && typeof role.updated_at === "string"
-        ? [[role.name, role.updated_at] as const]
-        : [],
-    ),
-  );
-}
-
-function operationsOf(body: Record<string, unknown>): Operation[] {
-  const operations = Array.isArray(body.operations) ? body.operations : [];
-  return operations.flatMap((operation: unknown) =>
-    isRecord(operation) && typeof operation.id === "string" && typeof operation.status === "string"
-      ? [
-          {
-            id: operation.id,
-            status: operation.status,
-            action: typeof operation.action === "string" ? operation.action : "unknown",
-          },
-        ]
-      : [],
-  );
-}
-
-function parseUrl(text: unknown): URL | null {
-  if (typeof text !== "string") return null;
-  try {
-    const url = new URL(text);
-    return url.protocol === "postgresql:" || url.protocol === "postgres:" ? url : null;
-  } catch {
-    return null;
-  }
-}
-
-function databaseOf(url: URL): string {
-  try {
-    return decodeURIComponent(url.pathname.slice(1));
-  } catch {
-    return "";
-  }
-}
-
-function endpointOf(url: URL): string {
-  return (url.hostname.split(".")[0] ?? "").replace(/-pooler$/, "");
-}
-
-function endpointIds(body: Record<string, unknown>): Set<string> {
-  const endpoints = Array.isArray(body.endpoints) ? body.endpoints : [];
-  return new Set(
-    endpoints.flatMap((endpoint: unknown) =>
-      isRecord(endpoint) && typeof endpoint.id === "string" ? [endpoint.id] : [],
-    ),
-  );
-}
-
-function userOf(url: URL | null): string | null {
-  if (!url?.username) return null;
-  try {
-    return decodeURIComponent(url.username);
-  } catch {
-    return null;
-  }
-}
-
-function failure(
-  method: string,
-  path: string,
-  reply: Reply,
-  type: new (message: string) => Error = Error,
-): Error {
-  return new type(`Neon ${method} ${path} returned HTTP ${reply.status}${codeOf(reply)}`);
-}
-
-function codeOf(reply: Reply): string {
-  const code = reply.body.code;
-  return typeof code === "string" && /^[A-Z_]+$/.test(code) ? ` ${code}` : "";
 }

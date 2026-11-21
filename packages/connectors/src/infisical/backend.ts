@@ -1,5 +1,4 @@
 import {
-  type Day,
   type Fetch,
   HeldForApproval,
   hideSecrets,
@@ -17,43 +16,34 @@ import {
   type VaultScope,
 } from "@keypin/core";
 import {
+  ANOTHER_WAY,
+  CONFIRMED_URL,
+  type Credentials,
+  IDENTITY_ID,
+  NO_CREDENTIALS,
+} from "./credentials";
+import { metadataOf, ROTATED, withRotated } from "./metadata";
+import {
   account,
   decode,
   decodeScope,
   describe as describeRef,
-  format,
   type InfisicalPin as Place,
   type InfisicalRef,
   type InfisicalScope as Scope,
 } from "./reference";
+import { type Json, problem } from "./response";
+import { fromElsewhere, importSource, referencedBy } from "./secret-sources";
 
-export const CLIENT_ID = "INFISICAL_UNIVERSAL_AUTH_CLIENT_ID";
-export const CLIENT_SECRET = "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET";
-export const ACCESS_TOKENS = ["INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN", "INFISICAL_TOKEN"];
-export const IDENTITY_ID = "KEYPIN_INFISICAL_IDENTITY_ID";
-export const AUDIENCE = "KEYPIN_INFISICAL_AUDIENCE";
-const CONFIRMED_URL = "KEYPIN_INFISICAL_URL";
-export const NO_CREDENTIALS = `set ${CLIENT_ID} and ${CLIENT_SECRET} to a machine identity's Universal Auth client ID and secret, or ${ACCESS_TOKENS.join(" or ")} to a machine identity's access token`;
-const ANOTHER_WAY = `or unset ${IDENTITY_ID} to sign in another way`;
-export const NO_JOB_TOKEN = `give the GitHub Actions job permissions: id-token: write, ${ANOTHER_WAY}`;
-const ROTATED = "rotated";
 const CLOUD = ["https://app.infisical.com", "https://us.infisical.com", "https://eu.infisical.com"];
 const LONGEST_TTL_SECONDS = 3600;
 const REVOKE_WAIT_MS = 5000;
-
-export type Credentials =
-  | { clientId: string; clientSecret: string }
-  | { token: string; variable: string }
-  | { identityId: string; audience: string | null; confirmedUrl: string | null }
-  | { problem: string };
 
 export interface InfisicalOptions {
   sleep?: (ms: number) => Promise<void>;
   idToken?: IdToken;
   warn?: (text: string) => void;
 }
-
-type Json = Record<string, unknown>;
 
 interface Session {
   place: Place;
@@ -63,31 +53,6 @@ interface Session {
 }
 
 const PROJECT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-export function credentialsFrom(
-  env: Readonly<Record<string, string | undefined>>,
-): Credentials | null {
-  const identityId = env[IDENTITY_ID] ?? "";
-  if (identityId) {
-    const others = [CLIENT_ID, CLIENT_SECRET, ...ACCESS_TOKENS].filter((name) => env[name]);
-    const listed = others.join(" and ");
-    if (others.length)
-      return {
-        problem: `both ${IDENTITY_ID} and ${listed} are set; unset ${listed} to sign in with GitHub Actions OIDC, or ${IDENTITY_ID} to sign in with ${others.length === 1 ? "it" : "them"}`,
-      };
-    return {
-      identityId,
-      audience: env[AUDIENCE] || null,
-      confirmedUrl: env[CONFIRMED_URL] || null,
-    };
-  }
-  const clientId = env[CLIENT_ID] ?? "";
-  const clientSecret = env[CLIENT_SECRET] ?? "";
-  if (clientId && clientSecret) return { clientId, clientSecret };
-  const variable = ACCESS_TOKENS.find((name) => env[name]);
-  const token = variable === undefined ? undefined : env[variable];
-  return variable && token ? { token, variable } : null;
-}
 
 const LONGEST_WAIT_SECONDS = 60;
 
@@ -497,69 +462,8 @@ function ownScope(scope: VaultScope): Scope {
   return mine;
 }
 
-function fromElsewhere(ref: InfisicalRef, how: string, sources: readonly string[]): string {
-  const [only] = sources;
-  const source = sources.length === 1 && only ? only : "the source secret";
-  return `${describeRef(ref)}: the secret ${how} ${sources.join(" and ")}, so a new key saved here would leave that secret, and everything that uses it, with the old key; point keypin.toml at ${source} instead`;
-}
-
-function importSource(ref: InfisicalRef, secret: Json): string {
-  const { environment, secretPath } = secret;
-  if (typeof environment !== "string" || typeof secretPath !== "string")
-    return "another environment or folder";
-  return format({ ...ref, environment, path: secretPath });
-}
-
-const REFERENCE = /\$\{([a-zA-Z0-9-_.@]+(?: +[a-zA-Z0-9-_@]+)*)\}/g;
-
-function referencedBy(ref: InfisicalRef, raw: string): string[] {
-  return [
-    ...new Set([...raw.matchAll(REFERENCE)].map(([, inner = ""]) => referenceTo(ref, inner))),
-  ];
-}
-
-function referenceTo(ref: InfisicalRef, inner: string): string {
-  const parts = inner.split(".");
-  const project = parts[0]?.startsWith("@") ? parts.shift()?.slice(1) : undefined;
-  const name = parts.pop() ?? "";
-  const [environment, ...folders] = parts;
-  const place = project === undefined ? ref : { ...ref, project };
-  if (environment === undefined) return format({ ...place, name });
-  return format({ ...place, environment, path: `/${folders.join("/")}`, name });
-}
-
 function idsOf(secret: Json, project: string) {
   return { vault: project, item: String(secret.id) };
-}
-
-interface Metadata {
-  key: string;
-  value: string;
-  isEncrypted?: boolean;
-}
-
-function metadataOf(secret: Json): Metadata[] {
-  const list = secret.secretMetadata;
-  if (!Array.isArray(list)) return [];
-  return list.flatMap((entry): Metadata[] =>
-    isRecord(entry) && typeof entry.key === "string"
-      ? [
-          {
-            key: entry.key,
-            value: typeof entry.value === "string" ? entry.value : "",
-            ...(typeof entry.isEncrypted === "boolean" ? { isEncrypted: entry.isEncrypted } : {}),
-          },
-        ]
-      : [],
-  );
-}
-
-function withRotated(metadata: Metadata[], rotated: Day | undefined): Metadata[] {
-  if (rotated === undefined) return metadata;
-  return [
-    ...metadata.filter((entry) => entry.key !== ROTATED),
-    { key: ROTATED, value: rotated, isEncrypted: true },
-  ];
 }
 
 function originOf(text: string | null): string | null {
@@ -569,9 +473,4 @@ function originOf(text: string | null): string | null {
   } catch {
     return null;
   }
-}
-
-function problem(response: { status: number; body: Json }): string {
-  const message = typeof response.body.message === "string" ? `: ${response.body.message}` : "";
-  return `Infisical returned HTTP ${response.status}${message}`;
 }

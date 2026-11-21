@@ -8,7 +8,7 @@ import {
   IDENTITY_ID,
   NO_CREDENTIALS,
   NO_JOB_TOKEN,
-} from "./backend";
+} from "./credentials";
 import { type InfisicalPin, type InfisicalRef, type InfisicalReference, SCHEME } from "./reference";
 import { infisicalVaultRules } from "./rules";
 

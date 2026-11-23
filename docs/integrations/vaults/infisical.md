@@ -28,6 +28,7 @@ url = "https://eu.infisical.com"
 [keys.STRIPE_KEY]
 rotate_every = "90d"
 dev = "infisical://billing/dev/STRIPE_KEY"
+prod = "infisical://billing/prod/payments/STRIPE_KEY"
 ```
 
 `organization` is the slug in your organization's settings. Leave out `url` for US Cloud; set it, with no path, for
@@ -36,7 +37,7 @@ EU Cloud or a self-hosted server.
 ## References
 
 A reference is `infisical://<project>/<environment>/<SECRET_NAME>`, with the project's slug or ID and the
-environment's slug. Folders go before the name: `infisical://billing/prod/payments/STRIPE_KEY`.
+environment's slug. Folders go before the name, as `payments` in `prod` above.
 
 ## Rotated date
 
@@ -60,7 +61,8 @@ a [`pull`](../../guides/publishing.md#pulling-in-ci) entry, then:
    ([subject formats](aws-secrets-manager.md#pulling-in-github-actions)). Set **Access Token TTL** and **Access Token
    Max TTL** to a few minutes; both default to 30 days.
 2. In the job, give keypin the identity's ID. keypin exchanges GitHub's token for an access token, reads, and
-   revokes it before the command starts:
+   tries to revoke it before the command starts; if that fails, keypin warns, and the token lasts until its TTL runs
+   out:
 
    ```yaml
    permissions:

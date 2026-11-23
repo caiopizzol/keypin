@@ -21,6 +21,7 @@ account = "my.1password.com"
 [keys.STRIPE_KEY]
 rotate_every = "90d"
 dev = "op://Private/billing dev stripe key/credential"
+prod = "op://Billing/billing prod stripe key/credential"
 ```
 
 `account` is the account's sign-in address, such as `my.1password.com`, its name as shown at the top left of the
@@ -47,7 +48,8 @@ the vault for `run`, `check`, `status` and `publish`, and write access for `rota
 
 ## Pulling in GitHub Actions
 
-A job signs in with a service account. Save its token as an Actions secret, list the job in the map with a
+A job signs in with a service account, so its references must be in a vault you created and granted it, like
+`Billing` above. Save its token as an Actions secret, list the job in the map with a
 [`pull`](../../guides/publishing.md#pulling-in-ci) entry, and run:
 
 ```yaml

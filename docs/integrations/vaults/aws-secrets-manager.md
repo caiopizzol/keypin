@@ -27,14 +27,15 @@ account = "123456789012"
 [keys.STRIPE_KEY]
 rotate_every = "90d"
 dev = "awssm://eu-west-1/billing/dev:STRIPE_KEY"
+prod = "awssm://eu-west-1/billing/prod/stripe"
 ```
 
 `account` is the 12-digit ID that `aws sts get-caller-identity` shows.
 
 ## References
 
-A reference is `awssm://<region>/<secret name>`, such as `awssm://eu-west-1/billing/prod/stripe`. Add `:<key>` to read
-one key of a JSON secret, as in the map above. keypin reads a secret by name, not by ARN.
+A reference is `awssm://<region>/<secret name>`, as `prod` above. Add `:<key>` to read one key of a JSON secret, as
+`dev` above. keypin reads a secret by name, not by ARN.
 
 ## Rotated date
 
@@ -96,7 +97,8 @@ A job can sign in with OIDC and read a key itself, so the repo stores no copy. L
          KEYPIN_AWS_ROLE_ARN: arn:aws:iam::123456789012:role/my-role
    ```
 
-   If other steps need AWS credentials too, sign the job in with
+   Set `KEYPIN_AWS_AUDIENCE` for another audience, and add it to both the trust policy and the identity provider
+   (`aws iam add-client-id-to-open-id-connect-provider`). If other steps need AWS credentials too, sign the job in with
    [`aws-actions/configure-aws-credentials`](https://github.com/aws-actions/configure-aws-credentials) and leave
    `KEYPIN_AWS_ROLE_ARN` unset.
 

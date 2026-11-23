@@ -30,13 +30,14 @@ workplace = "2faa85f6610102d983522"
 [keys.STRIPE_KEY]
 rotate_every = "90d"
 dev = "doppler://billing/dev/STRIPE_KEY"
+prod = "doppler://billing/prd/STRIPE_KEY"
 ```
 
 `workplace` is the slug after `/workplace/` in the dashboard's address, or the one `doppler me` shows.
 
 ## References
 
-A reference is `doppler://<project>/<config>/<SECRET_NAME>`, such as `doppler://billing/prd/STRIPE_KEY`.
+A reference is `doppler://<project>/<config>/<SECRET_NAME>`.
 
 ## Rotated date
 

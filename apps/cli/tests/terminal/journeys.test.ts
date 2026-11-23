@@ -603,6 +603,36 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
+    "with AWS Secrets Manager, check, status and publish read from the region and leak nothing",
+    async () => {
+      const where = "AWS in eu-west-1";
+      const check = await drive({ scenario: "awssm", args: ["check"] });
+      expect(check.exit).toBe(0);
+      expect(check.screen).toContain(`Looked up 2 items in ${where}, not the values`);
+      const status = await drive({ scenario: "awssm", args: ["status"] });
+      expect(status.screen).toContain("(rotated 2026-08-01, every 90d)");
+      expect(status.screen).toContain("Tag the AWS secret with keypin-rotated:<JSON key>");
+      const publish = await drive({
+        scenario: "awssm",
+        args: ["publish", "STRIPE_KEY"],
+        answers: ["y"],
+      });
+      expect(publish.exit).toBe(0);
+      expect(publish.screen).toContain(
+        `from awssm://eu-west-1/secretspec/billing/prod/STRIPE_KEY in ${where}`,
+      );
+      expect(publish.effects).toEqual([
+        "destination write github-actions:acme/billing STRIPE_KEY (23 chars)",
+      ]);
+      for (const result of [check, status, publish]) {
+        expect(result.screen).not.toContain("1Password");
+        clean(result);
+      }
+    },
+    SLOW,
+  );
+
+  test(
     "with an Infisical access token, check names it and never shows it",
     async () => {
       const check = await drive({ scenario: "infisical-token", args: ["check"] });

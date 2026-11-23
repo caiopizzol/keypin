@@ -293,6 +293,43 @@ const doppler: Scenario = {
   env: { DOPPLER_TOKEN: "dp.sa.verify-account-token-1a9f" },
 };
 
+const AWSSM_KEY = {
+  id: "ASIAVERIFYVERIFY0001",
+  secret: "verify-aws-secret-key-4b8e",
+  token: "verify-aws-session-token-9d1c",
+};
+
+const awssm: Scenario = {
+  ...ready,
+  about:
+    "ready, but secretspec.toml reads from fake AWS Secrets Manager in eu-west-1, signed in with temporary credentials",
+  files: {
+    ...ready.files,
+    "secretspec.toml": vaultMap(
+      `aws = "awssm://eu-west-1"\n\n[defaults]\nproviders = ["aws"]`,
+      ', ref = { item = "billing/dev", field = "STRIPE_KEY" }',
+      "",
+    ),
+  },
+  onePassword: { accounts: {} },
+  awssm: {
+    account: "123456789012",
+    credentials: [AWSSM_KEY],
+    secrets: {
+      "eu-west-1/billing/dev": { value: JSON.stringify({ STRIPE_KEY: "verify-dev-stripe-2c7d" }) },
+      "eu-west-1/secretspec/billing/prod/STRIPE_KEY": {
+        value: "verify-prod-stripe-5e8b",
+        created: "2026-08-01T10:00:00Z",
+      },
+    },
+  },
+  env: {
+    AWS_ACCESS_KEY_ID: AWSSM_KEY.id,
+    AWS_SECRET_ACCESS_KEY: AWSSM_KEY.secret,
+    AWS_SESSION_TOKEN: AWSSM_KEY.token,
+  },
+};
+
 const RESEND_MAP = `[project]
 name = "billing"
 revision = "1.0"
@@ -1171,6 +1208,7 @@ export const scenarios: Record<string, Scenario> = {
   infisical,
   bitwarden,
   doppler,
+  awssm,
   "infisical-token": {
     ...infisical,
     about: "infisical, but signed in with a machine identity's access token in INFISICAL_TOKEN",

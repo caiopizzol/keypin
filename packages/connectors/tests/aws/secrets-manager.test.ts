@@ -39,7 +39,6 @@ const ref = (
   region = "eu-west-1",
 ): SecretsManagerRef => ({
   kind: "awssm",
-  account: ACCOUNT,
   region,
   name,
   field,
@@ -124,7 +123,7 @@ describe("reading", () => {
   test("names a missing secret, a denied read and the KMS key", async () => {
     const run = setup({ "eu-west-1/prod/stripe": { value: SENTINEL } });
     expect(String(await caught(run.vault.read(ref("prod/nope"))))).toContain(
-      "no secret prod/nope in eu-west-1 (AWS GetSecretValue returned HTTP 400 ResourceNotFoundException); check the region and the name",
+      "no secret prod/nope in eu-west-1 (AWS GetSecretValue returned HTTP 400 ResourceNotFoundException); check the region and the name; keypin doesn't create a secret, so save it first, such as with secretspec set",
     );
     expect(String(await caught(run.vault.read(ref("prod/stripe", null, "us-west-2"))))).toContain(
       "no secret prod/stripe in us-west-2",
@@ -147,16 +146,12 @@ describe("reading", () => {
 });
 
 describe("signing in", () => {
-  test("refuses another account than the pinned one", async () => {
-    const run = setup({}, { credentials: [{ ...KEY, account: "999999999999" }] });
-    const failed = await caught(run.vault.read(ref("prod/stripe")));
-    expect(failed).toBeInstanceOf(SignInFailed);
-    expect(failed).toMatchObject({
-      reason: { kind: "wrong-account", pinned: ACCOUNT, actual: "999999999999" },
-    });
-    expect(String(failed)).toContain(
-      "the access key in AWS_ACCESS_KEY_ID belongs to AWS account 999999999999, but secretspec.toml names 123456789012",
+  test("checks no account: credentials from any account sign in", async () => {
+    const run = setup(
+      { "eu-west-1/prod/stripe": { value: "sentinel-any-account-6c1d" } },
+      { credentials: [{ ...KEY, account: "999999999999" }] },
     );
+    expect((await run.vault.read(ref("prod/stripe"))).reveal()).toBe("sentinel-any-account-6c1d");
   });
 
   test("says what's wrong with a key AWS refuses", async () => {
@@ -427,8 +422,7 @@ describe("references", () => {
   ])("parses awssm://%s", (rest, expected) => {
     const parsed = parse(rest);
     expect(parsed).toEqual({ kind: "awssm", ...expected });
-    if (typeof parsed !== "string")
-      expect(format({ ...parsed, account: ACCOUNT })).toBe(`awssm://${rest}`);
+    if (typeof parsed !== "string") expect(format(parsed)).toBe(`awssm://${rest}`);
   });
 
   test.each([

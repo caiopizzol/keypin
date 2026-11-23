@@ -67,7 +67,7 @@ export function secretsManagerBackend(
   const requestToken = options.requestToken ?? randomUUID;
   const sessions = new Map<string, Promise<Session>>();
   const versionSaved = new Map<string, string>();
-  const secretKey = (ref: Ref) => `${ref.account}/${ref.region}/${ref.name}`;
+  const secretKey = (ref: Ref) => `${ref.region}/${ref.name}`;
 
   async function signedIn(place: Scope): Promise<Session> {
     const where = account(place);
@@ -90,17 +90,6 @@ export function secretsManagerBackend(
       throw new SignInFailed(`${where}: sign-in failed: ${refusedSignIn(reply, source)}`, {
         kind: "other",
       });
-    const actual = text(reply.xml, "Account");
-    if (actual === null)
-      throw new SignInFailed(
-        `${where}: sign-in failed: AWS's GetCallerIdentity reply has no account`,
-        { kind: "other" },
-      );
-    if (actual !== place.account)
-      throw new SignInFailed(
-        `${where}: sign-in failed: ${source} belongs to AWS account ${actual}, but secretspec.toml names ${place.account}`,
-        { kind: "wrong-account", pinned: place.account, actual },
-      );
     return { credentials, expires };
   }
 
@@ -152,7 +141,7 @@ export function secretsManagerBackend(
   }
 
   async function session(place: Scope): Promise<Credentials> {
-    const key = `${place.account}/${place.region}`;
+    const key = place.region;
     const pending = sessions.get(key);
     if (pending) {
       const current = await pending;

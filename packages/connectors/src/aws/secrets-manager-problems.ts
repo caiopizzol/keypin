@@ -5,7 +5,7 @@ import type { SecretsManagerRef as Ref } from "./reference";
 export function problem(ref: Ref, action: string, reply: JsonReply): string {
   const said = returned(action, reply);
   if (reply.code === "ResourceNotFoundException")
-    return `no secret ${ref.name} in ${ref.region} (${said}); check the region and the name`;
+    return `no secret ${ref.name} in ${ref.region} (${said}); check the region and the name; keypin doesn't create a secret, so save it first, such as with secretspec set`;
   if (reply.code === "AccessDeniedException")
     return `the signed-in identity isn't allowed secretsmanager:${action} on the secret, or its KMS key (${said})`;
   if (reply.code === "DecryptionFailure" || reply.code === "EncryptionFailure")

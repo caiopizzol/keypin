@@ -65,24 +65,23 @@ export function plan(
       [
         `${sentence(fix.why)} ${sentence(fix.at).slice(0, -1)}:`,
         `  ${fix.line}`,
-        "keypin run uses default, or the first profile; keypin publish uses production, or the last.",
+        "keypin publish uses production, or the last profile.",
       ],
     );
   const imports = of("import").filter((fix) => !report.ok || report.problems.includes(fix.text));
   if (imports.length) {
     const files = [...new Set(imports.map((fix) => fix.file))];
-    const vault = imports[0]?.vault ?? "";
     all(
       ORDER.import,
-      `Move ${files.length === 1 ? `${files[0]}'s` : "env-file"} keys into ${vault}`,
+      `Move ${files.length === 1 ? `${files[0]}'s` : "env-file"} keys into your vault`,
       imports,
       [
         ...imports.flatMap((fix) => [
           sentence(fix.why),
-          `  keypin import ${fix.file} ${fix.names.join(" ")}${fix.options}`,
+          ...fix.commands.map((command) => `  ${command}`),
           ...(fix.caveat ? [sentence(fix.caveat)] : []),
         ]),
-        "Leave out a name that isn't a key; it stays in the file.",
+        "Leave out a name that isn't a key: secretspec import copies only declared names, and the file stays.",
       ],
     );
   }
@@ -125,7 +124,7 @@ export function plan(
       steps.push({
         order: ORDER.map,
         title: "Map a key",
-        body: [`${report.map} declares no keys yet.`, "  keypin import --help"],
+        body: [`${report.map} declares no keys yet.`, "  secretspec add --help"],
         covers: [empty],
       });
   }
@@ -144,5 +143,4 @@ export function plan(
 export const PASTE =
   "Replace each <...> with the real value; keypin rejects a map that still has one:";
 
-export const AFTER_IMPORT =
-  "If you ran the import above, run keypin check again for this TOML instead; the import wrote some of these tables.";
+export const AFTER_IMPORT = `If you ran the commands above, run keypin check again for this TOML instead; secretspec add changes ${MAP_FILE}.`;

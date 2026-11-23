@@ -123,7 +123,7 @@ check cloudflare-worker:billing-worker
   "unknown": [],
   "prerequisites": [],
   "notes": [
-    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields"
+    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin publish --plan reads the fields"
   ],
   "problems": [
     "github-actions:acme/billing: bob has no write access to acme/billing, so GitHub won't let it set Actions secrets; fix: ask an admin of acme for the Write role, or publish as another login: git config github.account <login> (STRIPE_API_KEY (prod))"

@@ -91,10 +91,11 @@ billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub
 2 Sign in to Cloudflare
     wrangler login
   Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
-3 Move .env's keys into 1Password
+3 Move .env's keys into your vault
   .env sets NEW_KEY, which secretspec.toml doesn't declare.
-    keypin import .env NEW_KEY --vault <vault>
-  Leave out a name that isn't a key; it stays in the file.
+    secretspec add NEW_KEY --profile dev
+    secretspec import dotenv:.env --profile dev
+  Leave out a name that isn't a key: secretspec import copies only declared names, and the file stays.
 4 Add the production keys to secretspec.toml
   RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and secretspec.toml doesn't publish it there.
   Replace each <...> with the real value; keypin rejects a map that still has one:

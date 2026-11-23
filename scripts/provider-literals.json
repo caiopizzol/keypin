@@ -1,12 +1,7 @@
 {
-  "apps/cli/src/cli.ts": 2,
+  "apps/cli/src/cli.ts": 1,
   "apps/cli/src/commands/check/build.ts": 1,
   "apps/cli/src/commands/check/report.ts": 1,
-  "apps/cli/src/commands/import/index.ts": 11,
-  "apps/cli/src/commands/import/plan.ts": 5,
-  "apps/cli/src/commands/import/request.ts": 3,
-  "apps/cli/src/commands/import/target.ts": 8,
-  "apps/cli/src/commands/run.ts": 1,
   "apps/cli/src/deps.ts": 2,
   "apps/cli/src/publisher.ts": 1,
   "packages/core/src/login.ts": 2

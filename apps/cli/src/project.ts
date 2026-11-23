@@ -16,7 +16,7 @@ export async function findMap(deps: Deps): Promise<KeysMap> {
   const found = await locateMap(deps.files, deps.cwd);
   if (!found) {
     throw new Error(
-      `no ${MAP_FILE} in ${deps.cwd} or any folder above it; run "keypin init" first`,
+      `no ${MAP_FILE} in ${deps.cwd} or any folder above it; create one with secretspec init`,
     );
   }
   const result = readMap(deps, found);

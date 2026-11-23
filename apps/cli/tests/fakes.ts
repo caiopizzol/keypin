@@ -487,3 +487,14 @@ function memoryLock(disk: ReturnType<typeof memoryFiles>): Lock {
     return { held: true, lock: { release } };
   };
 }
+
+export function newSecretspec(project: string): string {
+  return `[project]
+name = ${JSON.stringify(project)}
+revision = "1.0"
+
+[profiles.default]
+
+[profiles.production]
+`;
+}

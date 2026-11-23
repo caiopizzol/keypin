@@ -8,7 +8,6 @@ import { cli } from "../src/cli";
 import { destinations, issuers, vaults } from "../src/start";
 import { THEN } from "../src/commands/check/render";
 import { AFTER_IMPORT, PASTE } from "../src/commands/check/steps";
-import { template } from "../src/commands/init";
 import type { Deps } from "../src/deps";
 import {
   fakeDeps,
@@ -20,11 +19,12 @@ import {
   REGISTRY,
   registryWith,
   SENTINEL,
+  newSecretspec,
 } from "./fakes";
 import { recording } from "./recording";
 import { version } from "../../../package.json";
 
-const TEMPLATE = template("billing");
+const TEMPLATE = newSecretspec("billing");
 
 const ACCOUNT = "11111111111111111111111111111111";
 const ROOT = "/work/billing";
@@ -278,21 +278,23 @@ describe("keypin check on a whole project", () => {
     expect(json(run.stdout.text).add).toBeNull();
   });
 
-  test("following the steps in order, import then the TOML, leaves a map that parses", async () => {
-    const vault = fakeVault({ items: [] });
+  test("following the steps in order, secretspec add then the TOML, leaves a map that parses", async () => {
+    const pinned = TEMPLATE.replace(
+      "[profiles.default]",
+      '[providers]\nvault = "onepassword://my.1password.com@Private"\n\n[defaults]\nproviders = ["vault"]\n\n[profiles.default]',
+    );
     const run = setup({
       files: {
-        [MAP]: TEMPLATE,
+        [MAP]: pinned,
         [`${ROOT}/.env`]: `DATABASE_URL=${SENTINEL}\nRESEND_API_KEY=${SENTINEL}\nPORT=3000\n`,
         [`${ROOT}/.env.example`]: null,
       },
-      deps: { vault: () => vault.vault },
     });
     const check = async () => {
       const before = run.stdout.text.length;
       await cli(["check"], run.deps);
       const text = run.stdout.text.slice(before);
-      return { text, command: /^ {4}(keypin import .+)$/m.exec(text)?.[1] };
+      return { text, adds: [...text.matchAll(/^ {4}secretspec add (\S+)$/gm)].map((m) => m[1]) };
     };
     const paste = (text: string) => {
       const pasted = `${run.disk.contents.get(MAP) ?? ""}\n${fill(added(text))}`;
@@ -302,19 +304,19 @@ describe("keypin check on a whole project", () => {
     };
 
     const first = await check();
-    assert(first.command !== undefined, first.text);
-    expect(first.command).toContain(" PORT ");
+    expect(first.adds).toEqual(["DATABASE_URL", "RESEND_API_KEY", "PORT"]);
+    expect(first.text).toContain("    secretspec import dotenv:.env\n");
     expect(first.text).toContain(AFTER_IMPORT);
-    const args = first.command
-      .replace("<1Password sign-in address>", "my.1password.com")
-      .split(" ")
-      .slice(1)
-      .filter((arg) => arg !== "PORT")
-      .map((arg) => (arg === "<vault>" ? "Private" : arg));
-    expect(await cli([...args, "--yes"], run.deps)).toBe(0);
+    const declared = ["DATABASE_URL", "RESEND_API_KEY"]
+      .map((name) => `${name} = { description = "${name}" }`)
+      .join("\n");
+    run.disk.contents.set(
+      MAP,
+      pinned.replace("[profiles.default]\n", `[profiles.default]\n${declared}\n`),
+    );
 
     const second = await check();
-    expect(second.command).toBe("keypin import .env PORT --vault <vault>");
+    expect(second.adds).toEqual(["PORT"]);
     expect(second.text).not.toContain(AFTER_IMPORT);
     expect(
       paste(second.text)
@@ -334,7 +336,7 @@ describe("keypin check on a whole project", () => {
       });
       expect(await cli(["check"], run.deps)).toBe(1);
       const text = run.stdout.text;
-      expect(text).toContain("    keypin import .env PORT --vault <vault>");
+      expect(text).toMatch(/^ {4}secretspec add PORT( --profile dev)?$/m);
       expect(text.includes(AFTER_IMPORT)).toBe(warns);
       const parsed = readSecretspec(
         `${map}\n${fill(added(text))}`,

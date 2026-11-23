@@ -57,6 +57,7 @@ Revoke the old key at Keys? [y/N]
 --- stdout ---
 
 --- stderr ---
+ok     keypin status now lists /work/billing
 API_SECRET prod  from op://Private/api secret/credential in 1Password account my.1password.com
 ok     Read the key and the admin key op://Private/keys admin/credential
 ok     Keys  the admin key lists 1 keys
@@ -85,6 +86,15 @@ ok     GitHub      acme/api  wrote API_KEY_ID
 Rotated API_SECRET (prod): the new key is in 1Password and the 2 destinations in the map.
 The old key AKID-0 still works. Revoke it once nothing uses it.
 ok     Keys  revoked AKID-0
+
+--- wrote /home/me/.config/keypin/registry.json ---
+{
+  "version": 1,
+  "projects": [
+    "/work/billing"
+  ],
+  "shared": []
+}
 
 --- wrote /home/me/.local/state/keypin/state.json ---
 {

@@ -137,7 +137,7 @@ ids billing dev resend api key
     }
   ],
   "notes": [
-    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields"
+    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin publish --plan reads the fields"
   ],
   "problems": [
     "secretspec.toml has no profile for the wrangler env staging; add to secretspec.toml, above [profiles.prod] so keypin publish keeps using it: [profiles.staging]",

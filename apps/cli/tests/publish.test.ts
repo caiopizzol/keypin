@@ -174,13 +174,10 @@ describe("keypin publish", () => {
     );
   });
 
-  test("the approval command drops --plan, but keeps one after the -- separator", () => {
+  test("the approval command drops --plan", () => {
     const { deps } = setup();
     expect(rerun(deps, "publish", ["API_TOKEN", "--plan", "--yes"])).toContain(
       "main.ts publish API_TOKEN --yes",
-    );
-    expect(rerun(deps, "import", ["--vault", "v", "--plan", "--", "--plan"])).toContain(
-      "main.ts import --vault v -- --plan",
     );
   });
 

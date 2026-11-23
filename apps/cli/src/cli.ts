@@ -1,10 +1,7 @@
 import { messageOf } from "@keypin/core";
 import { check } from "./commands/check";
-import { importEnv } from "./commands/import";
-import { init } from "./commands/init";
 import { publish } from "./commands/publish";
 import { rotate } from "./commands/rotate";
-import { run } from "./commands/run";
 import { status } from "./commands/status";
 import { unregister } from "./commands/unregister";
 import { type Deps, UsageError } from "./deps";
@@ -14,51 +11,13 @@ import { version } from "../../../package.json";
 
 const COMMAND_USAGE: [string, string][] = [
   [
-    "init",
-    `  keypin init [folder]     register a project and write a secretspec.toml
-`,
-  ],
-  [
-    "unregister",
-    `  keypin unregister [folder]
-                           stop listing a project; its secretspec.toml stays
-`,
-  ],
-  [
-    "status",
-    `  keypin status [--json]   every key in every registered project, with problems
-`,
-  ],
-  [
-    "status",
-    `  keypin status --write    write each of this project's rotated dates to .keypin/status.json,
-                           for the hosted console; never a value
-`,
-  ],
-  [
     "check",
     `  keypin check [folder] [--json]
-                           report a project without writing anything: each mapped item exists,
-                           each login reaches the pinned account, every secret a workflow or
-                           Worker needs is published there (with the TOML to add when it isn't),
-                           and every name an env file sets is mapped
-`,
-  ],
-  [
-    "import",
-    `  keypin import <env-file> [NAME...] [--profile <name>] --vault <vault> [--account <sign-in address>] [--yes]
-                           move an env file's values into new 1Password items and declare them for
-                           one profile (default: default): only the named variables, or every
-                           one; the account is secretspec.toml's, or --account when it has none. It
-                           never overwrites an item or a reference, so --yes is enough to approve it.
-                           The file stays.
-`,
-  ],
-  [
-    "run",
-    `  keypin run [--profile <name>] [--only NAME[,NAME]] -- <command>
-                           run a command with one profile's keys (default: default, or the first
-                           profile), or only the named ones
+                           report a project without changing it: each mapped item exists, each
+                           login reaches the pinned account, every secret a workflow or Worker
+                           needs is published there (with the TOML to add when it isn't), and
+                           every name an env file sets is declared. Lists the project in
+                           keypin status
 `,
   ],
   [
@@ -117,6 +76,24 @@ const COMMAND_USAGE: [string, string][] = [
                            destination has the new key; this is the approval, so no y is asked
 `,
   ],
+  [
+    "status",
+    `  keypin status [--json]   every key in every project keypin check, publish or rotate ran in,
+                           with problems
+`,
+  ],
+  [
+    "status",
+    `  keypin status --write    write each of this project's rotated dates to .keypin/status.json,
+                           for the hosted console; never a value
+`,
+  ],
+  [
+    "unregister",
+    `  keypin unregister [folder]
+                           stop listing a project in keypin status; its secretspec.toml stays
+`,
+  ],
 ];
 
 export const USAGE = `Usage:
@@ -128,18 +105,14 @@ Exit codes:
   2  usage error
   3  stopped for approval: run the printed command in a terminal and answer y;
      --plan exits 3 whenever the plan would write (routine or not), 0 when there's nothing to write
-  keypin run exits 1 if it can't start the command, then with the command's own code.
 `;
 
 const COMMANDS = new Map<string, (args: string[], deps: Deps) => Promise<number>>([
-  ["init", init],
-  ["unregister", unregister],
-  ["status", status],
   ["check", check],
-  ["import", importEnv],
-  ["run", run],
   ["publish", publish],
   ["rotate", rotate],
+  ["status", status],
+  ["unregister", unregister],
 ]);
 
 export async function cli(argv: string[], deps: Deps): Promise<number> {
@@ -159,8 +132,7 @@ export async function cli(argv: string[], deps: Deps): Promise<number> {
     deps.stderr.write(`keypin: unknown command "${name}".${hint}\n${MORE}`);
     return 2;
   }
-  const own = args.includes("--") ? args.slice(0, args.indexOf("--")) : args;
-  if (own.includes("--help") || own.includes("-h")) {
+  if (args.includes("--help") || args.includes("-h")) {
     deps.stdout.write(USAGE);
     return 0;
   }

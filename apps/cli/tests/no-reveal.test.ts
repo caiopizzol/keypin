@@ -30,7 +30,6 @@ const allowed = [
   "packages/connectors/src/cloudflare/cloudflare.ts",
   "packages/connectors/src/resend/resend.ts",
   "packages/core/src/secret.ts",
-  "apps/cli/src/commands/run.ts",
   "apps/cli/tests/fakes.ts",
   "packages/core/tests/secret.test.ts",
 ];

@@ -212,7 +212,8 @@ interface Context {
 }
 
 function render(result: Status, projects: readonly string[], context: Context): string {
-  if (!projects.length) return `No projects registered. Run "keypin init" in a project folder.\n`;
+  if (!projects.length)
+    return `No projects registered. Run keypin check in a project folder to add it.\n`;
   const { home, out } = context;
   const cells = columns(
     result.rows.map((row) => [

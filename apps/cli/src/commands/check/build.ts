@@ -7,7 +7,6 @@ import {
   kindOf,
   type KeyRef,
   type KeysMap,
-  loadRegistry,
   type PublishTarget,
   pullPlace,
   type PullReader,
@@ -17,9 +16,9 @@ import {
 } from "@keypin/core";
 import { type Deps } from "../../deps";
 import { count, output } from "../../output";
-import { registryPath } from "../../paths";
 import { locateMap, MAP_FILE, readMap } from "../../project";
 import { publisherFor } from "../../publisher";
+import { registerProject } from "../../register";
 import { scanProject } from "../../scan";
 import { approval, mapSignIn } from "../../sign-in";
 import { distinctRefs, refKey } from "../../vault";
@@ -144,17 +143,13 @@ export async function build(
     problem(
       ORDER.map,
       `Create ${MAP_FILE}`,
-      [`There's no ${MAP_FILE} in ${folder} or any folder above it.`, "  keypin init"],
-      `no ${MAP_FILE} in ${folder} or any folder above it; run keypin init, then keypin check again`,
+      [`There's no ${MAP_FILE} in ${folder} or any folder above it.`, "  secretspec init"],
+      `no ${MAP_FILE} in ${folder} or any folder above it; run secretspec init, then keypin check again`,
     );
     return done(gapsOf(null));
   }
-  const registry = await loadRegistry(deps.files, registryPath(deps));
-  report.registered = registry.projects.includes(root);
-  if (!report.registered)
-    report.notes.push(
-      `${root} isn't registered, so keypin status doesn't list it; run keypin init there`,
-    );
+  await registerProject(deps, root);
+  report.registered = true;
 
   if (!parsed.ok) {
     report.problems.push(...parsed.errors);
@@ -168,7 +163,7 @@ export async function build(
   }
   const map = parsed.map;
   if (!map.keys.length) {
-    const empty = `${found.file} declares no keys yet; run keypin import for an env file, and add the TOML below for production`;
+    const empty = `${found.file} declares no keys yet; declare them with secretspec add, and add the TOML below for production`;
     report.problems.push(empty);
     return done(gapsOf(map), empty);
   }

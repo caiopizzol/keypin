@@ -183,8 +183,8 @@ ids billing dev resend api key
     }
   ],
   "notes": [
-    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields",
-    "web/.env.local sets VITE_KEY, which secretspec.toml doesn't declare; a plain setting can stay, and for a key run keypin import web/.env.local NAME... --vault <vault>"
+    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin publish --plan reads the fields",
+    "web/.env.local sets VITE_KEY, which secretspec.toml doesn't declare; a plain setting can stay, and for a key run secretspec add NAME --profile dev, then secretspec import dotenv:web/.env.local --profile dev"
   ],
   "problems": [
     "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there. Add the TOML below",

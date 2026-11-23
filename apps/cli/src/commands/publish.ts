@@ -1,3 +1,4 @@
+import { dirname } from "node:path";
 import { parseArgs } from "node:util";
 import {
   approvalsFor,
@@ -21,6 +22,7 @@ import {
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
 import { findMap, pickEnvironment } from "../project";
+import { registerProject } from "../register";
 import { approval, signInFor } from "../sign-in";
 import { confirmed, NEEDS_APPROVAL, planOnly, unattendedApproval } from "../approval";
 import { count, type Output, output } from "../output";
@@ -67,6 +69,7 @@ export async function publish(args: string[], deps: Deps): Promise<number> {
   const { keyId, env, yes, plan } = parseRequest(args);
   const map = await findMap(deps);
   const environment = pickEnvironment(map, env, publishEnvironment(map));
+  if (!plan) await registerProject(deps, dirname(map.file));
   const request = { keyId, environment, yes, plan, args };
   return locked(deps, (path) => publishLocked(request, map, path, deps));
 }

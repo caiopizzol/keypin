@@ -1,7 +1,6 @@
 import { assert, describe, expect, test, vi } from "vite-plus/test";
 import { isRecord, type KeyRef, type VaultBackend, type VaultScope } from "@keypin/core";
 import { requireDesktopApp, type SdkClient } from "@keypin/connectors/onepassword";
-import { fakeOnePassword } from "@keypin/connectors/onepassword/testing";
 import { cli } from "../src/cli";
 import type { Deps } from "../src/deps";
 import { onePasswordFrom } from "../src/sign-in";
@@ -208,14 +207,6 @@ describe("a token without KEYPIN_1PASSWORD, on a machine without the desktop app
     return { ...run, launcher };
   }
 
-  test("keypin run names KEYPIN_1PASSWORD=service-account, and nothing starts", async () => {
-    const run = noApp();
-    expect(await cli(["run", "--", "env"], run.deps)).toBe(1);
-    expect(run.stderr.text).toContain("the 1Password desktop app isn't installed");
-    expect(run.stderr.text).toContain(HINT);
-    expect(run.launcher.launches).toEqual([]);
-  });
-
   test("keypin publish names KEYPIN_1PASSWORD=service-account", async () => {
     const run = noApp();
     expect(await cli(["publish", "STRIPE_API_KEY", "--yes"], run.deps)).toBe(1);
@@ -317,86 +308,6 @@ async function jsonRun(map: string, env: Record<string, string>) {
   return run.stdout;
 }
 
-describe("keypin import with a service account", () => {
-  const DENIED =
-    "An error occurred when processing SDK request: Error { msg: you do not have the right permissions to perform this action: , inner: None }";
-
-  function importing(deny = false) {
-    const fake = fakeOnePassword([], ["Deploy"]);
-    if (deny)
-      fake.client.items.create = async () => {
-        throw new Error(DENIED);
-      };
-    const onePassword = opened(SERVICE, fake.client);
-    const run = fakeDeps({
-      disk: memoryFiles({ "/work/billing/.env": `STRIPE_KEY=${SENTINEL}\n` }),
-      deps: { env: SERVICE, signIn: () => onePassword.signIn, vault: () => onePassword.vault },
-    });
-    const args = ["import", ".env", "--vault", "Deploy", "--account", "my.1password.com", "--yes"];
-    return { ...run, fake, args };
-  }
-
-  test("saves the new item to a vault the service account can write to", async () => {
-    const run = importing();
-    expect(await cli(run.args, run.deps)).toBe(0);
-    expect(run.fake.effects).toEqual(["1password create vault-1/billing default stripe key"]);
-    expect(run.fake.calls.create[0]?.fields).toContainEqual(
-      expect.objectContaining({ id: "password", value: SENTINEL }),
-    );
-    expect(run.disk.contents.get("/work/billing/secretspec.toml")).toContain(
-      'providers = ["onepassword://my.1password.com@Deploy"]',
-    );
-  });
-
-  test("without write access, says to create a service account that can write to the vault", async () => {
-    const run = importing(true);
-    expect(await cli(run.args, run.deps)).toBe(1);
-    expect(run.stderr.text + run.stdout.text).toContain(
-      `the service account can't write to the vault "Deploy". Grant write access to it: 1Password can't change a service account's access, so create a new service account with read and write access to that vault, and use its token`,
-    );
-    expect(run.stderr.text + run.stdout.text).not.toContain("Error {");
-  });
-});
-
-describe("keypin run with a service account", () => {
-  function running(env: Record<string, string>, map = WEB_MAP) {
-    const launcher = fakeLauncher();
-    const vault = fakeVault({
-      values: { "web dev session secret": SENTINEL, "op token": "mapped-token-value" },
-    });
-    const run = fakeDeps({
-      disk: memoryFiles({ "/work/billing/secretspec.toml": map }),
-      backend: vault.vault,
-      deps: {
-        env: { PATH: "/usr/bin", ...env },
-        signIn: () => ({ mode: "service-account", address: "my.1password.com" }),
-        launch: launcher.launch,
-        onSignals: launcher.onSignals,
-      },
-    });
-    return { ...run, launcher };
-  }
-
-  test("the command gets the mapped keys, never OP_SERVICE_ACCOUNT_TOKEN or KEYPIN_1PASSWORD", async () => {
-    const run = running(SERVICE);
-    expect(await cli(["run", "--", "env"], run.deps)).toBe(0);
-    expect(run.launcher.launches[0]?.env).toEqual({
-      PATH: "/usr/bin",
-      SESSION_SECRET: SENTINEL,
-    });
-  });
-
-  test("a mapped key named OP_SERVICE_ACCOUNT_TOKEN is refused, and nothing starts", async () => {
-    const map = `${WEB_MAP}\n\n[profiles.dev.OP_SERVICE_ACCOUNT_TOKEN]\ndescription = "OP_SERVICE_ACCOUNT_TOKEN"\nref = { item = "op token", field = "password" }\n\n[tool.keypin.dev.OP_SERVICE_ACCOUNT_TOKEN]\nrotate_every = "never"\n`;
-    const run = running(SERVICE, map);
-    expect(await cli(["run", "--", "env"], run.deps)).toBe(1);
-    expect(run.stderr.text).toContain(
-      "secretspec.toml declares OP_SERVICE_ACCOUNT_TOKEN, which keypin uses to sign in; keypin run doesn't pass it to a command",
-    );
-    expect(run.launcher.launches).toEqual([]);
-  });
-});
-
 describe("the approval hint", () => {
   async function slowFrames(
     args: string[],
@@ -451,19 +362,7 @@ describe("the approval hint", () => {
   const service = { mode: "service-account", address: "my.1password.com" } as const;
   const desktop = { mode: "desktop", tokenIgnored: false } as const;
 
-  test("keypin import shows it only with the desktop app", async () => {
-    const env = { ...files, "/work/web/.env": `STRIPE_KEY=${SENTINEL}\n` };
-    const args = ["import", ".env", "--vault", "Deploy", "--account", "my.1password.com", "--yes"];
-    const withApp = await slowFrames(args, desktop, env);
-    expect(withApp.some((f) => f.includes("1Password may be asking you to approve keypin"))).toBe(
-      true,
-    );
-    const withToken = await slowFrames(args, service, env);
-    expect(withToken.some((f) => f.includes("Creating") || f.includes("Listing"))).toBe(true);
-    expect(withToken.some((f) => f.includes("approve keypin"))).toBe(false);
-  });
-
-  for (const args of [["run", "--", "true"], ["check"], ["status"]])
+  for (const args of [["check"], ["status"]])
     test(`keypin ${args[0]} shows it only with the desktop app`, async () => {
       const slow = (frames: string[]) =>
         frames.filter((f) => f.includes("Reading") || f.includes("Looking"));

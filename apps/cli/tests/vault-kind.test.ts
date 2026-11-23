@@ -176,31 +176,6 @@ describe("a vault kind defined outside keypin", () => {
     expect(run.reads).toEqual([]);
   });
 
-  test("run reads the dev value through it and names its account", async () => {
-    const run = setup();
-    expect(await cli(["run", "--", "env"], run.deps)).toBe(0);
-    expect(run.launcher.launches[0]?.env.TOY_KEY).toBe(SENTINEL);
-    expect(run.stderr.text).toContain(
-      "Read 2 dev values from 1Password account my.1password.com and toy box attic  toy://top/left, op://Private/other key/password",
-    );
-  });
-
-  test("run keeps its sign-in variable from the command, and refuses to map it", async () => {
-    const run = setup(MAP, { TOY_KEY_RING: "toy-sign-in", KEEP_ME: "yes" });
-    expect(await cli(["run", "--", "env"], run.deps)).toBe(0);
-    expect(run.launcher.launches[0]?.env).not.toHaveProperty("TOY_KEY_RING");
-    expect(run.launcher.launches[0]?.env.KEEP_ME).toBe("yes");
-
-    const mapped = setup(
-      `${MAP}\n[profiles.dev.TOY_KEY_RING]\ndescription = "ring"\nref = { shelf = "top", slot = "left" }\n`,
-    );
-    expect(await cli(["run", "--", "env"], mapped.deps)).toBe(1);
-    expect(mapped.stderr.text).toContain(
-      "secretspec.toml declares TOY_KEY_RING, which keypin uses to sign in; keypin run doesn't pass it to a command",
-    );
-    expect(mapped.launcher.launches).toEqual([]);
-  });
-
   test("rotate names the vault by its kind's name", async () => {
     const run = setup(
       MAP.replace(

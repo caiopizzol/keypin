@@ -6,8 +6,7 @@ import { lookUpIds } from "./publishing";
 export const NEEDS_APPROVAL = 3;
 
 export function withoutPlan(args: readonly string[]): string[] {
-  const end = args.includes("--") ? args.indexOf("--") : args.length;
-  return [...args.slice(0, end).filter((arg) => arg !== "--plan"), ...args.slice(end)];
+  return args.filter((arg) => arg !== "--plan");
 }
 
 export function rerun(deps: Deps, command: string, args: readonly string[]): string {

@@ -42,6 +42,7 @@ Write 2 secrets? [y/N]
 --- stdout ---
 
 --- stderr ---
+ok     keypin status now lists /work/billing
 
 STRIPE_API_KEY prod  from op://Private/billing stripe api key/password in 1Password account my.1password.com
 ok     Cloudflare  billing-worker  as me@example.com, account 11111111111111111111111111111111
@@ -55,3 +56,12 @@ Plan  generation 8f24c3e0b75826a7
   + GitHub      acme/billing    first write  needs approval
 
 Not confirmed. Nothing was written.
+
+--- wrote /home/me/.config/keypin/registry.json ---
+{
+  "version": 1,
+  "projects": [
+    "/work/billing"
+  ],
+  "shared": []
+}

@@ -1,6 +1,15 @@
 $ keypin rotate RESEND_API_KEY --plan
 exit 3
 
+--- file /home/me/.config/keypin/registry.json ---
+{
+  "version": 1,
+  "projects": [
+    "/work/billing"
+  ],
+  "shared": []
+}
+
 --- file /home/me/.local/state/keypin/state.json ---
 {
   "version": 5,

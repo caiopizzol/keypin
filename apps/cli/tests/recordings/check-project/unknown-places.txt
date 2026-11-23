@@ -21,9 +21,6 @@ jobs:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 --- file secretspec.toml ---
-# secretspec.toml: this project's secrets, by name and place, never values.
-# keypin's settings for each key go in [tool.keypin.<profile>.<KEY>].
-
 [project]
 name = "billing"
 revision = "1.0"
@@ -135,10 +132,10 @@ required = ["RESEND_API_KEY"]
     }
   ],
   "notes": [
-    ".env sets DATABASE_URL, RESEND_API_KEY, which secretspec.toml doesn't declare; a plain setting can stay, and for a key run keypin import .env NAME... --vault <vault> --account <1Password sign-in address>"
+    ".env sets DATABASE_URL, RESEND_API_KEY, which secretspec.toml doesn't declare; a plain setting can stay, and for a key run secretspec add NAME, then secretspec import dotenv:.env"
   ],
   "problems": [
-    "/work/billing/secretspec.toml declares no keys yet; run keypin import for an env file, and add the TOML below for production",
+    "/work/billing/secretspec.toml declares no keys yet; declare them with secretspec add, and add the TOML below for production",
     "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; secretspec.toml doesn't publish it to the GitHub repository. Add the TOML below",
     "RESEND_API_KEY: wrangler.toml requires it; secretspec.toml doesn't publish it to the Worker in wrangler.toml. Add the TOML below"
   ],

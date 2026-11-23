@@ -101,7 +101,7 @@ ids billing prod stripe api key
   "unknown": [],
   "prerequisites": [],
   "notes": [
-    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields"
+    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin publish --plan reads the fields"
   ],
   "problems": [
     "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there. Set publish = [{ to = \"github-actions\", repo = \"acme/billing\" }] in [tool.keypin.prod.STRIPE_API_KEY] in secretspec.toml"

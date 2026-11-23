@@ -32,10 +32,9 @@ export type Fix =
       kind: "import";
       text: string;
       why: string;
-      vault: string;
       file: string;
       names: string[];
-      options: string;
+      commands: string[];
       caveat: string | null;
     }
   | { kind: "add"; text: string; why: string; key: string }

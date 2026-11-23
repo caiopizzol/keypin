@@ -10,11 +10,9 @@ describe("an unknown command", () => {
       ["pubish", "publish"],
       ["chek", "check"],
       ["stauts", "status"],
-      ["imprt", "import"],
       ["unregistr", "unregister"],
-      ["ini", "init"],
       ["pub", "publish"],
-      ["impto", "import"],
+      ["rotat", "rotate"],
     ];
     for (const [typed, meant] of typos) {
       const { deps, stdout, stderr } = fakeDeps();
@@ -27,7 +25,7 @@ describe("an unknown command", () => {
   });
 
   test("suggests nothing for a word no command is close to", async () => {
-    for (const typed of ["deploy", "foo", "list", "up", "rm", "i"]) {
+    for (const typed of ["deploy", "foo", "list", "up", "rm", "i", "init", "import", "run"]) {
       const { deps, stderr } = fakeDeps();
       expect(await cli([typed], deps)).toBe(2);
       expect(stderr.text).toBe(`keypin: unknown command "${typed}".\n${MORE}`);
@@ -41,12 +39,12 @@ describe("a usage error", () => {
     expect(await cli(["status", "--bogus"], deps)).toBe(2);
     const [error, ...rest] = stderr.text.split("\n");
     expect(error).toMatch(/^keypin status: Unknown option '--bogus'/);
-    expect(rest.join("\n")).toBe(
-      "  keypin status [--json]   every key in every registered project, with problems\n" +
-        "  keypin status --write    write each of this project's rotated dates to .keypin/status.json,\n" +
-        "                           for the hosted console; never a value\n" +
-        MORE,
+    const own = USAGE.slice(
+      USAGE.indexOf("  keypin status "),
+      USAGE.indexOf("  keypin unregister "),
     );
+    expect(own.split("\n").filter((line) => line.startsWith("  keypin "))).toHaveLength(2);
+    expect(rest.join("\n")).toBe(own + MORE);
     expect(stdout.text).toBe("");
   });
 
@@ -56,7 +54,7 @@ describe("a usage error", () => {
     expect(stderr.text).toMatch(/^keypin publish: keypin publish takes one key/);
     expect(stderr.text).toContain("  keypin publish <VARIABLE> ");
     expect(stderr.text).toContain("  keypin publish --all ");
-    expect(stderr.text).not.toContain("keypin init");
+    expect(stderr.text).not.toContain("keypin rotate");
     expect(stderr.text).not.toContain("Exit codes:");
     expect(stderr.text.endsWith(MORE)).toBe(true);
   });
@@ -80,16 +78,7 @@ describe("the full usage", () => {
   });
 
   test("names every command", () => {
-    for (const command of [
-      "init",
-      "unregister",
-      "status",
-      "check",
-      "import",
-      "run",
-      "publish",
-      "rotate",
-    ]) {
+    for (const command of ["check", "publish", "rotate", "status", "unregister"]) {
       expect(USAGE).toContain(`  keypin ${command} `);
     }
     expect(USAGE).toContain("  keypin --version ");

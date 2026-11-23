@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import { stripVTControlCharacters } from "node:util";
 import { cli } from "../src/cli";
 import type { Deps } from "../src/deps";
-import { template } from "../src/commands/init";
+
 import {
   fakeDeps,
   fakeVault,
@@ -13,10 +13,11 @@ import {
   registryWith,
   WEB_MAP,
   STATE,
+  newSecretspec,
 } from "./fakes";
 import { changes, recording } from "./recording";
 
-const TEMPLATE = template("billing");
+const TEMPLATE = newSecretspec("billing");
 
 async function record(
   name: string,

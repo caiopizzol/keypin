@@ -59,6 +59,7 @@ Write 3 secrets? [y/N]
 --- stdout ---
 
 --- stderr ---
+ok     keypin status now lists /work/billing
 Not published, no prod destinations: DEV_ONLY
 
 STRIPE_API_KEY prod  from op://Private/billing stripe api key/password in 1Password account my.1password.com
@@ -83,6 +84,15 @@ ok     GitHub      acme/billing    wrote STRIPE_API_KEY
 Published STRIPE_API_KEY (prod) to 2 destinations.
 ok     GitHub      acme/other      wrote OTHER_KEY
 Published OTHER_KEY (prod) to 1 destination.
+
+--- wrote /home/me/.config/keypin/registry.json ---
+{
+  "version": 1,
+  "projects": [
+    "/work/billing"
+  ],
+  "shared": []
+}
 
 --- wrote /home/me/.local/state/keypin/state.json ---
 {

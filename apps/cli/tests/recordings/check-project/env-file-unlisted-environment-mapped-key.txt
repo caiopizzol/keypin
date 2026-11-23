@@ -176,14 +176,14 @@ ids billing staging database url
     }
   ],
   "notes": [
-    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields"
+    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin publish --plan reads the fields"
   ],
   "problems": [
     "no item \"billing staging database url\" (DATABASE_URL (staging))",
     "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there. Add the TOML below",
     "RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and secretspec.toml doesn't publish it there. Add the TOML below",
-    ".env sets DATABASE_URL, which secretspec.toml declares, but not in profile dev; for a key run keypin import .env DATABASE_URL --vault <vault>",
-    ".env.production sets DATABASE_URL, which secretspec.toml declares, but not in profile dev; for a key run keypin import .env.production DATABASE_URL --vault <vault>, which maps them as dev; if they're the values of another profile, add it to secretspec.toml and add --profile <name>"
+    ".env sets DATABASE_URL, which secretspec.toml declares, but not in profile dev; for a key run secretspec add DATABASE_URL --profile dev, then secretspec import dotenv:.env --profile dev",
+    ".env.production sets DATABASE_URL, which secretspec.toml declares, but not in profile dev; for a key run secretspec add DATABASE_URL --profile dev, then secretspec import dotenv:.env.production --profile dev; these commands declare them in dev; if they're the values of another profile, add it to secretspec.toml and use --profile <name>"
   ],
   "ok": false
 }

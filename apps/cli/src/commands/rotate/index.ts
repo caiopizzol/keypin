@@ -13,6 +13,7 @@ import { output, tilde } from "../../output";
 import { findMap, pickEnvironment, ROTATION_FILE } from "../../project";
 import { writeStatus } from "../status";
 import { locked } from "../../publishing";
+import { registerProject } from "../../register";
 import { type Context, jobFor } from "./job";
 import { rotateDue, checkDue, approveAll } from "./due";
 import { rotateLocked } from "./rotate-key";
@@ -46,6 +47,7 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
     throw new UsageError("keypin rotate takes one key: the variable name");
   const map = await findMap(deps);
   const environment = pickEnvironment(map, values.profile, publishEnvironment(map));
+  if (!values.plan && !values.check) await registerProject(deps, dirname(map.file));
   const envArgs = environment === publishEnvironment(map) ? [] : ["--profile", environment];
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);
   const file = join(dirname(map.file), ROTATION_FILE);

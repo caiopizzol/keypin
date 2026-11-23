@@ -21,9 +21,6 @@ jobs:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 --- file secretspec.toml ---
-# secretspec.toml: this project's secrets, by name and place, never values.
-# keypin's settings for each key go in [tool.keypin.<profile>.<KEY>].
-
 [project]
 name = "billing"
 revision = "1.0"
@@ -78,14 +75,16 @@ billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub
   Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
 3 Set up 1Password
   keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected.
-4 Move .env's keys into 1Password
+4 Move .env's keys into your vault
   .env sets DATABASE_URL, RESEND_API_KEY, which secretspec.toml doesn't declare.
-    keypin import .env DATABASE_URL RESEND_API_KEY --vault <vault> --account <1Password sign-in address>
-  Leave out a name that isn't a key; it stays in the file.
+    secretspec add DATABASE_URL
+    secretspec add RESEND_API_KEY
+    secretspec import dotenv:.env
+  Leave out a name that isn't a key: secretspec import copies only declared names, and the file stays.
 5 Add the production keys to secretspec.toml
   STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there.
   RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and secretspec.toml doesn't publish it there.
-  If you ran the import above, run keypin check again for this TOML instead; the import wrote some of these tables.
+  If you ran the commands above, run keypin check again for this TOML instead; secretspec add changes secretspec.toml.
   Replace each <...> with the real value; keypin rejects a map that still has one:
 
 [defaults]

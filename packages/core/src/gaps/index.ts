@@ -15,6 +15,7 @@ import type { Fix, Gaps, LocalFile, ProjectScan } from "./report";
 import { creating, tomlToAdd } from "./toml-to-add";
 
 const PUBLISH_PROFILE = "production";
+const SECRETSPEC_DEFAULT = "default";
 
 export type { Fix, Gaps, LocalFile, Need, ProjectScan } from "./report";
 
@@ -166,15 +167,15 @@ export function findGaps(
     if (file.kind !== "set") continue;
     const suffix = envFileSuffix(file.path.split("/").at(-1) ?? "");
     const env = suffix !== undefined && environments.includes(suffix) ? suffix : run;
-    const flag = envFlag(env, run);
+    const flag = env === SECRETSPEC_DEFAULT ? "" : ` --profile ${env}`;
     const caveat =
       suffix !== undefined &&
       !environments.includes(suffix) &&
       isEnvironmentName(suffix) &&
       !/^(local|dev|development)$/.test(suffix)
-        ? `maps them as ${run}; if they're the values of another profile, add it to secretspec.toml and add --profile <name>`
+        ? `declare them in ${run}; if they're the values of another profile, add it to secretspec.toml and use --profile <name>`
         : null;
-    const other = caveat === null ? "" : `, which ${caveat}`;
+    const other = caveat === null ? "" : `; these commands ${caveat}`;
     const names = file.names.filter(isVariableName);
     const key = (name: string) => keys?.keys.find((k) => k.name === name);
     const unmapped = names.filter((name) => ignoring(name) === undefined && !key(name));
@@ -189,23 +190,24 @@ export function findGaps(
         text: `${file.path} is tracked by git, so its values may be committed`,
         file: file.path,
       });
-    const importing = (why: string, names: string[], account: string) => ({
+    const importing = (why: string, names: string[]) => ({
       kind: "import" as const,
       why,
-      vault: newKeys.vault,
       file: file.path,
       names,
-      options: `${flag} ${newKeys.options}${account}`,
-      caveat: caveat && `That command ${caveat}`,
+      commands: [
+        ...names.map((name) => `secretspec add ${name}${flag}`),
+        `secretspec import dotenv:${file.path}${flag}`,
+      ],
+      caveat: caveat && `These commands ${caveat}`,
     });
     if (unmapped.length && byHand !== undefined) {
       const sets = `${file.path} sets ${unmapped.join(", ")}, which secretspec.toml doesn't declare`;
       notes.push(`${sets}; a plain setting can stay, and for a key ${byHand}`);
     } else if (unmapped.length) {
-      const account = newKeys.hasAccount(keys) ? "" : newKeys.pinOptions;
       const sets = `${file.path} sets ${unmapped.join(", ")}, which secretspec.toml doesn't declare`;
-      const found = importing(sets, unmapped, account);
-      const text = `${sets}; a plain setting can stay, and for a key run keypin import ${file.path} NAME...${found.options}${other}`;
+      const found = importing(sets, unmapped);
+      const text = `${sets}; a plain setting can stay, and for a key run secretspec add NAME${flag}, then secretspec import dotenv:${file.path}${flag}${other}`;
       notes.push(text);
       fixes.push({ ...found, text });
     }
@@ -214,11 +216,8 @@ export function findGaps(
       fix({ kind: "edit", text: `${why}; for a key ${byHand}` });
     } else if (elsewhere.length) {
       const why = `${file.path} sets ${elsewhere.join(", ")}, which secretspec.toml declares, but not in profile ${env}`;
-      const found = importing(why, elsewhere, "");
-      fix({
-        ...found,
-        text: `${why}; for a key run keypin import ${file.path} ${elsewhere.join(" ")}${found.options}${other}`,
-      });
+      const found = importing(why, elsewhere);
+      fix({ ...found, text: `${why}; for a key run ${found.commands.join(", then ")}${other}` });
     }
   }
 

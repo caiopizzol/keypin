@@ -199,15 +199,15 @@ ids billing dev resend api key
     }
   ],
   "notes": [
-    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields",
-    ".env.prod sets STRIPE_API_KEY, which secretspec.toml doesn't declare; a plain setting can stay, and for a key run keypin import .env.prod NAME... --profile prod --vault <vault>",
-    ".env.production sets OTHER_KEY, which secretspec.toml doesn't declare; a plain setting can stay, and for a key run keypin import .env.production NAME... --vault <vault>, which maps them as dev; if they're the values of another profile, add it to secretspec.toml and add --profile <name>"
+    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin publish --plan reads the fields",
+    ".env.prod sets STRIPE_API_KEY, which secretspec.toml doesn't declare; a plain setting can stay, and for a key run secretspec add NAME --profile prod, then secretspec import dotenv:.env.prod --profile prod",
+    ".env.production sets OTHER_KEY, which secretspec.toml doesn't declare; a plain setting can stay, and for a key run secretspec add NAME --profile dev, then secretspec import dotenv:.env.production --profile dev; these commands declare them in dev; if they're the values of another profile, add it to secretspec.toml and use --profile <name>"
   ],
   "problems": [
     "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there. Add the TOML below",
     "RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and secretspec.toml doesn't publish it there. Add the TOML below",
-    ".dev.vars.prod sets RESEND_API_KEY, which secretspec.toml declares, but not in profile prod; for a key run keypin import .dev.vars.prod RESEND_API_KEY --profile prod --vault <vault>",
-    ".env.prod sets DATABASE_URL, which secretspec.toml declares, but not in profile prod; for a key run keypin import .env.prod DATABASE_URL --profile prod --vault <vault>"
+    ".dev.vars.prod sets RESEND_API_KEY, which secretspec.toml declares, but not in profile prod; for a key run secretspec add RESEND_API_KEY --profile prod, then secretspec import dotenv:.dev.vars.prod --profile prod",
+    ".env.prod sets DATABASE_URL, which secretspec.toml declares, but not in profile prod; for a key run secretspec add DATABASE_URL --profile prod, then secretspec import dotenv:.env.prod --profile prod"
   ],
   "ok": false
 }

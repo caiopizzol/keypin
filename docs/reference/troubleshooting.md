@@ -3,12 +3,12 @@
 ## `wrangler dev`
 
 `wrangler dev` gives the Worker an environment variable only when its name is in the config's `secrets.required`,
-and only when there's no `.dev.vars` file. To use keypin's keys:
+and only when there's no `.dev.vars` file. To use the keys from your vault:
 
 1. List each secret under `secrets.required` in the wrangler config.
-2. Import the secrets in `.dev.vars`, then delete the file. Pass a plain setting with `wrangler dev --var
+2. Move the secrets in `.dev.vars` to your vault, then delete the file. Pass a plain setting with `wrangler dev --var
    NAME:value`, never a secret: the value would show in the process list and shell history.
-3. Run `keypin run -- wrangler dev`.
+3. Run `secretspec run -- wrangler dev`.
 
 ## Signing in to Cloudflare
 
@@ -18,6 +18,6 @@ keypin signs in to Cloudflare one of two ways:
   system keyring works, and wrangler refreshes an expired one, even for `keypin check`. It runs the project's wrangler, else the one on
   `PATH`. Not on Windows yet.
 - **API token:** set `KEYPIN_CLOUDFLARE_API_TOKEN` to a token that can edit the Worker's scripts. keypin then doesn't
-  run wrangler, and `keypin run` doesn't pass the variable to a command.
+  run wrangler.
 
-keypin never signs in with `CLOUDFLARE_API_TOKEN`: that stays a key your map can hold.
+keypin never signs in with `CLOUDFLARE_API_TOKEN`: that stays a key `secretspec.toml` can declare.

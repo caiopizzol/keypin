@@ -1,8 +1,9 @@
 # secretspec.toml
 
-keypin reads a project from its [`secretspec.toml`](https://secretspec.dev), in the current folder or any folder
-above it. secretspec declares which secrets exist and where they live; keypin's own settings go in `[tool.keypin]`.
-The file holds names and places, never values.
+A project declares its keys in one [secretspec](https://secretspec.dev) file, `secretspec.toml`, at its root. secretspec
+says which keys exist and which vault holds each one. keypin's settings sit in the same file, under `[tool.keypin]`:
+where each key is published and how it's rotated. The file holds names and places, never values. keypin looks for it
+in the current folder, then in each folder above.
 
 ```toml
 [project]
@@ -10,7 +11,7 @@ name = "web"
 revision = "1.0"
 
 [providers]
-acme = "onepassword://my.1password.com@Acme"
+acme = "onepassword://Acme"
 
 [defaults]
 providers = ["acme"]
@@ -22,7 +23,7 @@ STRIPE_KEY = { description = "Stripe test key" }
 RESEND_API_KEY = { description = "Resend", ref = { item = "resend key", field = "credential" } }
 
 [tool.keypin]
-ignore = ["OPENAI_API_KEY"]
+ignore = ["KEYPIN_GITHUB_TOKEN", "OP_SERVICE_ACCOUNT_TOKEN"]
 
 [tool.keypin.production.RESEND_API_KEY]
 rotate_every = "90d"
@@ -30,50 +31,75 @@ publish = [{ to = "github-actions", repo = "acme/web" }]
 issuer = { kind = "resend", admin = "op://Acme/resend admin/credential", permission = "sending_access" }
 ```
 
+`secretspec init` writes the file, and `secretspec add` declares a key. For `[project]`, `[providers]`, `[defaults]`
+and `[profiles]`, see secretspec's [configuration reference](https://secretspec.dev/reference/configuration/). This
+page covers what keypin reads from them, and `[tool.keypin]`.
+
 ## Profiles
 
-Each secretspec profile is an environment. Every profile has the secrets of `[profiles.default]`, unless it sets
-`inherit = false` under `[profiles.<name>.defaults]`, and its own entry for a secret overrides it field by field.
-`keypin run` uses `default` when it's declared, else the first profile; `keypin publish` and `keypin rotate` use
-`production` when it's declared, else the last. `--profile <name>` picks another. A name starts with a lowercase
-letter and uses lowercase letters, digits and dashes.
+keypin uses secretspec's profiles, in the order the file first names them; a `[profiles.<name>.defaults]` table
+names its profile too. Every profile also has the keys of `[profiles.default]`, unless it sets `inherit = false` under
+`[profiles.<name>.defaults]`, and a profile's own entry for the same name overrides it field by field. In the example,
+`production` has both `STRIPE_KEY` and `RESEND_API_KEY`.
 
-## Where a secret lives
+`keypin publish` and `keypin rotate` use `production`, or the last profile if the file has no `production`.
+`--profile <name>` picks another. keypin needs a profile name that starts with a lowercase letter and uses only
+lowercase letters, digits and dashes.
 
-keypin reads the first provider of a secret's chain: its own `providers`, else `[profiles.<name>.defaults]`
-`providers`, else `[defaults]` `providers`. An entry is an alias under `[providers]`, as a URI or a table with
-`uri`, or a URI itself. An alias defined only in your own secretspec config is refused, since CI and the console
-can't see it.
+## Where each value lives
 
-keypin reads 1Password from `secretspec.toml`, at `onepassword://<sign-in address>@<vault>`. The sign-in address is
-at the top left of the 1Password app, such as `my.1password.com`; an account ID works too.
+For a key in a profile, keypin uses the first provider it finds in the key's own `providers`, then in
+`[profiles.<name>.defaults]` `providers`, then in `[defaults]` `providers`.
 
-- With `ref = { item = "...", field = "..." }`, keypin reads that field of that item. `section` picks a field in a
-  section, and `vault` overrides the URI's vault. Without `field`, it reads `value`, then `password`.
-- Without `ref`, it reads secretspec's item `secretspec/<project>/<profile>/<KEY>`, field `value`, then `password`.
+A provider is an alias from the file's `[providers]` table, written as a URI or as a table with `uri`, or a URI
+written in place. keypin refuses an alias that only your own `~/.config/secretspec/config.toml` defines, and a key
+with no provider: CI and the hosted console read only the committed file, so they couldn't find the vault.
+`keypin check` prints the `[providers]` and `[defaults]` lines to add.
 
-keypin doesn't read `refs`, a provider's `ref` template, `[project]` `extends`, or `onepassword+token://` yet.
+Without `ref`, a key's value is where secretspec keeps it. With `ref = { item = "..." }`, keypin reads the secret
+you name, as secretspec does. Each vault's page has its URI, both addresses and what keypin refuses:
 
-## keypin's settings
+| Vault                                                                | Provider URI                        |
+| -------------------------------------------------------------------- | ----------------------------------- |
+| [1Password](../integrations/vaults/1password.md)                     | `onepassword://[<account>@]<vault>` |
+| [Infisical](../integrations/vaults/infisical.md)                     | `infisical://<host>/<project ID>`   |
+| [Bitwarden Secrets Manager](../integrations/vaults/bitwarden.md)     | `bws://[<server>@]<project ID>`     |
+| [Doppler](../integrations/vaults/doppler.md)                         | `doppler://<project>[/<config>]`    |
+| [AWS Secrets Manager](../integrations/vaults/aws-secrets-manager.md) | `awssm://<region>`                  |
 
-`[tool.keypin.<profile>.<KEY>]` holds keypin's settings for a secret that profile declares:
+keypin doesn't read a secret's `refs`, a provider's `ref` template, or `[project]` `extends` yet. It skips a secret
+with `from` or `composed`: no vault holds it, so there's nothing to publish or rotate.
 
-- `rotate_every`: how often to rotate the key, as `<n>d`, `<n>w`, `<n>m` or `never`. A key rotates on one
-  schedule, so set it once, or the same in every profile.
-- `publish`: the [destinations](../guides/publishing.md#destinations) keypin writes the key to.
-- `pull`: the [CI jobs](../guides/publishing.md#pulling-in-ci) that read it from the vault.
-- `issuer`: how keypin [makes a new key](../guides/rotating-a-key.md). Its `admin` is a 1Password secret reference,
-  `op://<vault>/<item>/<field>`, in the key's own account.
+## [tool.keypin]
 
-`ignore` lists the names a workflow or env file uses that keypin shouldn't manage. `keypin check` leaves them out,
-in any case, and says how many it ignores. keypin refuses a field it doesn't know, and a `<...>` placeholder left
-in a value.
+secretspec leaves this table alone. Don't put keypin's fields in a key's entry under `[profiles]`: secretspec warns
+about them and drops them.
+
+- `ignore`: keys a workflow or env file names that keypin shouldn't manage, such as the optional keys of a copied
+  workflow. `keypin check` leaves them out, in any profile and any case, and says how many it ignores.
+
+Each `[tool.keypin.<profile>.<KEY>]` table sets one key in one profile. The key must be declared in that profile or
+in `[profiles.default]`.
+
+- `rotate_every`: how often to rotate the key, as `<n>d`, `<n>w`, `<n>m` or `never`. A key has one schedule, so
+  keypin refuses different values in two profiles.
+- `publish`: where `keypin publish` writes the key. See [Destinations](../guides/publishing.md#destinations).
+- `issuer`: how `keypin rotate` makes a new key. See [Rotating a key](../guides/rotating-a-key.md).
+
+An issuer's `admin` is not a provider URI. It's a reference in keypin's own syntax to one secret in the key's own
+vault, such as `op://Acme/resend admin/credential`. Infisical, Doppler and AWS Secrets Manager references start with
+the same scheme as their provider URIs but name a single secret, as `infisical://<project>/<environment>/<NAME>`,
+`doppler://<project>/<config>/<NAME>` or `awssm://<region>/<secret name>`. The admin key isn't a declared key, so
+`secretspec run` never passes it to your app.
+
+keypin refuses a field it doesn't know and a `<...>` placeholder left in a value, and names the table, such as
+`[tool.keypin.production.RESEND_API_KEY]`.
 
 ## Vault items
 
-Any field except `rotated` can hold the value. Add a **`rotated`** Date field with the day the value last changed;
-`keypin status` adds `rotate_every` to it to show when the key is due.
+Each vault keeps a key's rotated date its own way; see its page. `keypin status` adds `rotate_every` to it to show
+when the key is due, and `keypin rotate` sets it. secretspec reads the value and leaves the date alone.
 
 The hosted console can't read your vault. For it to show when each key is due, run `keypin status --write` in the
-project and commit `.keypin/status.json`. It holds each key's `rotated` day per profile, or `null`, and the day it
+project and commit `.keypin/status.json`. It holds each key's rotated day per profile, or `null`, and the day it
 was written; no values or vault references.

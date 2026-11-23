@@ -1,8 +1,7 @@
 # 1Password
 
-keypin reads a field of a 1Password item, or the item's notes. Every command works with 1Password. `import` creates
-items only in 1Password, and [scheduled rotation](../../guides/scheduled-rotation.md) supports only 1Password for
-now.
+keypin reads and rotates keys in 1Password items. `check`, `status`, `publish` and `rotate` work, and
+[scheduled rotation](../../guides/scheduled-rotation.md) is set up for 1Password.
 
 ## Sign in
 
@@ -12,52 +11,54 @@ now.
 - **Service account**, on a server or in CI: set `KEYPIN_1PASSWORD=service-account` and `OP_SERVICE_ACCOUNT_TOKEN`.
   See [Service accounts](../../guides/service-accounts.md).
 
-## The map
+## The provider
 
 ```toml
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
 
-[keys.STRIPE_KEY]
-rotate_every = "90d"
-dev = "op://Private/billing dev stripe key/credential"
-prod = "op://Billing/billing prod stripe key/credential"
+[providers]
+billing = "onepassword://Billing"
+
+[defaults]
+providers = ["billing"]
+
+[profiles.default]
+STRIPE_KEY = { description = "Stripe test key" }
+
+[profiles.production]
+STRIPE_KEY = { description = "Stripe live key", ref = { item = "stripe live", field = "credential" } }
 ```
 
-`account` is the account's sign-in address, such as `my.1password.com`, its name as shown at the top left of the
-1Password app, or its account ID. A team shares one account, and each member signs in to it.
+The provider is `onepassword://<vault>`, with the vault's name or ID. keypin signs in to the account the 1Password
+CLI uses: `OP_ACCOUNT`, else the account the app last signed the CLI in to, else the CLI's last sign-in. To name the
+account, write `onepassword://<account>@<vault>`, such as `onepassword://acme.1password.com@Billing`, with the sign-in
+address at the top left of the 1Password app, or an account ID. A team shares one account, and each member signs in
+to it.
 
-## References
+keypin refuses a URI that names more than a vault, and `onepassword+token://` for now.
 
-A reference is `op://<vault>/<item>/<field>`, or `op://<vault>/<item>/<section>/<field>` when two fields share a
-name. In 1Password, open the field's menu and select **Copy Secret Reference**. keypin matches a vault, item or field
-by its name or ID, ignoring case, and refuses a name that two of them share.
+## Addresses
 
-Any field except `rotated` can hold the value, such as `password` or an API Credential's `credential`. For the item's
-notes, use the field `notesPlain`. keypin doesn't read one-time passwords, files or empty values.
+- **Without `ref`:** the item `secretspec/<project>/<profile>/<KEY>`, such as `secretspec/billing/default/STRIPE_KEY`,
+  field `value`, else `password`. `secretspec set` and `secretspec import` create it.
+- **With `ref`:** `item` is the item's title or ID. `field` is the field's label; without it, keypin reads `value`,
+  then `password`. `section` picks a field in a section, when two fields share a label, and needs `field`. `vault`
+  names a vault other than the provider's.
+
+1Password's **Copy Secret Reference** gives `op://<vault>/<item>/<field>`; write it as
+`ref = { vault = "<vault>", item = "<item>", field = "<field>" }`. keypin matches a vault, item or field by its name
+or ID, ignoring case, and refuses a name that two of them share. Any field except `rotated` can hold the value. For
+the item's notes, use the field `notesPlain`. keypin doesn't read one-time passwords, files or empty values.
+
+An issuer's `admin` is a 1Password secret reference, `op://<vault>/<item>/<field>`, or
+`op://<vault>/<item>/<section>/<field>`, in the key's own account.
 
 ## Rotated date
 
-Add a Date field named `rotated` to the item, with the day the value last changed. `keypin status` adds
-`rotate_every` to it to show when the key is due. `keypin rotate` and `keypin import` set it to today.
+Add a Date field named `rotated` to the item, with the day the value last changed. `keypin rotate` sets it to today.
 
 ## Permissions
 
-With the desktop app, keypin reaches the vaults your 1Password user can. A service account needs read access to
-the vault for `run`, `check`, `status` and `publish`, and write access for `rotate` and `import`.
-
-## Pulling in GitHub Actions
-
-A job signs in with a service account, so its references must be in a vault you created and granted it, like
-`Billing` above. Save its token as an Actions secret, list the job in the map with a
-[`pull`](../../guides/publishing.md#pulling-in-ci) entry, and run:
-
-```yaml
-- run: keypin run --env prod --only STRIPE_KEY -- <command>
-  env:
-    KEYPIN_1PASSWORD: service-account
-    OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
-```
-
-The repo stores the token instead of each key. Add `OP_SERVICE_ACCOUNT_TOKEN` to
-[`ignore`](../../reference/secretspec-toml.md#keypins-settings), or `keypin check` asks you to map it.
+With the desktop app, keypin reaches the vaults your 1Password user can. A service account needs read access to the
+vault for `check`, `status` and `publish`, and write access for `rotate`.

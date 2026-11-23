@@ -1,8 +1,8 @@
 # AWS Secrets Manager
 
-keypin reads secrets from [AWS Secrets Manager](https://aws.amazon.com/secrets-manager/), whole or one key of a JSON
-secret. `run`, `check`, `status`, `publish` and `rotate` work; `import` creates 1Password items, so create the secrets
-with `aws secretsmanager create-secret`.
+keypin reads and rotates keys in [AWS Secrets Manager](https://aws.amazon.com/secrets-manager/), whole secrets or one
+key of a JSON secret. `check`, `status`, `publish` and `rotate` work. keypin doesn't create secrets: save each value
+with `secretspec set` first.
 
 ## Sign in
 
@@ -14,34 +14,48 @@ sign in with SSO, `credential_process` or role profiles itself; export their tem
 eval "$(aws configure export-credentials --profile work --format env)"
 ```
 
-In GitHub Actions, keypin can sign in with OIDC instead; see [Pulling in GitHub Actions](#pulling-in-github-actions).
-keypin checks that the credentials belong to the pinned account. `keypin run` passes your AWS variables to the
-command, since apps often use them too.
+In GitHub Actions, keypin can sign in with OIDC instead; see
+[Signing in from GitHub Actions](#signing-in-from-github-actions).
 
-## The map
+## The provider
 
 ```toml
-[awssm]
-account = "123456789012"
+[project]
+name = "billing"
 
-[keys.STRIPE_KEY]
-rotate_every = "90d"
-dev = "awssm://eu-west-1/billing/dev:STRIPE_KEY"
-prod = "awssm://eu-west-1/billing/prod/stripe"
+[providers]
+aws = "awssm://us-east-1?prefix=acme"
+
+[defaults]
+providers = ["aws"]
+
+[profiles.production]
+STRIPE_KEY = { description = "Stripe" }
+DB_PASSWORD = { description = "Database password", ref = { item = "prod/db-credentials", field = "password" } }
 ```
 
-`account` is the 12-digit ID that `aws sts get-caller-identity` shows.
+The provider is `awssm://<region>`, with an optional `?prefix=<prefix>` for the secrets secretspec names. keypin
+refuses a URI without a region, since CI and the console can't see the region secretspec would take from your
+environment, and a URI with a path or a `<profile>@`: keypin signs in only with the credentials in its environment, so
+set `AWS_PROFILE` where keypin runs instead. `kms_key_id` and `tag.*` apply only when secretspec creates a secret, so
+keypin ignores them.
 
-## References
+## Addresses
 
-A reference is `awssm://<region>/<secret name>`, as `prod` above. Add `:<key>` to read one key of a JSON secret, as
-`dev` above. keypin reads a secret by name, not by ARN.
+- **Without `ref`:** the whole secret `[<prefix>/]secretspec/<project>/<profile>/<KEY>`. In the example, `STRIPE_KEY`
+  is `acme/secretspec/billing/production/STRIPE_KEY`.
+- **With `ref`:** `item` is the secret's name, and `field` reads one key of a JSON secret. keypin rotates it in
+  place, though secretspec only reads it. keypin refuses an ARN, so write the name, without the 6-character suffix,
+  and any field but `item` and `field`.
+
+An issuer's `admin` is a reference in keypin's own syntax, not a provider URI: `awssm://<region>/<secret name>`, with
+`:<key>` after the name to read one key of a JSON secret.
 
 ## Rotated date
 
-For a whole secret, it's the day its current version was made. For one key of a JSON secret, it's the tag
-`keypin-rotated:<key>` on the secret, as `YYYY-MM-DD`. `keypin rotate` sets the tag and keeps the secret's other keys;
-add the tag yourself for a key you rotated by hand.
+For a whole secret, it's the day its current version was made, so a `secretspec set` counts too. For one key of a
+JSON secret, it's the tag `keypin-rotated:<key>` on the secret, as `YYYY-MM-DD`. `keypin rotate` sets the tag and
+keeps the secret's other keys; add the tag yourself for a key you rotated by hand.
 
 ## Permissions
 
@@ -49,10 +63,10 @@ keypin needs `secretsmanager:GetSecretValue`, `DescribeSecret` and `ListSecretVe
 `PutSecretValue` and `TagResource` to rotate, plus `kms:Decrypt` and `kms:GenerateDataKey` on the secret's key if
 it isn't the AWS managed one.
 
-## Pulling in GitHub Actions
+## Signing in from GitHub Actions
 
-A job can sign in with OIDC and read a key itself, so the repo stores no copy. List the job in the map with a
-[`pull`](../../guides/publishing.md#pulling-in-ci) entry, then:
+A job, such as [scheduled rotation](../../guides/scheduled-rotation.md), can sign in with OIDC, so the repo stores no
+AWS keys:
 
 1. Add GitHub as an identity provider, once per AWS account:
 
@@ -61,8 +75,8 @@ A job can sign in with OIDC and read a key itself, so the repo stores no copy. L
      --client-id-list sts.amazonaws.com
    ```
 
-2. Create a role that only your repo's branch can assume, with `secretsmanager:GetSecretValue` on the secret, plus
-   `kms:Decrypt` for your own KMS key. Its trust policy names the branch:
+2. Create a role that only your repo's branch can assume, with the permissions above. Its trust policy names the
+   branch:
 
    ```json
    "Condition": {
@@ -79,28 +93,13 @@ A job can sign in with OIDC and read a key itself, so the repo stores no copy. L
    `:environment:<name>`, and limit the branch with the environment's deployment rules. See
    [GitHub's subject formats](https://docs.github.com/en/actions/reference/security/oidc).
 
-3. In the job, give keypin the role's ARN. keypin exchanges GitHub's token for 15-minute credentials, which only
-   keypin uses, never the command:
+3. Give the job `permissions: id-token: write`, and set `KEYPIN_AWS_ROLE_ARN` to the role's ARN, with the other AWS
+   variables unset. keypin exchanges GitHub's token for 15-minute credentials that only keypin uses.
 
-   ```yaml
-   permissions:
-     id-token: write
-     contents: read
-   steps:
-     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-       with:
-         node-version: 24
-     - run: npm install -g keypin
-     - run: keypin run --profile prod --only STRIPE_KEY -- <command>
-       env:
-         KEYPIN_AWS_ROLE_ARN: arn:aws:iam::123456789012:role/my-role
-   ```
-
-   Set `KEYPIN_AWS_AUDIENCE` for another audience, and add it to both the trust policy and the identity provider
-   (`aws iam add-client-id-to-open-id-connect-provider`). If other steps need AWS credentials too, sign the job in with
-   [`aws-actions/configure-aws-credentials`](https://github.com/aws-actions/configure-aws-credentials) and leave
-   `KEYPIN_AWS_ROLE_ARN` unset.
+Set `KEYPIN_AWS_AUDIENCE` for another audience, and add it to both the trust policy and the identity provider
+(`aws iam add-client-id-to-open-id-connect-provider`). If other steps need AWS credentials too, sign the job in with
+[`aws-actions/configure-aws-credentials`](https://github.com/aws-actions/configure-aws-credentials) and leave
+`KEYPIN_AWS_ROLE_ARN` unset.
 
 ## Limits
 

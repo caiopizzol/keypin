@@ -1,6 +1,7 @@
 # What keypin is
 
-When a key has to change, keypin replaces it at the provider and everywhere it's used, across all your projects.
+When a key has to change, keypin replaces it at the provider and everywhere the project publishes it. `keypin status`
+shows what's due across all your projects.
 
 ## The problem
 
@@ -10,10 +11,10 @@ miss breaks once the old key is revoked.
 
 ## When you need it
 
-- **A key may have leaked.** `keypin rotate` makes a new key, publishes it to every destination, then asks before it
-  revokes the old one.
-- **A key is due.** `rotate_every` says how often. `keypin rotate --due` rotates every key that is due, by hand or
-  on a schedule in your GitHub Actions.
+- **A key may have leaked.** `keypin rotate` makes a new key, publishes it to every destination the project lists,
+  then asks before it revokes the old one.
+- **A key is due.** `rotate_every` says how often. `keypin rotate --due` rotates each due key with an `issuer` in
+  one project and profile, by hand or on a schedule in your GitHub Actions.
 - **Many repos, many keys.** `keypin status` lists every project's keys and when each is due. The
   [console](https://keypin.dev/console/) shows what's overdue in each repo you share.
 - **Someone left the team.** Rotate the keys they could read. Each destination gets the new value.
@@ -30,7 +31,8 @@ values. keypin's settings sit in the same file, under `[tool.keypin]`. From it, 
 - writes keys to CI and hosting (`keypin publish`);
 - reports what a project uses and what's missing (`keypin check`).
 
-"Everywhere" means every destination in `secretspec.toml`; keypin doesn't find copies the file doesn't list. The
+"Everywhere" means every destination the project's `secretspec.toml` lists for the key in that profile; keypin
+doesn't find copies the file doesn't list, including another project's. The
 [README](../../README.md#what-is-keypin) lists every issuer and destination. keypin reads 1Password, Infisical,
 Bitwarden Secrets Manager, Doppler and AWS Secrets Manager.
 

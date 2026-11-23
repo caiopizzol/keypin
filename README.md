@@ -23,9 +23,9 @@
 
 ## What is keypin?
 
-When a key has to change, keypin replaces it at the provider and everywhere it's used, across all your projects.
-`keypin rotate` makes the new key, publishes it to each destination in the project's `secretspec.toml`, and revokes
-the old one only after you approve. `keypin status` shows what's due in every project.
+When a key has to change, keypin replaces it at the provider and everywhere the project publishes it.
+`keypin rotate` makes the new key, publishes it to each destination the project's `secretspec.toml` lists for it,
+and revokes the old one only after you approve. `keypin status` shows what's due across all your projects.
 
 [secretspec](https://secretspec.dev) says which keys a project needs and runs it with them. keypin keeps those keys
 fresh everywhere, from settings under `[tool.keypin]` in the same file. Values stay in your vault.

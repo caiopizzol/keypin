@@ -8,15 +8,15 @@ each key goes and how it's rotated.
 flowchart LR
   map["secretspec.toml, in your repo<br>key names and profiles<br>destinations<br>rotation rules"] -- rotate --> provider["The provider<br>makes the new key<br>revokes the old one"]
   provider -- new key --> vault["Your vault<br>the value<br>its rotated date"]
-  vault -- publish --> used["Where keys are used<br>CI and hosting<br>in each project"]
+  vault -- publish --> used["Its destinations<br>CI and hosting<br>listed in secretspec.toml"]
 ```
 
 ## Rotation
 
 Give a key an `issuer`, such as Resend, Neon or OpenAI, and `keypin rotate` creates a new key at the provider,
-saves it to your vault and publishes it to every destination in `secretspec.toml`. Its plan says whether keypin
-revokes the old key after a second `y`, or leaves it for you to delete, as on a first Resend rotation. See
-[Rotating a key](../guides/rotating-a-key.md).
+saves it to your vault and publishes it to each destination `secretspec.toml` lists for that key and profile. Its
+plan says whether keypin revokes the old key after a second `y`, or leaves it for you to delete, as on a first
+Resend rotation. See [Rotating a key](../guides/rotating-a-key.md).
 
 `keypin status` shows which keys are due, in every project. [Scheduled rotation](../guides/scheduled-rotation.md)
 rotates them in your GitHub Actions.

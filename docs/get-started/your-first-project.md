@@ -1,7 +1,8 @@
 # Your first project
 
 `secretspec init` writes `secretspec.toml`. `keypin check` reports what the project uses and what to do next. By the
-end of [Ship to production](ship-to-production.md), keypin can rotate each key and publish it everywhere it's used.
+end of [Ship to production](ship-to-production.md), each key is in your vault and keypin can publish it everywhere
+it's used. Rotating a key takes an [issuer](../guides/rotating-a-key.md) too.
 
 ## Declare the keys
 

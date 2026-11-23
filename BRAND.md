@@ -12,10 +12,10 @@ language: en
 
 ### Overview
 
-keypin is a command-line tool that replaces a key at its provider and everywhere it's used, across all your
-projects. Each project declares its keys in [secretspec](https://secretspec.dev)'s `secretspec.toml`; keypin's
-settings, under `[tool.keypin]`, say where each key is published and how it's rotated. secretspec says which keys a
-project needs and runs it with them. keypin keeps those keys fresh everywhere.
+keypin is a command-line tool that replaces a key at its provider and everywhere a project publishes it, and
+shows what's due across all your projects. Each project declares its keys in [secretspec](https://secretspec.dev)'s
+`secretspec.toml`; keypin's settings, under `[tool.keypin]`, say where each key is published and how it's rotated.
+secretspec says which keys a project needs and runs it with them. keypin keeps those keys fresh everywhere.
 
 Before: a key may have leaked, or is due, and replacing it means making a new one at the provider, pasting it into
 each CI secret and hosting setting by hand, and revoking the old one. It rarely happens, and nobody knows which

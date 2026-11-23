@@ -49,7 +49,7 @@ Plan
   ~ 1Password  save it to op://Private/mailer resend key/credential, rotated today
   - Resend     the old key stays: keypin doesn't know its ID
 
-secretspec.toml publishes RESEND_API_KEY (prod) nowhere, and nothing in this repo reads it at job time. Check what uses it before you revoke the old key.
+secretspec.toml publishes RESEND_API_KEY (prod) nowhere, and no workflow in this repo runs secretspec run for prod. Check what uses it before you revoke the old key.
 
 This plan is routine: --yes can approve it.
 Nothing was written: --plan only shows the plan.

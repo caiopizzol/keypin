@@ -92,8 +92,10 @@ ok     Resend  the admin key lists 2 API keys
 Plan
   + Resend                        create a new key
   ~ 1Password                     save it to op://Private/mailer resend key/credential, rotated today
-  = .github/workflows/deploy.yml  reads it at job time (secretspec run --profile prod)
+  = .github/workflows/deploy.yml  runs secretspec run --profile prod
   - Resend                        revoke the old key key-1, after a second y
+
+secretspec.toml publishes RESEND_API_KEY (prod) nowhere. The workflows above run secretspec run for prod, so they may read it. Check what uses it before you revoke the old key.
 
 ok     Resend  created RESEND_API_KEY prod 2026-11-09 12:00:00 a1b2c3 (key-2)
 ok     1Password  op://Private/mailer resend key/credential  saved, rotated 2026-11-09

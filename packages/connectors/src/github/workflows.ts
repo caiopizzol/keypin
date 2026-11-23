@@ -8,6 +8,12 @@ export interface WorkflowRefs {
   uses: SecretUse[];
   hidesUses: boolean;
   secretspec: (string | null)[];
+  runs: SecretspecRun[];
+}
+
+export interface SecretspecRun {
+  profile: string | null;
+  folder: string | null;
 }
 
 export interface SecretUse {
@@ -83,6 +89,7 @@ export function workflowRefs(text: string): WorkflowRefs | null {
   ];
   const top: Record<string, unknown> = isRecord(data) ? data : {};
   const profiles = new Set<Profile>();
+  const runs: SecretspecRun[] = [];
   for (const job of Object.values(jobs ?? {})) {
     const environment = isRecord(job) ? job.environment : undefined;
     const name = isRecord(environment) ? environment.name : environment;
@@ -91,10 +98,14 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     const callerOwned = passedByCaller && named === null;
     const steps = isRecord(job) && Array.isArray(job.steps) ? job.steps : [];
     const own = [...secretsIn(job, steps, callerOwned)];
-    const parts = steps.map((step) => ({
-      secrets: [...secretsIn(step, null, callerOwned)],
-      secretspec: isRecord(job) && isRecord(step) ? secretspecProfiles(top, job, step) : [],
-    }));
+    const parts = steps.map((step) => {
+      const found = isRecord(job) && isRecord(step) ? secretspecSteps(top, job, step) : [];
+      runs.push(...found);
+      return {
+        secrets: [...secretsIn(step, null, callerOwned)],
+        secretspec: [...new Set(found.map((run) => run.profile))],
+      };
+    });
     for (const part of parts) for (const profile of part.secretspec) profiles.add(profile);
     const all = [...own, ...parts.flatMap((part) => part.secrets)];
     if (named?.includes("${{") && stored([...all, ...inherited])) refs.hidesUses = true;
@@ -117,24 +128,47 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     uses: uses.filter((use) => use.secrets.length),
     hidesUses: refs.hidesUses,
     secretspec: [...profiles],
+    runs,
   };
 }
 
 const PROFILE_VARIABLE = "SECRETSPEC_PROFILE";
+const FILE_VARIABLE = "SECRETSPEC_FILE";
 const DEFAULT_PROFILE = "default";
 
 type Profile = string | null;
 
-function secretspecProfiles(
+function secretspecSteps(
   top: Record<string, unknown>,
   job: Record<string, unknown>,
   step: Record<string, unknown>,
-): Profile[] {
+): SecretspecRun[] {
   if (typeof step.run !== "string") return [];
   const env = { ...envOf(top), ...envOf(job), ...envOf(step) };
-  return [
-    ...new Set(secretspecRuns(step.run).map((flag) => profileOf(flag, env[PROFILE_VARIABLE]))),
-  ];
+  const folder =
+    env[FILE_VARIABLE] === undefined
+      ? folderOf(step["working-directory"] ?? runDefault(job) ?? runDefault(top))
+      : null;
+  return secretspecRuns(step.run).map((run) => ({
+    profile: profileOf(run.profile, env[PROFILE_VARIABLE]),
+    folder: run.moved || run.file ? null : folder,
+  }));
+}
+
+function runDefault(scope: Record<string, unknown>): unknown {
+  const run = isRecord(scope.defaults) ? scope.defaults.run : undefined;
+  return isRecord(run) ? run["working-directory"] : undefined;
+}
+
+function folderOf(directory: unknown): string | null {
+  if (directory === undefined) return "";
+  if (typeof directory !== "string" || /^[/~]|\$/.test(directory.trim())) return null;
+  const parts: string[] = [];
+  for (const part of directory.trim().split("/"))
+    if (part === "..") {
+      if (!parts.pop()) return null;
+    } else if (part && part !== ".") parts.push(part);
+  return parts.join("/");
 }
 
 function profileOf(flag: string | undefined, variable: unknown): string | null {
@@ -148,18 +182,29 @@ function envOf(scope: Record<string, unknown>): Record<string, unknown> {
 
 const SECRETSPEC_RUN = /(?:^|[\s;&|(])(?:[\w.-]*\/)*secretspec\s+run(?=\s|$)([^\n]*)/g;
 
-function secretspecRuns(script: string): (string | undefined)[] {
-  const runs: (string | undefined)[] = [];
-  for (const match of script.replace(/\\\r?\n/g, " ").matchAll(SECRETSPEC_RUN)) {
+const CHANGES_FOLDER = /(?:^|[\s;&|(])(?:cd|pushd)(?=\s|$)/;
+
+interface Run {
+  profile: string | undefined;
+  file: boolean;
+  moved: boolean;
+}
+
+function secretspecRuns(script: string): Run[] {
+  const runs: Run[] = [];
+  const text = script.replace(/\\\r?\n/g, " ");
+  for (const match of text.matchAll(SECRETSPEC_RUN)) {
     const words = shellWords(match[1] ?? "");
     let profile: string | undefined;
+    let file = false;
     for (let i = 0; i < words.length && words[i] !== "--"; i++) {
       const word = words[i] ?? "";
       const [flag = "", inline] = word.startsWith("--") ? word.split(/=(.*)/s) : [word];
       if (flag === "--profile" || flag === "-P") profile = inline ?? words[++i] ?? "";
       else if (/^-P./.test(flag)) profile = flag.slice(2);
+      else if (flag === "--file" || flag.startsWith("-f")) file = true;
     }
-    runs.push(profile);
+    runs.push({ profile, file, moved: CHANGES_FOLDER.test(text.slice(0, match.index)) });
   }
   return runs;
 }

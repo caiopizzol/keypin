@@ -227,28 +227,30 @@ function noDestinations(workflow?: string) {
 }
 
 describe("keypin rotate, for a key no destination takes", () => {
-  test("the plan says nothing in the repo reads it, so check before revoking", async () => {
+  test("the plan says no workflow runs secretspec run for the profile, so check before revoking", async () => {
     const run = setup({ disk: noDestinations() });
     expect(NO_DESTINATIONS).not.toContain("publish");
     expect(await run.record("no-destinations-plan", "--plan")).toBe(3);
     expect(run.stderr.text).toContain(
-      "secretspec.toml publishes RESEND_API_KEY (prod) nowhere, and nothing in this repo reads it at job time. Check what uses it before you revoke the old key.",
+      "secretspec.toml publishes RESEND_API_KEY (prod) nowhere, and no workflow in this repo runs secretspec run for prod. Check what uses it before you revoke the old key.",
     );
   });
 
-  test("the plan names the workflow that reads it at job time", async () => {
+  test("the plan lists the workflow that runs secretspec run for the profile, and still asks to check", async () => {
     const run = setup({ disk: noDestinations(DEPLOY) });
     expect(await run.record("no-destinations-read-at-job-time", "--plan")).toBe(3);
     expect(run.stderr.text).toMatch(
-      /= \.github\/workflows\/deploy\.yml +reads it at job time \(secretspec run --profile prod\)/,
+      /= \.github\/workflows\/deploy\.yml +runs secretspec run --profile prod\n/,
     );
-    expect(run.stderr.text).not.toContain("Check what uses it");
+    expect(run.stderr.text).toContain(
+      "secretspec.toml publishes RESEND_API_KEY (prod) nowhere. The workflows above run secretspec run for prod, so they may read it. Check what uses it before you revoke the old key.",
+    );
   });
 
-  test("a workflow that runs another profile doesn't read it", async () => {
+  test("a workflow that runs another profile isn't listed", async () => {
     const run = setup({ disk: noDestinations(DEPLOY.replace("--profile prod", "--profile dev")) });
     expect(await run.run("--plan")).toBe(3);
-    expect(run.stderr.text).not.toContain("reads it at job time (");
+    expect(run.stderr.text).not.toContain("runs secretspec run --profile");
     expect(run.stderr.text).toContain("Check what uses it before you revoke the old key.");
   });
 

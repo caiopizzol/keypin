@@ -1,5 +1,11 @@
-import { join, relative } from "node:path";
-import { type Discovered, type Discovery, messageOf, type ProjectReader } from "@keypin/core";
+import { isAbsolute, join, relative } from "node:path";
+import {
+  type Discovered,
+  type Discovery,
+  type JobReader,
+  messageOf,
+  type ProjectReader,
+} from "@keypin/core";
 import { usesSecrets, workflowRefs } from "./workflows";
 import { needsOf } from "./discovery-needs";
 import { githubOrigin } from "./discovery-origin";
@@ -16,11 +22,34 @@ export const workflowDiscovery: Discovery<WorkflowHost> = {
   },
   async readers(project, host, profile) {
     const top = (await host.git(project.root, ["rev-parse", "--show-toplevel"]))?.trim() || null;
-    return (await readWorkflows(project, top))
-      .filter((workflow) => workflow.refs.secretspec.includes(profile))
-      .map((workflow) => ({ file: workflow.path, how: `secretspec run --profile ${profile}` }));
+    const root = top === null ? "" : relative(top, project.root);
+    const placed = !root.startsWith("..") && !isAbsolute(root);
+    const how = `secretspec run --profile ${profile}`;
+    const found: JobReader[] = [];
+    for (const workflow of await readWorkflows(project, top)) {
+      const folders = workflow.refs.runs
+        .filter((run) => run.profile === profile)
+        .map((run) => (placed ? run.folder : null));
+      let here = false;
+      for (const folder of folders)
+        if (folder !== null && (await runsIn(project, root, folder))) here = true;
+      if (here) found.push({ file: workflow.path, how });
+      else if (folders.includes(null))
+        found.push({ file: workflow.path, how: `${how}, from a folder keypin can't tell` });
+    }
+    return found;
   },
 };
+
+async function runsIn(project: ProjectReader, root: string, folder: string): Promise<boolean> {
+  if (folder === root) return true;
+  if (root && !folder.startsWith(`${root}/`)) return false;
+  const below = (root ? folder.slice(root.length + 1) : folder).split("/");
+  for (let depth = below.length; depth > 0; depth--)
+    if ((await project.read(join(...below.slice(0, depth), "secretspec.toml"))) !== null)
+      return false;
+  return true;
+}
 
 async function readWorkflows(project: ProjectReader, top: string | null): Promise<Workflow[]> {
   const dir = join(top ?? project.root, ".github", "workflows");

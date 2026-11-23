@@ -673,6 +673,27 @@ describe("keypin rotate --due after a person replaced a waiting key by hand", ()
     expect(w.effects).toHaveLength(2);
   });
 
+  test("--check fails when it can't read a waiting key's vault item, instead of calling the key ready", async () => {
+    const w = await rotatedOnceOnALaptop();
+    expect(await ci(w).run("--due", "--yes")).toBe(0);
+    w.dates.set(ITEM, "2026-08-01");
+    const read = w.vault.read.bind(w.vault);
+    let failed = false;
+    Object.assign(w.vault, {
+      read: async (ref: KeyRef) => {
+        if (failed) return read(ref);
+        failed = true;
+        throw new Error("1Password: the request timed out");
+      },
+    });
+    const check = ci(w);
+    expect(await check.run("--check")).toBe(1);
+    expect(check.stderr.text).toContain(
+      "keypin couldn't read its vault item, so it can't tell whether its old key still waits for approval",
+    );
+    expect(check.stderr.text).not.toContain("is ready for keypin rotate --due");
+  });
+
   test("an item replaced under the same reference keeps the old key waiting, its value isn't read, and --check names the first write it needs", async () => {
     const w = await replacedByHand("2026-08-01");
     w.inner.itemIds.set(ITEM, "id-replaced");

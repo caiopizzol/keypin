@@ -32,6 +32,8 @@ import { rotateLocked } from "./rotate-key";
 import { waitsNotice } from "./messages";
 import { checkCredentials, type MayRead } from "./credentials";
 
+const GATED = Symbol("gated");
+
 async function progressOf(
   context: Context,
   path: string,
@@ -41,6 +43,7 @@ async function progressOf(
   const state = restoreIssued(await loadState(deps.files, path, deps.vaults), committed, map);
   const progress = new Map<string, Progress>();
   const unverified = new Set<string>();
+  const unreadable = new Set<string>();
   for (const key of map.keys) {
     if (only !== undefined && key.name !== only) continue;
     const entry = rotates(map, key.name, environment);
@@ -58,16 +61,21 @@ async function progressOf(
       progress.set(key.name, { kind, since, revokes });
       continue;
     }
-    const holds = await vaultGeneration(context, key, entry, state, check);
+    const read = await vaultGeneration(context, key, entry, state, check);
+    const holds = typeof read === "string" ? read : null;
+    if (read === GATED) unverified.add(key.name);
+    else if (read === null) unreadable.add(key.name);
     if (holds !== null && holds !== issued.generation && holds !== issued.old.generation) continue;
     const vaultOnly = entry.publish.length === 0;
     const rolledBack = vaultOnly && holds === issued.old.generation && !issued.unsaved;
     if (rolledBack) continue;
     const neverSaved = vaultOnly && holds !== issued.generation && issued.unsaved === true;
-    if (holds === null) unverified.add(key.name);
     progress.set(key.name, { kind: neverSaved ? "unfinished" : kind, since, revokes });
   }
-  return Object.assign((keyId: string): Progress => progress.get(keyId) ?? null, { unverified });
+  return Object.assign((keyId: string): Progress => progress.get(keyId) ?? null, {
+    unverified,
+    unreadable,
+  });
 }
 
 async function vaultGeneration(
@@ -76,10 +84,10 @@ async function vaultGeneration(
   entry: EnvEntry,
   state: State,
   check: boolean,
-): Promise<string | null> {
+): Promise<string | typeof GATED | null> {
   const { deps, out } = context;
   const gated = check || !deps.isTerminal;
-  if (gated && !(await readsRoutinely(context, key, entry, state))) return null;
+  if (gated && !(await readsRoutinely(context, key, entry, state))) return GATED;
   const where = formatReference(entry.ref, deps.vaults);
   const read = await out.step(
     `Reading the key ${where}`,
@@ -219,6 +227,13 @@ export async function checkDue(context: Context, path: string): Promise<number> 
     const problem = undatedProblem(context, choice);
     if (problem !== null) {
       out.line(`${out.mark(false)} ${problem}`);
+      codes.push(1);
+      continue;
+    }
+    if (choice.action === "waiting" && progress.unreadable.has(choice.keyId)) {
+      out.line(
+        `${out.mark(false)} ${choice.keyId} (${environment}): keypin couldn't read its vault item, so it can't tell whether its old key still waits for approval. Run the check again; if it keeps failing, fix the vault read first.`,
+      );
       codes.push(1);
       continue;
     }

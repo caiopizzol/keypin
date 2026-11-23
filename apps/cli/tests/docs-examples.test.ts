@@ -7,7 +7,7 @@ import { destinations, issuers, pulls, vaults } from "../src/start";
 const ROOT = join(import.meta.dirname, "../../..");
 const FILES = [
   "README.md",
-  ...readdirSync(join(ROOT, "docs"))
+  ...readdirSync(join(ROOT, "docs"), { encoding: "utf8", recursive: true })
     .filter((name) => name.endsWith(".md"))
     .map((name) => `docs/${name}`),
 ];

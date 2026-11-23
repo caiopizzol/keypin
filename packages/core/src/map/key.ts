@@ -20,7 +20,7 @@ const KEY_FIELDS: readonly string[] = ["rotate_every"];
 
 const REMOVED_KEY_FIELDS: readonly string[] = ["owner", "consumers"];
 
-export const OLD_FORMAT = "see docs/configuration.md for the current format";
+export const OLD_FORMAT = "see docs/reference/keypin-toml.md for the current format";
 
 export interface MapContext {
   pins: VaultPins;

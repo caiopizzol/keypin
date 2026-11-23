@@ -216,7 +216,7 @@ describe("keypin with Doppler", () => {
     expect(run.stdout.text).not.toMatch(/\bproblems?\b/);
     expect(run.stdout.text).toMatch(/notice/);
     expect(run.stdout.text).toContain(
-      "STRIPE_API_KEY (dev): no rotated date\n    Doppler keeps no rotated date on a secret, so keypin can't tell when this key is due (docs/doppler.md).",
+      "STRIPE_API_KEY (dev): no rotated date\n    Doppler keeps no rotated date on a secret, so keypin can't tell when this key is due (docs/integrations/vaults/doppler.md).",
     );
   });
 
@@ -238,7 +238,7 @@ describe("keypin with Doppler", () => {
     expect(await cli(["check"], run.deps)).toBe(1);
     expect(run.stdout.text).not.toContain("keypin import");
     expect(run.stdout.text).toContain(
-      "add the secrets in Doppler and map them with doppler:// references (docs/doppler.md)",
+      "add the secrets in Doppler and map them with doppler:// references (docs/integrations/vaults/doppler.md)",
     );
   });
 
@@ -247,7 +247,7 @@ describe("keypin with Doppler", () => {
     run.disk.contents.set("/work/billing/.env", "RESEND_KEY=resend-value-1234\n");
     expect(await cli(["import", ".env", "--vault", "Private", "--yes"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
-      "import creates 1Password items, and /work/billing/keypin.toml reads from Doppler; add the secrets in Doppler and map them with doppler:// references (docs/doppler.md)",
+      "import creates 1Password items, and /work/billing/keypin.toml reads from Doppler; add the secrets in Doppler and map them with doppler:// references (docs/integrations/vaults/doppler.md)",
     );
     expect(run.store.effects).toEqual([]);
   });

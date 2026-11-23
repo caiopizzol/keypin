@@ -80,7 +80,7 @@ export function jobFor(context: Context, keyId: string, flags: Flags): Omit<Job,
     );
   if (!spec)
     throw new Error(
-      `key "${keyId}" ${environment} has no issuer in ${map.file}, so keypin can't make a new key. Add one (see docs/rotation.md), or rotate it by hand.`,
+      `key "${keyId}" ${environment} has no issuer in ${map.file}, so keypin can't make a new key. Add one (see docs/guides/rotating-a-key.md), or rotate it by hand.`,
     );
   if (!reaches(entry))
     throw new Error(

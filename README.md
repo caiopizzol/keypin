@@ -77,7 +77,7 @@ keypin run -- npm run dev
 ```
 
 `import` creates one item per variable and maps it. Variables you don't name, such as `PORT`, stay in the file. See
-[Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md).
+[Moving off env files](https://github.com/caiopizzol/keypin/blob/main/docs/guides/moving-off-env-files.md).
 
 ### Production keys
 
@@ -106,10 +106,10 @@ keypin publish --all
 `publish` shows what it will write where and waits for you to answer `y`.
 
 A GitHub Actions job can instead read a key from your vault at job time, without a copy published to it. With AWS
-Secrets Manager, Infisical or Doppler it signs in with OIDC. See [Pulling in CI](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md#pulling-in-ci).
+Secrets Manager, Infisical or Doppler it signs in with OIDC. See [Pulling in CI](https://github.com/caiopizzol/keypin/blob/main/docs/guides/publishing.md#pulling-in-ci).
 
 To rotate a key, give it an
-[issuer](https://github.com/caiopizzol/keypin/blob/main/docs/rotation.md) and run `keypin rotate
+[issuer](https://github.com/caiopizzol/keypin/blob/main/docs/guides/rotating-a-key.md) and run `keypin rotate
 RESEND_API_KEY`. keypin creates the new key, saves and publishes it, and asks before it revokes the old one.
 
 ## Commands
@@ -140,22 +140,23 @@ npx skills add caiopizzol/keypin -g    # all your projects
 
 ## Docs
 
-- [Configuration](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md): keys, environments and
-  vault items in `keypin.toml`
-- [Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md): moving an env file's values into 1Password
-- [Infisical](https://github.com/caiopizzol/keypin/blob/main/docs/infisical.md),
-  [Bitwarden](https://github.com/caiopizzol/keypin/blob/main/docs/bitwarden.md),
-  [Doppler](https://github.com/caiopizzol/keypin/blob/main/docs/doppler.md) and
-  [AWS Secrets Manager](https://github.com/caiopizzol/keypin/blob/main/docs/aws-secrets-manager.md): reading keys
+- [keypin.toml](https://github.com/caiopizzol/keypin/blob/main/docs/reference/keypin-toml.md): keys, environments and vault
+  items
+- [Moving off env files](https://github.com/caiopizzol/keypin/blob/main/docs/guides/moving-off-env-files.md): moving an env file's values into 1Password
+- [Infisical](https://github.com/caiopizzol/keypin/blob/main/docs/integrations/vaults/infisical.md),
+  [Bitwarden](https://github.com/caiopizzol/keypin/blob/main/docs/integrations/vaults/bitwarden.md),
+  [Doppler](https://github.com/caiopizzol/keypin/blob/main/docs/integrations/vaults/doppler.md) and
+  [AWS Secrets Manager](https://github.com/caiopizzol/keypin/blob/main/docs/integrations/vaults/aws-secrets-manager.md): reading keys
   from them instead
-- [Service account](https://github.com/caiopizzol/keypin/blob/main/docs/service-account.md): 1Password on a server or
+- [Service accounts](https://github.com/caiopizzol/keypin/blob/main/docs/guides/service-accounts.md): 1Password on a server or
   in CI
-- [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md): destinations, approvals,
+- [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/guides/publishing.md): destinations, approvals,
   `--plan` and pulling in CI
-- [Rotation](https://github.com/caiopizzol/keypin/blob/main/docs/rotation.md): each issuer, and rotating by hand
-- [Scheduled rotation](https://github.com/caiopizzol/keypin/blob/main/docs/scheduled-rotation.md): rotating 1Password
+- [Rotating a key](https://github.com/caiopizzol/keypin/blob/main/docs/guides/rotating-a-key.md): each issuer, and rotating by hand
+- [Scheduled rotation](https://github.com/caiopizzol/keypin/blob/main/docs/guides/scheduled-rotation.md): rotating 1Password
   keys in your GitHub Actions
-- [Notes](https://github.com/caiopizzol/keypin/blob/main/docs/notes.md): `wrangler dev`, signing in to Cloudflare, and
-  the files keypin keeps
+- [Troubleshooting](https://github.com/caiopizzol/keypin/blob/main/docs/reference/troubleshooting.md): `wrangler dev` and signing in
+  to Cloudflare
+- [Files and state](https://github.com/caiopizzol/keypin/blob/main/docs/reference/files-and-state.md): the files keypin keeps
 - [API keys](https://keypin.dev/keys): where to get each key, how to set it and how to replace it
 - [Development](https://github.com/caiopizzol/keypin/blob/main/docs/development.md): working on keypin

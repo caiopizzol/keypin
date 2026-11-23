@@ -235,7 +235,7 @@ describe("keypin with Bitwarden Secrets Manager", () => {
     expect(await cli(["check"], run.deps)).toBe(1);
     expect(run.stdout.text).not.toContain("keypin import");
     expect(run.stdout.text).toContain(
-      "add the secrets in Bitwarden Secrets Manager and map them with bitwarden:// references (docs/bitwarden.md)",
+      "add the secrets in Bitwarden Secrets Manager and map them with bitwarden:// references (docs/integrations/vaults/bitwarden.md)",
     );
   });
 
@@ -244,7 +244,7 @@ describe("keypin with Bitwarden Secrets Manager", () => {
     run.disk.contents.set("/work/billing/.env", "RESEND_KEY=resend-value-1234\n");
     expect(await cli(["import", ".env", "--vault", "Private", "--yes"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
-      "import creates 1Password items, and /work/billing/keypin.toml reads from Bitwarden; add the secrets in Bitwarden Secrets Manager and map them with bitwarden:// references (docs/bitwarden.md)",
+      "import creates 1Password items, and /work/billing/keypin.toml reads from Bitwarden; add the secrets in Bitwarden Secrets Manager and map them with bitwarden:// references (docs/integrations/vaults/bitwarden.md)",
     );
     expect(run.store.effects).toEqual([]);
   });

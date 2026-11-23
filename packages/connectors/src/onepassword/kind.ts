@@ -17,7 +17,7 @@ const INTEGRATION =
 const INSTALL_FIX = "install the 1Password desktop app";
 const PACKAGE_FIX = "install the 1Password desktop app from the .deb or .rpm package";
 const SERVICE_ACCOUNT_FIX =
-  "on a server or in CI, use a 1Password service account instead (docs/service-account.md)";
+  "on a server or in CI, use a 1Password service account instead (docs/guides/service-accounts.md)";
 const ACCOUNT_FIX = `set account under [1password] in ${MAP_FILE} to a sign-in address or account ID the 1Password app lists, under Settings → Accounts`;
 const SIGN_IN = "Sign in to 1Password";
 

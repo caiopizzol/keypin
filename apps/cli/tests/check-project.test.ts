@@ -446,7 +446,7 @@ describe("keypin check on a whole project", () => {
 
   test("the scheduled rotation workflow and ignore line from the docs leave check clean", async () => {
     const docs = readFileSync(
-      join(import.meta.dirname, "../../../docs/scheduled-rotation.md"),
+      join(import.meta.dirname, "../../../docs/guides/scheduled-rotation.md"),
       "utf8",
     );
     const workflow = /^```yaml\n([\s\S]*?)^```/m

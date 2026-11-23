@@ -5,7 +5,7 @@ import { bitwardenVaultRules } from "./rules";
 
 function fixFor(failures: readonly SignInReason[]): string {
   if (failures.some((reason) => reason.kind === "no-credentials"))
-    return `${NO_CREDENTIALS} (docs/bitwarden.md)`;
+    return `${NO_CREDENTIALS} (docs/integrations/vaults/bitwarden.md)`;
   if (failures.some((reason) => reason.kind === "wrong-account"))
     return "use an access token from a machine account in the organization keypin.toml pins under [bitwarden]";
   return `check ${ACCESS_TOKEN} and the url under [bitwarden] in keypin.toml`;
@@ -22,7 +22,7 @@ export const bitwardenVault: VaultKind<unknown, BitwardenRef, BitwardenReference
       Object.values(key.environments).flatMap((entry) => (entry ? [entry.ref] : [])),
     );
     return map.pins.bitwarden !== undefined && refs.every((ref) => ref.kind === "bitwarden")
-      ? `add the secrets in Bitwarden Secrets Manager and map them with ${SCHEME} references (docs/bitwarden.md)`
+      ? `add the secrets in Bitwarden Secrets Manager and map them with ${SCHEME} references (docs/integrations/vaults/bitwarden.md)`
       : undefined;
   },
   prerequisites({ failures }) {

@@ -272,12 +272,12 @@ describe("unknown fields are errors that name the file, the key and the field", 
     [
       "the old vault table",
       `[vaults.personal]\naccount = "a"\nvault = "v"\n`,
-      `[vaults] is from keypin 0.4; use [1password] and op:// references (see docs/configuration.md for the current format)`,
+      `[vaults] is from keypin 0.4; use [1password] and op:// references (see docs/reference/keypin-toml.md for the current format)`,
     ],
     [
       "the old vault and item fields",
       `${VAULTS}[keys.A]\ndev = { from = "op://v/i/password", item = "i" }\n`,
-      `key "A" dev: "vault" and "item" are from keypin 0.4; use from = "op://<vault>/<item>/<field>" (see docs/configuration.md for the current format)`,
+      `key "A" dev: "vault" and "item" are from keypin 0.4; use from = "op://<vault>/<item>/<field>" (see docs/reference/keypin-toml.md for the current format)`,
     ],
     [
       "key",
@@ -310,7 +310,7 @@ describe("unknown fields are errors that name the file, the key and the field", 
 
   test("a keypin 0.6 github-actions account says the map pins only the repo", () => {
     const old = `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [{ to = "github-actions", repo = "acme/billing", account = "alice" }] }\n`;
-    const hint = `field "account" is from keypin 0.6; the map pins only repo = "owner/name", and each machine publishes as its own GitHub login (git config github.account, else the active gh login). Delete it (see docs/configuration.md for the current format)`;
+    const hint = `field "account" is from keypin 0.6; the map pins only repo = "owner/name", and each machine publishes as its own GitHub login (git config github.account, else the active gh login). Delete it (see docs/reference/keypin-toml.md for the current format)`;
     expect(errorsOf(old)).toEqual([`${MAP_FILE}: key "A" prod: publish[0]: ${hint}`]);
   });
 
@@ -369,7 +369,7 @@ describe("unknown fields are errors that name the file, the key and the field", 
 
   test("a keypin 0.4 key with env says to name the table after the variable", () => {
     expect(errorsOf(`${VAULTS}[keys.A]\nenv = "A"\ndev = "op://Private/i/password"\n`)).toEqual([
-      `${MAP_FILE}: key "A": field "env" is from keypin 0.4; name the table after the variable, such as [keys.API_TOKEN] (see docs/configuration.md for the current format)`,
+      `${MAP_FILE}: key "A": field "env" is from keypin 0.4; name the table after the variable, such as [keys.API_TOKEN] (see docs/reference/keypin-toml.md for the current format)`,
     ]);
   });
 
@@ -665,7 +665,7 @@ account = "e48c9afabc4ff0cda321d0cf69b8943f"
 admin = "op://Private/shared cloudflare token admin/password"
 `;
   const gone = (section: string) =>
-    `${MAP_FILE}: key "CLOUDFLARE_API_TOKEN" prod: the "${section}" section is from an older keypin; delete it. To let keypin rotate the key, add an "issuer" table instead (see docs/configuration.md for the current format)`;
+    `${MAP_FILE}: key "CLOUDFLARE_API_TOKEN" prod: the "${section}" section is from an older keypin; delete it. To let keypin rotate the key, add an "issuer" table instead (see docs/reference/keypin-toml.md for the current format)`;
 
   test("says to delete it and points to issuer", () => {
     expect(errorsOf(mapWith("rotate"))).toEqual([gone("rotate")]);
@@ -842,9 +842,9 @@ describe("shared targets from keypin 0.6", () => {
   const CI = `[targets.ci]\nto = "github-actions"\nrepo = "acme/api"\n`;
   const withPublish = (targets: string, publish: string) =>
     `${VAULTS}${targets}\n[keys.API_TOKEN]\nprod = { from = "op://Private/i/password", publish = [${publish}] }\n`;
-  const TARGETS = `${MAP_FILE}: shared [targets] are no longer supported; write each destination inline under [[keys.<VARIABLE>.<env>.publish]] (see docs/configuration.md for the current format)`;
+  const TARGETS = `${MAP_FILE}: shared [targets] are no longer supported; write each destination inline under [[keys.<VARIABLE>.<env>.publish]] (see docs/reference/keypin-toml.md for the current format)`;
   const NAMED = (i: number) =>
-    `${MAP_FILE}: key "API_TOKEN" prod: publish[${i}]: names a shared target, which is no longer supported; write the destination inline, such as { to = "github-actions", repo = "owner/name" } (see docs/configuration.md for the current format)`;
+    `${MAP_FILE}: key "API_TOKEN" prod: publish[${i}]: names a shared target, which is no longer supported; write the destination inline, such as { to = "github-actions", repo = "owner/name" } (see docs/reference/keypin-toml.md for the current format)`;
 
   test("a map with [targets] and a publish entry that names one says to write it inline", () => {
     expect(errorsOf(withPublish(CI, `"ci"`))).toEqual([TARGETS, NAMED(0)]);

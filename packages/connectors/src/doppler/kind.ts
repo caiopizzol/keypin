@@ -20,13 +20,13 @@ function fixFor(failures: readonly SignInReason[], { env }: DopplerHost): string
   if (credentials && "problem" in credentials) return credentials.problem;
   const oidc = credentials !== null && "identityId" in credentials;
   if (failures.some((reason) => reason.kind === "no-credentials"))
-    return oidc ? NO_JOB_TOKEN : `${NO_CREDENTIALS} (docs/doppler.md)`;
+    return oidc ? NO_JOB_TOKEN : `${NO_CREDENTIALS} (docs/integrations/vaults/doppler.md)`;
   if (failures.some((reason) => reason.kind === "wrong-account"))
     return oidc
       ? `use an identity from a service account in the workplace keypin.toml pins under [doppler]`
       : `use a token from the workplace keypin.toml pins under [doppler]`;
   if (oidc)
-    return `check ${IDENTITY_ID}, the identity's claims and the workplace under [doppler] in keypin.toml (docs/doppler.md)`;
+    return `check ${IDENTITY_ID}, the identity's claims and the workplace under [doppler] in keypin.toml (docs/integrations/vaults/doppler.md)`;
   return `check ${TOKEN_VARIABLE} and the workplace under [doppler] in keypin.toml`;
 }
 
@@ -42,7 +42,7 @@ export const dopplerVault: VaultKind<DopplerHost, DopplerRef, DopplerReference, 
   ...dopplerVaultRules,
   newValueByHand: "Put a new value in the Doppler secret",
   addRotatedDate:
-    "Doppler keeps no rotated date on a secret, so keypin can't tell when this key is due (docs/doppler.md).",
+    "Doppler keeps no rotated date on a secret, so keypin can't tell when this key is due (docs/integrations/vaults/doppler.md).",
   signInVariables: [TOKEN_VARIABLE, IDENTITY_ID, AUDIENCE],
   oidcVariables: [IDENTITY_ID],
   keepsRotated: false,
@@ -51,7 +51,7 @@ export const dopplerVault: VaultKind<DopplerHost, DopplerRef, DopplerReference, 
       Object.values(key.environments).flatMap((entry) => (entry ? [entry.ref] : [])),
     );
     return map.pins.doppler !== undefined && refs.every((ref) => ref.kind === "doppler")
-      ? `add the secrets in Doppler and map them with ${SCHEME} references (docs/doppler.md)`
+      ? `add the secrets in Doppler and map them with ${SCHEME} references (docs/integrations/vaults/doppler.md)`
       : undefined;
   },
   itemNotes(refs, host) {

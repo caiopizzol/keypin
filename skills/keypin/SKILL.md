@@ -7,10 +7,10 @@ description: Use the keypin CLI to map, check, run with, or publish a project's 
 
 keypin maps a project's keys in `keypin.toml` (variable names and vault references, never values) and reads values
 from the vault only while a command runs. The steps below use 1Password; for `infisical://`, `bitwarden://`,
-`doppler://` or `awssm://` references, follow [Infisical](https://github.com/caiopizzol/keypin/blob/main/docs/infisical.md),
-[Bitwarden](https://github.com/caiopizzol/keypin/blob/main/docs/bitwarden.md),
-[Doppler](https://github.com/caiopizzol/keypin/blob/main/docs/doppler.md) or
-[AWS Secrets Manager](https://github.com/caiopizzol/keypin/blob/main/docs/aws-secrets-manager.md) instead.
+`doppler://` or `awssm://` references, follow [Infisical](https://github.com/caiopizzol/keypin/blob/main/docs/integrations/vaults/infisical.md),
+[Bitwarden](https://github.com/caiopizzol/keypin/blob/main/docs/integrations/vaults/bitwarden.md),
+[Doppler](https://github.com/caiopizzol/keypin/blob/main/docs/integrations/vaults/doppler.md) or
+[AWS Secrets Manager](https://github.com/caiopizzol/keypin/blob/main/docs/integrations/vaults/aws-secrets-manager.md) instead.
 
 ## Rules
 
@@ -71,8 +71,8 @@ also deploys.
   the user makes a new value at the provider, puts it in the 1Password field and sets `rotated` to today; then
   publish it, and remind them to revoke the old one.
 
-Details: [Configuration](https://github.com/caiopizzol/keypin/blob/main/docs/configuration.md),
-[Import](https://github.com/caiopizzol/keypin/blob/main/docs/import.md),
-[Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/publishing.md),
-[Rotation](https://github.com/caiopizzol/keypin/blob/main/docs/rotation.md),
-[Notes](https://github.com/caiopizzol/keypin/blob/main/docs/notes.md).
+Details: [keypin.toml](https://github.com/caiopizzol/keypin/blob/main/docs/reference/keypin-toml.md),
+[Moving off env files](https://github.com/caiopizzol/keypin/blob/main/docs/guides/moving-off-env-files.md),
+[Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/guides/publishing.md),
+[Rotating a key](https://github.com/caiopizzol/keypin/blob/main/docs/guides/rotating-a-key.md),
+[Troubleshooting](https://github.com/caiopizzol/keypin/blob/main/docs/reference/troubleshooting.md).

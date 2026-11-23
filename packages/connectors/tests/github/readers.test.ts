@@ -140,12 +140,17 @@ describe("the workflows a vault-only rotation lists", () => {
     expect(await readers("apps/web", deploy(self + inFolder("apps/web")))).toEqual([]);
   });
 
-  test("a folder inside another repository checked out within this repo isn't this repo", async () => {
+  test("a folder inside another repository checked out within this repo is listed, saying keypin can't tell", async () => {
     const self = checkout("path: repo");
     const nested = checkout("repository: acme/tools\npath: repo/apps/web/tools");
     expect(
       await readers("apps/web", deploy(self + nested + inFolder("repo/apps/web/tools"))),
-    ).toEqual([]);
+    ).toEqual([
+      {
+        file: "../../.github/workflows/deploy.yml",
+        how: "secretspec run --profile prod, from a folder keypin can't tell",
+      },
+    ]);
     expect(await readers("apps/web", deploy(self + nested + inFolder("repo/apps/web")))).toEqual(
       LISTED,
     );

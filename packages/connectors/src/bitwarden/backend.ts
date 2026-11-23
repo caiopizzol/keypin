@@ -16,7 +16,7 @@ import { ACCESS_TOKEN, type AccessToken, NO_CREDENTIALS } from "./access-token";
 import { decrypt, decryptBytes, encrypt, type Key, keyFrom } from "./crypto";
 import {
   account,
-  type BitwardenPin as Place,
+  type BitwardenPlace as Place,
   type BitwardenRef,
   type BitwardenScope as Scope,
   decode,
@@ -35,6 +35,7 @@ type Json = Record<string, unknown>;
 interface Session {
   token: string;
   key: Key;
+  organization: string;
   projects: Promise<Map<string, string[]>> | null;
   secrets: Map<string, Promise<Found[]>>;
 }
@@ -114,13 +115,13 @@ export function bitwardenBackend(
     });
     if (login.status === 400 && login.body.error === "invalid_client")
       throw fail(
-        `Bitwarden refused the access token in ${ACCESS_TOKEN}; it may be revoked or expired, or belong to another server than the url under [bitwarden] in secretspec.toml`,
+        `Bitwarden refused the access token in ${ACCESS_TOKEN}; it may be revoked or expired, or belong to another server than your bws:// provider in secretspec.toml names`,
         { kind: "other" },
       );
     const { access_token: bearer, encrypted_payload: payload } = login.body;
     if (login.status !== 200 || typeof bearer !== "string" || typeof payload !== "string")
       throw fail(
-        `${problem(login)}; check that the url under [bitwarden] in secretspec.toml is your Bitwarden server`,
+        `${problem(login)}; check that your bws:// provider in secretspec.toml names your Bitwarden server`,
         { kind: "other" },
       );
     const key = organizationKey(payload, token.key);
@@ -134,12 +135,7 @@ export function bitwardenBackend(
       throw fail("Bitwarden's answer names no organization; use a machine account's access token", {
         kind: "other",
       });
-    if (organization.toLowerCase() !== place.organization)
-      throw new SignInFailed(
-        `${where}: sign-in failed: the machine account belongs to the organization ${organization}, but secretspec.toml names ${place.organization}`,
-        { kind: "wrong-account", pinned: place.organization, actual: organization },
-      );
-    return { token: bearer, key, projects: null, secrets: new Map() };
+    return { token: bearer, key, organization, projects: null, secrets: new Map() };
   }
 
   function session(place: Place): Promise<Session> {
@@ -156,7 +152,7 @@ export function bitwardenBackend(
     current.projects ??= request(
       place,
       "GET",
-      `${endpoints(place.url).api}/organizations/${place.organization}/projects`,
+      `${endpoints(place.url).api}/organizations/${current.organization}/projects`,
       { token: current.token },
     ).then((found) => {
       if (found.status !== 200 || !Array.isArray(found.body.data))
@@ -222,7 +218,7 @@ export function bitwardenBackend(
       );
     if (!only)
       throw new Error(
-        `${describeRef(ref)}: no secret named ${ref.name} in the project, or the machine account can't read it`,
+        `${describeRef(ref)}: no secret named ${ref.name} in the project, or the machine account can't read it; keypin doesn't create one, so save it first, such as with secretspec set`,
       );
     return { current, secret: only };
   }

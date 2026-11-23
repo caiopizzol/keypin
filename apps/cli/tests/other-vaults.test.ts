@@ -13,7 +13,6 @@ STRIPE_API_KEY = { description = "Stripe", providers = ["${uri}"] }
 describe("vaults keypin doesn't read from secretspec.toml yet", () => {
   test.each([
     ["Doppler", "doppler://billing"],
-    ["Bitwarden", "bws://"],
     ["AWS Secrets Manager", "awssm://us-east-1"],
   ])("%s is refused by name, and nothing is read", async (name, uri) => {
     const run = fakeDeps({ disk: memoryFiles({ "/work/billing/secretspec.toml": map(uri) }) });

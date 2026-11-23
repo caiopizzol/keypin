@@ -13,7 +13,7 @@ import {
   serviceAccountKeyId,
 } from "@keypin/connectors/google/testing";
 import type { FakeInfisical } from "@keypin/connectors/infisical/testing";
-import { type FakeBitwarden } from "@keypin/connectors/bitwarden/testing";
+import { FAKE_ACCESS_TOKEN, type FakeBitwarden } from "@keypin/connectors/bitwarden/testing";
 import type { FakeDoppler } from "@keypin/connectors/doppler/testing";
 import type { FakeOpenAIKey } from "@keypin/connectors/openai/testing";
 import type { FakeElevenLabsKey } from "@keypin/connectors/elevenlabs/testing";
@@ -229,6 +229,42 @@ const infisical: Scenario = {
     INFISICAL_UNIVERSAL_AUTH_CLIENT_ID: "verify-client-id",
     INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET: "verify-client-secret-3e7a",
   },
+};
+
+const BITWARDEN_ORGANIZATION = "2f1d6c9e-8a3b-4c5d-9e7f-0a1b2c3d4e5f";
+const BITWARDEN_DEV = "a1b2c3d4-0000-4000-8000-000000000001";
+export const BITWARDEN_PROD = "a9230ec4-5507-4870-b8b5-b3f500587e4c";
+
+const bitwarden: Scenario = {
+  ...ready,
+  about: "ready, but secretspec.toml reads from fake Bitwarden Secrets Manager projects",
+  files: {
+    ...ready.files,
+    "secretspec.toml": vaultMap(
+      `bw_dev = "bws://${BITWARDEN_DEV}"\nbw = "bws://${BITWARDEN_PROD}"\n\n[profiles.dev.defaults]\nproviders = ["bw_dev"]\n\n[profiles.prod.defaults]\nproviders = ["bw"]`,
+      "",
+      "",
+    ),
+  },
+  onePassword: { accounts: {} },
+  bitwarden: {
+    organization: BITWARDEN_ORGANIZATION,
+    projects: {
+      "billing-dev": {
+        id: BITWARDEN_DEV,
+        secrets: [
+          { name: "STRIPE_KEY", value: "verify-dev-stripe-2c7f", note: `rotated: ${day(-30)}` },
+        ],
+      },
+      billing: {
+        id: BITWARDEN_PROD,
+        secrets: [
+          { name: "STRIPE_KEY", value: "verify-prod-stripe-8e1b", note: `rotated: ${day(-85)}` },
+        ],
+      },
+    },
+  },
+  env: { BWS_ACCESS_TOKEN: FAKE_ACCESS_TOKEN },
 };
 
 const RESEND_MAP = `[project]
@@ -1107,6 +1143,7 @@ export const scenarios: Record<string, Scenario> = {
   },
   ready,
   infisical,
+  bitwarden,
   "infisical-token": {
     ...infisical,
     about: "infisical, but signed in with a machine identity's access token in INFISICAL_TOKEN",

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import { type Drive, drive } from "./drive";
-import { FAKE_TOKEN, INFISICAL_PROJECT, ready, valuesOf } from "./scenarios";
+import { BITWARDEN_PROD, FAKE_TOKEN, INFISICAL_PROJECT, ready, valuesOf } from "./scenarios";
 
 const SLOW = 30_000;
 const FINISHED = /^[✓✗] /;
@@ -539,6 +539,34 @@ describe("keypin in a real terminal", () => {
       expect(publish.screen).toContain(
         `from infisical://${INFISICAL_PROJECT}/prod/STRIPE_KEY in ${where}`,
       );
+      expect(publish.effects).toEqual([
+        "destination write github-actions:acme/billing STRIPE_KEY (23 chars)",
+      ]);
+      for (const result of [check, status, publish]) {
+        expect(result.screen).not.toContain("1Password");
+        clean(result);
+      }
+    },
+    SLOW,
+  );
+
+  test(
+    "with Bitwarden, check, status and publish read from each profile's project and leak nothing",
+    async () => {
+      const where = "Bitwarden at https://vault.bitwarden.com";
+      const check = await drive({ scenario: "bitwarden", args: ["check"] });
+      expect(check.exit).toBe(0);
+      expect(check.screen).toContain(`Looked up 2 items in ${where}, not the values`);
+      const status = await drive({ scenario: "bitwarden", args: ["status"] });
+      expect(status.screen).toContain(`✓ Read 2 rotated dates from ${where}, not the values`);
+      expect(status.screen).toContain("STRIPE_KEY  prod  due in 5 days");
+      const publish = await drive({
+        scenario: "bitwarden",
+        args: ["publish", "STRIPE_KEY"],
+        answers: ["y"],
+      });
+      expect(publish.exit).toBe(0);
+      expect(publish.screen).toContain(`from bitwarden://${BITWARDEN_PROD}/STRIPE_KEY in ${where}`);
       expect(publish.effects).toEqual([
         "destination write github-actions:acme/billing STRIPE_KEY (23 chars)",
       ]);

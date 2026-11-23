@@ -172,6 +172,11 @@ function locate(
     return undefined;
   }
   const scheme = SCHEME.exec(uri)?.[1]?.toLowerCase();
+  const refusal = vaults.flatMap((each) => each.secretspec?.refuses?.get(scheme ?? "") ?? [])[0];
+  if (refusal !== undefined) {
+    fail(`uses ${uri}; ${refusal}`);
+    return undefined;
+  }
   const vault = vaults.find((each) => each.secretspec?.provider === scheme);
   const read = vaults.flatMap((each) => (each.secretspec?.locate ? [each.name] : []));
   if (!vault?.secretspec) {

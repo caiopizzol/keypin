@@ -47,6 +47,7 @@ export interface SecretspecAt {
 
 export interface SecretspecProvider<R extends KeyRef = KeyRef> {
   readonly provider: string;
+  readonly refuses?: ReadonlyMap<string, string>;
   locate?(at: SecretspecAt): R | string;
 }
 

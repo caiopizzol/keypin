@@ -68,7 +68,7 @@ function setup(
     value?: string;
   } = {},
 ) {
-  const disk = options.disk ?? memoryFiles({ "/work/billing/keypin.toml": BILLING_MAP });
+  const disk = options.disk ?? memoryFiles({ "/work/billing/secretspec.toml": BILLING_MAP });
   const vault = fakeVault({
     values: { "billing stripe api key": options.value ?? SENTINEL },
     failing: options.failRead ? ["billing stripe api key"] : [],
@@ -139,11 +139,11 @@ describe("keypin publish", () => {
         command: ["/opt/bun 1.4/bun", "--no-env-file", "/home/me/keypin/apps/cli/src/main.ts"],
       },
     };
-    expect(await cli(["publish", "STRIPE_API_KEY", "--env", "prod", "--yes"], fake)).toBe(
+    expect(await cli(["publish", "STRIPE_API_KEY", "--profile", "prod", "--yes"], fake)).toBe(
       NEEDS_APPROVAL,
     );
     expect(run.stderr.text).toContain(
-      `To approve, run this in a terminal:\n  cd /work/billing/src && '/opt/bun 1.4/bun' --no-env-file /home/me/keypin/apps/cli/src/main.ts publish STRIPE_API_KEY --env prod --yes\n`,
+      `To approve, run this in a terminal:\n  cd /work/billing/src && '/opt/bun 1.4/bun' --no-env-file /home/me/keypin/apps/cli/src/main.ts publish STRIPE_API_KEY --profile prod --yes\n`,
     );
     expect(run.stderr.text).not.toMatch(/(^|\s)keypin publish/m);
     expect(run.calls).toEqual([]);
@@ -204,7 +204,7 @@ describe("keypin publish", () => {
       '{ to = "github-actions", repo = "acme/billing" }',
       '{ to = "github-actions", repo = "acme/billing", environment = "production" }',
     );
-    first.disk.contents.set("/work/billing/keypin.toml", moved);
+    first.disk.contents.set("/work/billing/secretspec.toml", moved);
     const environment = `${GITHUB_PLACE}/environments/production`;
 
     const again = setup({ terminal: "yes", disk: first.disk });
@@ -363,7 +363,7 @@ describe("keypin publish", () => {
     const first = setup({ terminal: "yes" });
     await cli(["publish", "STRIPE_API_KEY"], first.deps);
     first.disk.contents.set(
-      "/work/billing/keypin.toml",
+      "/work/billing/secretspec.toml",
       BILLING_MAP.replace(/\n\s*\{ to = "github-actions", repo = "acme\/billing" \},/, ""),
     );
     const next = setup({ disk: first.disk });
@@ -384,7 +384,7 @@ describe("keypin publish", () => {
   test("an unknown key, environment or missing entry is refused", async () => {
     const run = setup();
     expect(await cli(["publish", "nope"], run.deps)).toBe(1);
-    expect(await cli(["publish", "STRIPE_API_KEY", "--env", "staging"], run.deps)).toBe(2);
+    expect(await cli(["publish", "STRIPE_API_KEY", "--profile", "staging"], run.deps)).toBe(2);
     expect(await cli(["publish"], run.deps)).toBe(2);
     expect(run.log).toEqual([]);
   });
@@ -401,7 +401,7 @@ describe("keypin publish", () => {
   });
 
   test("two keys publishing at once share one state file without losing receipts", async () => {
-    const disk = memoryFiles({ "/work/billing/keypin.toml": TWO_KEYS_MAP });
+    const disk = memoryFiles({ "/work/billing/secretspec.toml": TWO_KEYS_MAP });
     const backend = fakeVault({
       values: { "billing stripe api key": SENTINEL, "billing other key": `${SENTINEL}-other` },
     }).vault;
@@ -475,8 +475,8 @@ describe("keypin publish", () => {
     const first = setup({ terminal: "yes" });
     await cli(["publish", "STRIPE_API_KEY"], first.deps);
     first.disk.contents.set(
-      "/work/billing/keypin.toml",
-      BILLING_MAP.replace("[keys.STRIPE_API_KEY]", "[keys.STRIPE_KEY]"),
+      "/work/billing/secretspec.toml",
+      BILLING_MAP.replaceAll("STRIPE_API_KEY", "STRIPE_KEY"),
     );
     const blocked = setup({ disk: first.disk, value: SENTINEL });
     expect(await cli(["publish", "STRIPE_KEY", "--yes"], blocked.deps)).toBe(NEEDS_APPROVAL);
@@ -493,7 +493,7 @@ describe("keypin publish", () => {
   });
 
   test("an organization repo: a teammate publishes as their own login, and another teammate's rerun skips", async () => {
-    const disk = memoryFiles({ "/work/billing/keypin.toml": ORG_MAP });
+    const disk = memoryFiles({ "/work/billing/secretspec.toml": ORG_MAP });
     const requests: string[] = [];
     let actingAs = "alice";
     const respond = async (input: string | URL | Request, init?: RequestInit) => {
@@ -555,12 +555,12 @@ describe("keypin publish", () => {
   });
 
   test("a receipt from a 0.6 map that pinned a login asks once for approval", async () => {
-    const disk = memoryFiles({ "/work/billing/keypin.toml": ORG_MAP });
+    const disk = memoryFiles({ "/work/billing/secretspec.toml": ORG_MAP });
     const generation = await generationOf(new Secret(SENTINEL));
     const old: Receipt = {
       keyId: "STRIPE_API_KEY",
       environment: "prod",
-      mapFile: "/work/billing/keypin.toml",
+      mapFile: "/work/billing/secretspec.toml",
       source: {
         kind: "1password",
         account: "my.1password.com",
@@ -590,20 +590,31 @@ describe("keypin publish", () => {
 });
 
 const TWO_KEYS_MAP = `${BILLING_MAP}
-[keys.OTHER_KEY]
-prod = { from = "op://Private/billing other key/password", publish = [
-  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
-] }
+
+[profiles.prod.OTHER_KEY]
+description = "OTHER_KEY"
+ref = { item = "billing other key", field = "password" }
+
+[tool.keypin.prod.OTHER_KEY]
+publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" }]
 `;
 
 const ORG_MAP = `
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.STRIPE_API_KEY]
-prod = { from = "op://Private/billing stripe api key/password", publish = [
-  { to = "github-actions", repo = "acme/billing" },
-] }
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+STRIPE_API_KEY = { description = "STRIPE_API_KEY", ref = { item = "billing stripe api key", field = "password" } }
+
+[tool.keypin.prod.STRIPE_API_KEY]
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 `;
 
 const ORG_ROUTES = new Map<string, { status: number; body: unknown }>([
@@ -626,9 +637,9 @@ const ORG_ROUTES = new Map<string, { status: number; body: unknown }>([
 describe("a destination only takes a value without approval when it came from the same item", () => {
   const ORDINARY = `${SENTINEL}-ordinary`;
   const ADMIN = `${SENTINEL}-admin`;
-  const VAULTS = `[1password]\naccount = "my.1password.com"\n`;
+  const VAULTS = `[project]\nname = "billing"\nrevision = "1.0"\n\n[providers]\nvault = "onepassword://my.1password.com@Private"\n\n[defaults]\nproviders = ["vault"]\n\n[profiles.dev]\n\n[profiles.prod]\n`;
   const deployMap = (item: string) =>
-    `${VAULTS}\n[keys.DEPLOY_TOKEN]\nprod = { from = "op://Private/${item}/password", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
+    `${VAULTS}\n\n[profiles.prod.DEPLOY_TOKEN]\ndescription = "DEPLOY_TOKEN"\nref = { item = "${item}", field = "password" }\n\n[tool.keypin.prod.DEPLOY_TOKEN]\npublish = [{ to = "github-actions", repo = "acme/billing" }]\n`;
 
   function publisher(
     disk: ReturnType<typeof memoryFiles>,
@@ -655,13 +666,15 @@ describe("a destination only takes a value without approval when it came from th
   }
 
   test("pointing a key at another item needs approval, and --yes without a terminal writes nothing", async () => {
-    const disk = memoryFiles({ "/work/billing/keypin.toml": deployMap("billing deploy token") });
+    const disk = memoryFiles({
+      "/work/billing/secretspec.toml": deployMap("billing deploy token"),
+    });
     expect(
       await cli(["publish", "DEPLOY_TOKEN"], publisher(disk, "/work/billing", true).deps),
     ).toBe(0);
     const before = disk.contents.get(STATE);
 
-    disk.contents.set("/work/billing/keypin.toml", deployMap("cloudflare admin token"));
+    disk.contents.set("/work/billing/secretspec.toml", deployMap("cloudflare admin token"));
     const swapped = publisher(disk, "/work/billing", false);
     expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], swapped.deps)).toBe(NEEDS_APPROVAL);
     expect(swapped.writes()).toEqual([]);
@@ -687,7 +700,9 @@ describe("a destination only takes a value without approval when it came from th
   });
 
   test("a new item with the same title needs approval, and the receipt records the item's IDs", async () => {
-    const disk = memoryFiles({ "/work/billing/keypin.toml": deployMap("billing deploy token") });
+    const disk = memoryFiles({
+      "/work/billing/secretspec.toml": deployMap("billing deploy token"),
+    });
     const first = { "billing deploy token": "item-1" };
     expect(
       await cli(["publish", "DEPLOY_TOKEN"], publisher(disk, "/work/billing", true, first).deps),
@@ -721,12 +736,14 @@ describe("a destination only takes a value without approval when it came from th
   });
 
   test("a deleted item stops an unattended --yes at the ID lookup, before any read", async () => {
-    const disk = memoryFiles({ "/work/billing/keypin.toml": deployMap("billing deploy token") });
+    const disk = memoryFiles({
+      "/work/billing/secretspec.toml": deployMap("billing deploy token"),
+    });
     expect(
       await cli(["publish", "DEPLOY_TOKEN"], publisher(disk, "/work/billing", true).deps),
     ).toBe(0);
     const before = disk.contents.get(STATE);
-    disk.contents.set("/work/billing/keypin.toml", deployMap("billing deploy token gone"));
+    disk.contents.set("/work/billing/secretspec.toml", deployMap("billing deploy token gone"));
     const gone = publisher(disk, "/work/billing", false);
     expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], gone.deps)).toBe(1);
     expect(gone.calls).toEqual(["ids billing deploy token gone"]);
@@ -736,12 +753,14 @@ describe("a destination only takes a value without approval when it came from th
   });
 
   test("a renamed item that is still the same item stays routine", async () => {
-    const disk = memoryFiles({ "/work/billing/keypin.toml": deployMap("billing deploy token") });
+    const disk = memoryFiles({
+      "/work/billing/secretspec.toml": deployMap("billing deploy token"),
+    });
     const ids = { "billing deploy token": "item-1", "billing deploy token v2": "item-1" };
     expect(
       await cli(["publish", "DEPLOY_TOKEN"], publisher(disk, "/work/billing", true, ids).deps),
     ).toBe(0);
-    disk.contents.set("/work/billing/keypin.toml", deployMap("billing deploy token v2"));
+    disk.contents.set("/work/billing/secretspec.toml", deployMap("billing deploy token v2"));
     const renamed = publisher(disk, "/work/billing", false, ids);
     expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], renamed.deps)).toBe(0);
     expect(renamed.stderr.text).toContain("already has this value");
@@ -749,7 +768,9 @@ describe("a destination only takes a value without approval when it came from th
   });
 
   test("a receipt without item IDs compares the reference, as before", async () => {
-    const disk = memoryFiles({ "/work/billing/keypin.toml": deployMap("billing deploy token") });
+    const disk = memoryFiles({
+      "/work/billing/secretspec.toml": deployMap("billing deploy token"),
+    });
     expect(
       await cli(["publish", "DEPLOY_TOKEN"], publisher(disk, "/work/billing", true).deps),
     ).toBe(0);
@@ -767,7 +788,7 @@ describe("a destination only takes a value without approval when it came from th
     expect(same.stderr.text).toContain("already has this value");
 
     disk.contents.set(STATE, v3);
-    disk.contents.set("/work/billing/keypin.toml", deployMap("billing deploy token v2"));
+    disk.contents.set("/work/billing/secretspec.toml", deployMap("billing deploy token v2"));
     const renamed = publisher(disk, "/work/billing", false);
     expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], renamed.deps)).toBe(NEEDS_APPROVAL);
     expect(renamed.stderr.text).toContain(
@@ -778,18 +799,21 @@ describe("a destination only takes a value without approval when it came from th
 
   test("pointing a key at another field of the same item needs approval, and the receipt records it", async () => {
     const at = (field: string) =>
-      deployMap("billing deploy token").replace("/password", `/${field}`);
-    const disk = memoryFiles({ "/work/billing/keypin.toml": at("password") });
+      deployMap("billing deploy token").replace('field = "password"', field);
+    const disk = memoryFiles({ "/work/billing/secretspec.toml": at('field = "password"') });
     expect(
       await cli(["publish", "DEPLOY_TOKEN"], publisher(disk, "/work/billing", true).deps),
     ).toBe(0);
 
-    disk.contents.set("/work/billing/keypin.toml", at("Password"));
+    disk.contents.set("/work/billing/secretspec.toml", at('field = "Password"'));
     const same = publisher(disk, "/work/billing", false);
     expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], same.deps)).toBe(0);
     expect(same.writes()).toEqual([]);
 
-    disk.contents.set("/work/billing/keypin.toml", at("live/credential"));
+    disk.contents.set(
+      "/work/billing/secretspec.toml",
+      at('section = "live", field = "credential"'),
+    );
     const moved = publisher(disk, "/work/billing", false);
     expect(await cli(["publish", "DEPLOY_TOKEN", "--yes"], moved.deps)).toBe(NEEDS_APPROVAL);
     expect(moved.writes()).toEqual([]);
@@ -831,11 +855,13 @@ describe("a destination only takes a value without approval when it came from th
         put: async () => stored,
       },
     }));
-    const disk = memoryFiles({ "/work/billing/keypin.toml": deployMap("billing deploy token") });
+    const disk = memoryFiles({
+      "/work/billing/secretspec.toml": deployMap("billing deploy token"),
+    });
     for (const field of ["password", "Password"]) {
       disk.contents.set(
-        "/work/billing/keypin.toml",
-        deployMap("billing deploy token").replace("/password", `/${field}`),
+        "/work/billing/secretspec.toml",
+        deployMap("billing deploy token").replace('field = "password"', `field = "${field}"`),
       );
       const destinations = fakeDestinations();
       const run = fakeDeps({
@@ -856,29 +882,37 @@ describe("a destination only takes a value without approval when it came from th
   });
 
   test("two keys writing the same repo secret are rejected before anything is read", async () => {
-    const map = `${VAULTS}\n[keys.API_TOKEN]\nprod = { from = "op://Private/billing deploy token/password", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n[keys.api_token]\nprod = { from = "op://Private/cloudflare admin token/password", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
-    const run = publisher(memoryFiles({ "/work/billing/keypin.toml": map }), "/work/billing", true);
+    const map = `${VAULTS}\n\n[profiles.prod.API_TOKEN]\ndescription = "API_TOKEN"\nref = { item = "billing deploy token", field = "password" }\n\n[profiles.prod.api_token]\ndescription = "api_token"\nref = { item = "cloudflare admin token", field = "password" }\n\n[tool.keypin.prod.API_TOKEN]\npublish = [{ to = "github-actions", repo = "acme/billing" }]\n\n[tool.keypin.prod.api_token]\npublish = [{ to = "github-actions", repo = "acme/billing" }]\n`;
+    const run = publisher(
+      memoryFiles({ "/work/billing/secretspec.toml": map }),
+      "/work/billing",
+      true,
+    );
     expect(await cli(["publish", "API_TOKEN"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
-      `key "api_token" prod publish[0]: writes the same destination secret as key "API_TOKEN" prod publish[0]`,
+      `[tool.keypin.prod.api_token] publish[0]: writes the same destination secret as [tool.keypin.prod.API_TOKEN] publish[0]`,
     );
     expect(run.writes()).toEqual([]);
   });
 
   test("a key's dev and prod writing the same secret are rejected", async () => {
-    const map = `${VAULTS}\n[keys.DEPLOY_TOKEN]\ndev = { from = "op://Private/cloudflare admin token/password", publish = [{ to = "github-actions", repo = "acme/billing" }] }\nprod = { from = "op://Private/billing deploy token/password", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
-    const run = publisher(memoryFiles({ "/work/billing/keypin.toml": map }), "/work/billing", true);
+    const map = `${VAULTS}\n\n[profiles.dev.DEPLOY_TOKEN]\ndescription = "DEPLOY_TOKEN"\nref = { item = "cloudflare admin token", field = "password" }\n\n[profiles.prod.DEPLOY_TOKEN]\ndescription = "DEPLOY_TOKEN"\nref = { item = "billing deploy token", field = "password" }\n\n[tool.keypin.dev.DEPLOY_TOKEN]\npublish = [{ to = "github-actions", repo = "acme/billing" }]\n\n[tool.keypin.prod.DEPLOY_TOKEN]\npublish = [{ to = "github-actions", repo = "acme/billing" }]\n`;
+    const run = publisher(
+      memoryFiles({ "/work/billing/secretspec.toml": map }),
+      "/work/billing",
+      true,
+    );
     expect(await cli(["publish", "DEPLOY_TOKEN"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
-      `key "DEPLOY_TOKEN" prod publish[0]: writes the same destination secret as key "DEPLOY_TOKEN" dev publish[0]`,
+      `[tool.keypin.prod.DEPLOY_TOKEN] publish[0]: writes the same destination secret as [tool.keypin.dev.DEPLOY_TOKEN] publish[0]`,
     );
     expect(run.writes()).toEqual([]);
   });
 
   test("the same key ID in another project, from another item, needs approval for the first project's secret", async () => {
     const disk = memoryFiles({
-      "/work/billing/keypin.toml": deployMap("billing deploy token"),
-      "/work/web/keypin.toml": deployMap("cloudflare admin token"),
+      "/work/billing/secretspec.toml": deployMap("billing deploy token"),
+      "/work/web/secretspec.toml": deployMap("cloudflare admin token"),
     });
     expect(
       await cli(["publish", "DEPLOY_TOKEN"], publisher(disk, "/work/billing", true).deps),
@@ -891,10 +925,10 @@ describe("a destination only takes a value without approval when it came from th
 
   test("another project writing the same GitHub secret in another case makes the next write need approval", async () => {
     const named = (name: string, item: string) =>
-      `${VAULTS}\n[keys.${name}]\nprod = { from = "op://Private/${item}/password", publish = [{ to = "github-actions", repo = "acme/billing" }] }\n`;
+      `${VAULTS}\n\n[profiles.prod.${name}]\ndescription = "${name}"\nref = { item = "${item}", field = "password" }\n\n[tool.keypin.prod.${name}]\npublish = [{ to = "github-actions", repo = "acme/billing" }]\n`;
     const disk = memoryFiles({
-      "/work/billing/keypin.toml": named("TOKEN", "billing deploy token"),
-      "/work/web/keypin.toml": named("token", "cloudflare admin token"),
+      "/work/billing/secretspec.toml": named("TOKEN", "billing deploy token"),
+      "/work/web/secretspec.toml": named("token", "cloudflare admin token"),
     });
     expect(await cli(["publish", "TOKEN"], publisher(disk, "/work/billing", true).deps)).toBe(0);
     expect(await cli(["publish", "token"], publisher(disk, "/work/web", true).deps)).toBe(0);
@@ -909,7 +943,9 @@ describe("a destination only takes a value without approval when it came from th
   });
 
   test("a state file from version 1 loads, and each destination needs approval once", async () => {
-    const disk = memoryFiles({ "/work/billing/keypin.toml": deployMap("billing deploy token") });
+    const disk = memoryFiles({
+      "/work/billing/secretspec.toml": deployMap("billing deploy token"),
+    });
     expect(
       await cli(["publish", "DEPLOY_TOKEN"], publisher(disk, "/work/billing", true).deps),
     ).toBe(0);
@@ -944,9 +980,9 @@ function withoutSource(receipt: Receipt): Omit<Receipt, "source" | "sourceIds" |
 }
 
 describe("two projects that map the same variable and environment", () => {
-  const VAULTS = `[1password]\naccount = "my.1password.com"\n`;
+  const VAULTS = `[project]\nname = "billing"\nrevision = "1.0"\n\n[providers]\nvault = "onepassword://my.1password.com@Private"\n\n[defaults]\nproviders = ["vault"]\n\n[profiles.dev]\n\n[profiles.prod]\n`;
   const projectMap = (project: string) =>
-    `${VAULTS}\n[keys.API_TOKEN]\nprod = { from = "op://Private/${project} api token/password", publish = [\n  { to = "github-actions", repo = "acme/${project}" },\n  { to = "github-actions", repo = "acme/${project}-ops" },\n] }\n`;
+    `${VAULTS}\n\n[profiles.prod.API_TOKEN]\ndescription = "API_TOKEN"\nref = { item = "${project} api token", field = "password" }\n\n[tool.keypin.prod.API_TOKEN]\npublish = [\n  { to = "github-actions", repo = "acme/${project}" },\n  { to = "github-actions", repo = "acme/${project}-ops" },\n]\n`;
 
   function publisher(
     disk: ReturnType<typeof memoryFiles>,
@@ -971,8 +1007,8 @@ describe("two projects that map the same variable and environment", () => {
 
   test("keep their own receipts and removed destinations apart", async () => {
     const disk = memoryFiles({
-      "/work/billing/keypin.toml": projectMap("billing"),
-      "/work/web/keypin.toml": projectMap("web"),
+      "/work/billing/secretspec.toml": projectMap("billing"),
+      "/work/web/secretspec.toml": projectMap("web"),
     });
     const billing = publisher(disk, "billing", { failWrite: ["github-actions:acme/billing-ops"] });
     expect(await cli(["publish", "API_TOKEN"], billing.deps)).toBe(1);
@@ -982,9 +1018,9 @@ describe("two projects that map the same variable and environment", () => {
     expect(web.stderr.text).not.toContain("not in the map any more");
     const state = await loadState(disk.files, STATE, vaults);
     expect(state.receipts.map((r) => [r.destinationId, r.mapFile])).toEqual([
-      ["github-actions:acme/billing:API_TOKEN", "/work/billing/keypin.toml"],
-      ["github-actions:acme/web:API_TOKEN", "/work/web/keypin.toml"],
-      ["github-actions:acme/web-ops:API_TOKEN", "/work/web/keypin.toml"],
+      ["github-actions:acme/billing:API_TOKEN", "/work/billing/secretspec.toml"],
+      ["github-actions:acme/web:API_TOKEN", "/work/web/secretspec.toml"],
+      ["github-actions:acme/web-ops:API_TOKEN", "/work/web/secretspec.toml"],
     ]);
 
     const again = publisher(disk, "billing");
@@ -997,13 +1033,17 @@ describe("two projects that map the same variable and environment", () => {
 });
 
 const ALL_MAP = `${BILLING_MAP}
-[keys.OTHER_KEY]
-prod = { from = "op://Private/billing other key/password", publish = [
-  { to = "github-actions", repo = "acme/other" },
-] }
 
-[keys.DEV_ONLY]
-dev = "op://Private/billing dev only/password"
+[profiles.dev.DEV_ONLY]
+description = "DEV_ONLY"
+ref = { item = "billing dev only", field = "password" }
+
+[profiles.prod.OTHER_KEY]
+description = "OTHER_KEY"
+ref = { item = "billing other key", field = "password" }
+
+[tool.keypin.prod.OTHER_KEY]
+publish = [{ to = "github-actions", repo = "acme/other" }]
 `;
 
 const OTHER_PLACE = "github-actions:acme/other";
@@ -1016,7 +1056,7 @@ function setupAll(
     suffix?: string;
   } = {},
 ) {
-  const disk = options.disk ?? memoryFiles({ "/work/billing/keypin.toml": ALL_MAP });
+  const disk = options.disk ?? memoryFiles({ "/work/billing/secretspec.toml": ALL_MAP });
   const suffix = options.suffix ?? "";
   const vault = fakeVault({
     values: {
@@ -1078,9 +1118,9 @@ describe("keypin publish --all", () => {
 
   test("without a terminal, it lists every approval and the rerun command, and reads nothing, exit 3", async () => {
     const run = setupAll();
-    expect(await record("all-without-terminal", ["publish", "--all", "--env", "prod"], run)).toBe(
-      NEEDS_APPROVAL,
-    );
+    expect(
+      await record("all-without-terminal", ["publish", "--all", "--profile", "prod"], run),
+    ).toBe(NEEDS_APPROVAL);
     expect(run.calls).toEqual([]);
     expect(run.disk.contents.has(STATE)).toBe(false);
   });
@@ -1098,7 +1138,7 @@ describe("keypin publish --all", () => {
     const first = setupAll({ terminal: "yes" });
     await cli(["publish", "--all"], first.deps);
     first.disk.contents.set(
-      "/work/billing/keypin.toml",
+      "/work/billing/secretspec.toml",
       ALL_MAP.replace(
         'repo = "acme/other" }',
         'repo = "acme/other" }, { to = "github-actions", repo = "acme/more" }',
@@ -1115,7 +1155,7 @@ describe("keypin publish --all", () => {
     expect(asked.asked).toEqual(["Write 4 secrets? [y/N] "]);
     expect(asked.writes()).toEqual([]);
 
-    first.disk.contents.set("/work/billing/keypin.toml", ALL_MAP);
+    first.disk.contents.set("/work/billing/secretspec.toml", ALL_MAP);
     const routine = setupAll({ disk: first.disk, suffix: "-next" });
     expect(await cli(["publish", "--all", "--yes"], routine.deps)).toBe(0);
     expect(routine.asked).toEqual([]);
@@ -1155,9 +1195,9 @@ describe("keypin publish --all", () => {
 
   test("several keys to one Worker go in one request, so it deploys once", async () => {
     const disk = memoryFiles({
-      "/work/billing/keypin.toml": ALL_MAP.replace(
-        '{ to = "github-actions", repo = "acme/other" },',
-        '{ to = "github-actions", repo = "acme/other" },\n  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },',
+      "/work/billing/secretspec.toml": ALL_MAP.replace(
+        '{ to = "github-actions", repo = "acme/other" }]',
+        '{ to = "github-actions", repo = "acme/other" }, { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" }]',
       ),
     });
     const run = setupAll({ terminal: "yes", disk });
@@ -1182,12 +1222,12 @@ describe("keypin publish --all", () => {
 
   test("a later key's part of a Worker write keeps its receipt when an earlier write fails", async () => {
     const map = ALL_MAP.replace(
-      '{ to = "github-actions", repo = "acme/other" },',
-      '{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },',
+      '{ to = "github-actions", repo = "acme/other" }]',
+      '{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" }]',
     );
     const first = setupAll({
       terminal: "yes",
-      disk: memoryFiles({ "/work/billing/keypin.toml": map }),
+      disk: memoryFiles({ "/work/billing/secretspec.toml": map }),
     });
     expect(await cli(["publish", "--all"], first.deps)).toBe(0);
     const before = await first.state();
@@ -1215,12 +1255,12 @@ describe("keypin publish --all", () => {
   test("a rewrite to a new account with the same value stays unfinished when it fails", async () => {
     const first = setupAll({ terminal: "yes" });
     expect(await cli(["publish", "--all"], first.deps)).toBe(0);
-    const moved = (await first.disk.files.read("/work/billing/keypin.toml"))?.replaceAll(
+    const moved = (await first.disk.files.read("/work/billing/secretspec.toml"))?.replaceAll(
       "11111111111111111111111111111111",
       "22222222222222222222222222222222",
     );
     assert(moved !== undefined && moved !== null);
-    await first.disk.files.write("/work/billing/keypin.toml", moved);
+    await first.disk.files.write("/work/billing/secretspec.toml", moved);
     const run = setupAll({
       terminal: "yes",
       disk: first.disk,
@@ -1232,9 +1272,9 @@ describe("keypin publish --all", () => {
 
   test("same-named Workers in two accounts get separate writes", async () => {
     const disk = memoryFiles({
-      "/work/billing/keypin.toml": ALL_MAP.replace(
-        '{ to = "github-actions", repo = "acme/other" },',
-        '{ to = "cloudflare-worker", account = "22222222222222222222222222222222", worker = "billing-worker" },',
+      "/work/billing/secretspec.toml": ALL_MAP.replace(
+        '{ to = "github-actions", repo = "acme/other" }]',
+        '{ to = "cloudflare-worker", account = "22222222222222222222222222222222", worker = "billing-worker" }]',
       ),
     });
     const run = setupAll({ terminal: "yes", disk });
@@ -1265,8 +1305,10 @@ describe("keypin publish --all", () => {
 
   test("an environment with no destinations anywhere publishes nothing", async () => {
     const run = setupAll({ terminal: "yes" });
-    expect(await cli(["publish", "--all", "--env", "dev"], run.deps)).toBe(1);
-    expect(run.stderr.text).toContain("No key in /work/billing/keypin.toml has dev destinations");
+    expect(await cli(["publish", "--all", "--profile", "dev"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain(
+      "No key in /work/billing/secretspec.toml has dev destinations",
+    );
     expect(run.log).toEqual([]);
     expect(run.calls).toEqual([]);
   });
@@ -1287,9 +1329,9 @@ describe("keypin publish, for a key CI pulls from the vault", () => {
   const PULL = `pull = [{ by = "github-actions", repo = "acme/jobs" }]`;
   const pulledOther = () =>
     memoryFiles({
-      "/work/billing/keypin.toml": ALL_MAP.replace(
-        /\[keys\.OTHER_KEY\]\nprod = \{[^}]*\}[^}]*\}/,
-        `[keys.OTHER_KEY]\nprod = { from = "op://Private/billing other key/password", ${PULL} }`,
+      "/work/billing/secretspec.toml": ALL_MAP.replace(
+        'publish = [{ to = "github-actions", repo = "acme/other" }]',
+        PULL,
       ),
     });
 
@@ -1316,10 +1358,10 @@ describe("keypin publish, for a key CI pulls from the vault", () => {
   });
 
   test("--all with only pulled keys has nothing to publish, and exits 0", async () => {
-    const map = `[1password]\naccount = "my.1password.com"\n[keys.OTHER_KEY]\nprod = { from = "op://Private/billing other key/password", ${PULL} }\n`;
+    const map = `[project]\nname = "billing"\nrevision = "1.0"\n\n[providers]\nvault = "onepassword://my.1password.com@Private"\n\n[defaults]\nproviders = ["vault"]\n\n[profiles.prod]\nOTHER_KEY = { description = "OTHER_KEY", ref = { item = "billing other key", field = "password" } }\n\n[tool.keypin.prod.OTHER_KEY]\n${PULL}\n`;
     const run = setupAll({
       terminal: "yes",
-      disk: memoryFiles({ "/work/billing/keypin.toml": map }),
+      disk: memoryFiles({ "/work/billing/secretspec.toml": map }),
     });
     expect(await cli(["publish", "--all"], run.deps)).toBe(0);
     expect(run.calls).toEqual([]);
@@ -1327,10 +1369,13 @@ describe("keypin publish, for a key CI pulls from the vault", () => {
 
   test("a key that is also pulled publishes only to its destinations", async () => {
     const map = BILLING_MAP.replace(
-      '{ to = "github-actions", repo = "acme/billing" },\n] }',
-      `{ to = "github-actions", repo = "acme/billing" },\n], ${PULL} }`,
+      '{ to = "github-actions", repo = "acme/billing" },\n]',
+      `{ to = "github-actions", repo = "acme/billing" },\n]\n${PULL}`,
     );
-    const run = setup({ terminal: "yes", disk: memoryFiles({ "/work/billing/keypin.toml": map }) });
+    const run = setup({
+      terminal: "yes",
+      disk: memoryFiles({ "/work/billing/secretspec.toml": map }),
+    });
     expect(await cli(["publish", "STRIPE_API_KEY"], run.deps)).toBe(0);
     expect(run.log.filter((l) => l.startsWith("write"))).toEqual([
       `write ${WORKER_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,

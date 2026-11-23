@@ -71,16 +71,17 @@ export function jobFor(context: Context, keyId: string, flags: Flags): Omit<Job,
   const key = map.keys.find((k) => k.name === keyId);
   if (!key) throw new Error(`${map.file} has no key "${keyId}"`);
   const entry = key.environments[environment];
-  if (!entry) throw new Error(`key "${keyId}" has no ${environment} entry in ${map.file}`);
+  if (!entry)
+    throw new Error(`${keyId} isn't a secret of [profiles.${environment}] in ${map.file}`);
   const spec = entry.issuer;
   const holder = spec ? undefined : pairedWith(map, keyId, environment);
   if (holder)
     throw new Error(
-      `key "${keyId}" ${environment} holds the ID of ${holder.name}, and keypin rotates the two together. Run keypin rotate ${holder.name}${envFlag(environment, publishEnvironment(map))}.`,
+      `${keyId} in profile ${environment} holds the ID of ${holder.name}, and keypin rotates the two together. Run keypin rotate ${holder.name}${envFlag(environment, publishEnvironment(map))}.`,
     );
   if (!spec)
     throw new Error(
-      `key "${keyId}" ${environment} has no issuer in ${map.file}, so keypin can't make a new key. Add one (see docs/guides/rotating-a-key.md), or rotate it by hand.`,
+      `[tool.keypin.${environment}.${keyId}] has no issuer in ${map.file}, so keypin can't make a new key. Add one (see docs/guides/rotating-a-key.md), or rotate it by hand.`,
     );
   if (!reaches(entry))
     throw new Error(

@@ -13,7 +13,7 @@ import {
   serviceAccountKeyId,
 } from "@keypin/connectors/google/testing";
 import type { FakeInfisical } from "@keypin/connectors/infisical/testing";
-import { FAKE_ACCESS_TOKEN, type FakeBitwarden } from "@keypin/connectors/bitwarden/testing";
+import { type FakeBitwarden } from "@keypin/connectors/bitwarden/testing";
 import type { FakeDoppler } from "@keypin/connectors/doppler/testing";
 import type { FakeOpenAIKey } from "@keypin/connectors/openai/testing";
 import type { FakeElevenLabsKey } from "@keypin/connectors/elevenlabs/testing";
@@ -88,49 +88,55 @@ function day(offset: number): string {
   return localDay(date);
 }
 
-const MAP = `[1password]
-account = "my.1password.com"
+const MAP = `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.STRIPE_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+STRIPE_KEY = { description = "STRIPE_KEY", ref = { item = "billing dev stripe key", field = "password" } }
+
+[profiles.prod]
+STRIPE_KEY = { description = "STRIPE_KEY", ref = { item = "billing prod stripe key", field = "password" } }
+
+[tool.keypin.prod.STRIPE_KEY]
 rotate_every = "90d"
-dev = "op://Private/billing dev stripe key/password"
-
-[keys.STRIPE_KEY.prod]
-from = "op://Private/billing prod stripe key/password"
-
-[[keys.STRIPE_KEY.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 `;
 
 const VERCEL_MAP = MAP.replace(
-  'to = "github-actions"\nrepo = "acme/billing"',
-  'to = "vercel-project"\nteam = "acme"\nproject = "billing"\nenvironment = "production"',
+  '{ to = "github-actions", repo = "acme/billing" }',
+  '{ to = "vercel-project", team = "acme", project = "billing", environment = "production" }',
 );
 
 const NETLIFY_MAP = MAP.replace(
-  'to = "github-actions"\nrepo = "acme/billing"',
-  'to = "netlify-project"\nteam = "acme"\nproject = "billing.netlify.app"\ncontext = "production"',
+  '{ to = "github-actions", repo = "acme/billing" }',
+  '{ to = "netlify-project", team = "acme", project = "billing.netlify.app", context = "production" }',
 );
 
 const CONVEX_MAP = MAP.replace(
-  'to = "github-actions"\nrepo = "acme/billing"',
-  'to = "convex-deployment"\nurl = "https://happy-animal-123.convex.cloud"',
+  '{ to = "github-actions", repo = "acme/billing" }',
+  '{ to = "convex-deployment", url = "https://happy-animal-123.convex.cloud" }',
 );
 
 const FLY_MAP = MAP.replace(
-  'to = "github-actions"\nrepo = "acme/billing"',
-  'to = "fly-app"\napp = "billing-api"',
+  '{ to = "github-actions", repo = "acme/billing" }',
+  '{ to = "fly-app", app = "billing-api" }',
 );
 
 const GITLAB_MAP = MAP.replace(
-  'to = "github-actions"\nrepo = "acme/billing"',
-  'to = "gitlab-project"\nproject = "acme/billing"',
+  '{ to = "github-actions", repo = "acme/billing" }',
+  '{ to = "gitlab-project", project = "acme/billing" }',
 );
 
 const RAILWAY_MAP = MAP.replace(
-  'to = "github-actions"\nrepo = "acme/billing"',
-  'to = "railway-service"\nproject = "1d01c0c0-4554-4747-93b8-34ce3448ab95"\nenvironment = "production"\nservice = "api"',
+  '{ to = "github-actions", repo = "acme/billing" }',
+  '{ to = "railway-service", project = "1d01c0c0-4554-4747-93b8-34ce3448ab95", environment = "production", service = "api" }',
 );
 
 const WORKFLOW = `on: push
@@ -146,7 +152,7 @@ jobs:
 export const ready: Scenario = {
   about:
     "a mapped project where every sign-in works and GitHub already has STRIPE_KEY; keypin has no receipt yet",
-  files: { "keypin.toml": MAP, ".github/workflows/deploy.yml": WORKFLOW },
+  files: { "secretspec.toml": MAP, ".github/workflows/deploy.yml": WORKFLOW },
   registered: true,
   git: { origin: "git@github.com:acme/billing.git" },
   onePassword: {
@@ -169,43 +175,26 @@ export const ready: Scenario = {
   places: {},
 };
 
-const INFISICAL_MAP = `[infisical]
-organization = "acme"
+const RESEND_MAP = `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.STRIPE_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+RESEND_API_KEY = { description = "RESEND_API_KEY", ref = { item = "mailer resend key", field = "credential" } }
+
+[tool.keypin.prod.RESEND_API_KEY]
 rotate_every = "90d"
-dev = "infisical://billing/dev/STRIPE_KEY"
-
-[keys.STRIPE_KEY.prod]
-from = "infisical://billing/prod/STRIPE_KEY"
-
-[[keys.STRIPE_KEY.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
-`;
-
-const RESEND_MAP = `[1password]
-account = "my.1password.com"
-
-[keys.RESEND_API_KEY]
-rotate_every = "90d"
-
-[keys.RESEND_API_KEY.prod]
-from = "op://Private/mailer resend key/credential"
-
-[keys.RESEND_API_KEY.prod.issuer]
-kind = "resend"
-admin = "op://Private/resend admin key/credential"
-permission = "sending_access"
-
-[[keys.RESEND_API_KEY.prod.publish]]
-to = "github-actions"
-repo = "acme/mailer"
-
-[[keys.RESEND_API_KEY.prod.publish]]
-to = "cloudflare-worker"
-account = "11111111111111111111111111111111"
-worker = "mailer"
+issuer = { kind = "resend", admin = "op://Private/resend admin key/credential", permission = "sending_access" }
+publish = [
+  { to = "github-actions", repo = "acme/mailer" },
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "mailer" },
+]
 `;
 
 const RESEND_OLD = "re_verify_old_key_3c7e";
@@ -222,7 +211,7 @@ const resendReceipt = (
 ) => ({
   keyId: "RESEND_API_KEY",
   environment: "prod",
-  mapFile: "<project>/keypin.toml",
+  mapFile: "<project>/secretspec.toml",
   source: {
     kind: "1password",
     account: "my.1password.com",
@@ -245,7 +234,7 @@ const resend: Scenario = {
   ...ready,
   about:
     "RESEND_API_KEY has a Resend issuer and was published from this machine as key re-old; a fake Resend lists it",
-  files: { "keypin.toml": RESEND_MAP },
+  files: { "secretspec.toml": RESEND_MAP },
   onePassword: {
     accounts: {
       "my.1password.com": {
@@ -271,7 +260,7 @@ const resend: Scenario = {
       {
         keyId: "RESEND_API_KEY",
         environment: "prod",
-        mapFile: "<project>/keypin.toml",
+        mapFile: "<project>/secretspec.toml",
         issuer: "resend",
         id: "re-old",
         generation: RESEND_OLD_GENERATION,
@@ -283,31 +272,26 @@ const resend: Scenario = {
   resend: { keys: ["re-old"] },
 };
 
-const NEON_MAP = `[1password]
-account = "my.1password.com"
+const NEON_MAP = `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.DATABASE_URL]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+DATABASE_URL = { description = "DATABASE_URL", ref = { item = "app database url", field = "password" } }
+
+[tool.keypin.prod.DATABASE_URL]
 rotate_every = "90d"
-
-[keys.DATABASE_URL.prod]
-from = "op://Private/app database url/password"
-
-[keys.DATABASE_URL.prod.issuer]
-kind = "neon"
-admin = "op://Private/neon api key/credential"
-project_id = "quiet-lake-12345678"
-branch_id = "br-main-a1b2c3d4"
-database = "appdb"
-roles = ["app_a", "app_b"]
-
-[[keys.DATABASE_URL.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
-
-[[keys.DATABASE_URL.prod.publish]]
-to = "cloudflare-worker"
-account = "11111111111111111111111111111111"
-worker = "billing"
+issuer = { kind = "neon", admin = "op://Private/neon api key/credential", project_id = "quiet-lake-12345678", branch_id = "br-main-a1b2c3d4", database = "appdb", roles = ["app_a", "app_b"] }
+publish = [
+  { to = "github-actions", repo = "acme/billing" },
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing" },
+]
 `;
 
 export const NEON_HOST = "ep-quiet-lake-a1b2c3d4-pooler.us-east-2.aws.neon.tech";
@@ -318,7 +302,7 @@ const neon: Scenario = {
   ...ready,
   about:
     "DATABASE_URL has a Neon issuer with roles app_a and app_b; the vault's pooled URL uses app_a and keypin has never rotated it",
-  files: { "keypin.toml": NEON_MAP },
+  files: { "secretspec.toml": NEON_MAP },
   onePassword: {
     accounts: {
       "my.1password.com": {
@@ -336,24 +320,23 @@ const neon: Scenario = {
   neon: { roles: { app_a: NEON_LIVE, app_b: "npg_verify_idle_b_3a9d" } },
 };
 
-const OPENAI_MAP = `[1password]
-account = "my.1password.com"
+const OPENAI_MAP = `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.OPENAI_API_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+OPENAI_API_KEY = { description = "OPENAI_API_KEY", ref = { item = "billing openai key", field = "credential" } }
+
+[tool.keypin.prod.OPENAI_API_KEY]
 rotate_every = "90d"
-
-[keys.OPENAI_API_KEY.prod]
-from = "op://Private/billing openai key/credential"
-
-[keys.OPENAI_API_KEY.prod.issuer]
-kind = "openai"
-admin = "op://Private/openai admin key/credential"
-project_id = "proj_verify"
-scopes = []
-
-[[keys.OPENAI_API_KEY.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
+issuer = { kind = "openai", admin = "op://Private/openai admin key/credential", project_id = "proj_verify", scopes = [] }
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 `;
 
 export const OPENAI_ADMIN = "sk-admin-verify-admin-key-4b7e";
@@ -365,7 +348,7 @@ const openai: Scenario = {
   ...ready,
   about:
     "OPENAI_API_KEY has an OpenAI issuer; the vault holds key_old of service account billing-bot, and keypin has never rotated it",
-  files: { "keypin.toml": OPENAI_MAP },
+  files: { "secretspec.toml": OPENAI_MAP },
   onePassword: {
     accounts: {
       "my.1password.com": {
@@ -379,22 +362,23 @@ const openai: Scenario = {
   openai: { keys: [{ id: "key_old", name: "prod", value: OPENAI_OLD, owner: OPENAI_BOT }] },
 };
 
-const OPENROUTER_MAP = `[1password]
-account = "my.1password.com"
+const OPENROUTER_MAP = `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.OPENROUTER_API_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+OPENROUTER_API_KEY = { description = "OPENROUTER_API_KEY", ref = { item = "chat openrouter key", field = "credential" } }
+
+[tool.keypin.prod.OPENROUTER_API_KEY]
 rotate_every = "90d"
-
-[keys.OPENROUTER_API_KEY.prod]
-from = "op://Private/chat openrouter key/credential"
-
-[keys.OPENROUTER_API_KEY.prod.issuer]
-kind = "openrouter"
-admin = "op://Private/openrouter management key/credential"
-
-[[keys.OPENROUTER_API_KEY.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
+issuer = { kind = "openrouter", admin = "op://Private/openrouter management key/credential" }
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 `;
 
 export const OPENROUTER_ADMIN = "sk-or-v1-verify-management-key-4b7e";
@@ -405,7 +389,7 @@ const openrouter: Scenario = {
   ...ready,
   about:
     'OPENROUTER_API_KEY has an OpenRouter issuer; the vault holds key "chat" with a $25 monthly limit, and keypin has never rotated it',
-  files: { "keypin.toml": OPENROUTER_MAP },
+  files: { "secretspec.toml": OPENROUTER_MAP },
   onePassword: {
     accounts: {
       "my.1password.com": {
@@ -423,22 +407,23 @@ const openrouter: Scenario = {
   },
 };
 
-const XAI_MAP = `[1password]
-account = "my.1password.com"
+const XAI_MAP = `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.XAI_API_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+XAI_API_KEY = { description = "XAI_API_KEY", ref = { item = "chat xai key", field = "credential" } }
+
+[tool.keypin.prod.XAI_API_KEY]
 rotate_every = "90d"
-
-[keys.XAI_API_KEY.prod]
-from = "op://Private/chat xai key/credential"
-
-[keys.XAI_API_KEY.prod.issuer]
-kind = "xai"
-admin = "op://Private/xai management key/credential"
-
-[[keys.XAI_API_KEY.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
+issuer = { kind = "xai", admin = "op://Private/xai management key/credential" }
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 `;
 
 export const XAI_ADMIN = "xai-token-verify-management-4b7e";
@@ -457,7 +442,7 @@ const xai: Scenario = {
   ...ready,
   about:
     'XAI_API_KEY has an xAI issuer; the vault holds key "chat" of team team_1, limited to grok-4.7 and 100 requests a minute, and a new key takes one extra check to reach every cluster',
-  files: { "keypin.toml": XAI_MAP },
+  files: { "secretspec.toml": XAI_MAP },
   onePassword: {
     accounts: {
       "my.1password.com": {
@@ -471,22 +456,23 @@ const xai: Scenario = {
   xai: { keys: [XAI_KEY], pendingPolls: 1 },
 };
 
-const ELEVENLABS_MAP = `[1password]
-account = "my.1password.com"
+const ELEVENLABS_MAP = `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.ELEVENLABS_API_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+ELEVENLABS_API_KEY = { description = "ELEVENLABS_API_KEY", ref = { item = "voice elevenlabs key", field = "credential" } }
+
+[tool.keypin.prod.ELEVENLABS_API_KEY]
 rotate_every = "90d"
-
-[keys.ELEVENLABS_API_KEY.prod]
-from = "op://Private/voice elevenlabs key/credential"
-
-[keys.ELEVENLABS_API_KEY.prod.issuer]
-kind = "elevenlabs"
-admin = "op://Private/elevenlabs admin key/credential"
-
-[[keys.ELEVENLABS_API_KEY.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
+issuer = { kind = "elevenlabs", admin = "op://Private/elevenlabs admin key/credential" }
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 `;
 
 export const ELEVENLABS_ADMIN = "sk_verify_admin_key_4b7e";
@@ -504,7 +490,7 @@ const elevenlabs: Scenario = {
   ...ready,
   about:
     'ELEVENLABS_API_KEY has an ElevenLabs issuer; the vault holds key "voice" of service account "backend", with a 100,000-credit limit, and keypin has never rotated it',
-  files: { "keypin.toml": ELEVENLABS_MAP },
+  files: { "secretspec.toml": ELEVENLABS_MAP },
   onePassword: {
     accounts: {
       "my.1password.com": {
@@ -518,28 +504,28 @@ const elevenlabs: Scenario = {
   elevenlabs: { keys: [ELEVENLABS_KEY] },
 };
 
-const SUPABASE_MAP = `[1password]
-account = "my.1password.com"
+const SUPABASE_MAP = `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.SUPABASE_SECRET_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+SUPABASE_SECRET_KEY = { description = "SUPABASE_SECRET_KEY", ref = { item = "app supabase key", field = "credential" } }
+
+[tool.keypin.prod.SUPABASE_SECRET_KEY]
 rotate_every = "90d"
-
-[keys.SUPABASE_SECRET_KEY.prod]
-from = "op://Private/app supabase key/credential"
-
-[keys.SUPABASE_SECRET_KEY.prod.issuer]
-kind = "supabase"
-admin = "op://Private/supabase token/credential"
-project_ref = "abcdefghijklmnopqrst"
-
-[[keys.SUPABASE_SECRET_KEY.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
+issuer = { kind = "supabase", admin = "op://Private/supabase token/credential", project_ref = "abcdefghijklmnopqrst" }
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 `;
 
 const SUPABASE_FUNCTIONS_MAP = MAP.replace(
-  'to = "github-actions"\nrepo = "acme/billing"',
-  'to = "supabase-functions"\nproject_ref = "abcdefghijklmnopqrst"',
+  '{ to = "github-actions", repo = "acme/billing" }',
+  '{ to = "supabase-functions", project_ref = "abcdefghijklmnopqrst" }',
 );
 
 export const SUPABASE_ADMIN = "sbp_verify_admin_token_4c2a";
@@ -551,7 +537,7 @@ const supabase: Scenario = {
   ...ready,
   about:
     "SUPABASE_SECRET_KEY has a Supabase issuer; the vault holds secret key backend, and the project also has secret key default",
-  files: { "keypin.toml": SUPABASE_MAP },
+  files: { "secretspec.toml": SUPABASE_MAP },
   onePassword: {
     accounts: {
       "my.1password.com": {
@@ -570,22 +556,23 @@ const supabase: Scenario = {
   },
 };
 
-const CLOUDFLARE_MAP = `[1password]
-account = "my.1password.com"
+const CLOUDFLARE_MAP = `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.CLOUDFLARE_API_TOKEN]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+CLOUDFLARE_API_TOKEN = { description = "CLOUDFLARE_API_TOKEN", ref = { item = "deploy cloudflare token", field = "credential" } }
+
+[tool.keypin.prod.CLOUDFLARE_API_TOKEN]
 rotate_every = "90d"
-
-[keys.CLOUDFLARE_API_TOKEN.prod]
-from = "op://Private/deploy cloudflare token/credential"
-
-[keys.CLOUDFLARE_API_TOKEN.prod.issuer]
-kind = "cloudflare"
-admin = "op://Private/cloudflare token maker/credential"
-
-[[keys.CLOUDFLARE_API_TOKEN.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
+issuer = { kind = "cloudflare", admin = "op://Private/cloudflare token maker/credential" }
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 `;
 
 export const CLOUDFLARE_ADMIN = "cfut_verifyadminverifyadminverify00000000_4b7e";
@@ -596,7 +583,7 @@ const cloudflareTokens: Scenario = {
   ...ready,
   about:
     'CLOUDFLARE_API_TOKEN has a Cloudflare issuer; the vault holds user API token "deploy" with an IP filter, expiring 30 days after it was made',
-  files: { "keypin.toml": CLOUDFLARE_MAP },
+  files: { "secretspec.toml": CLOUDFLARE_MAP },
   onePassword: {
     accounts: {
       "my.1password.com": {
@@ -631,23 +618,23 @@ const cloudflareTokens: Scenario = {
   },
 };
 
-const GOOGLE_MAP = `[1password]
-account = "my.1password.com"
+const GOOGLE_MAP = `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.GOOGLE_MAPS_API_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+GOOGLE_MAPS_API_KEY = { description = "GOOGLE_MAPS_API_KEY", ref = { item = "maps api key", field = "credential" } }
+
+[tool.keypin.prod.GOOGLE_MAPS_API_KEY]
 rotate_every = "90d"
-
-[keys.GOOGLE_MAPS_API_KEY.prod]
-from = "op://Private/maps api key/credential"
-
-[keys.GOOGLE_MAPS_API_KEY.prod.issuer]
-kind = "google"
-admin = "op://Private/google key maker/credential"
-project_number = "481537286014"
-
-[[keys.GOOGLE_MAPS_API_KEY.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
+issuer = { kind = "google", admin = "op://Private/google key maker/credential", project_number = "481537286014" }
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 `;
 
 export const GOOGLE_ADMIN = "verify-google-admin-key-id-7f3a";
@@ -659,7 +646,7 @@ const google: Scenario = {
   ...ready,
   about:
     'GOOGLE_MAPS_API_KEY has a Google Cloud issuer; the vault holds key "Maps web", limited to the Maps API and two websites',
-  files: { "keypin.toml": GOOGLE_MAP },
+  files: { "secretspec.toml": GOOGLE_MAP },
   onePassword: {
     accounts: {
       "my.1password.com": {
@@ -687,22 +674,23 @@ const google: Scenario = {
   },
 };
 
-const GOOGLE_IAM_MAP = `[1password]
-account = "my.1password.com"
+const GOOGLE_IAM_MAP = `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.GOOGLE_APPLICATION_CREDENTIALS]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+GOOGLE_APPLICATION_CREDENTIALS = { description = "GOOGLE_APPLICATION_CREDENTIALS", ref = { item = "app service account", field = "credential" } }
+
+[tool.keypin.prod.GOOGLE_APPLICATION_CREDENTIALS]
 rotate_every = "90d"
-
-[keys.GOOGLE_APPLICATION_CREDENTIALS.prod]
-from = "op://Private/app service account/credential"
-
-[keys.GOOGLE_APPLICATION_CREDENTIALS.prod.issuer]
-kind = "google-service-account"
-admin = "op://Private/google key maker/credential"
-
-[[keys.GOOGLE_APPLICATION_CREDENTIALS.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
+issuer = { kind = "google-service-account", admin = "op://Private/google key maker/credential" }
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 `;
 
 export const GOOGLE_IAM_PREFIX = "verify-new-private-key-";
@@ -712,7 +700,7 @@ const GOOGLE_IAM_OLD = serviceAccountKeyId(0xf00);
 const googleIam: Scenario = {
   ...ready,
   about: `GOOGLE_APPLICATION_CREDENTIALS has a google-service-account issuer; the vault holds key ${GOOGLE_IAM_OLD} of ${GOOGLE_IAM_APP}, which also has a disabled key`,
-  files: { "keypin.toml": GOOGLE_IAM_MAP },
+  files: { "secretspec.toml": GOOGLE_IAM_MAP },
   onePassword: {
     accounts: {
       "my.1password.com": {
@@ -746,162 +734,34 @@ const googleIam: Scenario = {
   },
 };
 
-const infisical: Scenario = {
-  ...ready,
-  about:
-    "ready, but keypin.toml reads from a fake Infisical organization acme, signed in as a machine identity",
-  files: { ...ready.files, "keypin.toml": INFISICAL_MAP },
-  onePassword: { accounts: {} },
-  infisical: {
-    organization: "acme",
-    projects: {
-      billing: {
-        dev: { STRIPE_KEY: { value: "verify-dev-stripe-6b1e", rotated: day(-30) } },
-        prod: { STRIPE_KEY: { value: "verify-prod-stripe-9d4a", rotated: day(-85) } },
-      },
-    },
-  },
-  env: {
-    INFISICAL_UNIVERSAL_AUTH_CLIENT_ID: "verify-client-id",
-    INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET: "verify-client-secret-3e7a",
-  },
-};
+const PAIRED_MAP = `[project]
+name = "billing"
+revision = "1.0"
 
-const BITWARDEN_ORGANIZATION = "2f1d6c9e-8a3b-4c5d-9e7f-0a1b2c3d4e5f";
+[providers]
+vault = "onepassword://my.1password.com@Private"
 
-const doppler: Scenario = {
-  ...ready,
-  about:
-    "ready, but keypin.toml reads from a fake Doppler workplace acme, signed in with a service account token",
-  files: {
-    ...ready.files,
-    "keypin.toml": INFISICAL_MAP.replace(
-      '[infisical]\norganization = "acme"',
-      '[doppler]\nworkplace = "acme"',
-    )
-      .replaceAll("infisical://billing/prod/", "doppler://billing/prd/")
-      .replaceAll("infisical://", "doppler://"),
-  },
-  onePassword: { accounts: {} },
-  doppler: {
-    workplace: "acme",
-    projects: {
-      billing: {
-        dev: { STRIPE_KEY: { value: "verify-dev-stripe-2c7d" } },
-        prd: { STRIPE_KEY: { value: "verify-prod-stripe-5e8b" } },
-      },
-    },
-    tokens: { "dp.sa.verify-account-token-1a9f": { type: "service_account", write: true } },
-  },
-  env: { DOPPLER_TOKEN: "dp.sa.verify-account-token-1a9f" },
-};
+[defaults]
+providers = ["vault"]
 
-const AWSSM_KEY = {
-  id: "ASIAVERIFYVERIFY0001",
-  secret: "verify-aws-secret-key-4b8e",
-  token: "verify-aws-session-token-9d1c",
-};
+[profiles.prod]
+API_SECRET = { description = "API_SECRET", ref = { item = "api secret", field = "credential" } }
+API_KEY_ID = { description = "API_KEY_ID", ref = { item = "api key id", field = "credential" } }
 
-const awssm: Scenario = {
-  ...ready,
-  about:
-    "ready, but keypin.toml reads from fake AWS Secrets Manager in account 123456789012, signed in with temporary credentials",
-  files: {
-    ...ready.files,
-    "keypin.toml": INFISICAL_MAP.replace(
-      '[infisical]\norganization = "acme"',
-      '[awssm]\naccount = "123456789012"',
-    )
-      .replace("infisical://billing/dev/STRIPE_KEY", "awssm://eu-west-1/billing/dev:STRIPE_KEY")
-      .replace("infisical://billing/prod/STRIPE_KEY", "awssm://eu-west-1/billing/prod/stripe"),
-  },
-  onePassword: { accounts: {} },
-  awssm: {
-    account: "123456789012",
-    credentials: [AWSSM_KEY],
-    secrets: {
-      "eu-west-1/billing/dev": { value: JSON.stringify({ STRIPE_KEY: "verify-dev-stripe-2c7d" }) },
-      "eu-west-1/billing/prod/stripe": {
-        value: "verify-prod-stripe-5e8b",
-        created: "2026-08-01T10:00:00Z",
-      },
-    },
-  },
-  env: {
-    AWS_ACCESS_KEY_ID: AWSSM_KEY.id,
-    AWS_SECRET_ACCESS_KEY: AWSSM_KEY.secret,
-    AWS_SESSION_TOKEN: AWSSM_KEY.token,
-  },
-};
-
-const bitwarden: Scenario = {
-  ...ready,
-  about: "ready, but keypin.toml reads from a fake Bitwarden Secrets Manager organization",
-  files: {
-    ...ready.files,
-    "keypin.toml": INFISICAL_MAP.replace(
-      '[infisical]\norganization = "acme"',
-      `[bitwarden]\norganization = "${BITWARDEN_ORGANIZATION}"`,
-    )
-      .replace("infisical://billing/dev/", "bitwarden://billing-dev/")
-      .replace("infisical://billing/prod/", "bitwarden://billing/"),
-  },
-  onePassword: { accounts: {} },
-  bitwarden: {
-    organization: BITWARDEN_ORGANIZATION,
-    projects: {
-      "billing-dev": {
-        secrets: [
-          { name: "STRIPE_KEY", value: "verify-dev-stripe-2c7f", note: `rotated: ${day(-30)}` },
-        ],
-      },
-      billing: {
-        secrets: [
-          { name: "STRIPE_KEY", value: "verify-prod-stripe-8e1b", note: `rotated: ${day(-85)}` },
-        ],
-      },
-    },
-  },
-  env: { BWS_ACCESS_TOKEN: FAKE_ACCESS_TOKEN },
-};
-
-const PAIRED_MAP = `[1password]
-account = "my.1password.com"
-
-[keys.API_SECRET]
+[tool.keypin.prod.API_SECRET]
 rotate_every = "90d"
+issuer = { kind = "paired", admin = "op://Private/keys admin/credential", key_id = "API_KEY_ID" }
+publish = [
+  { to = "github-actions", repo = "acme/api" },
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "api" },
+]
 
-[keys.API_SECRET.prod]
-from = "op://Private/api secret/credential"
-
-[keys.API_SECRET.prod.issuer]
-kind = "paired"
-admin = "op://Private/keys admin/credential"
-key_id = "API_KEY_ID"
-
-[[keys.API_SECRET.prod.publish]]
-to = "github-actions"
-repo = "acme/api"
-
-[[keys.API_SECRET.prod.publish]]
-to = "cloudflare-worker"
-account = "11111111111111111111111111111111"
-worker = "api"
-
-[keys.API_KEY_ID]
+[tool.keypin.prod.API_KEY_ID]
 rotate_every = "never"
-
-[keys.API_KEY_ID.prod]
-from = "op://Private/api key id/credential"
-
-[[keys.API_KEY_ID.prod.publish]]
-to = "github-actions"
-repo = "acme/api"
-
-[[keys.API_KEY_ID.prod.publish]]
-to = "cloudflare-worker"
-account = "11111111111111111111111111111111"
-worker = "api"
+publish = [
+  { to = "github-actions", repo = "acme/api" },
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "api" },
+]
 `;
 
 export const PAIRED_ADMIN = "paired_verify_admin_key_8e1d";
@@ -911,7 +771,7 @@ const paired: Scenario = {
   ...ready,
   about:
     "API_SECRET has a test issuer whose key ID is API_KEY_ID, a second key in the map; a fake account lists key AKID-0",
-  files: { "keypin.toml": PAIRED_MAP },
+  files: { "secretspec.toml": PAIRED_MAP },
   onePassword: {
     accounts: {
       "my.1password.com": {
@@ -926,33 +786,28 @@ const paired: Scenario = {
   paired: { keys: ["AKID-0"] },
 };
 
-const AWS_MAP = `[1password]
-account = "my.1password.com"
+const AWS_MAP = `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.AWS_SECRET_ACCESS_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+AWS_SECRET_ACCESS_KEY = { description = "AWS_SECRET_ACCESS_KEY", ref = { item = "app aws secret", field = "credential" } }
+AWS_ACCESS_KEY_ID = { description = "AWS_ACCESS_KEY_ID", ref = { item = "app aws key id", field = "credential" } }
+
+[tool.keypin.prod.AWS_SECRET_ACCESS_KEY]
 rotate_every = "90d"
+issuer = { kind = "aws", admin = "op://Private/aws admin/credential", key_id = "AWS_ACCESS_KEY_ID" }
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 
-[keys.AWS_SECRET_ACCESS_KEY.prod]
-from = "op://Private/app aws secret/credential"
-
-[keys.AWS_SECRET_ACCESS_KEY.prod.issuer]
-kind = "aws"
-admin = "op://Private/aws admin/credential"
-key_id = "AWS_ACCESS_KEY_ID"
-
-[[keys.AWS_SECRET_ACCESS_KEY.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
-
-[keys.AWS_ACCESS_KEY_ID]
+[tool.keypin.prod.AWS_ACCESS_KEY_ID]
 rotate_every = "never"
-
-[keys.AWS_ACCESS_KEY_ID.prod]
-from = "op://Private/app aws key id/credential"
-
-[[keys.AWS_ACCESS_KEY_ID.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 `;
 
 export const AWS_PREFIX = "aws_verify_new_secret_";
@@ -965,7 +820,7 @@ const aws: Scenario = {
   ...ready,
   about:
     "AWS_SECRET_ACCESS_KEY has an AWS issuer whose key ID is AWS_ACCESS_KEY_ID; the vault holds access key AKIAAPPVERIFY0000001 of IAM user billing-app, and the admin item holds a key of IAM user keypin-admin",
-  files: { "keypin.toml": AWS_MAP },
+  files: { "secretspec.toml": AWS_MAP },
   onePassword: {
     accounts: {
       "my.1password.com": {
@@ -986,22 +841,23 @@ const aws: Scenario = {
   },
 };
 
-const SENDGRID_MAP = `[1password]
-account = "my.1password.com"
+const SENDGRID_MAP = `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.SENDGRID_API_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+SENDGRID_API_KEY = { description = "SENDGRID_API_KEY", ref = { item = "mailer sendgrid key", field = "credential" } }
+
+[tool.keypin.prod.SENDGRID_API_KEY]
 rotate_every = "90d"
-
-[keys.SENDGRID_API_KEY.prod]
-from = "op://Private/mailer sendgrid key/credential"
-
-[keys.SENDGRID_API_KEY.prod.issuer]
-kind = "sendgrid"
-admin = "op://Private/sendgrid admin key/credential"
-
-[[keys.SENDGRID_API_KEY.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
+issuer = { kind = "sendgrid", admin = "op://Private/sendgrid admin key/credential" }
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 `;
 
 export const SENDGRID_ADMIN = "SG.AdminVerifyId.sg_verify_admin_key_7e2a";
@@ -1018,7 +874,7 @@ const sendgrid: Scenario = {
   ...ready,
   about:
     'SENDGRID_API_KEY has a SendGrid issuer; the vault holds key "mailer" with scopes mail.send and templates.read, and keypin has never rotated it',
-  files: { "keypin.toml": SENDGRID_MAP },
+  files: { "secretspec.toml": SENDGRID_MAP },
   onePassword: {
     accounts: {
       "my.1password.com": {
@@ -1032,33 +888,28 @@ const sendgrid: Scenario = {
   sendgrid: { keys: [SENDGRID_KEY] },
 };
 
-const TWILIO_MAP = `[1password]
-account = "my.1password.com"
+const TWILIO_MAP = `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.TWILIO_API_SECRET]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+TWILIO_API_SECRET = { description = "TWILIO_API_SECRET", ref = { item = "app twilio secret", field = "credential" } }
+TWILIO_API_KEY = { description = "TWILIO_API_KEY", ref = { item = "app twilio key sid", field = "credential" } }
+
+[tool.keypin.prod.TWILIO_API_SECRET]
 rotate_every = "90d"
+issuer = { kind = "twilio", admin = "op://Private/twilio admin/credential", key_id = "TWILIO_API_KEY" }
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 
-[keys.TWILIO_API_SECRET.prod]
-from = "op://Private/app twilio secret/credential"
-
-[keys.TWILIO_API_SECRET.prod.issuer]
-kind = "twilio"
-admin = "op://Private/twilio admin/credential"
-key_id = "TWILIO_API_KEY"
-
-[[keys.TWILIO_API_SECRET.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
-
-[keys.TWILIO_API_KEY]
+[tool.keypin.prod.TWILIO_API_KEY]
 rotate_every = "never"
-
-[keys.TWILIO_API_KEY.prod]
-from = "op://Private/app twilio key sid/credential"
-
-[[keys.TWILIO_API_KEY.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 `;
 
 export const TWILIO_ACCOUNT = `AC${"0123456789abcdef".repeat(2)}`;
@@ -1077,7 +928,7 @@ const TWILIO_KEY: FakeTwilioKey = {
 const twilio: Scenario = {
   ...ready,
   about: `TWILIO_API_SECRET has a Twilio issuer whose key ID is TWILIO_API_KEY; the vault holds Restricted key ${TWILIO_OLD_SID} with a messaging and a phone-numbers permission, and the admin item holds the account's auth token`,
-  files: { "keypin.toml": TWILIO_MAP },
+  files: { "secretspec.toml": TWILIO_MAP },
   onePassword: {
     accounts: {
       "my.1password.com": {
@@ -1102,24 +953,23 @@ export const ATLAS_CLIENT = "mdb_sa_id_verify_6745";
 export const ATLAS_SECRET = "mdb_sa_sk_verify_admin_secret_5c1f";
 export const ATLAS_PROJECT = "5f1a2b3c4d5e6f7a8b9c0d1e";
 
-const ATLAS_MAP = `[1password]
-account = "my.1password.com"
+const ATLAS_MAP = `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.MONGODB_URI]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+MONGODB_URI = { description = "MONGODB_URI", ref = { item = "app mongodb uri", field = "password" } }
+
+[tool.keypin.prod.MONGODB_URI]
 rotate_every = "90d"
-
-[keys.MONGODB_URI.prod]
-from = "op://Private/app mongodb uri/password"
-
-[keys.MONGODB_URI.prod.issuer]
-kind = "mongodb-atlas"
-admin = "op://Private/atlas service account/credential"
-client_id = "${ATLAS_CLIENT}"
-project_id = "${ATLAS_PROJECT}"
-
-[[keys.MONGODB_URI.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
+issuer = { kind = "mongodb-atlas", admin = "op://Private/atlas service account/credential", client_id = "${ATLAS_CLIENT}", project_id = "${ATLAS_PROJECT}" }
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 `;
 
 export const ATLAS_HOST = "cluster0.ab1cd.mongodb.net";
@@ -1135,7 +985,7 @@ const atlas: Scenario = {
   ...ready,
   about:
     "MONGODB_URI has a MongoDB Atlas issuer; the vault holds database user billing's connection string for Cluster0, and keypin has never rotated it",
-  files: { "keypin.toml": ATLAS_MAP },
+  files: { "secretspec.toml": ATLAS_MAP },
   onePassword: {
     accounts: {
       "my.1password.com": {
@@ -1153,27 +1003,29 @@ const atlas: Scenario = {
   atlas: { users: [ATLAS_USER] },
 };
 
-const RANDOM_MAP = `[1password]
-account = "my.1password.com"
+const RANDOM_MAP = `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.AUTH_SECRET]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+AUTH_SECRET = { description = "AUTH_SECRET", ref = { item = "app auth secret", field = "password" } }
+
+[tool.keypin.prod.AUTH_SECRET]
 rotate_every = "90d"
-
-[keys.AUTH_SECRET.prod]
-from = "op://Private/app auth secret/password"
-
-[keys.AUTH_SECRET.prod.issuer]
-kind = "random"
-
-[[keys.AUTH_SECRET.prod.publish]]
-to = "github-actions"
-repo = "acme/app"
+issuer = { kind = "random" }
+publish = [{ to = "github-actions", repo = "acme/app" }]
 `;
 
 const random: Scenario = {
   ...ready,
   about: "AUTH_SECRET has a random issuer and was never rotated by keypin",
-  files: { "keypin.toml": RANDOM_MAP },
+  files: { "secretspec.toml": RANDOM_MAP },
   onePassword: {
     accounts: {
       "my.1password.com": {
@@ -1244,16 +1096,16 @@ export const scenarios: Record<string, Scenario> = {
   },
   "env-file": {
     ...ready,
-    about: "ready, plus a .env with a key keypin.toml doesn't map, to import",
+    about: "ready, plus a .env with a key secretspec.toml doesn't map, to import",
     files: { ...ready.files, ".env": "RESEND_API_KEY=verify-resend-2f7c\nPORT=3000\n" },
   },
   "ignored-keys": {
     ...ready,
     about:
-      "ready, plus a copied review workflow with two optional model keys, both in keypin.toml's ignore list",
+      "ready, plus a copied review workflow with two optional model keys, both in secretspec.toml's ignore list",
     files: {
       ...ready.files,
-      "keypin.toml": `ignore = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"]\n${MAP}`,
+      "secretspec.toml": `${MAP}\n[tool.keypin]\nignore = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"]\n`,
       ".github/workflows/review.yml": `on: pull_request
 jobs:
   review:
@@ -1287,10 +1139,10 @@ jobs:
   "unknown-account": {
     ...ready,
     about:
-      "keypin.toml pins a 1Password account the app doesn't have, and gh is signed out; nothing works",
+      "secretspec.toml names a 1Password account the app doesn't have, and gh is signed out; nothing works",
     files: {
       ...ready.files,
-      "keypin.toml": MAP.replace("my.1password.com", "no-such-account.invalid"),
+      "secretspec.toml": MAP.replace("my.1password.com", "no-such-account.invalid"),
       ".env": "PORT=3000\nDEBUG=1\n",
     },
     gh: "not logged in",
@@ -1311,7 +1163,7 @@ jobs:
       "ready, but signed in with a fake service account token for my.1password.com, the items in a vault named Deploy; 1Password takes 1.5s to answer",
     files: {
       ...ready.files,
-      "keypin.toml": MAP.replaceAll("op://Private/", "op://Deploy/"),
+      "secretspec.toml": MAP.replaceAll("@Private", "@Deploy"),
       ".env": "RESEND_API_KEY=verify-resend-2f7c\n",
     },
     onePassword: {
@@ -1324,21 +1176,6 @@ jobs:
       },
     },
     env: { KEYPIN_1PASSWORD: "service-account", OP_SERVICE_ACCOUNT_TOKEN: FAKE_TOKEN },
-  },
-  infisical,
-  bitwarden,
-  doppler,
-  awssm,
-  "infisical-token": {
-    ...infisical,
-    about: "infisical, but signed in with a machine identity's access token in INFISICAL_TOKEN",
-    infisical: {
-      organization: "acme",
-      projects: {},
-      ...infisical.infisical,
-      accessToken: "verify-access-token-8c3f",
-    },
-    env: { INFISICAL_TOKEN: "verify-access-token-8c3f" },
   },
   resend,
   random,
@@ -1389,13 +1226,13 @@ jobs:
   "supabase-functions": {
     ...ready,
     about: "ready, but STRIPE_KEY publishes to a Supabase project's Edge Function secrets",
-    files: { "keypin.toml": SUPABASE_FUNCTIONS_MAP },
+    files: { "secretspec.toml": SUPABASE_FUNCTIONS_MAP },
     env: { KEYPIN_SUPABASE_ACCESS_TOKEN: "sbp_verify_functions_token_6e1d" },
   },
   "supabase-functions-no-token": {
     ...ready,
     about: "supabase-functions, but KEYPIN_SUPABASE_ACCESS_TOKEN isn't set",
-    files: { "keypin.toml": SUPABASE_FUNCTIONS_MAP },
+    files: { "secretspec.toml": SUPABASE_FUNCTIONS_MAP },
     places: {
       "supabase-functions:abcdefghijklmnopqrst": {
         check: {
@@ -1416,7 +1253,12 @@ jobs:
     ...resend,
     about:
       "resend, but signed in with a fake service account token for my.1password.com, the items in a vault named Deploy",
-    files: { "keypin.toml": RESEND_MAP.replaceAll("op://Private/", "op://Deploy/") },
+    files: {
+      "secretspec.toml": RESEND_MAP.replaceAll("@Private", "@Deploy").replaceAll(
+        "op://Private/",
+        "op://Deploy/",
+      ),
+    },
     onePassword: {
       accounts: {
         "my.1password.com": {
@@ -1447,11 +1289,11 @@ jobs:
   },
   "resend-password": {
     ...resend,
-    about: "resend, but keypin.toml reads the key from the item's password field",
+    about: "resend, but secretspec.toml reads the key from the item's password field",
     files: {
-      "keypin.toml": RESEND_MAP.replace(
-        "mailer resend key/credential",
-        "mailer resend key/password",
+      "secretspec.toml": RESEND_MAP.replace(
+        'item = "mailer resend key", field = "credential"',
+        'item = "mailer resend key", field = "password"',
       ),
     },
     state: {
@@ -1474,10 +1316,10 @@ jobs:
   },
   "resend-removed": {
     ...resend,
-    about: "resend, but acme/mailer left keypin.toml after it got the old key",
+    about: "resend, but acme/mailer left secretspec.toml after it got the old key",
     files: {
-      "keypin.toml": RESEND_MAP.replace(
-        '[[keys.RESEND_API_KEY.prod.publish]]\nto = "github-actions"\nrepo = "acme/mailer"\n\n',
+      "secretspec.toml": RESEND_MAP.replace(
+        '  { to = "github-actions", repo = "acme/mailer" },\n',
         "",
       ),
     },
@@ -1486,9 +1328,9 @@ jobs:
     ...resend,
     about: "resend, but the new key may send only from the Resend domain dom-verify",
     files: {
-      "keypin.toml": RESEND_MAP.replace(
-        'permission = "sending_access"\n',
-        'permission = "sending_access"\ndomain_id = "dom-verify"\n',
+      "secretspec.toml": RESEND_MAP.replace(
+        'permission = "sending_access" }',
+        'permission = "sending_access", domain_id = "dom-verify" }',
       ),
     },
     resend: { keys: ["re-old"], domains: { "dom-verify": "mail.acme.dev" } },
@@ -1516,13 +1358,13 @@ jobs:
   vercel: {
     ...ready,
     about: "ready, but STRIPE_KEY publishes to a Vercel project's production environment",
-    files: { "keypin.toml": VERCEL_MAP },
+    files: { "secretspec.toml": VERCEL_MAP },
     env: { KEYPIN_VERCEL_TOKEN: "verify-vercel-token-8c2f" },
   },
   "vercel-no-token": {
     ...ready,
     about: "vercel, but KEYPIN_VERCEL_TOKEN isn't set",
-    files: { "keypin.toml": VERCEL_MAP },
+    files: { "secretspec.toml": VERCEL_MAP },
     places: {
       "vercel-project:billing/production": {
         check: {
@@ -1537,13 +1379,13 @@ jobs:
   netlify: {
     ...ready,
     about: "ready, but STRIPE_KEY publishes to a Netlify project's production deploy context",
-    files: { "keypin.toml": NETLIFY_MAP },
+    files: { "secretspec.toml": NETLIFY_MAP },
     env: { KEYPIN_NETLIFY_TOKEN: "verify-netlify-token-4e7a" },
   },
   "netlify-no-token": {
     ...ready,
     about: "netlify, but KEYPIN_NETLIFY_TOKEN isn't set",
-    files: { "keypin.toml": NETLIFY_MAP },
+    files: { "secretspec.toml": NETLIFY_MAP },
     places: {
       "netlify-project:billing.netlify.app/production": {
         check: {
@@ -1558,13 +1400,13 @@ jobs:
   convex: {
     ...ready,
     about: "ready, but STRIPE_KEY publishes to a Convex deployment's environment variables",
-    files: { "keypin.toml": CONVEX_MAP },
+    files: { "secretspec.toml": CONVEX_MAP },
     env: { KEYPIN_CONVEX_DEPLOY_KEY: "prod:happy-animal-123|verify-convex-key-61c2" },
   },
   "convex-no-key": {
     ...ready,
     about: "convex, but KEYPIN_CONVEX_DEPLOY_KEY isn't set",
-    files: { "keypin.toml": CONVEX_MAP },
+    files: { "secretspec.toml": CONVEX_MAP },
     places: {
       "convex-deployment:happy-animal-123.convex.cloud": {
         check: {
@@ -1579,13 +1421,13 @@ jobs:
   fly: {
     ...ready,
     about: "ready, but STRIPE_KEY publishes to a Fly.io app's secrets",
-    files: { "keypin.toml": FLY_MAP },
+    files: { "secretspec.toml": FLY_MAP },
     env: { KEYPIN_FLY_API_TOKEN: "FlyV1 fm2_verify-fly-token-4e2a" },
   },
   "fly-no-token": {
     ...ready,
     about: "fly, but KEYPIN_FLY_API_TOKEN isn't set",
-    files: { "keypin.toml": FLY_MAP },
+    files: { "secretspec.toml": FLY_MAP },
     places: {
       "fly-app:billing-api": {
         check: {
@@ -1600,13 +1442,13 @@ jobs:
   gitlab: {
     ...ready,
     about: "ready, but STRIPE_KEY publishes to a GitLab project's CI/CD variables",
-    files: { "keypin.toml": GITLAB_MAP },
+    files: { "secretspec.toml": GITLAB_MAP },
     env: { KEYPIN_GITLAB_TOKEN: "glpat-verify-gitlab-token-6d1e" },
   },
   "gitlab-no-login": {
     ...ready,
     about: "gitlab, but neither KEYPIN_GITLAB_TOKEN nor glab is there",
-    files: { "keypin.toml": GITLAB_MAP },
+    files: { "secretspec.toml": GITLAB_MAP },
     places: {
       "gitlab-project:acme/billing": {
         check: {
@@ -1621,7 +1463,7 @@ jobs:
   railway: {
     ...ready,
     about: "ready, but STRIPE_KEY publishes to a Railway service's production environment",
-    files: { "keypin.toml": RAILWAY_MAP },
+    files: { "secretspec.toml": RAILWAY_MAP },
     env: { KEYPIN_RAILWAY_TOKEN: "verify-railway-token-8b3d" },
   },
   cloudflare: cloudflareTokens,
@@ -1734,7 +1576,7 @@ jobs:
   },
   fresh: {
     ...ready,
-    about: "an empty git repository: no keypin.toml, not registered, nothing signed in",
+    about: "an empty git repository: no secretspec.toml, not registered, nothing signed in",
     files: {},
     registered: false,
     gh: "not logged in",

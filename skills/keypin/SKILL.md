@@ -34,7 +34,7 @@ from the vault only while a command runs. The steps below use 1Password; for `in
    secret no env file sets, whether it's in 1Password. If it's only in GitHub or Cloudflare, they make a new key at
    the provider and put it in 1Password.
 4. Import first. keypin won't import into a map with a `<...>`. For each env file, run check's suggested
-   `keypin import`, with `--env <name>` for another environment's file (`.env.staging` gets `--env staging`, once
+   `keypin import`, with `--profile <name>` for another environment's file (`.env.staging` gets `--profile staging`, once
    `environments` lists it; use the line check prints). Run each without `--yes`; it exits 3 with a command for the
    user. Give the user all of these commands together; each also asks for a 1Password approval. If import can't
    add a table to a key, ask the user for that reference and add it by hand.
@@ -44,7 +44,7 @@ from the vault only while a command runs. The steps below use 1Password; for `in
 
 ## Run
 
-`keypin run -- <command>` runs a command with the dev keys. With `--env prod`, add `--only NAME` for each key the
+`keypin run -- <command>` runs a command with the dev keys. With `--profile prod`, add `--only NAME` for each key the
 command needs: a CI token such as `CLOUDFLARE_API_TOKEN` replaces the tool's own login. If it warns that an env file
 still holds a key, tell the user to remove that line. A `.dev.vars` must go entirely, because `wrangler dev` ignores
 keypin's keys while it exists. Before the user deletes it, every secret in it must be imported; name each plain
@@ -72,7 +72,7 @@ also deploys.
   publish it, and remind them to revoke the old one.
 
 Details: [How it works](https://github.com/caiopizzol/keypin/blob/main/docs/introduction/how-it-works.md),
-[keypin.toml](https://github.com/caiopizzol/keypin/blob/main/docs/reference/keypin-toml.md),
+[keypin.toml](https://github.com/caiopizzol/keypin/blob/main/docs/reference/secretspec-toml.md),
 [Moving off env files](https://github.com/caiopizzol/keypin/blob/main/docs/guides/moving-off-env-files.md),
 [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/guides/publishing.md),
 [Rotating a key](https://github.com/caiopizzol/keypin/blob/main/docs/guides/rotating-a-key.md),

@@ -1,7 +1,7 @@
 $ keypin check
 exit 1
 
---- file keypin.toml ---
+--- file secretspec.toml ---
 
 --- calls vault ---
 
@@ -12,8 +12,7 @@ billing /work/billing · read 0 env files, 0 wrangler configs, 0 workflows
 2 things to do, in this order:
 1 Set up 1Password
   keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected.
-2 Map a key
-  /work/billing/keypin.toml maps no keys yet.
-    keypin import --help
+2 Fix /work/billing/secretspec.toml
+  /work/billing/secretspec.toml: [project] needs name, such as name = "web"
 
 --- stderr ---

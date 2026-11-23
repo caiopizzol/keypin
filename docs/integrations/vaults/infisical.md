@@ -74,7 +74,7 @@ a [`pull`](../../guides/publishing.md#pulling-in-ci) entry, then:
        with:
          node-version: 24
      - run: npm install -g keypin
-     - run: keypin run --env prod --only STRIPE_KEY -- <command>
+     - run: keypin run --profile prod --only STRIPE_KEY -- <command>
        env:
          KEYPIN_INFISICAL_IDENTITY_ID: <machine identity ID>
    ```

@@ -1,13 +1,19 @@
 $ keypin rotate AUTH_SECRET
 exit 0
 
---- file /work/billing/keypin.toml ---
+--- file /work/billing/secretspec.toml ---
 
-[1password]
-account = "my.1password.com"
+[project]
+name = "app"
+revision = "1.0"
 
-[keys.AUTH_SECRET.prod]
-from = "op://Private/app secret/password"
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[profiles.prod]
+AUTH_SECRET = { description = "auth secret", providers = ["vault"], ref = { item = "app secret", field = "password" } }
+
+[tool.keypin.prod.AUTH_SECRET]
 publish = [{ to = "github-actions", repo = "acme/app" }]
 issuer = { kind = "random" }
 
@@ -60,7 +66,7 @@ Nothing to revoke: the old value stops working once your apps use the new one.
     {
       "keyId": "AUTH_SECRET",
       "environment": "prod",
-      "mapFile": "/work/billing/keypin.toml",
+      "mapFile": "/work/billing/secretspec.toml",
       "source": {
         "kind": "1password",
         "vault": "Private",
@@ -91,7 +97,7 @@ Nothing to revoke: the old value stops working once your apps use the new one.
     {
       "keyId": "AUTH_SECRET",
       "environment": "prod",
-      "mapFile": "/work/billing/keypin.toml",
+      "mapFile": "/work/billing/secretspec.toml",
       "issuer": "random",
       "id": "AUTH_SECRET prod 2026-11-09 12:00:00 a1b2c3",
       "generation": "<generation of the new value>",

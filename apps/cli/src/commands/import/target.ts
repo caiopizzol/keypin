@@ -1,17 +1,15 @@
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import {
-  DEFAULT_ENVIRONMENTS,
   type Environment,
-  formatReference,
   isEnvironmentName,
   type KeysMap,
-  parseMap,
-  runEnvironment,
+  type MapResult,
+  projectDefaults,
   type VaultKinds,
+  vaultName,
 } from "@keypin/core";
 import { type Deps, UsageError } from "../../deps";
-import { MAP_FILE } from "../../project";
-import { TEMPLATE } from "../init";
+import { MAP_FILE, readMap } from "../../project";
 import { type Request } from "./request";
 import { type Import, type Entry, refFor } from "./plan";
 
@@ -21,6 +19,7 @@ interface Target {
   file: string;
   found: string | null;
   map: KeysMap | null;
+  project: string;
   account: string;
   vaults: VaultKinds;
 }
@@ -29,55 +28,54 @@ export function chosenEnvironment(
   requested: string | undefined,
   environments: readonly Environment[],
   runs: Environment,
-  target: Target,
 ): Environment {
   if (requested === undefined || environments.includes(requested)) return requested ?? runs;
   if (!isEnvironmentName(requested))
     throw new UsageError(
-      `--env is an environment name: a lowercase letter, then lowercase letters, digits and dashes`,
+      `--profile is a profile name: a lowercase letter, then lowercase letters, digits and dashes`,
     );
-  const last = environments.at(-1);
-  const listed =
-    environments.length > 1 && last !== undefined
-      ? [...environments.slice(0, -1), requested, last]
-      : [...environments, requested];
-  const known = environments.map((name) => `"${name}"`).join(", ");
-  const line = `environments = [${listed.map(str).join(", ")}]`;
-  throw new UsageError(
-    `--env ${requested} isn't ${target.map ? `one of ${target.file}'s environments` : "a default environment"} (${known}). To add it, ${target.found === null ? `create ${target.file} with the line ${line}` : `put ${line} at the top of ${target.file}`}`,
-  );
+  return requested;
 }
 
 export async function readTarget(deps: Deps, request: Request): Promise<Target> {
   const file = join(deps.cwd, MAP_FILE);
   const found = await deps.files.read(file);
-  if (found === null || found === TEMPLATE) {
+  const project = basename(deps.cwd);
+  const own = { file, found, project, vaults: deps.vaults };
+  if (found === null) {
     if (!request.account)
       throw new UsageError(
-        `--account is required: ${file} doesn't name a 1Password account yet, so give its sign-in address, such as my.1password.com`,
+        `--account is required: there's no ${file} yet, so give the 1Password account's sign-in address, such as my.1password.com`,
       );
-    return { file, found, map: null, account: request.account, vaults: deps.vaults };
+    return { ...own, map: null, account: request.account };
   }
-  const parsed = parseMap(found, file, deps.destinations, deps.issuers, deps.vaults, deps.pulls);
+  const parsed = readMap(deps, { file, text: found });
   if (!parsed.ok) throw new Error(`fix ${file} first: ${parsed.errors.join("; ")}`);
-  const pinned = parsed.map.pins["1password"];
-  const account = typeof pinned === "string" ? pinned : request.account;
-  const other = deps.vaults.find(
-    (vault) => !vault.newKeys && parsed.map.pins[vault.kind] !== undefined,
+  const refs = parsed.map.keys.flatMap((key) =>
+    Object.values(key.environments).flatMap((entry) => (entry ? [entry.ref] : [])),
   );
-  if (pinned === undefined && other)
+  const creates = deps.vaults.find((vault) => vault.newKeys);
+  const { uri } = projectDefaults(found);
+  const probe = { project: parsed.map.project, profile: "default", key: "KEY", ref: null };
+  const located = uri === null ? undefined : creates?.secretspec?.locate?.({ uri, ...probe });
+  const placed = typeof located === "object" ? [located] : [];
+  const mine = [...refs, ...placed].find((ref) => ref.kind === creates?.kind);
+  const other = refs.find((ref) => ref.kind !== creates?.kind);
+  if (!mine && other)
     throw new Error(
-      `import creates 1Password items, and ${file} reads from ${other.name}; ${other.addByHand?.(parsed.map) ?? `add the secrets in ${other.name} and map them with ${other.scheme} references`}`,
+      `import creates 1Password items, and ${file} reads from ${vaultName(other, deps.vaults)}`,
     );
+  const pinned = typeof mine?.account === "string" ? mine.account : undefined;
+  const account = pinned ?? request.account;
   if (!account)
     throw new UsageError(
-      `--account is required: ${file} has no [1password] account, so give its sign-in address, such as my.1password.com`,
+      `--account is required: ${file} reads no 1Password account yet, so give its sign-in address, such as my.1password.com`,
     );
   if (request.account && request.account !== account)
     throw new UsageError(
       `${file} uses 1Password account ${account}, not ${request.account}; drop --account`,
     );
-  return { file, found, map: parsed.map, account, vaults: deps.vaults };
+  return { ...own, project: parsed.map.project, map: parsed.map, account };
 }
 
 export function extendsKey(
@@ -91,30 +89,34 @@ export function extendsKey(
   }: { name: string; vault: string; item: string; environment: string },
 ): boolean {
   const entry: Entry = { name, ref: refFor(target.account, vault, item), existing: true };
-  return parseMap(
-    mapText(target, [entry], environment),
-    target.file,
-    deps.destinations,
-    deps.issuers,
-    deps.vaults,
-    deps.pulls,
-  ).ok;
+  return parse(deps, target, mapText(target, [entry], environment)).ok;
 }
 
 function keyTables(target: Target, imports: readonly Entry[], environment: string): string {
-  const runs = runEnvironment(target.map ?? { environments: DEFAULT_ENVIRONMENTS });
-  return imports
-    .map(({ name, ref, existing }) => {
-      const key = `\n[keys.${name}]\nrotate_every = ${str(ROTATE_EVERY)}\n`;
-      const from = str(formatReference(ref, target.vaults));
-      if (!existing && environment === runs) return `${key}${environment} = ${from}\n`;
-      return `${existing ? "" : key}\n[keys.${name}.${environment}]\nfrom = ${from}\n`;
+  const defaults = projectDefaults(target.found ?? "");
+  const [first] = imports;
+  const uri = first ? providerOf(first) : null;
+  const addsDefault = !defaults.declared && uri !== null;
+  const tables = imports
+    .map((entry) => {
+      const { name, ref, existing } = entry;
+      const own = providerOf(entry);
+      const providers =
+        own === defaults.uri || (addsDefault && own === uri) ? "" : `providers = [${str(own)}]\n`;
+      const declared = `\n[profiles.${environment}.${name}]\ndescription = ${str(name)}\n${providers}ref = { item = ${str(ref.item)}, field = ${str(ref.field)} }\n`;
+      const tool = `\n[tool.keypin.${environment}.${name}]\nrotate_every = ${str(ROTATE_EVERY)}\n`;
+      return existing ? declared : `${declared}${tool}`;
     })
     .join("");
+  return addsDefault ? `\n[defaults]\nproviders = [${str(uri)}]\n${tables}` : tables;
+}
+
+function providerOf({ ref }: Entry): string {
+  return `onepassword://${ref.account}@${ref.vault}`;
 }
 
 function mapBase(target: Target): string {
-  if (!target.map || target.found === null) return "";
+  if (target.found === null) return "";
   return target.found.endsWith("\n") || !target.found ? target.found : `${target.found}\n`;
 }
 
@@ -123,15 +125,18 @@ export function mapAddition(
   imports: readonly Entry[],
   environment: string,
 ): string {
-  const account = `[1password]\naccount = ${str(target.account)}\n`;
   const tables = keyTables(target, imports, environment);
-  if (!target.map)
-    return `# Written by keypin import. The values are in 1Password; this file holds only references.\n\n${account}${tables}`;
-  return `${target.map.pins["1password"] ? "" : `\n${account}`}${tables}`;
+  if (target.found !== null) return tables;
+  const project = `[project]\nname = ${str(target.project)}\nrevision = "1.0"\n`;
+  return `# Written by keypin import. The values are in 1Password; this file holds only names and places.\n\n${project}${tables}`;
 }
 
 export function mapText(target: Target, imports: readonly Entry[], environment: string): string {
   return `${mapBase(target)}${mapAddition(target, imports, environment)}`;
+}
+
+export function parse(deps: Deps, target: Target, text: string): MapResult {
+  return readMap(deps, { file: target.file, text });
 }
 
 export async function writeMap(
@@ -141,14 +146,7 @@ export async function writeMap(
   environment: string,
 ): Promise<void> {
   const text = mapText(target, imports, environment);
-  const check = parseMap(
-    text,
-    target.file,
-    deps.destinations,
-    deps.issuers,
-    deps.vaults,
-    deps.pulls,
-  );
+  const check = parse(deps, target, text);
   if (!check.ok)
     throw new Error(`the new ${target.file} doesn't parse: ${check.errors.join("; ")}`);
   const result =

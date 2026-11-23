@@ -30,17 +30,28 @@ jobs:
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
---- file keypin.toml ---
-[1password]
-account = "my.1password.com"
+--- file secretspec.toml ---
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.DATABASE_URL]
-rotate_every = "90d"
-dev = "op://Private/billing dev database url/password"
+[providers]
+vault = "onepassword://my.1password.com@Private"
 
-[keys.RESEND_API_KEY]
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+DATABASE_URL = { description = "DATABASE_URL", ref = { item = "billing dev database url", field = "password" } }
+RESEND_API_KEY = { description = "RESEND_API_KEY", ref = { item = "billing dev resend api key", field = "password" } }
+
+[profiles.prod]
+
+[tool.keypin.dev.DATABASE_URL]
 rotate_every = "90d"
-dev = "op://Private/billing dev resend api key/password"
+
+[tool.keypin.dev.RESEND_API_KEY]
+rotate_every = "90d"
 
 --- file wrangler.toml ---
 name = "billing-worker"
@@ -72,7 +83,7 @@ ids billing dev resend api key
 --- stdout ---
 {
   "folder": "/work/billing",
-  "map": "/work/billing/keypin.toml",
+  "map": "/work/billing/secretspec.toml",
   "registered": true,
   "read": {
     "env": [
@@ -178,7 +189,7 @@ ids billing dev resend api key
       "elsewhere": []
     }
   ],
-  "add": "[keys.STRIPE_API_KEY]\nrotate_every = \"90d\"\n\n[keys.STRIPE_API_KEY.prod]\nfrom = \"op://<vault>/<item>/<field>\"\n\n[[keys.STRIPE_API_KEY.prod.publish]]\nto = \"github-actions\"\nrepo = \"acme/billing\"\n\n[keys.RESEND_API_KEY.prod]\nfrom = \"op://<vault>/<item>/<field>\"\n\n[[keys.RESEND_API_KEY.prod.publish]]\nto = \"cloudflare-worker\"\naccount = \"11111111111111111111111111111111\"\nworker = \"billing-worker\"\n",
+  "add": "[profiles.prod.STRIPE_API_KEY]\ndescription = \"STRIPE_API_KEY\"\n\n[tool.keypin.prod.STRIPE_API_KEY]\nrotate_every = \"90d\"\n\n[[tool.keypin.prod.STRIPE_API_KEY.publish]]\nto = \"github-actions\"\nrepo = \"acme/billing\"\n\n[profiles.prod.RESEND_API_KEY]\ndescription = \"RESEND_API_KEY\"\n\n[[tool.keypin.prod.RESEND_API_KEY.publish]]\nto = \"cloudflare-worker\"\naccount = \"11111111111111111111111111111111\"\nworker = \"billing-worker\"\n",
   "unknown": [],
   "prerequisites": [
     {
@@ -189,14 +200,14 @@ ids billing dev resend api key
   ],
   "notes": [
     "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields",
-    ".env.prod sets STRIPE_API_KEY, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env.prod NAME... --env prod --vault <vault>",
-    ".env.production sets OTHER_KEY, which keypin.toml doesn't map; a plain setting can stay, and for a key run keypin import .env.production NAME... --vault <vault>, which maps them as dev; if they're the values of another environment, list it in environments and add --env <name>"
+    ".env.prod sets STRIPE_API_KEY, which secretspec.toml doesn't declare; a plain setting can stay, and for a key run keypin import .env.prod NAME... --profile prod --vault <vault>",
+    ".env.production sets OTHER_KEY, which secretspec.toml doesn't declare; a plain setting can stay, and for a key run keypin import .env.production NAME... --vault <vault>, which maps them as dev; if they're the values of another profile, add it to secretspec.toml and add --profile <name>"
   ],
   "problems": [
-    "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and keypin.toml doesn't publish it there. Add the TOML below",
-    "RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and keypin.toml doesn't publish it there. Add the TOML below",
-    ".dev.vars.prod sets RESEND_API_KEY, which keypin.toml maps with no prod entry; for a key run keypin import .dev.vars.prod RESEND_API_KEY --env prod --vault <vault>",
-    ".env.prod sets DATABASE_URL, which keypin.toml maps with no prod entry; for a key run keypin import .env.prod DATABASE_URL --env prod --vault <vault>"
+    "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there. Add the TOML below",
+    "RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and secretspec.toml doesn't publish it there. Add the TOML below",
+    ".dev.vars.prod sets RESEND_API_KEY, which secretspec.toml declares, but not in profile prod; for a key run keypin import .dev.vars.prod RESEND_API_KEY --profile prod --vault <vault>",
+    ".env.prod sets DATABASE_URL, which secretspec.toml declares, but not in profile prod; for a key run keypin import .env.prod DATABASE_URL --profile prod --vault <vault>"
   ],
   "ok": false
 }

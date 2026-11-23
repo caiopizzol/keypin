@@ -21,7 +21,7 @@ export function runtimeProblem(
 ): string | null {
   if (bun === undefined) return `keypin runs on Bun ${MIN_BUN} or newer, not Node.`;
   if (olderThan(bun, MIN_BUN)) {
-    return `keypin needs Bun ${MIN_BUN} or newer, because older Bun can read a keypin.toml wrong, and this is Bun ${bun}. Upgrade Bun, or run it with "bunx bun@${MIN_BUN} ${NO_ENV_FILE} ${script}".`;
+    return `keypin needs Bun ${MIN_BUN} or newer, because older Bun can read a secretspec.toml wrong, and this is Bun ${bun}. Upgrade Bun, or run it with "bunx bun@${MIN_BUN} ${NO_ENV_FILE} ${script}".`;
   }
   if (compiled) return compiledProblem(compiled);
   if (!execArgv.includes(NO_ENV_FILE)) {

@@ -26,7 +26,7 @@ const tokenFor = (address: string) =>
 const TOKEN = tokenFor("https://my.1password.com/");
 const SERVICE = { KEYPIN_1PASSWORD: "service-account", OP_SERVICE_ACCOUNT_TOKEN: TOKEN };
 const ID = "4Q6Z73JHSJESBM36AP3W57YOOU";
-const DEPLOY_MAP = BILLING_MAP.replaceAll("op://Private/", "op://Deploy/");
+const DEPLOY_MAP = BILLING_MAP.replaceAll("@Private", "@Deploy");
 
 function sdk(items: string[] = ["billing stripe api key"]) {
   const calls: string[] = [];
@@ -69,7 +69,7 @@ function opened(env: Record<string, string>, client = sdk().client) {
 
 function project(map = DEPLOY_MAP, env: Record<string, string> = SERVICE, client = sdk()) {
   const disk = memoryFiles({
-    "/work/billing/keypin.toml": map,
+    "/work/billing/secretspec.toml": map,
     [REGISTRY]: registryWith("/work/billing"),
   });
   const onePassword = opened(env, client.client);
@@ -191,7 +191,7 @@ describe("a token without KEYPIN_1PASSWORD, on a machine without the desktop app
     });
     const run = fakeDeps({
       disk: memoryFiles({
-        "/work/billing/keypin.toml": map,
+        "/work/billing/secretspec.toml": map,
         [REGISTRY]: registryWith("/work/billing"),
       }),
       deps: {
@@ -239,7 +239,7 @@ describe("keypin check with a service account", () => {
     expect(await cli(["check"], run.deps)).toBe(0);
     expect(run.stdout.text.match(/Note: individual 1Password accounts share/g)).toHaveLength(1);
     expect(run.stdout.text).toContain(
-      "Note: individual 1Password accounts share the sign-in address my.1password.com, so keypin can't prove the service account belongs to the account keypin.toml pins; the vaults granted to the service account are what limit it\n",
+      "Note: individual 1Password accounts share the sign-in address my.1password.com, so keypin can't prove the service account belongs to the account secretspec.toml names; the vaults granted to the service account are what limit it\n",
     );
   });
 
@@ -279,7 +279,7 @@ describe("keypin check with a service account", () => {
     expect(run.calls).toEqual([]);
     expect(run.connects).toEqual([]);
     expect(run.stdout.text).toContain(
-      "Sign in to 1Password with the service account\n  Use a service account token for the account keypin.toml pins; OP_SERVICE_ACCOUNT_TOKEN signs in to my.1password.com.",
+      "Sign in to 1Password with the service account\n  Use a service account token for the account secretspec.toml names; OP_SERVICE_ACCOUNT_TOKEN signs in to my.1password.com.",
     );
     expect(run.stdout.text).not.toContain("1Password app lists");
   });
@@ -290,7 +290,7 @@ describe("keypin check with a service account", () => {
     expect(run.connects).toEqual(["token"]);
     expect(run.calls).toEqual(["vaults.list", "items.list"]);
     expect(run.stdout.text.match(/^Note: .*service account.*$/gm)).toEqual([
-      `Note: keypin.toml pins the account ID ${ID}, which a service account token can't be checked against, so the vaults granted to the service account are what limit it`,
+      `Note: secretspec.toml names the account ID ${ID}, which a service account token can't be checked against, so the vaults granted to the service account are what limit it`,
     ]);
   });
 
@@ -305,7 +305,7 @@ describe("keypin check with a service account", () => {
     const run = project(BILLING_MAP);
     expect(await cli(["check"], run.deps)).toBe(1);
     expect(run.stdout.text).toContain(
-      `service accounts can't open the built-in vault "Private"; move the item to a vault you create, update its reference in keypin.toml, and grant the service account read access to that vault`,
+      `service accounts can't open the built-in vault "Private"; move the item to a vault you create, update its vault in secretspec.toml, and grant the service account read access to that vault`,
     );
     expect(run.stdout.text).not.toContain("Sign in to 1Password");
   });
@@ -339,12 +339,12 @@ describe("keypin import with a service account", () => {
   test("saves the new item to a vault the service account can write to", async () => {
     const run = importing();
     expect(await cli(run.args, run.deps)).toBe(0);
-    expect(run.fake.effects).toEqual(["1password create vault-1/billing dev stripe key"]);
+    expect(run.fake.effects).toEqual(["1password create vault-1/billing default stripe key"]);
     expect(run.fake.calls.create[0]?.fields).toContainEqual(
       expect.objectContaining({ id: "password", value: SENTINEL }),
     );
-    expect(run.disk.contents.get("/work/billing/keypin.toml")).toContain(
-      'dev = "op://Deploy/billing dev stripe key/password"',
+    expect(run.disk.contents.get("/work/billing/secretspec.toml")).toContain(
+      'providers = ["onepassword://my.1password.com@Deploy"]',
     );
   });
 
@@ -365,7 +365,7 @@ describe("keypin run with a service account", () => {
       values: { "web dev session secret": SENTINEL, "op token": "mapped-token-value" },
     });
     const run = fakeDeps({
-      disk: memoryFiles({ "/work/billing/keypin.toml": map }),
+      disk: memoryFiles({ "/work/billing/secretspec.toml": map }),
       backend: vault.vault,
       deps: {
         env: { PATH: "/usr/bin", ...env },
@@ -387,11 +387,11 @@ describe("keypin run with a service account", () => {
   });
 
   test("a mapped key named OP_SERVICE_ACCOUNT_TOKEN is refused, and nothing starts", async () => {
-    const map = `${WEB_MAP}\n[keys.OP_SERVICE_ACCOUNT_TOKEN]\nrotate_every = "never"\ndev = "op://Private/op token/password"\n`;
+    const map = `${WEB_MAP}\n\n[profiles.dev.OP_SERVICE_ACCOUNT_TOKEN]\ndescription = "OP_SERVICE_ACCOUNT_TOKEN"\nref = { item = "op token", field = "password" }\n\n[tool.keypin.dev.OP_SERVICE_ACCOUNT_TOKEN]\nrotate_every = "never"\n`;
     const run = running(SERVICE, map);
     expect(await cli(["run", "--", "env"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
-      "keypin.toml maps OP_SERVICE_ACCOUNT_TOKEN, which keypin uses to sign in; keypin run doesn't pass it to a command",
+      "secretspec.toml declares OP_SERVICE_ACCOUNT_TOKEN, which keypin uses to sign in; keypin run doesn't pass it to a command",
     );
     expect(run.launcher.launches).toEqual([]);
   });
@@ -445,7 +445,7 @@ describe("the approval hint", () => {
   }
 
   const files = {
-    "/work/web/keypin.toml": WEB_MAP,
+    "/work/web/secretspec.toml": WEB_MAP,
     [REGISTRY]: registryWith("/work/web"),
   };
   const service = { mode: "service-account", address: "my.1password.com" } as const;
@@ -488,15 +488,15 @@ describe("keypin status with a service account", () => {
     const run = fakeDeps({
       disk: memoryFiles({
         [REGISTRY]: registryWith("/work/billing", "/work/web"),
-        "/work/billing/keypin.toml": DEPLOY_MAP,
-        "/work/web/keypin.toml": other,
+        "/work/billing/secretspec.toml": DEPLOY_MAP,
+        "/work/web/secretspec.toml": other,
       }),
       deps: { signIn: () => onePassword.signIn, vault: () => onePassword.vault },
     });
     await cli(["status"], run.deps);
     expect(onePassword.connects).toEqual(["token"]);
     expect(run.stderr.text).toContain(
-      "the service account signs in to my.1password.com, but keypin.toml pins acme.1password.com",
+      "the service account signs in to my.1password.com, but secretspec.toml names acme.1password.com",
     );
     expect(run.stderr.text + run.stdout.text).not.toContain(TOKEN);
   });

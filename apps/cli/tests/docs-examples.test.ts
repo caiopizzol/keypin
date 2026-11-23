@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
-import { parseMap } from "@keypin/core";
+import { readSecretspec } from "@keypin/core";
 import { destinations, issuers, pulls, vaults } from "../src/start";
 
 const ROOT = join(import.meta.dirname, "../../..");
@@ -12,28 +12,24 @@ const FILES = [
     .map((name) => `docs/${name}`),
 ];
 const FENCE = /^( *)```toml\n([\s\S]*?)^\1```/gm;
-const KEY_TABLE = /^\[keys\.[^.\]\s]+(\.[^.\]\s]+)?\]$/m;
-const VAULT_PIN = /^\[(1password|infisical|bitwarden|doppler|awssm)\]$/m;
-const DOCS_PIN = '[1password]\naccount = "my.1password.com"\n\n';
+const SECRETSPEC = /^\[project\]$/m;
 
 const examples = FILES.flatMap((file) =>
   [...readFileSync(join(ROOT, file), "utf8").matchAll(FENCE)].flatMap(
     ([, indent = "", body = ""], index) => {
       const toml = body.replace(new RegExp(`^${indent}`, "gm"), "");
-      if (!KEY_TABLE.test(toml)) return [];
-      const map = VAULT_PIN.test(toml) ? toml : `${DOCS_PIN}${toml}`;
-      return [{ name: `${file} toml block ${index + 1}`, map }];
+      return SECRETSPEC.test(toml) ? [{ name: `${file} toml block ${index + 1}`, toml }] : [];
     },
   ),
 );
 
-describe("keypin.toml examples in the docs", () => {
-  test("the docs have examples with a [keys.<NAME>.<env>] table", () => {
-    expect(examples.length).toBeGreaterThanOrEqual(4);
+describe("secretspec.toml examples in the docs", () => {
+  test("the docs have a whole secretspec.toml example", () => {
+    expect(examples.length).toBeGreaterThanOrEqual(1);
   });
 
-  test.each(examples)("$name is a valid map", ({ name, map }) => {
-    const parsed = parseMap(map, name, destinations, issuers, vaults, pulls);
+  test.each(examples)("$name reads", ({ name, toml }) => {
+    const parsed = readSecretspec(toml, name, destinations, issuers, vaults, pulls);
     expect(parsed.ok ? [] : parsed.errors).toEqual([]);
   });
 });

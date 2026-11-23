@@ -13,7 +13,7 @@ import { fakeDeps, memoryFiles, parseJson, writableVault } from "./fakes";
 const OLD = "re_old_sentinel_value_4b1c";
 const ADMIN = "re_admin_sentinel_value_7e2f";
 const ITEM = "mailer resend key";
-const MAP_FILE = "/work/billing/keypin.toml";
+const MAP_FILE = "/work/billing/secretspec.toml";
 const ROTATION = "/work/billing/.keypin/rotation.json";
 const STATUS = "/work/billing/.keypin/status.json";
 const DESTINATION = "github-actions:acme/mailer:RESEND_API_KEY";
@@ -22,20 +22,28 @@ const RERUN =
   "cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts";
 
 const MAP = `
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.RESEND_API_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+RESEND_API_KEY = { description = "RESEND_API_KEY", ref = { item = "${ITEM}", field = "credential" } }
+STRIPE_KEY = { description = "STRIPE_KEY", ref = { item = "stripe key", field = "credential" } }
+
+[tool.keypin.prod.RESEND_API_KEY]
 rotate_every = "90d"
-
-[keys.RESEND_API_KEY.prod]
-from = "op://Private/${ITEM}/credential"
 publish = [{ to = "github-actions", repo = "acme/mailer" }]
 issuer = { kind = "resend", admin = "op://Private/resend admin key/credential", permission = "sending_access" }
 
-[keys.STRIPE_KEY]
+[tool.keypin.prod.STRIPE_KEY]
 rotate_every = "30d"
-prod = { from = "op://Private/stripe key/credential", publish = [{ to = "github-actions", repo = "acme/mailer" }] }
+publish = [{ to = "github-actions", repo = "acme/mailer" }]
 `;
 
 const TWO_REPOS = MAP.replace(
@@ -626,15 +634,19 @@ describe("keypin rotate --check, the setup check a workflow runs before the firs
 
   test("the next step keeps the environment it checked", async () => {
     const run = ci(
-      await world(MAP.replace("[keys.RESEND_API_KEY.prod]", "[keys.RESEND_API_KEY.dev]")),
+      await world(
+        MAP.replace("[profiles.prod]\nRESEND_API_KEY", "[profiles.dev]\nRESEND_API_KEY")
+          .replace("\nSTRIPE_KEY = ", "\n[profiles.prod]\nSTRIPE_KEY = ")
+          .replace("[tool.keypin.prod.RESEND_API_KEY]", "[tool.keypin.dev.RESEND_API_KEY]"),
+      ),
     );
-    expect(await run.run("--check", "--env", "dev"), run.stderr.text).toBe(1);
+    expect(await run.run("--check", "--profile", "dev"), run.stderr.text).toBe(1);
     expect(run.stderr.text).toContain(
-      "Publish RESEND_API_KEY from your laptop (keypin publish RESEND_API_KEY --env dev), run keypin rotate --due --env dev there",
+      "Publish RESEND_API_KEY from your laptop (keypin publish RESEND_API_KEY --profile dev), run keypin rotate --due --profile dev there",
     );
   });
 
-  test("takes only --env", async () => {
+  test("takes only --profile", async () => {
     const run = ci(await world());
     for (const extra of [
       ["--due"],

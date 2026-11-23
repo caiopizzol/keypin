@@ -1,4 +1,4 @@
-$ keypin import .env.production --env prod --vault 'App Secrets' --account my.1password.com --yes
+$ keypin import .env.production --profile prod --vault 'App Secrets' --account my.1password.com --yes
 exit 0
 
 --- file /work/billing/.env ---
@@ -31,14 +31,14 @@ ok     Listed the items in vault App Secrets of 1Password account my.1password.c
 Plan
   + STRIPE_KEY  op://App Secrets/billing prod stripe key/password  create, rotated 2026-11-09
   + NEW_KEY     op://App Secrets/billing prod new key/password     create, rotated 2026-11-09
-Map: write /work/billing/keypin.toml and register /work/billing
+Map: write /work/billing/secretspec.toml and register /work/billing
 
 ok     Created "billing prod stripe key" in vault App Secrets
 ok     Created "billing prod new key" in vault App Secrets
-ok     Mapped STRIPE_KEY, NEW_KEY in /work/billing/keypin.toml
+ok     Mapped STRIPE_KEY, NEW_KEY in /work/billing/secretspec.toml
 ok     registered (1 project)
 
-The imported values are now in 1Password, and keypin run --env prod -- <command> provides them. keypin left /work/billing/.env.production as it is.
+The imported values are now in 1Password, and keypin run --profile prod -- <command> provides them. keypin left /work/billing/.env.production as it is.
 Nothing else is set in it. Delete it and stop loading it.
 
 --- wrote /home/me/.config/keypin/registry.json ---
@@ -50,20 +50,26 @@ Nothing else is set in it. Delete it and stop loading it.
   "shared": []
 }
 
---- wrote /work/billing/keypin.toml ---
-# Written by keypin import. The values are in 1Password; this file holds only references.
+--- wrote /work/billing/secretspec.toml ---
+# Written by keypin import. The values are in 1Password; this file holds only names and places.
 
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.STRIPE_KEY]
+[defaults]
+providers = ["onepassword://my.1password.com@App Secrets"]
+
+[profiles.prod.STRIPE_KEY]
+description = "STRIPE_KEY"
+ref = { item = "billing prod stripe key", field = "password" }
+
+[tool.keypin.prod.STRIPE_KEY]
 rotate_every = "90d"
 
-[keys.STRIPE_KEY.prod]
-from = "op://App Secrets/billing prod stripe key/password"
+[profiles.prod.NEW_KEY]
+description = "NEW_KEY"
+ref = { item = "billing prod new key", field = "password" }
 
-[keys.NEW_KEY]
+[tool.keypin.prod.NEW_KEY]
 rotate_every = "90d"
-
-[keys.NEW_KEY.prod]
-from = "op://App Secrets/billing prod new key/password"

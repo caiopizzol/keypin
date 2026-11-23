@@ -36,30 +36,48 @@ const forge: IssuerKind<ForgeSpec> = {
 };
 
 const MAP = `
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.FORGE_TOKEN.prod]
-from = "op://Private/forge token/credential"
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+FORGE_TOKEN = { description = "FORGE_TOKEN", ref = { item = "forge token", field = "credential" } }
+
+[tool.keypin.prod.FORGE_TOKEN]
 publish = [{ to = "github-actions", repo = "acme/forge" }]
 issuer = { kind = "forge", admin = "op://Private/forge admin/credential", scope = "deploy" }
 `;
 
 const RESEND_MAP = `
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.MAILER_KEY.prod]
-from = "op://Private/mailer key/credential"
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+MAILER_KEY = { description = "MAILER_KEY", ref = { item = "mailer key", field = "credential" } }
+
+[tool.keypin.prod.MAILER_KEY]
 publish = [{ to = "github-actions", repo = "acme/mailer" }]
 issuer = { kind = "resend", admin = "op://Private/resend admin/credential", permission = "full_access" }
 `;
 
 describe("an issuer kind defined outside keypin", () => {
-  test("parses from keypin.toml, rotates through its own issuer and records its kind", async () => {
+  test("parses from secretspec.toml, rotates through its own issuer and records its kind", async () => {
     log.length = 0;
     const kinds = [...issuers, forge];
-    const disk = memoryFiles({ "/work/billing/keypin.toml": MAP });
+    const disk = memoryFiles({ "/work/billing/secretspec.toml": MAP });
     const vault = writableVault({ "forge token": "forge-old-value", "forge admin": "forge-admin" });
     const fake = fakeDeps({
       disk,
@@ -83,7 +101,7 @@ describe("an issuer kind defined outside keypin", () => {
   });
 
   test("an unknown kind lists the kinds keypin has", async () => {
-    const fake = fakeDeps({ disk: memoryFiles({ "/work/billing/keypin.toml": MAP }) });
+    const fake = fakeDeps({ disk: memoryFiles({ "/work/billing/secretspec.toml": MAP }) });
     await cli(["rotate", "FORGE_TOKEN"], fake.deps);
     expect(fake.stderr.text).toContain(
       `issuer: field "kind" must be one of: resend, neon, openai, supabase, cloudflare, openrouter, google, google-service-account, elevenlabs, aws, sendgrid, twilio, xai, mongodb-atlas`,
@@ -107,7 +125,7 @@ describe("the issuer keypin connects", () => {
   });
 
   test("a Resend rotation saves issuer resend and Resend's key id in state.json", async () => {
-    const disk = memoryFiles({ "/work/billing/keypin.toml": RESEND_MAP });
+    const disk = memoryFiles({ "/work/billing/secretspec.toml": RESEND_MAP });
     const vault = writableVault({ "mailer key": "re_old", "resend admin": "re_admin" });
     const fetch = resendFetch({
       tokenPrefix: "re_new_",

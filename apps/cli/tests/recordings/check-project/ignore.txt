@@ -21,36 +21,47 @@ DATABASE_URL=
             ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
   
 
---- file keypin.toml ---
+--- file secretspec.toml ---
+[project]
+name = "billing"
+revision = "1.0"
+
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+DATABASE_URL = { description = "DATABASE_URL", ref = { item = "billing dev database url", field = "password" } }
+RESEND_API_KEY = { description = "RESEND_API_KEY", ref = { item = "billing dev resend api key", field = "password" } }
+
+[profiles.prod]
+
+[tool.keypin.dev.DATABASE_URL]
+rotate_every = "90d"
+
+[tool.keypin.dev.RESEND_API_KEY]
+rotate_every = "90d"
+
+
+[profiles.prod.RESEND_API_KEY]
+description = "RESEND_API_KEY"
+ref = { item = "billing prod resend api key", field = "password" }
+
+[profiles.prod.STRIPE_API_KEY]
+description = "STRIPE_API_KEY"
+ref = { item = "billing prod stripe api key", field = "password" }
+
+[tool.keypin.prod.RESEND_API_KEY]
+publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" }]
+
+[tool.keypin.prod.STRIPE_API_KEY]
+rotate_every = "90d"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
+
+[tool.keypin]
 ignore = ["OPENAI_API_KEY", "anthropic_api_key", "PORT", "UNUSED"]
-[1password]
-account = "my.1password.com"
-
-[keys.DATABASE_URL]
-rotate_every = "90d"
-dev = "op://Private/billing dev database url/password"
-
-[keys.RESEND_API_KEY]
-rotate_every = "90d"
-dev = "op://Private/billing dev resend api key/password"
-
-[keys.RESEND_API_KEY.prod]
-from = "op://Private/billing prod resend api key/password"
-
-[[keys.RESEND_API_KEY.prod.publish]]
-to = "cloudflare-worker"
-account = "11111111111111111111111111111111"
-worker = "billing-worker"
-
-[keys.STRIPE_API_KEY]
-rotate_every = "90d"
-
-[keys.STRIPE_API_KEY.prod]
-from = "op://Private/billing prod stripe api key/password"
-
-[[keys.STRIPE_API_KEY.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
 
 --- file wrangler.toml ---
 name = "billing-worker"
@@ -108,7 +119,7 @@ check github-actions:acme/billing
 --- stdout ---
 billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub acme/billing
 ok     3 keys, 2 destinations. Everything checks out.
-Note: keypin.toml ignores 4 keys
+Note: secretspec.toml ignores 4 keys
 
 --- stderr ---
 ok     Looked up 4 items in 1Password account my.1password.com, not the values

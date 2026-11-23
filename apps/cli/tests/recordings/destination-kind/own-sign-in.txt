@@ -1,16 +1,24 @@
 $ keypin check
 exit 0
 
---- file /work/billing/keypin.toml ---
+--- file /work/billing/secretspec.toml ---
 
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.API_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+API_KEY = { description = "API_KEY", ref = { item = "api key", field = "password" } }
+
+[tool.keypin.prod.API_KEY]
 rotate_every = "90d"
-prod = { from = "op://Private/api key/password", publish = [
-  { to = "shelf", account = "library", shelf = "top" },
-] }
+publish = [{ to = "shelf", account = "library", shelf = "top" }]
 
 --- given shelf CLI ---
 "not installed"

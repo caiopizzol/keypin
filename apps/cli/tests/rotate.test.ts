@@ -30,14 +30,21 @@ const GITHUB = "github-actions:acme/mailer";
 const VALUES = { "mailer resend key": OLD, "resend admin key": ADMIN };
 
 const MAP = `
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.RESEND_API_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+RESEND_API_KEY = { description = "RESEND_API_KEY", ref = { item = "mailer resend key", field = "credential" } }
+
+[tool.keypin.prod.RESEND_API_KEY]
 rotate_every = "90d"
-
-[keys.RESEND_API_KEY.prod]
-from = "op://Private/mailer resend key/credential"
 publish = [
   { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "mailer" },
   { to = "github-actions", repo = "acme/mailer" },
@@ -121,7 +128,7 @@ function resend(options: {
 }
 
 function unwritableState() {
-  const disk = memoryFiles({ "/work/billing/keypin.toml": MAP });
+  const disk = memoryFiles({ "/work/billing/secretspec.toml": MAP });
   const files = { ...disk.files };
   disk.files.write = async (path, text) => {
     if (path.startsWith(STATE)) throw new Error("EACCES: permission denied");
@@ -143,7 +150,7 @@ interface Setup extends FakeDestinationOptions, IssuerOptions {
 }
 
 function setup(options: Setup = {}) {
-  const disk = options.disk ?? memoryFiles({ "/work/billing/keypin.toml": MAP });
+  const disk = options.disk ?? memoryFiles({ "/work/billing/secretspec.toml": MAP });
   const vault = options.vault ?? writableVault(VALUES, options.failSave);
   const destinations = fakeDestinations(options);
   const issuer = fakeIssuer(options, options.made ?? vault.made);
@@ -354,7 +361,7 @@ describe("keypin rotate", () => {
 
   test("a rerun whose new key was deleted at Resend makes another, and names the old key it left", async () => {
     const keys = memoryKeys(["key-0"]);
-    const runs = { disk: memoryFiles({ "/work/billing/keypin.toml": MAP }) };
+    const runs = { disk: memoryFiles({ "/work/billing/secretspec.toml": MAP }) };
     const first = setup({ ...runs, answers: ["y"], resend: resend({ admin: ADMIN, keys }) });
     await first.run();
     const vault = first.vault;
@@ -470,7 +477,7 @@ describe("keypin rotate", () => {
   });
 
   test("a refused save whose state write fails says the revoked key needs no deleting", async () => {
-    const disk = memoryFiles({ "/work/billing/keypin.toml": MAP });
+    const disk = memoryFiles({ "/work/billing/secretspec.toml": MAP });
     const files = { ...disk.files };
     let stateWrites = 0;
     disk.files.write = async (path, text) => {
@@ -590,7 +597,7 @@ describe("keypin rotate", () => {
     const first = setup({ answers: ["y"] });
     await first.run();
     first.disk.contents.set(
-      "/work/billing/keypin.toml",
+      "/work/billing/secretspec.toml",
       MAP.replace('  { to = "github-actions", repo = "acme/mailer" },\n', ""),
     );
     const run = setup({ disk: first.disk, vault: first.vault, answers: ["y", "n"] });
@@ -656,10 +663,10 @@ describe("keypin rotate", () => {
 
   test("a key without an issuer says how to add one", async () => {
     const run = setup();
-    run.disk.contents.set("/work/billing/keypin.toml", MAP.replace(/\nissuer = .*\n/, "\n"));
+    run.disk.contents.set("/work/billing/secretspec.toml", MAP.replace(/\nissuer = .*\n/, "\n"));
     expect(await run.run()).toBe(1);
     expect(run.stderr.text).toContain(
-      'key "RESEND_API_KEY" prod has no issuer in /work/billing/keypin.toml, so keypin can\'t make a new key. Add one (see docs/guides/rotating-a-key.md), or rotate it by hand.',
+      "[tool.keypin.prod.RESEND_API_KEY] has no issuer in /work/billing/secretspec.toml, so keypin can't make a new key. Add one (see docs/guides/rotating-a-key.md), or rotate it by hand.",
     );
   });
 
@@ -780,7 +787,7 @@ describe("keypin rotate --discard", () => {
 
   async function unfinished(options: Setup = {}) {
     const disk = memoryFiles({
-      "/work/billing/keypin.toml": MAP,
+      "/work/billing/secretspec.toml": MAP,
       [ROTATION]: '{ "version": 1, "issued": [], "published": [] }\n',
     });
     const first = setup({ ...options, disk, answers: ["y"] });
@@ -971,11 +978,14 @@ describe("keypin rotate, for a key CI pulls from the vault", () => {
   const READER = `{ by = "github-actions", repo = "acme/jobs", environment = "production" }`;
   const pulled = (map: string) =>
     memoryFiles({
-      "/work/billing/keypin.toml": map.replace(/publish = \[[^\]]*\]/, `pull = [${READER}]`),
+      "/work/billing/secretspec.toml": map.replace(/publish = \[[^\]]*\]/, `pull = [${READER}]`),
     });
   const mixed = () =>
     memoryFiles({
-      "/work/billing/keypin.toml": MAP.replace("\nissuer = ", `\npull = [${READER}]\nissuer = `),
+      "/work/billing/secretspec.toml": MAP.replace(
+        "\nissuer = ",
+        `\npull = [${READER}]\nissuer = `,
+      ),
     });
 
   test("--yes won't reset a key keypin saved once the vault holds the key it replaced again", async () => {

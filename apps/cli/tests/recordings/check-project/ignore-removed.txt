@@ -21,35 +21,44 @@ DATABASE_URL=
             ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
   
 
---- file keypin.toml ---
-[1password]
-account = "my.1password.com"
+--- file secretspec.toml ---
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.DATABASE_URL]
-rotate_every = "90d"
-dev = "op://Private/billing dev database url/password"
+[providers]
+vault = "onepassword://my.1password.com@Private"
 
-[keys.RESEND_API_KEY]
-rotate_every = "90d"
-dev = "op://Private/billing dev resend api key/password"
+[defaults]
+providers = ["vault"]
 
-[keys.RESEND_API_KEY.prod]
-from = "op://Private/billing prod resend api key/password"
+[profiles.dev]
+DATABASE_URL = { description = "DATABASE_URL", ref = { item = "billing dev database url", field = "password" } }
+RESEND_API_KEY = { description = "RESEND_API_KEY", ref = { item = "billing dev resend api key", field = "password" } }
 
-[[keys.RESEND_API_KEY.prod.publish]]
-to = "cloudflare-worker"
-account = "11111111111111111111111111111111"
-worker = "billing-worker"
+[profiles.prod]
 
-[keys.STRIPE_API_KEY]
+[tool.keypin.dev.DATABASE_URL]
 rotate_every = "90d"
 
-[keys.STRIPE_API_KEY.prod]
-from = "op://Private/billing prod stripe api key/password"
+[tool.keypin.dev.RESEND_API_KEY]
+rotate_every = "90d"
 
-[[keys.STRIPE_API_KEY.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
+
+[profiles.prod.RESEND_API_KEY]
+description = "RESEND_API_KEY"
+ref = { item = "billing prod resend api key", field = "password" }
+
+[profiles.prod.STRIPE_API_KEY]
+description = "STRIPE_API_KEY"
+ref = { item = "billing prod stripe api key", field = "password" }
+
+[tool.keypin.prod.RESEND_API_KEY]
+publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" }]
+
+[tool.keypin.prod.STRIPE_API_KEY]
+rotate_every = "90d"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 
 --- file wrangler.toml ---
 name = "billing-worker"
@@ -111,31 +120,31 @@ billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub
     wrangler login
   Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
 2 Move .env's keys into 1Password
-  .env sets PORT, which keypin.toml doesn't map.
+  .env sets PORT, which secretspec.toml doesn't declare.
     keypin import .env PORT --vault <vault>
   Leave out a name that isn't a key; it stays in the file.
-3 Add the production keys to keypin.toml
-  OPENAI_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and keypin.toml doesn't publish it there.
-  ANTHROPIC_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and keypin.toml doesn't publish it there.
+3 Add the production keys to secretspec.toml
+  OPENAI_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there.
+  ANTHROPIC_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there.
   Replace each <...> with the real value; keypin rejects a map that still has one:
 
-[keys.OPENAI_API_KEY]
+[profiles.prod.OPENAI_API_KEY]
+description = "OPENAI_API_KEY"
+
+[tool.keypin.prod.OPENAI_API_KEY]
 rotate_every = "90d"
 
-[keys.OPENAI_API_KEY.prod]
-from = "op://<vault>/<item>/<field>"
-
-[[keys.OPENAI_API_KEY.prod.publish]]
+[[tool.keypin.prod.OPENAI_API_KEY.publish]]
 to = "github-actions"
 repo = "acme/billing"
 
-[keys.ANTHROPIC_API_KEY]
+[profiles.prod.ANTHROPIC_API_KEY]
+description = "ANTHROPIC_API_KEY"
+
+[tool.keypin.prod.ANTHROPIC_API_KEY]
 rotate_every = "90d"
 
-[keys.ANTHROPIC_API_KEY.prod]
-from = "op://<vault>/<item>/<field>"
-
-[[keys.ANTHROPIC_API_KEY.prod.publish]]
+[[tool.keypin.prod.ANTHROPIC_API_KEY.publish]]
 to = "github-actions"
 repo = "acme/billing"
 

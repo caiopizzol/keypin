@@ -45,7 +45,7 @@ describe("help", () => {
       deps: {
         cwd: "/work/billing",
         files: {
-          read: async () => "",
+          read: async () => `[project]\nname = "billing"\nrevision = "1.0"\n\n[profiles.default]\n`,
           write: async () => {},
           rename: async () => {},
           remove: async () => {},

@@ -32,6 +32,6 @@
 
 ## Reference
 
-- [keypin.toml](reference/keypin-toml.md)
+- [secretspec.toml](reference/secretspec-toml.md)
 - [Troubleshooting](reference/troubleshooting.md)
 - [Files and state](reference/files-and-state.md)

@@ -1,16 +1,23 @@
 $ keypin rotate RESEND_API_KEY --plan --yes
 exit 3
 
---- file /work/billing/keypin.toml ---
+--- file /work/billing/secretspec.toml ---
 
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.RESEND_API_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+RESEND_API_KEY = { description = "RESEND_API_KEY", ref = { item = "mailer resend key", field = "credential" } }
+
+[tool.keypin.prod.RESEND_API_KEY]
 rotate_every = "90d"
-
-[keys.RESEND_API_KEY.prod]
-from = "op://Private/mailer resend key/credential"
 publish = [
   { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "mailer" },
   { to = "github-actions", repo = "acme/mailer" },

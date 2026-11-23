@@ -20,24 +20,36 @@ jobs:
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
---- file keypin.toml ---
-[1password]
-account = "my.1password.com"
+--- file secretspec.toml ---
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.DATABASE_URL]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+DATABASE_URL = { description = "DATABASE_URL", ref = { item = "billing dev database url", field = "password" } }
+RESEND_API_KEY = { description = "RESEND_API_KEY", ref = { item = "billing dev resend api key", field = "password" } }
+
+[profiles.prod]
+
+[tool.keypin.dev.DATABASE_URL]
 rotate_every = "90d"
-dev = "op://Private/billing dev database url/password"
 
-[keys.STRIPE_API_KEY.prod]
-  from = "op://Private/billing prod stripe api key/password"
-
-  [[keys.STRIPE_API_KEY.prod.publish]]
-  to = "github-actions"
-  repo = "acme/billing"
-
-  [keys.RESEND_API_KEY]
+[tool.keypin.dev.RESEND_API_KEY]
 rotate_every = "90d"
-dev = "op://Private/billing dev resend api key/password"
+
+[profiles.prod.STRIPE_API_KEY]
+description = "STRIPE_API_KEY"
+ref = { item = "billing prod stripe api key", field = "password" }
+
+[[tool.keypin.prod.STRIPE_API_KEY.publish]]
+to = "github-actions"
+repo = "acme/billing"
 
 --- file wrangler.toml ---
 name = "billing-worker"
@@ -65,8 +77,8 @@ github acme/billing as null
 
 --- calls vault ---
 ids billing dev database url
-ids billing prod stripe api key
 ids billing dev resend api key
+ids billing prod stripe api key
 
 --- calls destination ---
 check github-actions:acme/billing
@@ -80,24 +92,24 @@ billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub
     wrangler login
   Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
 3 Move .env's keys into 1Password
-  .env sets NEW_KEY, which keypin.toml doesn't map.
+  .env sets NEW_KEY, which secretspec.toml doesn't declare.
     keypin import .env NEW_KEY --vault <vault>
   Leave out a name that isn't a key; it stays in the file.
-4 Add the production keys to keypin.toml
-  RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and keypin.toml doesn't publish it there.
+4 Add the production keys to secretspec.toml
+  RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and secretspec.toml doesn't publish it there.
   Replace each <...> with the real value; keypin rejects a map that still has one:
 
-[keys.RESEND_API_KEY.prod]
-from = "op://<vault>/<item>/<field>"
+[profiles.prod.RESEND_API_KEY]
+description = "RESEND_API_KEY"
 
-[[keys.RESEND_API_KEY.prod.publish]]
+[[tool.keypin.prod.RESEND_API_KEY.publish]]
 to = "cloudflare-worker"
 account = "11111111111111111111111111111111"
 worker = "billing-worker"
 
   Then run keypin check again.
 5 Publish STRIPE_API_KEY
-  STRIPE_API_KEY: keypin.toml publishes it to acme/billing, which doesn't have it yet.
+  STRIPE_API_KEY: secretspec.toml publishes it to acme/billing, which doesn't have it yet.
     keypin publish STRIPE_API_KEY
 
 --- stderr ---

@@ -1,31 +1,32 @@
 $ keypin rotate API_SECRET
 exit 0
 
---- file /work/billing/keypin.toml ---
+--- file /work/billing/secretspec.toml ---
 
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.API_SECRET]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+API_SECRET = { description = "API_SECRET", ref = { item = "api secret", field = "credential" } }
+API_KEY_ID = { description = "API_KEY_ID", ref = { item = "api key id", field = "credential" } }
+
+[tool.keypin.prod.API_SECRET]
 rotate_every = "90d"
-
-[keys.API_SECRET.prod]
-from = "op://Private/api secret/credential"
 publish = [
   { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "api" },
   { to = "github-actions", repo = "acme/api" },
 ]
+issuer = { kind = "paired", admin = "op://Private/keys admin/credential", key_id = "API_KEY_ID" }
 
-[keys.API_SECRET.prod.issuer]
-kind = "paired"
-admin = "op://Private/keys admin/credential"
-key_id = "API_KEY_ID"
-
-[keys.API_KEY_ID]
+[tool.keypin.prod.API_KEY_ID]
 rotate_every = "never"
-
-[keys.API_KEY_ID.prod]
-from = "op://Private/api key id/credential"
 publish = [
   { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "api" },
   { to = "github-actions", repo = "acme/api" },
@@ -92,7 +93,7 @@ ok     Keys  revoked AKID-0
     {
       "keyId": "API_SECRET",
       "environment": "prod",
-      "mapFile": "/work/billing/keypin.toml",
+      "mapFile": "/work/billing/secretspec.toml",
       "source": {
         "kind": "1password",
         "vault": "Private",
@@ -121,7 +122,7 @@ ok     Keys  revoked AKID-0
     {
       "keyId": "API_KEY_ID",
       "environment": "prod",
-      "mapFile": "/work/billing/keypin.toml",
+      "mapFile": "/work/billing/secretspec.toml",
       "source": {
         "kind": "1password",
         "vault": "Private",
@@ -150,7 +151,7 @@ ok     Keys  revoked AKID-0
     {
       "keyId": "API_SECRET",
       "environment": "prod",
-      "mapFile": "/work/billing/keypin.toml",
+      "mapFile": "/work/billing/secretspec.toml",
       "source": {
         "kind": "1password",
         "vault": "Private",
@@ -179,7 +180,7 @@ ok     Keys  revoked AKID-0
     {
       "keyId": "API_KEY_ID",
       "environment": "prod",
-      "mapFile": "/work/billing/keypin.toml",
+      "mapFile": "/work/billing/secretspec.toml",
       "source": {
         "kind": "1password",
         "vault": "Private",
@@ -210,7 +211,7 @@ ok     Keys  revoked AKID-0
     {
       "keyId": "API_SECRET",
       "environment": "prod",
-      "mapFile": "/work/billing/keypin.toml",
+      "mapFile": "/work/billing/secretspec.toml",
       "issuer": "paired",
       "id": "AKID-1",
       "generation": "7bc5b45e3f63f027",

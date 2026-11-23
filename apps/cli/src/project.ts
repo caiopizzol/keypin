@@ -1,8 +1,14 @@
 import { dirname, join } from "node:path";
-import { type Environment, type KeysMap, parseMap } from "@keypin/core";
+import {
+  type Environment,
+  type KeysMap,
+  type MapResult,
+  readSecretspec,
+  SECRETSPEC_FILE,
+} from "@keypin/core";
 import { type Deps, UsageError } from "./deps";
 
-export const MAP_FILE = "keypin.toml";
+export const MAP_FILE = SECRETSPEC_FILE;
 export const STATUS_FILE = ".keypin/status.json";
 export const ROTATION_FILE = ".keypin/rotation.json";
 
@@ -13,7 +19,16 @@ export async function findMap(deps: Deps): Promise<KeysMap> {
       `no ${MAP_FILE} in ${deps.cwd} or any folder above it; run "keypin init" first`,
     );
   }
-  const result = parseMap(
+  const result = readMap(deps, found);
+  if (!result.ok) throw new Error(result.errors.join("\n"));
+  return result.map;
+}
+
+export function readMap(
+  deps: Pick<Deps, "destinations" | "issuers" | "vaults" | "pulls">,
+  found: { file: string; text: string },
+): MapResult {
+  return readSecretspec(
     found.text,
     found.file,
     deps.destinations,
@@ -21,8 +36,6 @@ export async function findMap(deps: Deps): Promise<KeysMap> {
     deps.vaults,
     deps.pulls,
   );
-  if (!result.ok) throw new Error(result.errors.join("\n"));
-  return result.map;
 }
 
 export async function locateMap(
@@ -44,5 +57,5 @@ export function pickEnvironment(
 ): Environment {
   if (requested === undefined || map.environments.includes(requested)) return requested ?? fallback;
   const names = map.environments.map((name) => `"${name}"`).join(", ");
-  throw new UsageError(`--env is one of ${names} in ${map.file}, got "${requested}"`);
+  throw new UsageError(`--profile is one of ${names} in ${map.file}, got "${requested}"`);
 }

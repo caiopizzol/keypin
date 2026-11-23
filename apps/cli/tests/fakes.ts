@@ -408,28 +408,50 @@ function listMemoryFolder(disk: ReturnType<typeof memoryFiles>, path: string): F
 }
 
 export const BILLING_MAP = `
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.STRIPE_API_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+STRIPE_API_KEY = { description = "STRIPE_API_KEY", ref = { item = "billing stripe api key", field = "password" } }
+
+[profiles.prod]
+STRIPE_API_KEY = { description = "STRIPE_API_KEY", ref = { item = "billing stripe api key", field = "password" } }
+
+[tool.keypin.prod.STRIPE_API_KEY]
 rotate_every = "365d"
-dev = "op://Private/billing stripe api key/password"
-prod = { from = "op://Private/billing stripe api key/password", publish = [
+publish = [
   { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
   { to = "github-actions", repo = "acme/billing" },
-] }
+]
 `;
 
 export const WEB_MAP = `
-[1password]
-account = "my.1password.com"
+[project]
+name = "web"
+revision = "1.0"
 
-[keys.SESSION_SECRET]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+SESSION_SECRET = { description = "SESSION_SECRET", ref = { item = "web dev session secret", field = "password" } }
+
+[profiles.prod]
+SESSION_SECRET = { description = "SESSION_SECRET", ref = { item = "web prod session secret", field = "password" } }
+
+[tool.keypin.prod.SESSION_SECRET]
 rotate_every = "180d"
-dev = "op://Private/web dev session secret/password"
-prod = { from = "op://Private/web prod session secret/password", publish = [
-  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "web" },
-] }
+publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "web" }]
 `;
 
 export const registryWith = (...projects: string[]) => JSON.stringify({ version: 1, projects });

@@ -1,16 +1,24 @@
 $ keypin check
 exit 1
 
---- file /work/billing/keypin.toml ---
+--- file /work/billing/secretspec.toml ---
 
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.API_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+API_KEY = { description = "API_KEY", ref = { item = "api key", field = "password" } }
+
+[tool.keypin.prod.API_KEY]
 rotate_every = "90d"
-prod = { from = "op://Private/api key/password", publish = [
-  { to = "shelf", account = "library", shelf = "top" },
-] }
+publish = [{ to = "shelf", account = "library", shelf = "top" }]
 
 --- file /work/billing/shelf.json ---
 {"account":"library","shelf":"bottom","needs":["NEW_KEY"]}
@@ -24,17 +32,17 @@ ids api key
 --- stdout ---
 billing /work/billing · read 0 env files, 0 wrangler configs, 1 shelf file, 0 workflows
 1 thing to do:
-1 Add the production keys to keypin.toml
-  NEW_KEY: shelf.json needs it; keypin.toml doesn't publish it to the bottom shelf.
+1 Add the production keys to secretspec.toml
+  NEW_KEY: shelf.json needs it; secretspec.toml doesn't publish it to the bottom shelf.
   Replace each <...> with the real value; keypin rejects a map that still has one:
 
-[keys.NEW_KEY]
+[profiles.prod.NEW_KEY]
+description = "NEW_KEY"
+
+[tool.keypin.prod.NEW_KEY]
 rotate_every = "90d"
 
-[keys.NEW_KEY.prod]
-from = "op://<vault>/<item>/<field>"
-
-[[keys.NEW_KEY.prod.publish]]
+[[tool.keypin.prod.NEW_KEY.publish]]
 to = "shelf"
 account = "library"
 shelf = "bottom"

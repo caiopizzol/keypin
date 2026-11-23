@@ -7,7 +7,6 @@ import {
   isVariableName,
   localDay,
   messageOf,
-  parseMap,
   runEnvironment,
   type Secret,
 } from "@keypin/core";
@@ -24,6 +23,7 @@ import {
   extendsKey,
   mapAddition,
   mapText,
+  parse,
   writeMap,
 } from "./target";
 
@@ -42,7 +42,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
   const target = await readTarget(deps, request);
   const environments = target.map?.environments ?? DEFAULT_ENVIRONMENTS;
   const runs = runEnvironment({ environments });
-  const environment = chosenEnvironment(request.env, environments, runs, target);
+  const environment = chosenEnvironment(request.env, environments, runs);
   const project = basename(deps.cwd);
   const file = envValues(text);
   const values = selected(file, request.names, envPath);
@@ -118,14 +118,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
   if (planned.length) {
     if (await deps.isLink(target.file))
       throw new Error(`${target.file} is a symbolic link; keypin import doesn't follow one`);
-    const check = parseMap(
-      mapText(target, planned, environment),
-      target.file,
-      deps.destinations,
-      deps.issuers,
-      deps.vaults,
-      deps.pulls,
-    );
+    const check = parse(deps, target, mapText(target, planned, environment));
     if (!check.ok)
       throw new Error(
         `adding the keys to ${target.file} wouldn't parse, so nothing was created: ${check.errors.join("; ")}`,
@@ -253,7 +246,7 @@ export async function importEnv(args: string[], deps: Deps): Promise<number> {
     return 1;
   }
   say(`${out.mark(true)} Mapped ${names(mapped.map((i) => i.name))} in ${target.file}`);
-  if (!target.map) await registerProject(deps, deps.cwd);
+  if (!target.map?.keys.length) await registerProject(deps, deps.cwd);
   say("");
 
   const left = [...skips.filter((skip) => skip.onlyInFile).map((skip) => skip.name), ...failed];

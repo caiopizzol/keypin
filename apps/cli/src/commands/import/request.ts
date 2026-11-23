@@ -17,7 +17,7 @@ export function parseRequest(args: string[]): Request {
     options: {
       vault: { type: "string" },
       account: { type: "string" },
-      env: { type: "string" },
+      profile: { type: "string" },
       yes: { type: "boolean", default: false },
     },
     allowPositionals: true,
@@ -37,7 +37,7 @@ export function parseRequest(args: string[]): Request {
     names: [...new Set(names)],
     vault,
     account,
-    env: values.env,
+    env: values.profile,
     yes: values.yes,
     args,
   };

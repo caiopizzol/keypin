@@ -60,12 +60,12 @@ export function plan(
   for (const fix of of("environments"))
     all(
       ORDER.environments,
-      `List an environment in ${MAP_FILE}`,
+      `Add a profile to ${MAP_FILE}`,
       [fix],
       [
         `${sentence(fix.why)} ${sentence(fix.at).slice(0, -1)}:`,
         `  ${fix.line}`,
-        "keypin run uses the first environment, keypin publish the last.",
+        "keypin run uses default, or the first profile; keypin publish uses production, or the last.",
       ],
     );
   const imports = of("import").filter((fix) => !report.ok || report.problems.includes(fix.text));
@@ -125,7 +125,7 @@ export function plan(
       steps.push({
         order: ORDER.map,
         title: "Map a key",
-        body: [`${report.map} maps no keys yet.`, "  keypin import --help"],
+        body: [`${report.map} declares no keys yet.`, "  keypin import --help"],
         covers: [empty],
       });
   }

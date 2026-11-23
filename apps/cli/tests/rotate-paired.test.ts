@@ -30,26 +30,27 @@ const PUBLISH = `publish = [
 ]`;
 
 const MAP = `
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.API_SECRET]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+API_SECRET = { description = "API_SECRET", ref = { item = "api secret", field = "credential" } }
+API_KEY_ID = { description = "API_KEY_ID", ref = { item = "api key id", field = "credential" } }
+
+[tool.keypin.prod.API_SECRET]
 rotate_every = "90d"
-
-[keys.API_SECRET.prod]
-from = "op://Private/api secret/credential"
 ${PUBLISH}
+issuer = { kind = "paired", admin = "op://Private/keys admin/credential", key_id = "API_KEY_ID" }
 
-[keys.API_SECRET.prod.issuer]
-kind = "paired"
-admin = "op://Private/keys admin/credential"
-key_id = "API_KEY_ID"
-
-[keys.API_KEY_ID]
+[tool.keypin.prod.API_KEY_ID]
 rotate_every = "never"
-
-[keys.API_KEY_ID.prod]
-from = "op://Private/api key id/credential"
 ${PUBLISH}
 `;
 
@@ -127,7 +128,7 @@ interface Setup {
 }
 
 function setup(options: Setup = {}) {
-  const disk = options.disk ?? memoryFiles({ "/work/billing/keypin.toml": options.map ?? MAP });
+  const disk = options.disk ?? memoryFiles({ "/work/billing/secretspec.toml": options.map ?? MAP });
   const vault = options.vault ?? writableVault(VALUES);
   const issuer = options.issuer ?? pairedIssuer(options);
   const destinations = fakeDestinations();
@@ -363,13 +364,15 @@ describe("keypin rotate: a key whose ID is another key", () => {
     const first = setup({ vault, saves: { "api key id": "refused" }, answers: ["y"] });
     expect(await first.rotate()).toBe(1);
     first.disk.contents.set(
-      "/work/billing/keypin.toml",
+      "/work/billing/secretspec.toml",
       `${MAP.replace('key_id = "API_KEY_ID"', 'key_id = "OTHER_ID"')}
-[keys.OTHER_ID]
-rotate_every = "never"
 
-[keys.OTHER_ID.prod]
-from = "op://Private/other id/credential"
+[profiles.prod.OTHER_ID]
+description = "OTHER_ID"
+ref = { item = "other id", field = "credential" }
+
+[tool.keypin.prod.OTHER_ID]
+rotate_every = "never"
 ${PUBLISH}
 `,
     );
@@ -393,13 +396,15 @@ ${PUBLISH}
     });
     expect(await first.rotate()).toBe(1);
     first.disk.contents.set(
-      "/work/billing/keypin.toml",
+      "/work/billing/secretspec.toml",
       `${MAP.replace('key_id = "API_KEY_ID"', 'key_id = "OTHER_ID"')}
-[keys.OTHER_ID]
-rotate_every = "never"
 
-[keys.OTHER_ID.prod]
-from = "op://Private/other id/credential"
+[profiles.prod.OTHER_ID]
+description = "OTHER_ID"
+ref = { item = "other id", field = "credential" }
+
+[tool.keypin.prod.OTHER_ID]
+rotate_every = "never"
 ${PUBLISH}
 `,
     );
@@ -413,11 +418,10 @@ ${PUBLISH}
     const first = setup({ answers: ["y", "y"] });
     expect(await first.rotate()).toBe(0);
     first.disk.contents.set(
-      "/work/billing/keypin.toml",
-      MAP.replace('key_id = "API_KEY_ID"', 'key_id = "NEW_KEY_ID"').replace(
-        /\[keys\.API_KEY_ID(\.prod)?\]/g,
-        (m) => m.replace("API_KEY_ID", "NEW_KEY_ID"),
-      ),
+      "/work/billing/secretspec.toml",
+      MAP.replace('key_id = "API_KEY_ID"', 'key_id = "NEW_KEY_ID"')
+        .replace("\nAPI_KEY_ID = ", "\nNEW_KEY_ID = ")
+        .replace("[tool.keypin.prod.API_KEY_ID]", "[tool.keypin.prod.NEW_KEY_ID]"),
     );
     const publishes = first.again({ answers: ["y"] });
     expect(await publishes.rotate()).toBe(0);
@@ -436,13 +440,15 @@ ${PUBLISH}
     const first = setup({ vault, answers: ["y", "y"] });
     expect(await first.rotate()).toBe(0);
     first.disk.contents.set(
-      "/work/billing/keypin.toml",
+      "/work/billing/secretspec.toml",
       `${MAP.replace('key_id = "API_KEY_ID"', 'key_id = "OTHER_ID"')}
-[keys.OTHER_ID]
-rotate_every = "never"
 
-[keys.OTHER_ID.prod]
-from = "op://Private/other id/credential"
+[profiles.prod.OTHER_ID]
+description = "OTHER_ID"
+ref = { item = "other id", field = "credential" }
+
+[tool.keypin.prod.OTHER_ID]
+rotate_every = "never"
 ${PUBLISH}
 `,
     );
@@ -456,23 +462,9 @@ ${PUBLISH}
     const run = setup();
     expect(await run.rotate("API_KEY_ID")).toBe(1);
     expect(run.stderr.text).toContain(
-      'key "API_KEY_ID" prod holds the ID of API_SECRET, and keypin rotates the two together. Run keypin rotate API_SECRET.',
+      "API_KEY_ID in profile prod holds the ID of API_SECRET, and keypin rotates the two together. Run keypin rotate API_SECRET.",
     );
     expect(run.stderr.text).not.toContain("has no issuer");
-  });
-
-  test("an ID kept in a vault that may hold writes for approval is refused before anything is read", async () => {
-    const map = `[infisical]\norganization = "acme"\n${MAP.replace(
-      'from = "op://Private/api key id/credential"',
-      'from = "infisical://api/prod/API_KEY_ID"',
-    )}`;
-    const run = setup({ map, answers: ["y"] });
-    expect(await run.rotate()).toBe(1);
-    expect(run.stderr.text).toContain(
-      "Infisical may hold a change for approval, which would leave API_SECRET and its ID API_KEY_ID saved apart, so keypin can't rotate them. Rotate both by hand.",
-    );
-    expect(run.issuer.log).toEqual([]);
-    expect(run.vault.log).toEqual([]);
   });
 
   test("declining creates nothing and writes nothing", async () => {

@@ -4,15 +4,28 @@ exit 1
 --- file /home/me/.config/keypin/registry.json ---
 {"version":1,"projects":["/work/web"]}
 
---- file /work/web/keypin.toml ---
+--- file /work/web/secretspec.toml ---
 
-[1password]
-account = "my.1password.com"
+[project]
+name = "web"
+revision = "1.0"
 
-[keys.SESSION_SECRET]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+SESSION_SECRET = { description = "SESSION_SECRET", ref = { item = "web dev session secret", field = "password" } }
+
+[profiles.prod]
+SESSION_SECRET = { description = "SESSION_SECRET", ref = { item = "web prod session secret", field = "password" } }
+
+[tool.keypin.prod.SESSION_SECRET]
 rotate_every = "180d"
-dev = "op://Private/web dev session secret/password"
-prod = { from = "op://Private/web prod session secret/password", pull = [{ by = "github-actions", repo = "acme/web" }, { by = "github-actions", repo = "acme/web", environment = "production" }], issuer = { kind = "resend", admin = "op://Private/resend admin/password", permission = "full_access" } }
+pull = [{ by = "github-actions", repo = "acme/web" }, { by = "github-actions", repo = "acme/web", environment = "production" }]
+issuer = { kind = "resend", admin = "op://Private/resend admin/password", permission = "full_access" }
 
 --- given rotated dates ---
 {

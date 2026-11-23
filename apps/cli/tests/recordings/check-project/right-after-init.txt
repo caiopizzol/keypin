@@ -20,31 +20,17 @@ jobs:
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
---- file keypin.toml ---
-# keypin.toml: this project's keys. It holds names and places, never values.
-# Uncomment and edit. Every field is checked; an unknown one is an error.
-#
-# The 1Password account the keys below read from: its sign-in address or account ID.
-# [1password]
-# account = "my.1password.com"
-#
-# A key, named after the variable your program reads.
-# [keys.EXAMPLE_API_KEY]
-# rotate_every = "180d" # <n>d, <n>w, <n>m or never
-# dev = "op://Private/my-project dev example api key/password" # what keypin run reads
-#
-# What keypin publish reads, and every place it writes it.
-# [keys.EXAMPLE_API_KEY.prod]
-# from = "op://Private/my-project prod example api key/password"
-#
-# [[keys.EXAMPLE_API_KEY.prod.publish]]
-# to = "cloudflare-worker"
-# account = "<cloudflare account ID>"
-# worker = "my-worker"
-#
-# [[keys.EXAMPLE_API_KEY.prod.publish]]
-# to = "github-actions"
-# repo = "owner/repo"
+--- file secretspec.toml ---
+# secretspec.toml: this project's secrets, by name and place, never values.
+# keypin's settings for each key go in [tool.keypin.<profile>.<KEY>].
+
+[project]
+name = "billing"
+revision = "1.0"
+
+[profiles.default]
+
+[profiles.production]
 
 --- file wrangler.toml ---
 name = "billing-worker"
@@ -80,35 +66,35 @@ billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub
 2 Set up 1Password
   keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected.
 3 Move .env's keys into 1Password
-  .env sets DATABASE_URL, RESEND_API_KEY, which keypin.toml doesn't map.
+  .env sets DATABASE_URL, RESEND_API_KEY, which secretspec.toml doesn't declare.
     keypin import .env DATABASE_URL RESEND_API_KEY --vault <vault> --account <1Password sign-in address>
   Leave out a name that isn't a key; it stays in the file.
-4 Add the production keys to keypin.toml
-  STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and keypin.toml doesn't publish it there.
-  RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and keypin.toml doesn't publish it there.
+4 Add the production keys to secretspec.toml
+  STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there.
+  RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and secretspec.toml doesn't publish it there.
   If you ran the import above, run keypin check again for this TOML instead; the import wrote some of these tables.
   Replace each <...> with the real value; keypin rejects a map that still has one:
 
-[1password]
-account = "<1Password sign-in address>"
+[defaults]
+providers = ["onepassword://<1Password sign-in address>@<vault>"]
 
-[keys.STRIPE_API_KEY]
+[profiles.production.STRIPE_API_KEY]
+description = "STRIPE_API_KEY"
+
+[tool.keypin.production.STRIPE_API_KEY]
 rotate_every = "90d"
 
-[keys.STRIPE_API_KEY.prod]
-from = "op://<vault>/<item>/<field>"
-
-[[keys.STRIPE_API_KEY.prod.publish]]
+[[tool.keypin.production.STRIPE_API_KEY.publish]]
 to = "github-actions"
 repo = "acme/billing"
 
-[keys.RESEND_API_KEY]
+[profiles.production.RESEND_API_KEY]
+description = "RESEND_API_KEY"
+
+[tool.keypin.production.RESEND_API_KEY]
 rotate_every = "90d"
 
-[keys.RESEND_API_KEY.prod]
-from = "op://<vault>/<item>/<field>"
-
-[[keys.RESEND_API_KEY.prod.publish]]
+[[tool.keypin.production.RESEND_API_KEY.publish]]
 to = "cloudflare-worker"
 account = "11111111111111111111111111111111"
 worker = "billing-worker"

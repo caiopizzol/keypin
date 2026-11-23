@@ -222,7 +222,7 @@ describe("diskFiles", () => {
   });
 
   test("a read refuses a named pipe at once instead of waiting for a writer", async () => {
-    const pipe = join(folder, "keypin.toml");
+    const pipe = join(folder, "secretspec.toml");
     const made = Bun.spawnSync(["mkfifo", pipe]);
     assert(made.exitCode === 0);
     const started = Date.now();
@@ -231,7 +231,7 @@ describe("diskFiles", () => {
   });
 
   test("a read returns a regular file's text and null for a missing one", async () => {
-    const path = join(folder, "keypin.toml");
+    const path = join(folder, "secretspec.toml");
     await writeFile(path, "[1password]\n");
     expect(await diskFiles.read(path)).toBe("[1password]\n");
     expect(await diskFiles.read(join(folder, "missing.toml"))).toBeNull();
@@ -297,7 +297,7 @@ describe("diskFiles", () => {
 
 describe("createFile", () => {
   test("creates a missing file, and leaves an existing one", async () => {
-    const path = join(folder, "keypin.toml");
+    const path = join(folder, "secretspec.toml");
     expect(await createFile(path, "first")).toBe("created");
     expect(await createFile(path, "second")).toBe("exists");
     expect(await readFile(path, "utf8")).toBe("first");
@@ -305,18 +305,18 @@ describe("createFile", () => {
 
   test("reports a symbolic link, dangling or not, and writes nothing through it", async () => {
     const outside = join(folder, "outside");
-    await symlink(outside, join(folder, "keypin.toml"));
-    expect(await createFile(join(folder, "keypin.toml"), "template")).toBe("link");
-    expect(await readdir(folder)).toEqual(["keypin.toml"]);
+    await symlink(outside, join(folder, "secretspec.toml"));
+    expect(await createFile(join(folder, "secretspec.toml"), "template")).toBe("link");
+    expect(await readdir(folder)).toEqual(["secretspec.toml"]);
     await writeFile(outside, "theirs");
-    expect(await createFile(join(folder, "keypin.toml"), "template")).toBe("link");
+    expect(await createFile(join(folder, "secretspec.toml"), "template")).toBe("link");
     expect(await readFile(outside, "utf8")).toBe("theirs");
   });
 });
 
 describe("replaceFile", () => {
   test("replaces a file only while it holds the expected text, and keeps its mode", async () => {
-    const path = join(folder, "keypin.toml");
+    const path = join(folder, "secretspec.toml");
     await writeFile(path, "template");
     await chmod(path, 0o640);
     expect(await replaceFile(path, "other", "draft")).toBe("changed");
@@ -324,11 +324,11 @@ describe("replaceFile", () => {
     expect(await replaceFile(path, "template", "the draft")).toBe("replaced");
     expect(await readFile(path, "utf8")).toBe("the draft");
     expect((await stat(path)).mode & 0o777).toBe(0o640);
-    expect(await readdir(folder)).toEqual(["keypin.toml"]);
+    expect(await readdir(folder)).toEqual(["secretspec.toml"]);
   });
 
   test("puts a complete new file in place, so a reader never sees it half written", async () => {
-    const path = join(folder, "keypin.toml");
+    const path = join(folder, "secretspec.toml");
     await writeFile(path, "template");
     const before = (await stat(path)).ino;
     expect(await replaceFile(path, "template", "the draft")).toBe("replaced");
@@ -336,25 +336,25 @@ describe("replaceFile", () => {
   });
 
   test("keeps a map an editor saves before the final check, and leaves no temporary file", async () => {
-    const path = join(folder, "keypin.toml");
+    const path = join(folder, "secretspec.toml");
     await writeFile(path, "template");
     const replace = replaceFileWith(() => editorSaves(path, "the editor's map"));
     expect(await replace(path, "template", "the draft")).toBe("changed");
     expect(await readFile(path, "utf8")).toBe("the editor's map");
-    expect(await readdir(folder)).toEqual(["keypin.toml"]);
+    expect(await readdir(folder)).toEqual(["secretspec.toml"]);
   });
 
   test("refuses a new file saved in place of the template, even with the same text", async () => {
-    const path = join(folder, "keypin.toml");
+    const path = join(folder, "secretspec.toml");
     await writeFile(path, "template");
     const replace = replaceFileWith(() => editorSaves(path, "template"));
     expect(await replace(path, "template", "the draft")).toBe("changed");
     expect(await readFile(path, "utf8")).toBe("template");
-    expect(await readdir(folder)).toEqual(["keypin.toml"]);
+    expect(await readdir(folder)).toEqual(["secretspec.toml"]);
   });
 
   test("refuses a symbolic link or a deleted file found at the final check", async () => {
-    const path = join(folder, "keypin.toml");
+    const path = join(folder, "secretspec.toml");
     const outside = join(folder, "outside");
     await writeFile(outside, "template");
     await writeFile(path, "template");
@@ -365,7 +365,7 @@ describe("replaceFile", () => {
     expect(await linked(path, "template", "the draft")).toBe("link");
     expect((await lstat(path)).isSymbolicLink()).toBe(true);
     expect(await readFile(outside, "utf8")).toBe("template");
-    expect((await readdir(folder)).toSorted()).toEqual(["keypin.toml", "outside"]);
+    expect((await readdir(folder)).toSorted()).toEqual(["outside", "secretspec.toml"]);
 
     await rm(path);
     await writeFile(path, "template");
@@ -377,13 +377,13 @@ describe("replaceFile", () => {
   test("reports a symbolic link and writes nothing through it", async () => {
     const outside = join(folder, "outside");
     await writeFile(outside, "template");
-    await symlink(outside, join(folder, "keypin.toml"));
-    expect(await replaceFile(join(folder, "keypin.toml"), "template", "draft")).toBe("link");
+    await symlink(outside, join(folder, "secretspec.toml"));
+    expect(await replaceFile(join(folder, "secretspec.toml"), "template", "draft")).toBe("link");
     expect(await readFile(outside, "utf8")).toBe("template");
   });
 
   test("a missing file is changed, not created", async () => {
-    expect(await replaceFile(join(folder, "keypin.toml"), "template", "draft")).toBe("changed");
+    expect(await replaceFile(join(folder, "secretspec.toml"), "template", "draft")).toBe("changed");
     expect(await readdir(folder)).toEqual([]);
   });
 });

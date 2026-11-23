@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import { stripVTControlCharacters } from "node:util";
 import { cli } from "../src/cli";
 import type { Deps } from "../src/deps";
-import { TEMPLATE } from "../src/commands/init";
+import { template } from "../src/commands/init";
 import {
   fakeDeps,
   fakeVault,
@@ -15,6 +15,8 @@ import {
   STATE,
 } from "./fakes";
 import { changes, recording } from "./recording";
+
+const TEMPLATE = template("billing");
 
 async function record(
   name: string,
@@ -47,8 +49,8 @@ const METADATA = {
 function setup(options: { failing?: string[]; state?: string } = {}) {
   const files = memoryFiles({
     [REGISTRY]: registryWith("/work/billing", "/work/web"),
-    "/work/billing/keypin.toml": BILLING_MAP,
-    "/work/web/keypin.toml": WEB_MAP,
+    "/work/billing/secretspec.toml": BILLING_MAP,
+    "/work/web/secretspec.toml": WEB_MAP,
     ...(options.state ? { [STATE]: options.state } : {}),
   });
   const fake = fakeVault({ metadata: METADATA, failing: options.failing });
@@ -95,7 +97,7 @@ describe("keypin status", () => {
     const state = JSON.stringify({
       version: 3,
       operations: [],
-      receipts: [{ ...sessionReceipt, mapFile: "/work/web/keypin.toml", source: null }],
+      receipts: [{ ...sessionReceipt, mapFile: "/work/web/secretspec.toml", source: null }],
     });
     const { deps, stdout } = setup({ state });
     expect(await cli(["status"], deps)).toBe(0);
@@ -107,14 +109,14 @@ describe("keypin status", () => {
   test("a destination added after the key was published is a problem", async () => {
     const files = memoryFiles({
       [REGISTRY]: registryWith("/work/web"),
-      "/work/web/keypin.toml": WEB_MAP.replace(
-        'worker = "web" },',
-        'worker = "web" },\n  { to = "github-actions", repo = "acme/web" },',
+      "/work/web/secretspec.toml": WEB_MAP.replace(
+        'worker = "web" }]',
+        'worker = "web" }, { to = "github-actions", repo = "acme/web" }]',
       ),
       [STATE]: JSON.stringify({
         version: 3,
         operations: [],
-        receipts: [{ ...sessionReceipt, mapFile: "/work/web/keypin.toml", source: null }],
+        receipts: [{ ...sessionReceipt, mapFile: "/work/web/secretspec.toml", source: null }],
       }),
     });
     const { deps, stdout } = fakeDeps({
@@ -153,7 +155,7 @@ describe("keypin status", () => {
   test("a key with no destinations has nothing to report", async () => {
     const files = memoryFiles({
       [REGISTRY]: registryWith("/work/billing"),
-      "/work/billing/keypin.toml": BILLING_MAP.replace(/publish = \[[\s\S]*?\] \}/, "}"),
+      "/work/billing/secretspec.toml": BILLING_MAP.replace(/publish = \[[\s\S]*?\n\]\n/, ""),
     });
     const run = fakeDeps({ disk: files, backend: fakeVault({ metadata: METADATA }).vault });
     const given = { "rotated dates": METADATA };
@@ -174,38 +176,41 @@ describe("keypin status", () => {
   test("a registered folder without a map, or with a bad one, is a problem", async () => {
     const files = memoryFiles({
       [REGISTRY]: registryWith("/work/billing", "/work/web"),
-      "/work/web/keypin.toml": "[keys.x]\nenv = 1\n",
+      "/work/web/secretspec.toml": "[keys.x]\nenv = 1\n",
     });
     const { deps, stdout } = fakeDeps({ disk: files });
     expect(await cli(["status"], deps)).toBe(1);
     expect(stdout.text).toContain("billing /work/billing\nweb /work/web\n\n2 problems\n");
-    expect(stdout.text).toContain("  /work/billing has no readable keypin.toml\n");
-    expect(stdout.text).toContain("  /work/web/keypin.toml: ");
+    expect(stdout.text).toContain("  /work/billing has no readable secretspec.toml\n");
+    expect(stdout.text).toContain("  /work/web/secretspec.toml: ");
   });
 
   test("a project still on the init template, or with no keys, is a problem that points at check", async () => {
-    for (const map of [TEMPLATE, `[1password]\naccount = "my.1password.com"\n`]) {
+    for (const map of [
+      TEMPLATE,
+      `[project]\nname = "billing"\nrevision = "1.0"\n\n[profiles.dev]\n\n[profiles.prod]\n`,
+    ]) {
       const files = memoryFiles({
         [REGISTRY]: registryWith("/work/billing"),
-        "/work/billing/keypin.toml": map,
+        "/work/billing/secretspec.toml": map,
       });
       const { deps, stdout, stderr } = fakeDeps({ disk: files });
       expect(await cli(["status"], deps)).toBe(1);
       expect(stdout.text).toContain(
-        "  /work/billing/keypin.toml maps no keys yet (it's empty, or still the keypin init template); run keypin check in /work/billing for what to add",
+        "  /work/billing/secretspec.toml maps no keys yet (it's empty, or still the keypin init template); run keypin check in /work/billing for what to add",
       );
       expect(stderr.text).toBe("");
     }
   });
 
-  test("an unreadable keypin.toml is reported for its project, and the others still show", async () => {
+  test("an unreadable secretspec.toml is reported for its project, and the others still show", async () => {
     for (const json of [false, true]) {
       const disk = memoryFiles({
         [REGISTRY]: registryWith("/work/billing", "/work/web"),
-        "/work/web/keypin.toml": WEB_MAP,
+        "/work/web/secretspec.toml": WEB_MAP,
       });
       disk.files.read = async (path) => {
-        if (path === "/work/billing/keypin.toml") throw new Error("EACCES: permission denied");
+        if (path === "/work/billing/secretspec.toml") throw new Error("EACCES: permission denied");
         return disk.contents.get(path) ?? null;
       };
       const { deps, stdout, stderr } = fakeDeps({
@@ -214,7 +219,7 @@ describe("keypin status", () => {
       });
       expect(await cli(json ? ["status", "--json"] : ["status"], deps)).toBe(1);
       expect(stderr.text).toContain(
-        "couldn't read /work/billing/keypin.toml: EACCES: permission denied",
+        "couldn't read /work/billing/secretspec.toml: EACCES: permission denied",
       );
       if (json) {
         const problems: unknown = expect.arrayContaining([
@@ -226,7 +231,7 @@ describe("keypin status", () => {
         });
       } else {
         expect(stdout.text).toMatch(/SESSION_SECRET {2}prod/);
-        expect(stdout.text).toContain("  /work/billing has no readable keypin.toml");
+        expect(stdout.text).toContain("  /work/billing has no readable secretspec.toml");
       }
     }
   });
@@ -236,7 +241,7 @@ describe("keypin status: a rotations.json left by keypin rotate", () => {
   test("is ignored, even when it isn't valid JSON", async () => {
     const files = memoryFiles({
       [REGISTRY]: registryWith("/work/web"),
-      "/work/web/keypin.toml": WEB_MAP,
+      "/work/web/secretspec.toml": WEB_MAP,
       "/home/me/.local/state/keypin/rotations.json": "{ not json",
     });
     const fake = fakeVault({ metadata: METADATA });
@@ -250,32 +255,42 @@ describe("keypin status: a rotations.json left by keypin rotate", () => {
 
 describe("keypin status: reads at a glance", () => {
   const ROTATIONS = `
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.LATE]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+LATE = { description = "LATE", ref = { item = "late", field = "password" } }
+YESTERDAY = { description = "YESTERDAY", ref = { item = "yesterday", field = "password" } }
+TODAY = { description = "TODAY", ref = { item = "today", field = "password" } }
+TOMORROW = { description = "TOMORROW", ref = { item = "tomorrow", field = "password" } }
+UNDATED = { description = "UNDATED", ref = { item = "undated", field = "password" } }
+FOREVER = { description = "FOREVER", ref = { item = "forever", field = "password" } }
+
+[tool.keypin.dev.LATE]
 rotate_every = "30d"
-dev = "op://Private/late/password"
 
-[keys.YESTERDAY]
+[tool.keypin.dev.YESTERDAY]
 rotate_every = "30d"
-dev = { from = "op://Private/yesterday/password", issuer = { kind = "resend", admin = "op://Private/resend admin/password", permission = "full_access" } }
+issuer = { kind = "resend", admin = "op://Private/resend admin/password", permission = "full_access" }
 
-[keys.TODAY]
+[tool.keypin.dev.TODAY]
 rotate_every = "30d"
-dev = "op://Private/today/password"
 
-[keys.TOMORROW]
+[tool.keypin.dev.TOMORROW]
 rotate_every = "30d"
-dev = "op://Private/tomorrow/password"
 
-[keys.UNDATED]
+[tool.keypin.dev.UNDATED]
 rotate_every = "30d"
-dev = "op://Private/undated/password"
 
-[keys.FOREVER]
+[tool.keypin.dev.FOREVER]
 rotate_every = "never"
-dev = "op://Private/forever/password"
 `;
   const ROTATED = {
     late: { rotated: "2026-10-05" },
@@ -288,7 +303,7 @@ dev = "op://Private/forever/password"
     fakeDeps({
       disk: memoryFiles({
         [REGISTRY]: registryWith("/home/me/code/app"),
-        "/home/me/code/app/keypin.toml": ROTATIONS,
+        "/home/me/code/app/secretspec.toml": ROTATIONS,
       }),
       backend: fakeVault({ metadata: ROTATED }).vault,
       deps: { styled: { stdout: styled, stderr: styled } },
@@ -302,7 +317,7 @@ dev = "op://Private/forever/password"
   test("a key due soon with destinations names the publish to run, and where", async () => {
     const files = memoryFiles({
       [REGISTRY]: registryWith("/work/web"),
-      "/work/web/keypin.toml": WEB_MAP,
+      "/work/web/secretspec.toml": WEB_MAP,
     });
     const { deps, stdout } = fakeDeps({
       disk: files,
@@ -321,7 +336,10 @@ dev = "op://Private/forever/password"
     const issuer = `issuer = { kind = "resend", admin = "op://Private/resend admin/password", permission = "full_access" }`;
     const files = memoryFiles({
       [REGISTRY]: registryWith("/work/web"),
-      "/work/web/keypin.toml": WEB_MAP.replace("] }", `], ${issuer} }`),
+      "/work/web/secretspec.toml": WEB_MAP.replace(
+        'worker = "web" }]',
+        `worker = "web" }]\n${issuer}`,
+      ),
     });
     return fakeDeps({
       disk: files,
@@ -346,10 +364,7 @@ dev = "op://Private/forever/password"
     const run = fakeDeps({
       disk: memoryFiles({
         [REGISTRY]: registryWith("/work/web"),
-        "/work/web/keypin.toml": WEB_MAP.replace(
-          /publish = \[[\s\S]*?\] \}/,
-          `${pull}, ${issuer} }`,
-        ),
+        "/work/web/secretspec.toml": WEB_MAP.replace(/publish = \[.*\]/, `${pull}\n${issuer}`),
       }),
       backend: fakeVault({
         metadata: { ...METADATA, "web prod session secret": { rotated: "2026-05-01" } },
@@ -371,8 +386,8 @@ dev = "op://Private/forever/password"
   test("groups keys under each project, in the registry's order", async () => {
     const files = memoryFiles({
       [REGISTRY]: registryWith("/work/web", "/home/me/code/billing"),
-      "/home/me/code/billing/keypin.toml": BILLING_MAP,
-      "/work/web/keypin.toml": WEB_MAP,
+      "/home/me/code/billing/secretspec.toml": BILLING_MAP,
+      "/work/web/secretspec.toml": WEB_MAP,
     });
     const { deps, stdout } = fakeDeps({
       disk: files,
@@ -389,7 +404,7 @@ dev = "op://Private/forever/password"
   test("a notice names the whole repository and environment, even when they contain environments/", async () => {
     const files = memoryFiles({
       [REGISTRY]: registryWith("/work/billing"),
-      "/work/billing/keypin.toml": BILLING_MAP.replace(
+      "/work/billing/secretspec.toml": BILLING_MAP.replace(
         '{ to = "github-actions", repo = "acme/billing" },',
         '{ to = "github-actions", repo = "acme/environments", environment = "production" },\n  { to = "github-actions", repo = "acme/billing", environment = "preview/environments/feature" },',
       ),
@@ -407,7 +422,7 @@ dev = "op://Private/forever/password"
   test("marks each destination that has a receipt, and names the place when one service has two", async () => {
     const files = memoryFiles({
       [REGISTRY]: registryWith("/work/billing"),
-      "/work/billing/keypin.toml": BILLING_MAP.replace(
+      "/work/billing/secretspec.toml": BILLING_MAP.replace(
         '{ to = "github-actions", repo = "acme/billing" },',
         '{ to = "github-actions", repo = "acme/billing" },\n  { to = "github-actions", repo = "acme/billing", environment = "production" },',
       ),
@@ -423,7 +438,7 @@ dev = "op://Private/forever/password"
             account: { pinned: "acme/billing", publisher: "acme", destinationAccount: "acme" },
             at: "2026-11-09T15:30:35Z",
             evidence: { versionId: "v1" },
-            mapFile: "/work/billing/keypin.toml",
+            mapFile: "/work/billing/secretspec.toml",
             source: null,
           },
         ],
@@ -466,7 +481,7 @@ dev = "op://Private/forever/password"
     const state = JSON.stringify({
       version: 3,
       operations: [],
-      receipts: [{ ...sessionReceipt, mapFile: "/work/web/keypin.toml", source: null }],
+      receipts: [{ ...sessionReceipt, mapFile: "/work/web/secretspec.toml", source: null }],
     });
     const run = setup({ state });
     const given = { "rotated dates": METADATA };
@@ -482,8 +497,8 @@ dev = "op://Private/forever/password"
       const { deps, stderr } = fakeDeps({
         disk: memoryFiles({
           [REGISTRY]: registryWith("/work/billing", "/work/web"),
-          "/work/billing/keypin.toml": BILLING_MAP,
-          "/work/web/keypin.toml": WEB_MAP,
+          "/work/billing/secretspec.toml": BILLING_MAP,
+          "/work/web/secretspec.toml": WEB_MAP,
         }),
         backend: {
           ...fake.vault,
@@ -537,7 +552,7 @@ describe("keypin status --write", () => {
   });
 
   test("a key with no rotated date is null", async () => {
-    const files = memoryFiles({ "/work/billing/keypin.toml": BILLING_MAP });
+    const files = memoryFiles({ "/work/billing/secretspec.toml": BILLING_MAP });
     const { deps } = fakeDeps({ disk: files, backend: fakeVault().vault });
     expect(await cli(["status", "--write"], deps)).toBe(0);
     expect(parseJson((await deps.files.read(FILE)) ?? "")).toEqual({
@@ -556,10 +571,10 @@ describe("keypin status --write", () => {
     );
   });
 
-  test("needs a keypin.toml, and takes no --json", async () => {
+  test("needs a secretspec.toml, and takes no --json", async () => {
     const empty = fakeDeps();
     expect(await cli(["status", "--write"], empty.deps)).toBe(1);
-    expect(empty.stderr.text).toContain("no keypin.toml in /work/billing");
+    expect(empty.stderr.text).toContain("no secretspec.toml in /work/billing");
     const both = setup();
     expect(await cli(["status", "--write", "--json"], both.deps)).toBe(2);
     expect(await both.deps.files.read(FILE)).toBeNull();

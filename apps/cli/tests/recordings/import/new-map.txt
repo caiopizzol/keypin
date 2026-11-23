@@ -12,8 +12,8 @@ app.key=sentinel-value-7f3a9c2e1d-dotted
 
 --- calls vault ---
 list my.1password.com App Secrets
-write billing dev stripe key
-write billing dev webhook secret
+write billing default stripe key
+write billing default webhook secret
 
 --- calls asked ---
 
@@ -25,15 +25,15 @@ Import /work/billing/.env  into 1Password account my.1password.com, vault App Se
 ok     Listed the items in vault App Secrets of 1Password account my.1password.com, not the values
 
 Plan
-  + STRIPE_KEY      op://App Secrets/billing dev stripe key/password      create, rotated 2026-11-09
-  + WEBHOOK_SECRET  op://App Secrets/billing dev webhook secret/password  create, rotated 2026-11-09
+  + STRIPE_KEY      op://App Secrets/billing default stripe key/password      create, rotated 2026-11-09
+  + WEBHOOK_SECRET  op://App Secrets/billing default webhook secret/password  create, rotated 2026-11-09
   - EMPTY           skipped: the value is empty
   - app.key         skipped: not a variable name (letters, digits and _, not a digit first)
-Map: write /work/billing/keypin.toml and register /work/billing
+Map: write /work/billing/secretspec.toml and register /work/billing
 
-ok     Created "billing dev stripe key" in vault App Secrets
-ok     Created "billing dev webhook secret" in vault App Secrets
-ok     Mapped STRIPE_KEY, WEBHOOK_SECRET in /work/billing/keypin.toml
+ok     Created "billing default stripe key" in vault App Secrets
+ok     Created "billing default webhook secret" in vault App Secrets
+ok     Mapped STRIPE_KEY, WEBHOOK_SECRET in /work/billing/secretspec.toml
 ok     registered (1 project)
 
 The imported values are now in 1Password, and keypin run -- <command> provides them. keypin left /work/billing/.env as it is.
@@ -49,16 +49,26 @@ Remove the STRIPE_KEY, WEBHOOK_SECRET lines from it: keypin run warns while an e
   "shared": []
 }
 
---- wrote /work/billing/keypin.toml ---
-# Written by keypin import. The values are in 1Password; this file holds only references.
+--- wrote /work/billing/secretspec.toml ---
+# Written by keypin import. The values are in 1Password; this file holds only names and places.
 
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.STRIPE_KEY]
+[defaults]
+providers = ["onepassword://my.1password.com@App Secrets"]
+
+[profiles.default.STRIPE_KEY]
+description = "STRIPE_KEY"
+ref = { item = "billing default stripe key", field = "password" }
+
+[tool.keypin.default.STRIPE_KEY]
 rotate_every = "90d"
-dev = "op://App Secrets/billing dev stripe key/password"
 
-[keys.WEBHOOK_SECRET]
+[profiles.default.WEBHOOK_SECRET]
+description = "WEBHOOK_SECRET"
+ref = { item = "billing default webhook secret", field = "password" }
+
+[tool.keypin.default.WEBHOOK_SECRET]
 rotate_every = "90d"
-dev = "op://App Secrets/billing dev webhook secret/password"

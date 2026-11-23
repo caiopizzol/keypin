@@ -1,26 +1,42 @@
 $ keypin publish --all --plan
 exit 3
 
---- file /work/billing/keypin.toml ---
+--- file /work/billing/secretspec.toml ---
 
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.STRIPE_API_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+STRIPE_API_KEY = { description = "STRIPE_API_KEY", ref = { item = "billing stripe api key", field = "password" } }
+
+[profiles.prod]
+STRIPE_API_KEY = { description = "STRIPE_API_KEY", ref = { item = "billing stripe api key", field = "password" } }
+
+[tool.keypin.prod.STRIPE_API_KEY]
 rotate_every = "365d"
-dev = "op://Private/billing stripe api key/password"
-prod = { from = "op://Private/billing stripe api key/password", publish = [
+publish = [
   { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
   { to = "github-actions", repo = "acme/billing" },
-] }
+]
 
-[keys.OTHER_KEY]
-prod = { from = "op://Private/billing other key/password", publish = [
-  { to = "github-actions", repo = "acme/other" },
-] }
 
-[keys.DEV_ONLY]
-dev = "op://Private/billing dev only/password"
+[profiles.dev.DEV_ONLY]
+description = "DEV_ONLY"
+ref = { item = "billing dev only", field = "password" }
+
+[profiles.prod.OTHER_KEY]
+description = "OTHER_KEY"
+ref = { item = "billing other key", field = "password" }
+
+[tool.keypin.prod.OTHER_KEY]
+publish = [{ to = "github-actions", repo = "acme/other" }]
 
 --- given terminal ---
 "none"

@@ -21,10 +21,11 @@ Actions.
    though GitHub can delay or skip a scheduled run. To check at other times, change the
    [schedule](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule);
    add `timezone:` to use your own time zone.
-5. [Ignore](../reference/keypin-toml.md#ignored-keys) the two secrets at the top of `keypin.toml`, or `keypin check` asks you to
-   add them:
+5. [Ignore](../reference/secretspec-toml.md#keypins-settings) the two secrets in `secretspec.toml`, or `keypin check`
+   asks you to add them:
 
    ```toml
+   [tool.keypin]
    ignore = ["KEYPIN_GITHUB_TOKEN", "OP_SERVICE_ACCOUNT_TOKEN"]
    ```
 

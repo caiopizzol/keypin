@@ -4,34 +4,44 @@ exit 1
 --- file /home/me/.config/keypin/registry.json ---
 {"version":1,"projects":["/home/me/code/app"]}
 
---- file /home/me/code/app/keypin.toml ---
+--- file /home/me/code/app/secretspec.toml ---
 
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.LATE]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+LATE = { description = "LATE", ref = { item = "late", field = "password" } }
+YESTERDAY = { description = "YESTERDAY", ref = { item = "yesterday", field = "password" } }
+TODAY = { description = "TODAY", ref = { item = "today", field = "password" } }
+TOMORROW = { description = "TOMORROW", ref = { item = "tomorrow", field = "password" } }
+UNDATED = { description = "UNDATED", ref = { item = "undated", field = "password" } }
+FOREVER = { description = "FOREVER", ref = { item = "forever", field = "password" } }
+
+[tool.keypin.dev.LATE]
 rotate_every = "30d"
-dev = "op://Private/late/password"
 
-[keys.YESTERDAY]
+[tool.keypin.dev.YESTERDAY]
 rotate_every = "30d"
-dev = { from = "op://Private/yesterday/password", issuer = { kind = "resend", admin = "op://Private/resend admin/password", permission = "full_access" } }
+issuer = { kind = "resend", admin = "op://Private/resend admin/password", permission = "full_access" }
 
-[keys.TODAY]
+[tool.keypin.dev.TODAY]
 rotate_every = "30d"
-dev = "op://Private/today/password"
 
-[keys.TOMORROW]
+[tool.keypin.dev.TOMORROW]
 rotate_every = "30d"
-dev = "op://Private/tomorrow/password"
 
-[keys.UNDATED]
+[tool.keypin.dev.UNDATED]
 rotate_every = "30d"
-dev = "op://Private/undated/password"
 
-[keys.FOREVER]
+[tool.keypin.dev.FOREVER]
 rotate_every = "never"
-dev = "op://Private/forever/password"
 
 --- given rotated dates ---
 {

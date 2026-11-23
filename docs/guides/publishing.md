@@ -4,7 +4,7 @@
 
 ```sh
 keypin publish API_TOKEN             # the prod entry
-keypin publish API_TOKEN --env dev   # another environment
+keypin publish API_TOKEN --profile dev   # another environment
 keypin publish --all                 # every key with destinations, with one approval
 keypin publish --all --plan          # show the plan and write nothing
 ```
@@ -155,7 +155,7 @@ repo = "owner/repo"
 environment = "production" # optional: only the jobs in this GitHub environment
 ```
 
-The job runs `keypin run --env prod --only API_TOKEN -- <command>`; without `--env`, `run` uses the first
+The job runs `keypin run --profile prod --only API_TOKEN -- <command>`; without `--profile`, `run` uses `default` or the first
 environment. `run` doesn't read `pull`: your vault decides which jobs it lets in. `run` doesn't pass GitHub's OIDC
 token-request variables to the command.
 

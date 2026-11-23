@@ -76,7 +76,7 @@ each step, then publishing your production keys.
 ```sh
 keypin init [folder]                     # write keypin.toml and register the project
 keypin check [folder]                    # report one project; writes nothing
-keypin import <env-file> [NAME...] [--env <name>] --vault <vault>
+keypin import <env-file> [NAME...] [--profile <name>] --vault <vault>
                                          # move an env file's values into 1Password and map them
 keypin run [--only NAME] -- <command>    # run a command with the dev keys, or only the named ones
 keypin publish <VARIABLE> | --all        # write prod keys to their destinations
@@ -101,7 +101,7 @@ npx skills add caiopizzol/keypin -g    # all your projects
 
 - [How it works](https://github.com/caiopizzol/keypin/blob/main/docs/introduction/how-it-works.md): the vault, the
   map and where keys go
-- [keypin.toml](https://github.com/caiopizzol/keypin/blob/main/docs/reference/keypin-toml.md): keys, environments and vault
+- [keypin.toml](https://github.com/caiopizzol/keypin/blob/main/docs/reference/secretspec-toml.md): keys, environments and vault
   items
 - [Moving off env files](https://github.com/caiopizzol/keypin/blob/main/docs/guides/moving-off-env-files.md): moving an env file's values into 1Password
 - [Infisical](https://github.com/caiopizzol/keypin/blob/main/docs/integrations/vaults/infisical.md),

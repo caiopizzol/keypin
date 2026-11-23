@@ -7,7 +7,7 @@ import { fakeSignIn } from "@keypin/connectors/cloudflare/testing";
 import { cli } from "../src/cli";
 import { destinations, issuers, vaults } from "../src/start";
 import { THEN } from "../src/commands/check/render";
-import { AFTER_IMPORT, PASTE } from "../src/commands/check/steps";
+import { ADD, AFTER_IMPORT, PASTE } from "../src/commands/check/steps";
 import type { Deps } from "../src/deps";
 import {
   fakeDeps,
@@ -227,14 +227,26 @@ function json(
   return { ...data, problems, production };
 }
 
-function added(text: string): string {
-  const start = `${PASTE}\n\n`;
-  const at = text.indexOf(start);
-  assert(at !== -1, text);
-  const toml = text.slice(at + start.length);
-  const end = toml.indexOf(`\n\n  ${THEN}`);
+function tomlIn(text: string, title: string): string | null {
+  const at = text.indexOf(`${title}\n`);
+  if (at === -1) return null;
+  const rest = text.slice(at);
+  const leads = [PASTE, ADD].map((lead) => rest.indexOf(`${lead}\n\n`)).filter((i) => i !== -1);
+  assert(leads.length, text);
+  const body = rest.slice(rest.indexOf("\n\n", Math.min(...leads)) + 2);
+  const end = body.search(new RegExp(`\\n\\n(?: {2}${THEN.replaceAll(".", "\\.")}|\\d+ [A-Z])`));
   assert(end !== -1, text);
-  return `${toml.slice(0, end)}\n`;
+  return `${body.slice(0, end)}\n`;
+}
+
+function added(text: string): string {
+  const toml = tomlIn(text, "Add the production keys to secretspec.toml");
+  assert(toml !== null, text);
+  return toml;
+}
+
+function pinning(text: string): string {
+  return tomlIn(text, "Name the vault in secretspec.toml") ?? "";
 }
 
 function steps(text: string): string[] {
@@ -266,7 +278,7 @@ describe("keypin check on a whole project", () => {
   test("with no import step, the TOML prints, and filled in and pasted closes the production gap", async () => {
     const first = setup({ files: { [MAP]: TEMPLATE, [`${ROOT}/.env`]: null } });
     await cli(["check"], first.deps);
-    const pasted = `${TEMPLATE}\n${fill(added(first.stdout.text))}`;
+    const pasted = `${TEMPLATE}\n${fill(pinning(first.stdout.text) + added(first.stdout.text))}`;
     assert(readSecretspec(pasted, MAP, destinations, issuers, vaults).ok, pasted);
 
     const run = setup({
@@ -326,29 +338,26 @@ describe("keypin check on a whole project", () => {
   });
 
   test.each([
-    ["a map with an account", MAPPED, false],
-    ["a map with no account yet", TEMPLATE, true],
-  ])(
-    "a plain setting left in an env file never holds back the TOML (%s)",
-    async (_, map, warns) => {
-      const run = setup({
-        files: { [MAP]: map, [`${ROOT}/.env`]: "PORT=3000\n", [`${ROOT}/.env.example`]: null },
-      });
-      expect(await cli(["check"], run.deps)).toBe(1);
-      const text = run.stdout.text;
-      expect(text).toMatch(/^ {4}secretspec add PORT( --profile dev)?$/m);
-      expect(text.includes(AFTER_IMPORT)).toBe(warns);
-      const parsed = readSecretspec(
-        `${map}\n${fill(added(text))}`,
-        MAP,
-        destinations,
-        issuers,
-        vaults,
-      );
-      assert(parsed.ok, parsed.ok ? "" : parsed.errors.join("\n"));
-      expect(parsed.map.keys.map((k) => k.name)).toContain("STRIPE_API_KEY");
-    },
-  );
+    ["a map with a provider", MAPPED],
+    ["a map with no provider yet", TEMPLATE],
+  ])("a plain setting left in an env file never holds back the TOML (%s)", async (_, map) => {
+    const run = setup({
+      files: { [MAP]: map, [`${ROOT}/.env`]: "PORT=3000\n", [`${ROOT}/.env.example`]: null },
+    });
+    expect(await cli(["check"], run.deps)).toBe(1);
+    const text = run.stdout.text;
+    expect(text).toMatch(/^ {4}secretspec add PORT( --profile dev)?$/m);
+    expect(text).not.toContain(AFTER_IMPORT);
+    const parsed = readSecretspec(
+      `${map}\n${fill(pinning(text) + added(text))}`,
+      MAP,
+      destinations,
+      issuers,
+      vaults,
+    );
+    assert(parsed.ok, parsed.ok ? "" : parsed.errors.join("\n"));
+    expect(parsed.map.keys.map((k) => k.name)).toContain("STRIPE_API_KEY");
+  });
 
   test("an env file named for an environment suggests importing it with --profile", async () => {
     const run = setup({
@@ -417,12 +426,27 @@ describe("keypin check on a whole project", () => {
   test("the TOML to add, pasted unfilled, fails with one line per <...> until replaced", async () => {
     const first = setup({ files: { [MAP]: TEMPLATE, [`${ROOT}/.env`]: null } });
     await cli(["check"], first.deps);
-    const run = setup({ files: { [MAP]: `${TEMPLATE}\n${added(first.stdout.text)}` } });
+    const run = setup({
+      files: { [MAP]: `${TEMPLATE}\n${pinning(first.stdout.text)}${added(first.stdout.text)}` },
+    });
     expect(await cli(["check", "--json"], run.deps)).toBe(1);
     const data = json(run.stdout.text);
     expect(data.problems.length).toBeGreaterThanOrEqual(2);
     for (const problem of data.problems) expect(String(problem)).toContain("<...> placeholder");
     expect(run.vault).toEqual([]);
+  });
+
+  test("a secret with no provider in secretspec.toml gets the [providers] and [defaults] lines to add", async () => {
+    const map = TEMPLATE.replace(
+      "[profiles.production]\n",
+      '[profiles.production]\nSTRIPE_API_KEY = { description = "Stripe" }\nRESEND_API_KEY = { description = "Resend", providers = ["shared"] }\n',
+    );
+    const run = setup({ files: { [MAP]: map, [`${ROOT}/.env`]: null } });
+    expect(await run.record("no-provider", ["check"])).toBe(1);
+    expect(run.vault).toEqual([]);
+    const pinned = `${map}\n${fill(pinning(run.stdout.text))}`;
+    const parsed = readSecretspec(pinned, MAP, destinations, issuers, vaults);
+    assert(parsed.ok, parsed.ok ? "" : parsed.errors.join("\n"));
   });
 
   test("with no secretspec.toml at all, check still reports the project", async () => {
@@ -1143,9 +1167,8 @@ required = ["RESEND_API_KEY"]
       const data = json(run.stdout.text);
       assert(typeof data.add === "string");
       expect(data.add).not.toContain("Staging_EU]");
-      expect(data.add.match(/\[\[tool\.keypin\.prod\.RESEND_API_KEY\.publish\]\]/g)).toHaveLength(
-        2,
-      );
+      expect(data.add.match(/\[tool\.keypin\.prod\.RESEND_API_KEY\]/g)).toHaveLength(1);
+      expect(data.add.match(/\{ to = "cloudflare-worker"/g)).toHaveLength(2);
       expect(data.notes).toContain(
         "wrangler.toml env Staging_EU isn't a profile name keypin reads, so check proposes its Worker under prod; publish it from the profile that holds its value",
       );

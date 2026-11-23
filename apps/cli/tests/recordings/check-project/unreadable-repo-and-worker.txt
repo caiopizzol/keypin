@@ -214,6 +214,7 @@ check github-actions:acme/billing
   ],
   "local": [],
   "add": null,
+  "providers": null,
   "unknown": [
     {
       "what": "the secrets of the Worker billing-worker",

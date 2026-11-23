@@ -64,7 +64,7 @@ github acme/billing as alice
 
 --- stdout ---
 billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub acme/billing
-5 things to do, in this order:
+6 things to do, in this order:
 1 Sign in to GitHub
   keypin ignores GH_TOKEN: it publishes only as a login gh has saved, so a token meant for another tool can't pick the account. Unset GH_TOKEN, then run:
     gh auth login --hostname github.com --with-token < token.txt
@@ -74,41 +74,41 @@ billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub
   Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
 3 Set up 1Password
   keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected.
-4 Move .env's keys into your vault
+4 Name the vault in secretspec.toml
+  A secret's provider in secretspec.toml names its vault, so secretspec, CI and the console find it there.
+  Replace each <...> with the real value; keypin rejects a map that still has one:
+
+[providers]
+onepassword = "onepassword://<1Password sign-in address>@<vault>"
+
+[defaults]
+providers = ["onepassword"]
+
+5 Move .env's keys into your vault
   .env sets DATABASE_URL, RESEND_API_KEY, which secretspec.toml doesn't declare.
     secretspec add DATABASE_URL
     secretspec add RESEND_API_KEY
     secretspec import dotenv:.env
   Leave out a name that isn't a key: secretspec import copies only declared names, and the file stays.
-5 Add the production keys to secretspec.toml
+6 Add the production keys to secretspec.toml
   STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there.
   RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and secretspec.toml doesn't publish it there.
   If you ran the commands above, run keypin check again for this TOML instead; secretspec add changes secretspec.toml.
-  Replace each <...> with the real value; keypin rejects a map that still has one:
-
-[defaults]
-providers = ["onepassword://<1Password sign-in address>@<vault>"]
+  Add this at the end of secretspec.toml:
 
 [profiles.production.STRIPE_API_KEY]
-description = "STRIPE_API_KEY"
+description = "Used by .github/workflows/deploy.yml"
 
 [tool.keypin.production.STRIPE_API_KEY]
 rotate_every = "90d"
-
-[[tool.keypin.production.STRIPE_API_KEY.publish]]
-to = "github-actions"
-repo = "acme/billing"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 
 [profiles.production.RESEND_API_KEY]
-description = "RESEND_API_KEY"
+description = "Used by wrangler.toml"
 
 [tool.keypin.production.RESEND_API_KEY]
 rotate_every = "90d"
-
-[[tool.keypin.production.RESEND_API_KEY.publish]]
-to = "cloudflare-worker"
-account = "11111111111111111111111111111111"
-worker = "billing-worker"
+publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" }]
 
   Then run keypin check again.
 

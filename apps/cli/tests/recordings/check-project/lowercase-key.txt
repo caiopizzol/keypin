@@ -112,6 +112,7 @@ check github-actions:acme/billing
   ],
   "local": [],
   "add": null,
+  "providers": null,
   "unknown": [],
   "prerequisites": [],
   "notes": [

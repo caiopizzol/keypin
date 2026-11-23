@@ -40,10 +40,6 @@ export const onePasswordVaultRules: VaultRules<OnePasswordRef, OnePasswordRefere
       ? format(ref)
       : `${format(ref)} (${ref.field}, then ${ref.fallback})`,
   stored: decode,
-  newKeys: {
-    provider: "onepassword://<1Password sign-in address>@<vault>",
-    options: "--vault <vault>",
-    account: "--account <1Password sign-in address>",
-  },
+  newKeys: { provider: "onepassword://<1Password sign-in address>@<vault>" },
   secretspec: { provider: "onepassword", locate },
 };

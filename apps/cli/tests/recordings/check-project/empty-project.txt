@@ -46,6 +46,7 @@ revision = "1.0"
   "production": [],
   "local": [],
   "add": null,
+  "providers": null,
   "unknown": [],
   "prerequisites": [
     {

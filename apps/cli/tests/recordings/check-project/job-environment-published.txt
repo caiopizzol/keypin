@@ -230,6 +230,7 @@ production
     }
   ],
   "add": null,
+  "providers": null,
   "unknown": [],
   "prerequisites": [
     {

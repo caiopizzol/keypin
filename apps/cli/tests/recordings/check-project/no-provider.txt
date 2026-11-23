@@ -1,0 +1,78 @@
+$ keypin check
+exit 1
+
+--- file .env.example ---
+DATABASE_URL=
+
+--- file .github/workflows/deploy.yml ---
+
+on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: deploy
+        env:
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+--- file secretspec.toml ---
+[project]
+name = "billing"
+revision = "1.0"
+
+[profiles.default]
+
+[profiles.production]
+STRIPE_API_KEY = { description = "Stripe" }
+RESEND_API_KEY = { description = "Resend", providers = ["shared"] }
+
+--- file wrangler.toml ---
+name = "billing-worker"
+account_id = "11111111111111111111111111111111"
+
+[vars]
+REGION = "sentinel-value-7f3a9c2e1d"
+
+[secrets]
+required = ["RESEND_API_KEY"]
+
+--- given git ---
+{
+  "rev-parse --show-toplevel": "/work/billing\n",
+  "remote get-url origin": "git@github.com:acme/billing.git\n",
+  "config --get github.account": null
+}
+
+--- calls reads ---
+worker 11111111111111111111111111111111 billing-worker
+github acme/billing as null
+
+--- calls vault ---
+
+--- calls destination ---
+
+--- stdout ---
+billing /work/billing · read 1 env file, 1 wrangler config, 1 workflow; GitHub acme/billing
+4 things to do, in this order:
+1 Sign in to Cloudflare
+    wrangler login
+  Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
+2 Set up 1Password
+  keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected.
+3 Fix /work/billing/secretspec.toml
+  /work/billing/secretspec.toml: [profiles.production] STRIPE_API_KEY: names no provider in secretspec.toml, so CI and the console can't find its vault; add providers = ["..."] to it, or set [defaults] providers
+  /work/billing/secretspec.toml: [profiles.production] RESEND_API_KEY: provider "shared" isn't under [providers] in secretspec.toml, so CI and the console can't find its vault; define it there
+4 Name the vault in secretspec.toml
+  A secret's provider in secretspec.toml names its vault, so secretspec, CI and the console find it there.
+  Replace each <...> with the real value; keypin rejects a map that still has one:
+
+[providers]
+shared = "onepassword://<1Password sign-in address>@<vault>"
+
+[defaults]
+providers = ["shared"]
+
+  Then run keypin check again.
+
+--- stderr ---

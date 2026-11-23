@@ -12,12 +12,14 @@ import {
 import { envFileSuffix } from "../dotenv";
 import { type Found, mappedIn, proposedIn } from "./places";
 import type { Fix, Gaps, LocalFile, ProjectScan } from "./report";
-import { creating, tomlToAdd } from "./toml-to-add";
+import { providerLines } from "./providers";
+import { tomlToAdd } from "./toml-to-add";
 
 const PUBLISH_PROFILE = "production";
 const SECRETSPEC_DEFAULT = "default";
 
 export type { Fix, Gaps, LocalFile, Need, ProjectScan } from "./report";
+export { providerLines, type ProviderLines } from "./providers";
 
 export function findGaps(
   scan: ProjectScan,
@@ -25,9 +27,6 @@ export function findGaps(
   vaults: VaultKinds,
 ): Gaps {
   const keys = map?.map ?? null;
-  const creates = vaults.find((vault) => vault.newKeys);
-  if (!creates?.newKeys) throw new Error("keypin has no vault kind that creates new keys");
-  const newKeys = creating(creates, creates.newKeys);
   const listed = keys?.environments ?? DEFAULT_ENVIRONMENTS;
   const environment = publishEnvironment({ environments: listed });
   const notes: string[] = [];
@@ -95,7 +94,7 @@ export function findGaps(
     found.place.onlyFrom ? mappedIn(keys, found.key, found.place, []) : null;
   const missing = needs.filter((n) => n.need.mapped === null && elsewhere(n) === null);
   const mapText = map?.text ?? "";
-  const add = tomlToAdd(missing, keys, environment, mapText, newKeys);
+  const add = tomlToAdd(missing, keys, environment, mapText);
 
   const problems: string[] = [...conflicts];
   const fixes: Fix[] = [];
@@ -197,6 +196,7 @@ export function findGaps(
       kind: "import" as const,
       why,
       file: file.path,
+      profile: env,
       names,
       commands: [
         ...names.map((name) => `secretspec add ${name}${flag}`),
@@ -231,7 +231,14 @@ export function findGaps(
     production: needs.map((n) => n.need),
     local,
     add: add.text,
-    addsPin: add.pinned,
+    providers: providerLines(
+      mapText,
+      [
+        ...add.declares,
+        ...fixes.flatMap((found) => (found.kind === "import" ? [found.profile] : [])),
+      ],
+      vaults,
+    ),
     problems,
     notes,
     fixes,

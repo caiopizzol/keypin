@@ -166,7 +166,8 @@ ids billing staging database url
       ]
     }
   ],
-  "add": "[profiles.prod.STRIPE_API_KEY]\ndescription = \"STRIPE_API_KEY\"\n\n[tool.keypin.prod.STRIPE_API_KEY]\nrotate_every = \"90d\"\n\n[[tool.keypin.prod.STRIPE_API_KEY.publish]]\nto = \"github-actions\"\nrepo = \"acme/billing\"\n\n[profiles.prod.RESEND_API_KEY]\ndescription = \"RESEND_API_KEY\"\n\n[[tool.keypin.prod.RESEND_API_KEY.publish]]\nto = \"cloudflare-worker\"\naccount = \"11111111111111111111111111111111\"\nworker = \"billing-worker\"\n",
+  "add": "[profiles.prod.STRIPE_API_KEY]\ndescription = \"Used by .github/workflows/deploy.yml\"\n\n[tool.keypin.prod.STRIPE_API_KEY]\nrotate_every = \"90d\"\npublish = [{ to = \"github-actions\", repo = \"acme/billing\" }]\n\n[profiles.prod.RESEND_API_KEY]\ndescription = \"Used by wrangler.toml\"\n\n[tool.keypin.prod.RESEND_API_KEY]\npublish = [{ to = \"cloudflare-worker\", account = \"11111111111111111111111111111111\", worker = \"billing-worker\" }]\n",
+  "providers": null,
   "unknown": [],
   "prerequisites": [
     {

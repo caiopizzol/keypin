@@ -127,27 +127,21 @@ billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub
 3 Add the production keys to secretspec.toml
   OPENAI_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there.
   ANTHROPIC_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there.
-  Replace each <...> with the real value; keypin rejects a map that still has one:
+  Add this at the end of secretspec.toml:
 
 [profiles.prod.OPENAI_API_KEY]
-description = "OPENAI_API_KEY"
+description = "Used by .github/workflows/deploy.yml"
 
 [tool.keypin.prod.OPENAI_API_KEY]
 rotate_every = "90d"
-
-[[tool.keypin.prod.OPENAI_API_KEY.publish]]
-to = "github-actions"
-repo = "acme/billing"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 
 [profiles.prod.ANTHROPIC_API_KEY]
-description = "ANTHROPIC_API_KEY"
+description = "Used by .github/workflows/deploy.yml"
 
 [tool.keypin.prod.ANTHROPIC_API_KEY]
 rotate_every = "90d"
-
-[[tool.keypin.prod.ANTHROPIC_API_KEY.publish]]
-to = "github-actions"
-repo = "acme/billing"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 
   Then run keypin check again.
 

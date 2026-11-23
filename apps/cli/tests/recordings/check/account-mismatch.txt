@@ -120,6 +120,7 @@ check cloudflare-worker:billing-worker
   "production": [],
   "local": [],
   "add": null,
+  "providers": null,
   "unknown": [],
   "prerequisites": [],
   "notes": [

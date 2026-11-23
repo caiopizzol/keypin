@@ -29,29 +29,24 @@ revision = "1.0"
 
 [profiles.production]
 
-[defaults]
-providers = ["onepassword://my.1password.com@Private"]
+[providers]
+onepassword = "onepassword://my.1password.com@Private"
 
+[defaults]
+providers = ["onepassword"]
 [profiles.production.STRIPE_API_KEY]
-description = "STRIPE_API_KEY"
+description = "Used by .github/workflows/deploy.yml"
 
 [tool.keypin.production.STRIPE_API_KEY]
 rotate_every = "90d"
-
-[[tool.keypin.production.STRIPE_API_KEY.publish]]
-to = "github-actions"
-repo = "acme/billing"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 
 [profiles.production.RESEND_API_KEY]
-description = "RESEND_API_KEY"
+description = "Used by wrangler.toml"
 
 [tool.keypin.production.RESEND_API_KEY]
 rotate_every = "90d"
-
-[[tool.keypin.production.RESEND_API_KEY.publish]]
-to = "cloudflare-worker"
-account = "11111111111111111111111111111111"
-worker = "billing-worker"
+publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" }]
 
 --- file wrangler.toml ---
 name = "billing-worker"
@@ -213,6 +208,7 @@ check cloudflare-worker:billing-worker
     }
   ],
   "add": null,
+  "providers": null,
   "unknown": [],
   "prerequisites": [
     {

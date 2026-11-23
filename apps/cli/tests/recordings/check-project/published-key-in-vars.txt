@@ -161,6 +161,7 @@ check github-actions:acme/billing
   "production": [],
   "local": [],
   "add": null,
+  "providers": null,
   "unknown": [],
   "prerequisites": [
     {

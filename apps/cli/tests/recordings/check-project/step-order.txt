@@ -98,15 +98,13 @@ billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub
   Leave out a name that isn't a key: secretspec import copies only declared names, and the file stays.
 4 Add the production keys to secretspec.toml
   RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and secretspec.toml doesn't publish it there.
-  Replace each <...> with the real value; keypin rejects a map that still has one:
+  Add this at the end of secretspec.toml:
 
 [profiles.prod.RESEND_API_KEY]
-description = "RESEND_API_KEY"
+description = "Used by wrangler.toml"
 
-[[tool.keypin.prod.RESEND_API_KEY.publish]]
-to = "cloudflare-worker"
-account = "11111111111111111111111111111111"
-worker = "billing-worker"
+[tool.keypin.prod.RESEND_API_KEY]
+publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" }]
 
   Then run keypin check again.
 5 Publish STRIPE_API_KEY

@@ -162,7 +162,8 @@ ids billing dev resend api key
       "elsewhere": []
     }
   ],
-  "add": "[profiles.production.STRIPE_API_KEY]\ndescription = \"STRIPE_API_KEY\"\n\n[tool.keypin.production.STRIPE_API_KEY]\nrotate_every = \"90d\"\n\n[[tool.keypin.production.STRIPE_API_KEY.publish]]\nto = \"github-actions\"\nrepo = \"acme/billing\"\n\n[[tool.keypin.production.RESEND_API_KEY.publish]]\nto = \"cloudflare-worker\"\naccount = \"11111111111111111111111111111111\"\nworker = \"billing-worker\"\n",
+  "add": "[profiles.production.STRIPE_API_KEY]\ndescription = \"Used by .github/workflows/deploy.yml\"\n\n[tool.keypin.production.STRIPE_API_KEY]\nrotate_every = \"90d\"\npublish = [{ to = \"github-actions\", repo = \"acme/billing\" }]\n",
+  "providers": null,
   "unknown": [],
   "prerequisites": [
     {
@@ -177,7 +178,7 @@ ids billing dev resend api key
   ],
   "problems": [
     "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there. Add the TOML below",
-    "RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and secretspec.toml doesn't publish it there. Add the TOML below"
+    "RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and secretspec.toml doesn't publish it there. Set publish = [{ to = \"cloudflare-worker\", account = \"11111111111111111111111111111111\", worker = \"billing-worker\" }] in [tool.keypin.production.RESEND_API_KEY] in secretspec.toml"
   ],
   "ok": false
 }

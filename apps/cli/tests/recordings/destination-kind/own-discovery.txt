@@ -34,18 +34,14 @@ billing /work/billing · read 0 env files, 0 wrangler configs, 1 shelf file, 0 w
 1 thing to do:
 1 Add the production keys to secretspec.toml
   NEW_KEY: shelf.json needs it; secretspec.toml doesn't publish it to the bottom shelf.
-  Replace each <...> with the real value; keypin rejects a map that still has one:
+  Add this at the end of secretspec.toml:
 
 [profiles.prod.NEW_KEY]
-description = "NEW_KEY"
+description = "Used by shelf.json"
 
 [tool.keypin.prod.NEW_KEY]
 rotate_every = "90d"
-
-[[tool.keypin.prod.NEW_KEY.publish]]
-to = "shelf"
-account = "library"
-shelf = "bottom"
+publish = [{ to = "shelf", account = "library", shelf = "bottom" }]
 
   Then run keypin check again.
 

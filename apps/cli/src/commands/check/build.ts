@@ -5,6 +5,7 @@ import {
   formatReference,
   type Gaps,
   kindOf,
+  providerLines,
   type KeyRef,
   type KeysMap,
   type PublishTarget,
@@ -22,7 +23,7 @@ import { approval, mapSignIn } from "../../sign-in";
 import { distinctRefs, refKey } from "../../vault";
 import { type CheckedItem, type DestinationResult, type Report, ITEM_NOTE } from "./report";
 import { prerequisites, loginLine, checkItem, checkDestination } from "./lookups";
-import { type Step, ORDER, plan } from "./steps";
+import { type Step, ORDER, plan, providersStep } from "./steps";
 
 export async function build(
   folder: string,
@@ -65,6 +66,7 @@ export async function build(
     production: [],
     local: [],
     add: null,
+    providers: null,
     unknown: scanned.unknowns,
     prerequisites: [],
     notes: [],
@@ -89,6 +91,7 @@ export async function build(
       report.production = gaps.production;
       report.local = gaps.local;
       report.add = gaps.add;
+      report.providers = gaps.providers?.toml ?? null;
       report.problems.push(...gaps.problems);
       report.notes.push(...gaps.notes);
     }
@@ -107,7 +110,7 @@ export async function build(
     const counts = scanned.read.map(({ noun, count: n }) => count(n, noun)).join(", ");
     const read = [`read ${counts}`, ...scanned.about].join("; ");
     const fixes = gaps?.fixes ?? [];
-    return { report, steps: plan(report, all, fixes, gaps?.addsPin ?? false, empty), read };
+    return { report, steps: plan(report, all, fixes, gaps?.providers ?? null, empty), read };
   };
   if (!found || !parsed) {
     problem(
@@ -129,6 +132,8 @@ export async function build(
       body: parsed.errors,
       covers: parsed.errors,
     });
+    const lines = providerLines(found.text, [], deps.vaults);
+    if (lines) steps.push(providersStep(lines));
     return done(null);
   }
   const map = parsed.map;

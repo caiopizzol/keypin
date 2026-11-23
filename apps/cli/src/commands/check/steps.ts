@@ -1,4 +1,4 @@
-import { type Fix, type KeyRef, sentence } from "@keypin/core";
+import { type Fix, type KeyRef, type ProviderLines, sentence } from "@keypin/core";
 import { MAP_FILE } from "../../project";
 import { type Report } from "./report";
 
@@ -19,20 +19,21 @@ export const ORDER = {
   map: 1,
   tracked: 2,
   environments: 3,
-  import: 4,
-  item: 5,
-  add: 6,
-  edit: 7,
-  account: 8,
-  publish: 9,
-  last: 10,
+  providers: 4,
+  import: 5,
+  item: 6,
+  add: 7,
+  edit: 8,
+  account: 9,
+  publish: 10,
+  last: 11,
 } as const;
 
 export function plan(
   report: Report,
   found: Step[],
   fixes: Fix[],
-  addsPin: boolean,
+  providers: ProviderLines | null,
   empty: string | null,
 ): Step[] {
   const steps: Step[] = [];
@@ -87,13 +88,18 @@ export function plan(
   }
   const add = of("add");
   const imported = new Set(imports.flatMap((fix) => fix.names));
-  const overlaps = imports.length > 0 && (addsPin || add.some((fix) => imported.has(fix.key)));
+  const overlaps = imports.length > 0 && add.some((fix) => imported.has(fix.key));
+  if (providers && (imports.length || report.add !== null)) steps.push(providersStep(providers));
   if (report.add !== null)
     all(
       ORDER.add,
       `Add the production keys to ${MAP_FILE}`,
       add,
-      [...add.map((fix) => sentence(fix.why)), ...(overlaps ? [AFTER_IMPORT] : []), PASTE],
+      [
+        ...add.map((fix) => sentence(fix.why)),
+        ...(overlaps ? [AFTER_IMPORT] : []),
+        pasteOrAdd(report.add),
+      ],
       report.add,
     );
   const edits = of("edit");
@@ -140,7 +146,29 @@ export function plan(
   return steps.sort((a, b) => a.order - b.order);
 }
 
+export function providersStep({ toml, existing }: ProviderLines): Step {
+  return {
+    order: ORDER.providers,
+    title: `Name the vault in ${MAP_FILE}`,
+    body: [
+      `A secret's provider in ${MAP_FILE} names its vault, so secretspec, CI and the console find it there.`,
+      ...(existing.length
+        ? [`${MAP_FILE} already has ${existing.join(" and ")}; add the lines under it.`]
+        : []),
+      pasteOrAdd(toml),
+    ],
+    toml,
+    covers: [],
+  };
+}
+
+function pasteOrAdd(toml: string): string {
+  return /<[^<>]*>/.test(toml) ? PASTE : ADD;
+}
+
 export const PASTE =
   "Replace each <...> with the real value; keypin rejects a map that still has one:";
+
+export const ADD = `Add this at the end of ${MAP_FILE}:`;
 
 export const AFTER_IMPORT = `If you ran the commands above, run keypin check again for this TOML instead; secretspec add changes ${MAP_FILE}.`;

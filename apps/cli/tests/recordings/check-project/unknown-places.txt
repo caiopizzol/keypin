@@ -108,7 +108,8 @@ required = ["RESEND_API_KEY"]
       "elsewhere": []
     }
   ],
-  "add": "[defaults]\nproviders = [\"onepassword://<1Password sign-in address>@<vault>\"]\n\n[profiles.production.STRIPE_API_KEY]\ndescription = \"STRIPE_API_KEY\"\n\n[tool.keypin.production.STRIPE_API_KEY]\nrotate_every = \"90d\"\n\n[[tool.keypin.production.STRIPE_API_KEY.publish]]\nto = \"github-actions\"\nrepo = \"<owner>/<repo>\"\n\n[profiles.production.RESEND_API_KEY]\ndescription = \"RESEND_API_KEY\"\n\n[tool.keypin.production.RESEND_API_KEY]\nrotate_every = \"90d\"\n\n[[tool.keypin.production.RESEND_API_KEY.publish]]\nto = \"cloudflare-worker\"\naccount = \"<Cloudflare account ID>\"\nworker = \"<Worker name>\"\n",
+  "add": "[profiles.production.STRIPE_API_KEY]\ndescription = \"Used by .github/workflows/deploy.yml\"\n\n[tool.keypin.production.STRIPE_API_KEY]\nrotate_every = \"90d\"\npublish = [{ to = \"github-actions\", repo = \"<owner>/<repo>\" }]\n\n[profiles.production.RESEND_API_KEY]\ndescription = \"Used by wrangler.toml\"\n\n[tool.keypin.production.RESEND_API_KEY]\nrotate_every = \"90d\"\npublish = [{ to = \"cloudflare-worker\", account = \"<Cloudflare account ID>\", worker = \"<Worker name>\" }]\n",
+  "providers": "[providers]\nonepassword = \"onepassword://<1Password sign-in address>@<vault>\"\n\n[defaults]\nproviders = [\"onepassword\"]\n",
   "unknown": [
     {
       "what": "the secrets of the Worker in wrangler.toml",

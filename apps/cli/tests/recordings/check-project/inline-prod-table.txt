@@ -112,6 +112,7 @@ check cloudflare-worker:billing-worker
   ],
   "local": [],
   "add": null,
+  "providers": null,
   "unknown": [],
   "prerequisites": [
     {

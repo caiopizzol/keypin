@@ -127,7 +127,8 @@ ids billing dev resend api key
     }
   ],
   "local": [],
-  "add": "[profiles.prod.RESEND_API_KEY]\ndescription = \"RESEND_API_KEY\"\n\n[[tool.keypin.prod.RESEND_API_KEY.publish]]\nto = \"cloudflare-worker\"\naccount = \"11111111111111111111111111111111\"\nworker = \"billing-worker\"\n\n[profiles.staging.RESEND_API_KEY]\ndescription = \"RESEND_API_KEY\"\n\n[[tool.keypin.staging.RESEND_API_KEY.publish]]\nto = \"cloudflare-worker\"\naccount = \"11111111111111111111111111111111\"\nworker = \"billing-worker-staging\"\n",
+  "add": "[profiles.prod.RESEND_API_KEY]\ndescription = \"Used by wrangler.toml\"\n\n[tool.keypin.prod.RESEND_API_KEY]\npublish = [{ to = \"cloudflare-worker\", account = \"11111111111111111111111111111111\", worker = \"billing-worker\" }]\n\n[profiles.staging.RESEND_API_KEY]\ndescription = \"Used by wrangler.toml\"\n\n[tool.keypin.staging.RESEND_API_KEY]\npublish = [{ to = \"cloudflare-worker\", account = \"11111111111111111111111111111111\", worker = \"billing-worker-staging\" }]\n",
+  "providers": null,
   "unknown": [],
   "prerequisites": [
     {

@@ -56,6 +56,7 @@ rotate_every = "soon"
   "production": [],
   "local": [],
   "add": null,
+  "providers": null,
   "unknown": [],
   "prerequisites": [
     {

@@ -44,6 +44,7 @@ export interface Report {
   production: Gaps["production"];
   local: Gaps["local"];
   add: string | null;
+  providers: string | null;
   unknown: Unknown[];
   prerequisites: Login[];
   notes: string[];

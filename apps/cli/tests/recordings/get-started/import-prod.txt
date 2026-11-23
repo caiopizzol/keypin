@@ -1,0 +1,48 @@
+$ keypin import .env.production RESEND_API_KEY --env prod --vault Private
+exit 0
+
+--- given terminal ---
+true
+
+--- calls vault ---
+list my.1password.com Private
+write billing prod resend api key
+
+--- calls destination ---
+
+--- calls asked ---
+Create 1 item in 1Password? [y/N] 
+
+--- stdout ---
+
+--- stderr ---
+
+Import /work/billing/.env.production  into 1Password account my.1password.com, vault Private
+ok     Listed the items in vault Private of 1Password account my.1password.com, not the values
+
+Plan
+  + RESEND_API_KEY  op://Private/billing prod resend api key/password  create, rotated 2026-11-09
+Map: add prod for RESEND_API_KEY at the end of /work/billing/keypin.toml
+
+ok     Created "billing prod resend api key" in vault Private
+ok     Mapped RESEND_API_KEY in /work/billing/keypin.toml
+
+The imported values are now in 1Password, and keypin run --env prod -- <command> provides them. keypin left /work/billing/.env.production as it is.
+Nothing else is set in it. Delete it and stop loading it.
+
+--- wrote /work/billing/keypin.toml ---
+# Written by keypin import. The values are in 1Password; this file holds only references.
+
+[1password]
+account = "my.1password.com"
+
+[keys.DATABASE_URL]
+rotate_every = "90d"
+dev = "op://Private/billing dev database url/password"
+
+[keys.RESEND_API_KEY]
+rotate_every = "90d"
+dev = "op://Private/billing dev resend api key/password"
+
+[keys.RESEND_API_KEY.prod]
+from = "op://Private/billing prod resend api key/password"

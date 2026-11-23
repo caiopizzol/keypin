@@ -1,0 +1,45 @@
+$ keypin check
+exit 1
+
+--- given terminal ---
+false
+
+--- calls vault ---
+ids billing dev database url
+ids billing dev resend api key
+ids billing prod resend api key
+
+--- calls destination ---
+
+--- calls asked ---
+
+--- stdout ---
+billing /work/billing · read 0 env files, 1 wrangler config, 1 workflow; GitHub acme/billing
+2 things to do, in this order:
+1 Sign in to Cloudflare
+    wrangler login
+  Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
+2 Add the production keys to keypin.toml
+  STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and keypin.toml doesn't publish it there.
+  RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and keypin.toml doesn't publish it there.
+  Replace each <...> with the real value; keypin rejects a map that still has one:
+
+[keys.STRIPE_API_KEY]
+rotate_every = "90d"
+
+[keys.STRIPE_API_KEY.prod]
+from = "op://<vault>/<item>/<field>"
+
+[[keys.STRIPE_API_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+
+[[keys.RESEND_API_KEY.prod.publish]]
+to = "cloudflare-worker"
+account = "11111111111111111111111111111111"
+worker = "billing-worker"
+
+  Then run keypin check again.
+
+--- stderr ---
+ok     Looked up 3 items in 1Password account my.1password.com, not the values

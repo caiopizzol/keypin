@@ -1,0 +1,18 @@
+$ keypin run -- npm run dev
+exit 0
+
+--- given terminal ---
+false
+
+--- calls vault ---
+read billing dev database url
+read billing dev resend api key
+
+--- calls destination ---
+
+--- calls asked ---
+
+--- stdout ---
+
+--- stderr ---
+ok     Read 2 dev values from 1Password account my.1password.com  op://Private/billing dev database url/password, op://Private/billing dev resend api key/password

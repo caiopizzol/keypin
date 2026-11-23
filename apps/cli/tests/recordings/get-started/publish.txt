@@ -1,0 +1,68 @@
+$ keypin publish STRIPE_API_KEY
+exit 0
+
+--- given terminal ---
+true
+
+--- calls vault ---
+read billing prod stripe api key
+
+--- calls destination ---
+check github-actions:acme/billing
+write github-actions:acme/billing STRIPE_API_KEY (32 chars)
+
+--- calls asked ---
+Write 1 secret? [y/N] 
+
+--- stdout ---
+
+--- stderr ---
+
+STRIPE_API_KEY prod  from op://Private/billing prod stripe api key/password in 1Password account my.1password.com
+ok     GitHub  acme/billing  as acme, account acme
+
+ok     Read 1 value from 1Password account my.1password.com
+
+Plan  generation e24c133a66cb5e4d
+  + GitHub  acme/billing  first write  needs approval
+
+ok     GitHub  acme/billing  wrote STRIPE_API_KEY
+Published STRIPE_API_KEY (prod) to 1 destination.
+
+--- wrote /home/me/.local/state/keypin/state.json ---
+{
+  "version": 5,
+  "receipts": [
+    {
+      "keyId": "STRIPE_API_KEY",
+      "environment": "prod",
+      "mapFile": "/work/billing/keypin.toml",
+      "source": {
+        "kind": "1password",
+        "vault": "Private",
+        "item": "billing prod stripe api key",
+        "section": null,
+        "field": "password",
+        "account": "my.1password.com"
+      },
+      "sourceIds": {
+        "vault": "id-private",
+        "item": "id-billing prod stripe api key"
+      },
+      "destinationId": "github-actions:acme/billing:STRIPE_API_KEY",
+      "generation": "e24c133a66cb5e4d",
+      "account": {
+        "pinned": "acme",
+        "publisher": "acme",
+        "destinationAccount": "acme"
+      },
+      "at": "2026-11-09T12:00:00.000Z",
+      "evidence": {
+        "destination": "github-actions:acme/billing",
+        "version": "v-5"
+      }
+    }
+  ],
+  "issued": [],
+  "operations": []
+}

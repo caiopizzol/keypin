@@ -7,6 +7,8 @@ import {
   memoryTokens,
   tokensFetch,
 } from "@keypin/connectors/cloudflare/testing";
+import { GitHubSecretDestination } from "@keypin/connectors/github";
+import { githubFetch } from "@keypin/connectors/github/testing";
 import { onePasswordRef } from "@keypin/connectors/onepassword";
 import { cli } from "../src/cli";
 import { issuer as connect } from "../src/start";
@@ -46,7 +48,7 @@ const policy = (...groups: ReturnType<typeof group>[]) => ({
 });
 const EDITOR = group("e086da7e2179491d91ee5f35b3ca210a", "Workers Scripts Write");
 
-function world(token: Partial<FakeToken> = {}, fake: Partial<FakeTokens> = {}) {
+function world(token: Partial<FakeToken> = {}, fake: Partial<FakeTokens> = {}, map = MAP) {
   const tokens = memoryTokens([
     {
       id: "a".repeat(32),
@@ -77,7 +79,7 @@ function world(token: Partial<FakeToken> = {}, fake: Partial<FakeTokens> = {}) {
     },
   };
   const fakes = fakeDeps({
-    disk: memoryFiles({ [MAP_FILE]: MAP }),
+    disk: memoryFiles({ [MAP_FILE]: map }),
     backend: vault,
     deps: {
       cwd: "/work/site",
@@ -143,5 +145,28 @@ describe("a Cloudflare key rotated on a schedule", () => {
       "with the old token's 1 policy (Workers Scripts Write); expiring 30 days after it starts",
     );
     expect(plan.effects).toEqual([]);
+  });
+
+  test("a key whose first write waits for approval stops before the admin token is read", async () => {
+    const published = MAP.replace(
+      'rotate_every = "25d"',
+      'rotate_every = "25d"\npublish = [{ to = "github-actions", repo = "acme/site" }]',
+    );
+    const w = world({}, { adminExpires: "2026-11-30T00:00:00Z" }, published);
+    const github = await githubFetch({
+      login: "acme-bot",
+      repos: { "acme/site": { owner: "acme", push: true } },
+    });
+    w.deps.destination = (target) =>
+      new GitHubSecretDestination({
+        repo: String(target.repo),
+        token: async () => "fake-gh-token",
+        fetch: github.fetch,
+      });
+    expect(await cli(["rotate", "--check"], w.deps), w.stderr.text).toBe(1);
+    expect(w.stderr.text).toContain("Needs approval:\n  first write to");
+    expect(await cli(["rotate", "--due"], w.deps), w.stderr.text).toBe(0);
+    expect(w.log.filter((line) => line.startsWith("read"))).toEqual([]);
+    expect(w.effects).toEqual([]);
   });
 });

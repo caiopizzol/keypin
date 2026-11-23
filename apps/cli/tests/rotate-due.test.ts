@@ -460,6 +460,14 @@ describe("keypin rotate --due says who must act: 0 when nothing does, 3 for an a
     expect(await recorded("waiting-key-due", blocked, "--due", "--yes")).toBe(NEEDS_APPROVAL);
     expect(blocked.warnings).toEqual([WARNING]);
     expect(blocked.stderr.text).not.toContain("Nothing is due");
+    const check = ci(w);
+    expect(await check.run("--check"), "--check reports it as --due does").toBe(NEEDS_APPROVAL);
+    expect(check.stderr.text).toContain(
+      "FAILED RESEND_API_KEY (prod) was due 2026-10-30, but keypin won't rotate it while its old key waits for approval.",
+    );
+    expect(check.warnings).toEqual([WARNING]);
+    expect(check.stderr.text).not.toContain("is ready for keypin rotate --due");
+    expect(check.stderr.text).toContain("Approve what waits above, then run the check again.");
     expect(await ci(w).run("--due", "--yes"), "still blocked the next day").toBe(NEEDS_APPROVAL);
     expect(w.effects).toHaveLength(2);
 
@@ -508,6 +516,13 @@ describe("keypin rotate --due says who must act: 0 when nothing does, 3 for an a
     expect(await run.run("--due", "--yes"), run.stderr.text).toBe(0);
     expect(run.stderr.text).toContain("RESEND_API_KEY  skip  no rotated date in the vault");
     expect(run.stderr.text).toContain("Nothing is due.");
+
+    w.gh.revoked = true;
+    const refused = machine(w, {
+      vaults: vaults.map((vault) => ({ ...vault, keepsRotated: false as const })),
+    });
+    expect(await refused.run("--due"), "no login is checked for a key --due skips").toBe(0);
+    expect(refused.stderr.text).not.toContain("Credentials");
   });
 });
 
@@ -667,7 +682,7 @@ describe("keypin rotate --due after a person replaced a waiting key by hand", ()
     expect(run.stderr.text).toContain(
       "RESEND_API_KEY  wait  rotated 2026-11-09, the old key waits; was due 2026-10-30",
     );
-    expect(await ci(w).run("--check")).toBe(1);
+    expect(await ci(w).run("--check")).toBe(NEEDS_APPROVAL);
     expect(w.inner.log.filter((line) => line.startsWith("read"))).toEqual([]);
     expect(w.effects).toHaveLength(2);
   });

@@ -27,10 +27,10 @@ import { readDates } from "../status";
 import { approval } from "../../sign-in";
 import { NEEDS_APPROVAL } from "../../approval";
 import { lookUpIds } from "../../publishing";
-import { type Flags, type Context, jobFor } from "./job";
+import { type Flags, type Context, jobFor, keepsNoDates } from "./job";
 import { rotateLocked } from "./rotate-key";
 import { waitsNotice } from "./messages";
-import { checkCredentials } from "./credentials";
+import { checkCredentials, type MayRead } from "./credentials";
 
 async function progressOf(
   context: Context,
@@ -154,15 +154,13 @@ export async function rotateDue(context: Context, flags: Flags, path: string): P
     out.line(`${out.mark(false)} ${problem}`);
     codes.push(1);
   }
-  for (const c of blocked)
-    out.line(
-      `${out.mark(false)} ${c.keyId} (${environment}) ${c.blocked === localDay(deps.now()) ? "is due today" : `was due ${c.blocked}`}, but keypin won't rotate it while its old key waits for approval.`,
-    );
+  for (const c of blocked) out.line(`${out.mark(false)} ${blockedText(context, c)}`);
   if (blocked.length) codes.push(NEEDS_APPROVAL);
   if (!picked.length && !blocked.length)
     out.line(waiting.length ? "Nothing is due. An old key waits for approval." : "Nothing is due.");
   for (const c of waiting) waitsNotice(context, c.keyId);
-  codes.push(await checkCredentials(context, choices, dated));
+  const gated = !deps.isTerminal && !flags.plan;
+  codes.push(await checkCredentials(context, choices, dated, adminGate(context, path, gated)));
   for (const choice of picked) {
     out.line("");
     try {
@@ -200,7 +198,7 @@ export async function checkDue(context: Context, path: string): Promise<number> 
     );
     return 1;
   }
-  const codes = [await checkCredentials(context, choices, dated)];
+  const codes = [await checkCredentials(context, choices, dated, adminGate(context, path, true))];
   for (const choice of picked) {
     out.line("");
     const key = map.keys.find((each) => each.name === choice.keyId);
@@ -221,6 +219,12 @@ export async function checkDue(context: Context, path: string): Promise<number> 
       codes.push(1);
       continue;
     }
+    if (choice.action === "waiting" && choice.blocked !== undefined) {
+      out.line(`${out.mark(false)} ${blockedText(context, choice)}`);
+      waitsNotice(context, choice.keyId);
+      codes.push(NEEDS_APPROVAL);
+      continue;
+    }
     try {
       const args = [choice.keyId, ...context.envArgs];
       const flags = { ...NO_FLAGS, plan: true, check: true, args };
@@ -234,7 +238,9 @@ export async function checkDue(context: Context, path: string): Promise<number> 
   out.line(
     code === 0
       ? `\n${out.mark(true)} Every key --due rotates passed the checks. Nothing was created or written, so no destination was asked to take a write.`
-      : "\nFix what failed above, then run the check again. Nothing was created or written.",
+      : code === NEEDS_APPROVAL
+        ? "\nApprove what waits above, then run the check again. Nothing was created or written."
+        : "\nFix what failed above, then run the check again. Nothing was created or written.",
   );
   return code;
 }
@@ -275,6 +281,26 @@ export async function approveAll(
   return worst(codes);
 }
 
+function blockedText({ environment, deps }: Context, choice: DueChoice & { action: "waiting" }) {
+  const when =
+    choice.blocked === localDay(deps.now()) ? "is due today" : `was due ${choice.blocked}`;
+  return `${choice.keyId} (${environment}) ${when}, but keypin won't rotate it while its old key waits for approval.`;
+}
+
+function adminGate(context: Context, path: string, gated: boolean): MayRead {
+  const { map, committed, deps } = context;
+  let state: Promise<State> | undefined;
+  return async (keyId, entry) => {
+    if (!gated || !entry.publish.length) return true;
+    const key = map.keys.find((each) => each.name === keyId);
+    if (!key) return false;
+    state ??= loadState(deps.files, path, deps.vaults).then((s) =>
+      restoreIssued(s, committed, map),
+    );
+    return readsRoutinely(context, key, entry, await state);
+  };
+}
+
 function undated(choice: DueChoice): boolean {
   return (
     (choice.action === "skip" || choice.action === "waiting") &&
@@ -282,12 +308,11 @@ function undated(choice: DueChoice): boolean {
   );
 }
 
-function undatedProblem({ map, environment, deps }: Context, choice: DueChoice): string | null {
+function undatedProblem(context: Context, choice: DueChoice): string | null {
   if (!undated(choice)) return null;
   if ("date" in choice && choice.date === "unread")
     return `${choice.keyId}: the vault's rotated date couldn't be read, so keypin can't tell when it's due. Fix the error above, then run this again.`;
-  const ref = map.keys.find((key) => key.name === choice.keyId)?.environments[environment]?.ref;
-  if (ref !== undefined && vaultKindOf(deps.vaults, ref.kind).keepsRotated === false) return null;
+  if (keepsNoDates(context, choice.keyId)) return null;
   return `${choice.keyId}: no rotated date in the vault, so keypin rotate --due never rotates it. Give its vault item a rotated date: the day the key last changed.`;
 }
 

@@ -106,7 +106,7 @@ Exit codes:
   2  usage error
   3  stopped for approval: run the printed command in a terminal and answer y;
      --plan exits 3 whenever the plan would write (routine or not), 0 when there's nothing to write;
-     rotate --due exits 3 while a due key's old key waits for --approve-revoke
+     rotate --due and --check exit 3 while a due key's old key waits for --approve-revoke
 `;
 
 const COMMANDS = new Map<string, (args: string[], deps: Deps) => Promise<number>>([

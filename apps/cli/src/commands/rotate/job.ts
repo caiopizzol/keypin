@@ -65,6 +65,11 @@ export interface Context {
   out: Output;
 }
 
+export function keepsNoDates({ map, environment, deps }: Context, keyId: string): boolean {
+  const ref = map.keys.find((key) => key.name === keyId)?.environments[environment]?.ref;
+  return ref !== undefined && vaultKindOf(deps.vaults, ref.kind).keepsRotated === false;
+}
+
 export function jobFor(context: Context, keyId: string, flags: Flags): Omit<Job, "path"> {
   const { map, environment, deps } = context;
   const key = map.keys.find((k) => k.name === keyId);

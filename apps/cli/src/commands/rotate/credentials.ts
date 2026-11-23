@@ -19,23 +19,25 @@ import {
 } from "@keypin/core";
 import { publisherFor } from "../../publisher";
 import { approval } from "../../sign-in";
-import type { Context } from "./job";
+import { type Context, keepsNoDates } from "./job";
 
 type Covered = { keyId: string; entry: EnvEntry; due: Day };
 type Level = "ok" | "warn" | "fail";
 type Report = (level: Level, text: string, title?: string) => void;
+export type MayRead = (keyId: string, entry: EnvEntry) => Promise<boolean>;
 
 export async function checkCredentials(
   context: Context,
   choices: readonly DueChoice[],
   dates: (ref: KeyRef) => VaultMetadata | null,
+  mayReadAdmin: MayRead,
 ): Promise<number> {
   const covered = coveredKeys(context, choices, dates);
   const lines: { level: Level; text: string; title: string }[] = [];
   const report: Report = (level, text, title = "A credential expires soon") =>
     lines.push({ level, text, title });
   await destinationLogins(context, covered, report);
-  await issuerAdmins(context, covered, report);
+  await issuerAdmins(context, covered, report, mayReadAdmin);
   const { out, deps } = context;
   if (lines.length) out.line("\nCredentials");
   for (const { level, text, title } of lines) {
@@ -47,13 +49,20 @@ export async function checkCredentials(
 }
 
 function coveredKeys(
-  { map, environment, deps }: Context,
+  context: Context,
   choices: readonly DueChoice[],
   dates: (ref: KeyRef) => VaultMetadata | null,
 ): Covered[] {
+  const { map, environment, deps } = context;
   const today = localDay(deps.now());
   return choices.flatMap((choice) => {
     if (choice.action === "skip" && choice.date === undefined) return [];
+    if (
+      choice.action === "skip" &&
+      choice.date === "missing" &&
+      keepsNoDates(context, choice.keyId)
+    )
+      return [];
     const entry = rotates(map, choice.keyId, environment);
     if (!entry) return [];
     const every = map.keys.find((key) => key.name === choice.keyId)?.rotateEvery?.days ?? null;
@@ -95,11 +104,13 @@ async function issuerAdmins(
   { deps, environment, out }: Context,
   covered: readonly Covered[],
   report: Report,
+  mayRead: MayRead,
 ): Promise<void> {
   for (const { keyId, entry, due } of covered) {
     const spec: IssuerSpec | undefined = entry.issuer;
     const ref = spec?.admin;
     if (!spec || !ref || !readsAdminExpiry(deps.issuers, spec)) continue;
+    if (!(await mayRead(keyId, entry))) continue;
     const name = `${keyId} (${environment})`;
     const where = formatReference(ref, deps.vaults);
     try {

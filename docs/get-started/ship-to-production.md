@@ -1,41 +1,21 @@
 # Ship to production
 
-This page puts your production keys in your vault, lists where each one goes, and publishes them with
-`keypin publish`. You see a plan before anything is written.
+This page puts your production keys in your vault, maps where they go, and publishes them.
 
 ## Put each prod value in your vault
 
-`publish` reads each key's `prod` value from your vault. It can be a different item from the `dev` one, so your
-laptop never needs the production value to run the app.
+- **From a file:** `keypin import .env.production RESEND_API_KEY --env prod --vault Private` adds
+  `[keys.RESEND_API_KEY.prod]` to the map. Then remove the lines its message names.
+- **A new key**, like `STRIPE_API_KEY` here: create it at the provider, save it in a vault item, and copy its
+  reference. In 1Password, open the field's menu and select **Copy Secret Reference**.
 
-- **In a file**, such as `.env.production`: import it for the `prod` environment.
-
-  ```sh
-  keypin import .env.production RESEND_API_KEY --env prod --vault Private
-  ```
-
-  It creates the item `billing prod resend api key` and adds a `[keys.RESEND_API_KEY.prod]` table at the end of
-  `keypin.toml`. Then remove the lines its message names, and delete the file only if it says nothing else is set
-  in it.
-
-- **A new key**, like `STRIPE_API_KEY` here, which the workflow uses and `acme/billing` doesn't have yet: make it at
-  the provider, put it in a vault item, such as `billing prod stripe api key`, and copy its reference. In 1Password,
-  open the field's menu and select **Copy Secret Reference**.
-
-- **Only in GitHub or Cloudflare:** neither keypin nor you can read a secret back from them, so make a new key at
-  the provider, the same way.
+A secret that is only in GitHub or Cloudflare can't be read back, so create a new key for it too.
 
 ## Add the destinations
 
-Run `keypin check`. For each secret a workflow or Worker needs and doesn't have, it prints the TOML to add. It
-leaves out the tables `keypin.toml` already has, such as the one `import` just wrote:
+Run `keypin check`. It prints the TOML to add, without the tables `keypin.toml` already has:
 
 ```
-billing /work/billing · read 0 env files, 1 wrangler config, 1 workflow; GitHub acme/billing
-2 things to do, in this order:
-1 Sign in to Cloudflare
-    wrangler login
-  Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
 2 Add the production keys to keypin.toml
   STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and keypin.toml doesn't publish it there.
   RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and keypin.toml doesn't publish it there.
@@ -55,32 +35,13 @@ repo = "acme/billing"
 to = "cloudflare-worker"
 account = "11111111111111111111111111111111"
 worker = "billing-worker"
-
-  Then run keypin check again.
 ```
 
-Paste the TOML at the end of `keypin.toml`, and replace the `<...>` with the reference you copied.
+Paste it at the end of `keypin.toml`, and replace the `<...>` with the reference you copied. `check` finds what
+GitHub Actions workflows and wrangler configs need; for other destinations, add the table yourself
+([Publishing](../guides/publishing.md#destinations)). Run `keypin check` again: it lists the keys to publish.
 
-`check` finds what GitHub Actions workflows and wrangler configs need. For Vercel, Supabase, Netlify, Railway,
-Convex, Fly.io and GitLab, add the table yourself; [Publishing](../guides/publishing.md#destinations) lists each
-destination's fields and the login it uses.
-
-Run `keypin check` again. Once the map is complete, it lists what to publish, after any login you still need:
-
-```
-billing /work/billing · read 0 env files, 1 wrangler config, 1 workflow; GitHub acme/billing
-2 things to do, in this order:
-1 Sign in to Cloudflare
-    wrangler login
-  Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
-2 Publish 2 keys
-  STRIPE_API_KEY: keypin.toml publishes it to acme/billing, which doesn't have it yet.
-  RESEND_API_KEY: keypin.toml publishes it to the Worker billing-worker, which doesn't have it yet.
-    keypin publish STRIPE_API_KEY
-    keypin publish RESEND_API_KEY
-```
-
-## See the plan
+## Publish
 
 ```sh
 keypin publish STRIPE_API_KEY --plan
@@ -90,52 +51,18 @@ keypin publish STRIPE_API_KEY --plan
 STRIPE_API_KEY prod  from op://Private/billing prod stripe api key/password in 1Password account my.1password.com
 ok     GitHub  acme/billing  as acme, account acme
 
-ok     Read 1 value from 1Password account my.1password.com
-
 Plan  generation e24c133a66cb5e4d
   + GitHub  acme/billing  first write  needs approval
-
-This plan needs approval in a terminal; --yes can't give it.
-Nothing was written: --plan only shows the plan.
-To approve, run this in a terminal:
-  cd /work/billing && keypin publish STRIPE_API_KEY
 ```
 
-- **The account line** shows who keypin signs in as at the destination, and the account it reaches. keypin stops
-  if it isn't the account the map pins.
-- **`generation`** is a short hash of the value, not the value. keypin records it to tell whether a destination
-  already has this value.
-- **The plan** shows each write. A first write to a destination, a changed account or a changed vault item needs
-  your `y` in a terminal.
+The plan shows the account keypin reached at each destination and every write; `--plan` writes nothing. To publish,
+run it again without `--plan` and answer `y`. A first write, a changed account or a changed vault item always needs
+that `y` in a terminal. `keypin publish --all` publishes every key with one plan.
 
-`--plan` reads the value, so 1Password asks you to approve it, but it never writes or prints one. It exits 3 when
-the plan would write, and 0 when there's nothing to write.
-
-## Publish
-
-```sh
-keypin publish STRIPE_API_KEY
-```
-
-It runs the same checks and shows the same plan, then asks before it writes:
-
-```
-Write 1 secret? [y/N] y
-ok     GitHub  acme/billing  wrote STRIPE_API_KEY
-Published STRIPE_API_KEY (prod) to 1 destination.
-```
-
-`keypin publish --all` publishes every key that has destinations, with one plan and one approval.
-
-keypin records a receipt for each write in `~/.local/state/keypin/state.json`, so a rerun skips the destinations
-that already have the value. A teammate's machine has no receipts, so their first publish counts as a first write.
-
-Some destinations use a new value only after a deploy, such as Vercel, Netlify, Railway and Fly.io; keypin doesn't
-deploy. See [Publishing](../guides/publishing.md) for each one.
+Some hosts use a new value only after a redeploy; see [Publishing](../guides/publishing.md).
 
 ## Next
 
-- `keypin status` lists every registered project's keys and when each is due for rotation.
+- `keypin status` shows when each key is due for rotation.
 - [Rotating a key](../guides/rotating-a-key.md) replaces a key at its provider and publishes the new one.
-- [Pulling in CI](../guides/publishing.md#pulling-in-ci) lets a CI job read a key from your vault instead of a
-  published copy.
+- [Pulling in CI](../guides/publishing.md#pulling-in-ci) lets a CI job read a key from your vault instead.

@@ -12,8 +12,10 @@ README and `skills/keypin/SKILL.md` stay short. Before adding a line, ask whethe
 - Leave edge cases to `docs/` or to the error message.
 - When you add a line, look for one to remove. A change should rarely grow the file.
 
-Each page in `docs/` covers one job completely and clearly, for someone building with keypin.
+Pages in `docs/` are clean, minimal, concise and clearly written: one job each, for someone building with keypin.
+Only relevant information; link instead of repeating.
 
-- Explain with the exact details a reader or an agent needs: fields, defaults, permissions, what keypin reads and
-  writes, and its errors.
+- Give the exact details a reader needs to do the job or avoid a mistake: fields, defaults, permissions, what keypin
+  reads and writes. Leave out what the CLI's output or an error already says.
+- Show output only where the reader acts on it, trimmed to exact recorded lines.
 - List each new page in [docs/README.md](docs/README.md), which sets the order of pages.

@@ -1,0 +1,22 @@
+name: docs
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/**"]
+
+permissions: {}
+
+jobs:
+  rebuild-keypin-dev:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ask keypin.dev to rebuild /docs from main
+        env:
+          GH_TOKEN: ${{ secrets.KEYPIN_DEV_DEPLOY_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice::keypin.dev didn't rebuild: add a fine-grained token for caiopizzol/keypin-console with Contents: read and write as this repository's Actions secret KEYPIN_DEV_DEPLOY_TOKEN."
+            exit 0
+          fi
+          gh api --method POST repos/caiopizzol/keypin-console/dispatches -f event_type=keypin-docs

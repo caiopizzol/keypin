@@ -4,10 +4,12 @@ On a server or in CI without the 1Password desktop app, keypin can sign in with 
 [1Password service account](https://developer.1password.com/docs/service-accounts/). With read access, `check`,
 `status` and `publish` work. `rotate` saves to 1Password, so it also needs write access.
 
-1. Move the items into a vault you create. Service accounts can't open the built-in Private, Personal or Employee
-   vaults, or the default Shared vault. Point `[providers]` in `secretspec.toml` at it, and each issuer's `admin`.
+1. Move the items into a vault for this project alone: a service account reaches every item in its vaults. Service
+   accounts can't open the built-in Private, Personal or Employee vaults, or the default Shared vault. Point
+   `[providers]` in `secretspec.toml` at it, and each issuer's `admin`.
 2. Create the service account with read access to that vault, and write access if it rotates. 1Password can't
-   change a service account's access later; you'd create a new one.
+   change a service account's access later; you'd create a new one. For a command that saves its token without
+   printing it, see [Scheduled rotation](scheduled-rotation.md#setup).
 3. Set both variables on the machine:
 
    ```sh

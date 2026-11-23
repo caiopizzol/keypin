@@ -330,6 +330,28 @@ ${idTool}
       `"KEY_ID" in [profiles.production] can read the same field as this key or its admin key; give the ID its own field`,
     ]),
     [
+      "a key in a named section of an item the secret reads without naming a section or field",
+      map(
+        "KEY_ID",
+        "",
+        undefined,
+        `{ item = "pair" }`,
+        `{ item = "pair", section = "ids", field = "password" }`,
+      ),
+      `"KEY_ID" in [profiles.production] can read the same field as this key or its admin key; give the ID its own field`,
+    ],
+    [
+      "a key in a named section that names the field the secret reads from the whole item",
+      map(
+        "KEY_ID",
+        "",
+        undefined,
+        `{ item = "pair", field = "token" }`,
+        `{ item = "pair", section = "ids", field = "token" }`,
+      ),
+      `"KEY_ID" in [profiles.production] can read the same field as this key or its admin key; give the ID its own field`,
+    ],
+    [
       "a key published elsewhere",
       map("KEY_ID", "key id", `publish = [${GITHUB}]`),
       `[tool.keypin.production.KEY_ID] publishes to different destinations; list the same destinations for both keys`,

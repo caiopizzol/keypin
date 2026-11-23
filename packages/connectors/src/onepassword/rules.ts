@@ -33,7 +33,7 @@ export const onePasswordVaultRules: VaultRules<OnePasswordRef, OnePasswordRefere
     sameName(a.field, b.field) &&
     sameName(a.fallback ?? null, b.fallback ?? null),
   mayShareField: (a, b) =>
-    sameName(a.section, b.section) &&
+    (a.section === null || b.section === null || sameName(a.section, b.section)) &&
     readable(a).some((field) => readable(b).some((other) => sameName(field, other))),
   describe: (ref) =>
     ref.fallback === undefined

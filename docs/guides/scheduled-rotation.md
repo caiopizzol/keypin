@@ -112,13 +112,14 @@ access to the keys and their admin keys. In the workflow, add `id-token: write` 
 `OP_SERVICE_ACCOUNT_TOKEN`, which then needn't be ignored. With Bitwarden Secrets Manager, save `BWS_ACCESS_TOKEN` as
 an Actions secret, set it in their place, and ignore it instead.
 
-Doppler keeps no rotated date, so `rotate --due` never rotates a Doppler key, and `--check` warns about it without
-failing. Rotate it by hand with `keypin rotate <KEY>`. A job can still sign in to Doppler with
+Doppler keeps no rotated date, so `rotate --due` never rotates a Doppler key, and `--check` fails for one with a
+`rotate_every`. Set `rotate_every = "never"`, or remove it, and rotate the key by hand with
+`keypin rotate <KEY> --profile <name>`. A job can still sign in to Doppler with
 [OIDC](../integrations/vaults/doppler.md#signing-in-from-github-actions) to publish.
 
 ## Runs
 
-`rotate --due` rotates each key that is due and has an `issuer` and destinations, and says why it skips the others.
+`rotate --due` rotates each key that is due and has an `issuer`, and says why it skips the others.
 Without a terminal, `--yes` approves only routine writes, as in [publishing](publishing.md#steps).
 
 When an old key waits for approval, the run passes with a warning; a red run means something failed. To approve, run

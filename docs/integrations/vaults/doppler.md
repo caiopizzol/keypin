@@ -60,7 +60,8 @@ An issuer's `admin` is a reference in keypin's own syntax, not a provider URI: `
 ## Rotated date
 
 Doppler keeps no rotated date on a secret, so `keypin status` can't tell when a Doppler key is due, and
-[scheduled rotation](../../guides/scheduled-rotation.md) never rotates one. To be reminded, set a
+[scheduled rotation](../../guides/scheduled-rotation.md) never rotates one: `keypin rotate --check` fails for a key
+with a `rotate_every`. Set `rotate_every = "never"`, or remove it, and rotate the key by hand. To be reminded, set a
 [secret reminder](https://docs.doppler.com/docs/secrets#secret-reminders) in Doppler.
 
 ## Permissions

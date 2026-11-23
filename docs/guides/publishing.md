@@ -155,10 +155,15 @@ a [1Password service account](service-accounts.md) token. See secretspec's
 ```
 
 `keypin check` reads each job that runs `secretspec run`. Its profile is the one in `--profile` or `-P`, else
-`SECRETSPEC_PROFILE` in the step, job or workflow, else `default`. A secret that profile declares isn't asked for at
-the repo, and `check` notes that the job's `secrets.<NAME>` can go. Add `OP_SERVICE_ACCOUNT_TOKEN`, or your vault's
+`SECRETSPEC_PROFILE` in the step, job or workflow, else `default`. A secret that profile declares, used only in steps
+that run `secretspec run`, isn't asked for at the repo, and `check` notes that the job's `secrets.<NAME>` can go. Add `OP_SERVICE_ACCOUNT_TOKEN`, or your vault's
 token, to [`ignore`](../reference/secretspec-toml.md#toolkeypin).
 
-`keypin rotate` needs a destination for the key, so it can't rotate a key that only `secretspec run` reads. To move a key to `secretspec run`, change the workflow, then
-delete the old secret, such as `gh secret delete API_TOKEN --repo owner/repo`. keypin never deletes a copy it
-published.
+`keypin rotate` needs a destination for the key, so it can't rotate a key that only `secretspec run` reads. To move a
+key to `secretspec run`:
+
+1. Change the workflow, and check that it runs.
+2. Remove the GitHub entry from the key's `publish` in `[tool.keypin.<profile>.<KEY>]`, so `keypin publish` and
+   `keypin rotate` stop writing it.
+3. Delete the secret from the repository or environment it was published to, such as
+   `gh secret delete API_TOKEN --repo owner/repo`. keypin never deletes a copy it published.

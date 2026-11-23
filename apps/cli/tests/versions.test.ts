@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { versionNotes } from "../src/commands/check/versions";
+import { versionNotes } from "../src/versions";
 
 const bump = (note: string | undefined) =>
   note?.endsWith("there") ? "workflow" : note?.includes("update this one") ? "here" : note;
@@ -14,6 +14,15 @@ describe("versionNotes", () => {
     expect(bump(versionNotes([{ file: "a.yml", version: "0.9.0" }], "0.10.0")[0])).toBe("workflow");
     expect(bump(versionNotes([{ file: "a.yml", version: "1.0.0" }], "1.0.0-rc.1")[0])).toBe("here");
     expect(bump(versionNotes([{ file: "a.yml", version: "1.0.0-rc.1" }], "1.0.0")[0])).toBe(
+      "workflow",
+    );
+  });
+
+  test("orders numeric prerelease parts as numbers", () => {
+    expect(bump(versionNotes([{ file: "a.yml", version: "1.0.0-rc.10" }], "1.0.0-rc.9")[0])).toBe(
+      "here",
+    );
+    expect(bump(versionNotes([{ file: "a.yml", version: "1.0.0-rc.9" }], "1.0.0-rc.10")[0])).toBe(
       "workflow",
     );
   });

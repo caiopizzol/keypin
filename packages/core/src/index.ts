@@ -134,7 +134,7 @@ export {
   writeRotationFile,
 } from "./rotation-file";
 export { type DateProblem, type DueChoice, dueKeys, dueRefs, type Progress } from "./due";
-export { envFileKind, envNames, envValues, type EnvFileKind } from "./dotenv";
+export { envFileKind, envFileSuffix, envNames, envValues, type EnvFileKind } from "./dotenv";
 export {
   type Discovered,
   type Discovery,

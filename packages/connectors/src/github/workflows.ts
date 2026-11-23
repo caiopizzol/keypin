@@ -148,8 +148,11 @@ export function workflowRefs(text: string): WorkflowRefs | null {
 
 const KEYPIN_PIN = /(?<![\w@./-])keypin@(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?![\w.+-])/g;
 
+const SHELL_COMMENT = /(^|\s)#.*$/gm;
+
 function keypinPins(script: string): string[] {
-  return [...script.matchAll(KEYPIN_PIN)].flatMap((match) => (match[1] ? [match[1]] : []));
+  const live = script.replace(SHELL_COMMENT, "$1");
+  return [...live.matchAll(KEYPIN_PIN)].flatMap((match) => (match[1] ? [match[1]] : []));
 }
 
 const PROFILE_VARIABLE = "SECRETSPEC_PROFILE";

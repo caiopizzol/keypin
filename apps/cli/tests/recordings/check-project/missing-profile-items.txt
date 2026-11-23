@@ -59,9 +59,7 @@ billing /work/billing · read 3 env files, 0 wrangler configs, 0 workflows; GitH
 2 Fix the vault item op://Private/secretspec/shop/production/RESEND_API_KEY/value
   No item "secretspec/shop/production/RESEND_API_KEY".
   Used by RESEND_API_KEY (production).
-  Each profile has its own items. If .env holds the production value:
-    SECRETSPEC_PROFILE=production secretspec import dotenv:.env
-  Otherwise:
+  Each profile has its own items. Save the production value:
     secretspec set RESEND_API_KEY --profile production
 
 --- stderr ---

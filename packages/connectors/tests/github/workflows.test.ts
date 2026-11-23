@@ -22,6 +22,22 @@ jobs:
     expect(refs.keypin).toEqual(["0.39.0", "1.0.0-rc.1"]);
   });
 
+  test("skips an install a multiline run step keeps as a comment, and keeps the live one", () => {
+    const refs = workflowRefs(`
+on: push
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          # npm install -g keypin@0.38.0
+            #npm install -g keypin@0.37.0
+          npm install -g keypin@0.40.0 # was keypin@0.36.0
+`);
+    assert(refs);
+    expect(refs.keypin).toEqual(["0.40.0"]);
+  });
+
   test("finds secrets and vars in expressions and if conditions, not in comments", () => {
     const refs = workflowRefs(`
 on: push

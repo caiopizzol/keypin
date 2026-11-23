@@ -22,7 +22,7 @@ export function locate({
     return `uses ${uri}; an awssm:// provider takes no path, so write ${SHAPE}, and name the secret with ref = { item = "..." }`;
   const place = { kind: "awssm" as const, region: host };
   if (ref === null) {
-    const prefix = new URLSearchParams(query).get("prefix");
+    const prefix = new URLSearchParams(query).get("prefix") || null;
     const own = `secretspec/${project}/${profile}/${key}`;
     const name = prefix === null ? own : `${prefix.replace(/\/+$/, "")}/${own}`;
     if (!NAME.test(name))

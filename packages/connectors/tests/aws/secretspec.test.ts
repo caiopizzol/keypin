@@ -26,6 +26,12 @@ describe("awssm:// providers", () => {
     });
   });
 
+  test("an empty prefix is no prefix, as secretspec reads it", () => {
+    expect(locate(at("awssm://us-east-1?prefix="))).toMatchObject({
+      name: "secretspec/web/production/STRIPE_KEY",
+    });
+  });
+
   test("a ref names the secret, and its field one key of a JSON secret", () => {
     expect(locate(at("awssm://eu-west-1", { item: "prod/db", field: "password" }))).toEqual({
       kind: "awssm",

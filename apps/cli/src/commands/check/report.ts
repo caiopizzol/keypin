@@ -10,6 +10,7 @@ interface ItemResult {
 
 export interface CheckedItem extends ItemResult {
   signIn: SignInReason | null;
+  missing: boolean;
 }
 
 export interface DestinationResult {

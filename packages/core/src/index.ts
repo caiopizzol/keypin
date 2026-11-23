@@ -50,6 +50,7 @@ export {
 } from "./issuer";
 export { type ExpiryVerdict, judgeExpiry } from "./expiry";
 export {
+  envFileProfile,
   envFlag,
   isEnvironmentName,
   isVariableName,

@@ -109,6 +109,7 @@ interface Setup {
   github?: StoreRead | Error;
   worker?: StoreRead | Error;
   deps?: Partial<Deps>;
+  values?: Record<string, string>;
 }
 
 function setup(options: Setup = {}) {
@@ -140,6 +141,7 @@ function setup(options: Setup = {}) {
       "billing prod item": SENTINEL,
       "secretspec/billing/production/STRIPE_API_KEY": SENTINEL,
       "secretspec/billing/production/RESEND_API_KEY": SENTINEL,
+      ...options.values,
     },
   });
   const destinations = fakeDestinations();
@@ -533,6 +535,41 @@ describe("keypin check on a whole project", () => {
       worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
     });
     expect(await run.record("scheduled-rotation-workflow", ["check"])).toBe(0);
+  });
+
+  test("a production item missing after importing .env into default says how to save it", async () => {
+    const run = setup({
+      files: {
+        [MAP]: `[project]
+name = "shop"
+revision = "1.0"
+
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.default]
+DATABASE_URL = { description = "DATABASE_URL" }
+RESEND_API_KEY = { description = "RESEND_API_KEY" }
+STRIPE_API_KEY = { description = "STRIPE_API_KEY" }
+
+[profiles.production]
+`,
+        [`${ROOT}/.env.production`]: `DATABASE_URL=${SENTINEL}\n`,
+        [`${ROOT}/wrangler.toml`]: null,
+        [`${ROOT}/.github/workflows/deploy.yml`]: null,
+      },
+      values: {
+        "secretspec/shop/default/DATABASE_URL": SENTINEL,
+        "secretspec/shop/default/RESEND_API_KEY": SENTINEL,
+        "secretspec/shop/default/STRIPE_API_KEY": SENTINEL,
+        "secretspec/shop/production/STRIPE_API_KEY": SENTINEL,
+      },
+    });
+    expect(await run.record("missing-profile-items", ["check"])).toBe(1);
+    expect(leaks(...run.everything())).toBe(false);
   });
 
   test("a workflow that pins another keypin version says which one to bump", async () => {

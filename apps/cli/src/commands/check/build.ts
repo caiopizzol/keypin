@@ -24,6 +24,7 @@ import { distinctRefs, refKey } from "../../vault";
 import { type CheckedItem, type DestinationResult, type Report, ITEM_NOTE } from "./report";
 import { prerequisites, loginLine, checkItem, checkDestination } from "./lookups";
 import { type Step, ORDER, plan, providersStep } from "./steps";
+import { saveCommands } from "./missing";
 import { versionNotes } from "./versions";
 
 export async function build(
@@ -231,10 +232,12 @@ export async function build(
     const item = items.get(refKey(ref));
     if (!item?.problem) continue;
     const by = usedBy(`item ${refKey(ref)}`);
+    const users = entries.filter(({ entry }) => refKey(entry.ref) === refKey(ref));
+    const hint = item.missing ? saveCommands(users, scanned.scan.envFiles, map) : [];
     problem(
       ORDER.item,
       `Fix the vault item ${item.reference}`,
-      [sentence(item.problem), `Used by ${by}.`],
+      [sentence(item.problem), `Used by ${by}.`, ...hint],
       `${item.problem} (${by})`,
       item.signIn ? ref.kind : undefined,
     );

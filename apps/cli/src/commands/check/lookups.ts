@@ -1,5 +1,6 @@
 import {
   formatReference,
+  ItemMissing,
   type KeyRef,
   messageOf,
   type Prerequisite,
@@ -74,10 +75,11 @@ export async function checkItem(ref: KeyRef, deps: Deps): Promise<CheckedItem> {
   const reference = formatReference(ref, deps.vaults);
   try {
     await deps.vault().itemIds(ref);
-    return { reference, ok: true, problem: null, signIn: null };
+    return { reference, ok: true, problem: null, signIn: null, missing: false };
   } catch (error) {
     const signIn = error instanceof SignInFailed ? error.reason : null;
-    return { reference, ok: false, problem: messageOf(error), signIn };
+    const missing = error instanceof ItemMissing;
+    return { reference, ok: false, problem: messageOf(error), signIn, missing };
   }
 }
 

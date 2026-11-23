@@ -339,7 +339,10 @@ try {
     join(folder, "mark.js"),
     'import { writeFileSync } from "node:fs";\nwriteFileSync(new URL("./preloaded", import.meta.url), "");\n',
   );
-  await writeFile(join(folder, "keypin.toml"), '[1password]\naccount = "my.1password.com"\n');
+  await writeFile(
+    join(folder, "secretspec.toml"),
+    '[project]\nname = "check-binary"\nrevision = "1.0"\n\n[profiles.default]\n',
+  );
 
   const bytes = Buffer.from(await Bun.file(keypin).arrayBuffer());
   expect(

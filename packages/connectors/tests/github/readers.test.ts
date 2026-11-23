@@ -139,4 +139,15 @@ describe("the workflows a vault-only rotation lists", () => {
     );
     expect(await readers("apps/web", deploy(self + inFolder("apps/web")))).toEqual([]);
   });
+
+  test("a folder inside another repository checked out within this repo isn't this repo", async () => {
+    const self = checkout("path: repo");
+    const nested = checkout("repository: acme/tools\npath: repo/apps/web/tools");
+    expect(
+      await readers("apps/web", deploy(self + nested + inFolder("repo/apps/web/tools"))),
+    ).toEqual([]);
+    expect(await readers("apps/web", deploy(self + nested + inFolder("repo/apps/web")))).toEqual(
+      LISTED,
+    );
+  });
 });

@@ -54,17 +54,24 @@ async function repoFolder(
   repo: () => Promise<string | null>,
 ): Promise<string | null | false> {
   const mine = [];
+  const others: string[] = [];
   for (const checkout of run.checkouts) {
     if (checkout.repository !== null) {
       const name = checkout.repository.includes("${{") ? null : await repo();
       if (name === null) return null;
-      if (checkout.repository.toLowerCase() !== name.toLowerCase()) continue;
+      if (checkout.repository.toLowerCase() !== name.toLowerCase()) {
+        if (checkout.path) others.push(checkout.path);
+        continue;
+      }
     }
     mine.push(checkout);
   }
   const [only] = mine;
   if (run.folder === null || only === undefined) return run.folder;
   if (mine.length > 1 || only.path === null) return null;
+  const folder = run.folder;
+  const within = (path: string) => folder === path || folder.startsWith(`${path}/`);
+  if (others.some((path) => path.length > (only.path ?? "").length && within(path))) return false;
   if (!only.path) return run.folder;
   if (run.folder === only.path) return "";
   return run.folder.startsWith(`${only.path}/`) ? run.folder.slice(only.path.length + 1) : false;

@@ -38,6 +38,21 @@ jobs:
     expect(refs.keypin).toEqual(["0.40.0"]);
   });
 
+  test("a # inside quotes doesn't start a comment, so the install after it still counts", () => {
+    const refs = workflowRefs(`
+on: push
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "Deploy #1" && npm install -g keypin@0.40.0
+          echo 'step #2' && npx keypin@0.41.0 rotate --due
+`);
+    assert(refs);
+    expect(refs.keypin).toEqual(["0.40.0", "0.41.0"]);
+  });
+
   test("finds secrets and vars in expressions and if conditions, not in comments", () => {
     const refs = workflowRefs(`
 on: push

@@ -148,10 +148,26 @@ export function workflowRefs(text: string): WorkflowRefs | null {
 
 const KEYPIN_PIN = /(?<![\w@./-])keypin@(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?![\w.+-])/g;
 
-const SHELL_COMMENT = /(^|\s)#.*$/gm;
+function withoutComments(script: string): string {
+  return script
+    .split("\n")
+    .map((line) => {
+      let quote: string | null = null;
+      for (let at = 0; at < line.length; at++) {
+        const char = line[at];
+        if (quote === null && char === "\\") at++;
+        else if (quote === null && (char === '"' || char === "'")) quote = char;
+        else if (char === quote && (quote === "'" || line[at - 1] !== "\\")) quote = null;
+        else if (quote === null && char === "#" && (at === 0 || /\s/.test(line[at - 1] ?? "")))
+          return line.slice(0, at);
+      }
+      return line;
+    })
+    .join("\n");
+}
 
 function keypinPins(script: string): string[] {
-  const live = script.replace(SHELL_COMMENT, "$1");
+  const live = withoutComments(script);
   return [...live.matchAll(KEYPIN_PIN)].flatMap((match) => (match[1] ? [match[1]] : []));
 }
 

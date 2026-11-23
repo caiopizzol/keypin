@@ -27,6 +27,13 @@ describe("versionNotes", () => {
     );
   });
 
+  test("a version Bun can't compare still gets a note, without a direction", () => {
+    const huge = "1.0.18446744073709551616";
+    expect(versionNotes([{ file: "a.yml", version: huge }], "0.40.0")).toEqual([
+      `a.yml installs keypin ${huge}, and this is keypin 0.40.0; make them the same version`,
+    ]);
+  });
+
   test("one note per version, naming each file once", () => {
     const notes = versionNotes(
       [

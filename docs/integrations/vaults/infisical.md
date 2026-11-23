@@ -30,10 +30,8 @@ rotate_every = "90d"
 dev = "infisical://billing/dev/STRIPE_KEY"
 ```
 
-| Field          | Value                                                                                 |
-| -------------- | ------------------------------------------------------------------------------------- |
-| `organization` | The slug in your organization's settings. Required.                                   |
-| `url`          | Leave it out for US Cloud. Set it for EU Cloud or a self-hosted server, with no path. |
+`organization` is the slug in your organization's settings. Leave out `url` for US Cloud; set it, with no path, for
+EU Cloud or a self-hosted server.
 
 ## References
 

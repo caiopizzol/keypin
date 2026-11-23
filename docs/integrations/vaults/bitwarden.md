@@ -28,10 +28,8 @@ rotate_every = "90d"
 dev = "bitwarden://billing-dev/STRIPE_KEY"
 ```
 
-| Field          | Value                                                                                         |
-| -------------- | --------------------------------------------------------------------------------------------- |
-| `organization` | The ID in the address bar when you open Secrets Manager. Required.                            |
-| `url`          | Leave it out for the US cloud. Set it for the EU cloud or a self-hosted server, with no path. |
+`organization` is the ID in the address bar when you open Secrets Manager. Leave out `url` for the US cloud; set it,
+with no path, for the EU cloud or a self-hosted server.
 
 ## References
 

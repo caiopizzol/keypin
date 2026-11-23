@@ -1,0 +1,49 @@
+$ keypin import .env DATABASE_URL RESEND_API_KEY --vault Private --account my.1password.com
+exit 0
+
+--- given terminal ---
+true
+
+--- calls vault ---
+list my.1password.com Private
+write billing dev database url
+write billing dev resend api key
+
+--- calls destination ---
+
+--- calls asked ---
+Create 2 items in 1Password? [y/N] 
+
+--- stdout ---
+
+--- stderr ---
+
+Import /work/billing/.env  into 1Password account my.1password.com, vault Private
+ok     Listed the items in vault Private of 1Password account my.1password.com, not the values
+
+Plan
+  + DATABASE_URL    op://Private/billing dev database url/password    create, rotated 2026-11-09
+  + RESEND_API_KEY  op://Private/billing dev resend api key/password  create, rotated 2026-11-09
+Map: write /work/billing/keypin.toml and register /work/billing
+
+ok     Created "billing dev database url" in vault Private
+ok     Created "billing dev resend api key" in vault Private
+ok     Mapped DATABASE_URL, RESEND_API_KEY in /work/billing/keypin.toml
+ok     registered (1 project)
+
+The imported values are now in 1Password, and keypin run -- <command> provides them. keypin left /work/billing/.env as it is.
+Nothing else is set in it. Delete it and stop loading it.
+
+--- wrote /work/billing/keypin.toml ---
+# Written by keypin import. The values are in 1Password; this file holds only references.
+
+[1password]
+account = "my.1password.com"
+
+[keys.DATABASE_URL]
+rotate_every = "90d"
+dev = "op://Private/billing dev database url/password"
+
+[keys.RESEND_API_KEY]
+rotate_every = "90d"
+dev = "op://Private/billing dev resend api key/password"

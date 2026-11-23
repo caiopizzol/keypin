@@ -91,8 +91,15 @@ vault.
 
 Give a key an `issuer`, the provider that makes it, such as Resend, Neon or OpenAI, and `keypin rotate` replaces
 it end to end. It creates the new key at the provider, saves it to your vault with `rotated` set to today, and
-publishes it. The old key keeps working until every destination has the new one, and keypin revokes it only after
-you confirm. See [Rotating a key](../guides/rotating-a-key.md).
+publishes it. Its plan says what happens to the old key:
+
+- When keypin knows the old key's ID at the provider, it revokes the key after a second `y`, and only once every
+  destination has the new one.
+- When it doesn't, the old key stays, and you delete it at the provider once nothing uses it. Resend can't tell
+  keypin which key the vault holds, so a first Resend rotation always leaves the old key.
+- A [`random`](../guides/rotating-a-key.md#random) secret has nothing to revoke: the new value replaces the old one.
+
+See [Rotating a key](../guides/rotating-a-key.md).
 
 With `rotate_every` and the `rotated` date, `keypin status` shows which keys are due.
 [Scheduled rotation](../guides/scheduled-rotation.md) rotates the due ones in your GitHub Actions; for now, keys
@@ -104,7 +111,7 @@ kept in 1Password and published to GitHub Actions.
   one doesn't.
 - `publish` and `rotate` show a plan first. A first write to a destination, a changed account or a changed vault
   item waits for you to answer `y` in a terminal.
-- `rotate` asks a second time before it revokes the old key, and only if every destination got the new one.
+- `rotate` asks a second time before it revokes an old key, and only if every destination got the new one.
 - keypin never deletes a copy it published. Removing one is your call.
 
 ## What keypin keeps on your machine
@@ -116,5 +123,3 @@ kept in 1Password and published to GitHub Actions.
 | `.keypin/` in the repo, optional   | Each key's `rotated` day for the hosted console, and scheduled rotation's progress |
 
 None of them holds a value. See [Files and state](../reference/files-and-state.md).
-
-Next: [Install](install.md).

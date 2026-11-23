@@ -1,0 +1,30 @@
+$ keypin publish STRIPE_API_KEY --plan
+exit 3
+
+--- given terminal ---
+false
+
+--- calls vault ---
+read billing prod stripe api key
+
+--- calls destination ---
+check github-actions:acme/billing
+
+--- calls asked ---
+
+--- stdout ---
+
+--- stderr ---
+
+STRIPE_API_KEY prod  from op://Private/billing prod stripe api key/password in 1Password account my.1password.com
+ok     GitHub  acme/billing  as acme, account acme
+
+ok     Read 1 value from 1Password account my.1password.com
+
+Plan  generation e24c133a66cb5e4d
+  + GitHub  acme/billing  first write  needs approval
+
+This plan needs approval in a terminal; --yes can't give it.
+Nothing was written: --plan only shows the plan.
+To approve, run this in a terminal:
+  cd /work/billing && keypin publish STRIPE_API_KEY

@@ -40,5 +40,3 @@ places, never values. See [Files and state](../reference/files-and-state.md).
 
 A command that `keypin run` starts still holds its keys while it runs. keypin removes the copies in files, chats
 and laptops; it can't stop a running program from leaking what it reads.
-
-Next: [How it works](how-it-works.md).

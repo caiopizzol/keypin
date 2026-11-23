@@ -5,56 +5,57 @@ This page moves the keys in your `.env` into 1Password with `keypin import`, the
 
 ## Move your keys into 1Password
 
-Run the `keypin import` line `keypin check` printed, with your vault and the account's sign-in address. Here it
-moves two keys from a `.env` that also sets plain settings:
+Run the `keypin import` line `keypin check` printed in step 3, with your vault and the account's sign-in address:
 
 ```sh
-keypin import .env STRIPE_KEY WEBHOOK_SECRET --vault 'App Secrets' --account my.1password.com
+keypin import .env DATABASE_URL RESEND_API_KEY --vault Private --account my.1password.com
 ```
 
-Name only the secrets. Plain settings, such as `PORT` or `PUBLIC_SITE_URL`, stay in the file. `--account` is needed
-only while `keypin.toml` has no 1Password account.
+Name only the secrets. Plain settings, such as `PORT`, stay in the file. `--account` is needed only while
+`keypin.toml` has no 1Password account.
 
 `import` shows what it will create, and waits for you to answer `y`:
 
 ```
-Import /work/billing/.env  into 1Password account my.1password.com, vault App Secrets
-ok     Listed the items in vault App Secrets of 1Password account my.1password.com, not the values
+Import /work/billing/.env  into 1Password account my.1password.com, vault Private
+ok     Listed the items in vault Private of 1Password account my.1password.com, not the values
 
 Plan
-  + STRIPE_KEY      op://App Secrets/billing dev stripe key/password      create, rotated 2026-11-09
-  + WEBHOOK_SECRET  op://App Secrets/billing dev webhook secret/password  create, rotated 2026-11-09
+  + DATABASE_URL    op://Private/billing dev database url/password    create, rotated 2026-11-09
+  + RESEND_API_KEY  op://Private/billing dev resend api key/password  create, rotated 2026-11-09
 Map: write /work/billing/keypin.toml and register /work/billing
 Create 2 items in 1Password? [y/N] y
 
-ok     Created "billing dev stripe key" in vault App Secrets
-ok     Created "billing dev webhook secret" in vault App Secrets
-ok     Mapped STRIPE_KEY, WEBHOOK_SECRET in /work/billing/keypin.toml
+ok     Created "billing dev database url" in vault Private
+ok     Created "billing dev resend api key" in vault Private
+ok     Mapped DATABASE_URL, RESEND_API_KEY in /work/billing/keypin.toml
 ok     registered (1 project)
 
 The imported values are now in 1Password, and keypin run -- <command> provides them. keypin left /work/billing/.env as it is.
-Remove the STRIPE_KEY, WEBHOOK_SECRET lines from it: keypin run warns while an env file holds a key it provides.
+Nothing else is set in it. Delete it and stop loading it.
 ```
 
 For each variable, it creates a Password item named `<folder> <environment> <variable>`, with a `rotated` date of
 today, and maps it in `keypin.toml`:
 
 ```toml
+# Written by keypin import. The values are in 1Password; this file holds only references.
+
 [1password]
 account = "my.1password.com"
 
-[keys.STRIPE_KEY]
+[keys.DATABASE_URL]
 rotate_every = "90d"
-dev = "op://App Secrets/billing dev stripe key/password"
+dev = "op://Private/billing dev database url/password"
 
-[keys.WEBHOOK_SECRET]
+[keys.RESEND_API_KEY]
 rotate_every = "90d"
-dev = "op://App Secrets/billing dev webhook secret/password"
+dev = "op://Private/billing dev resend api key/password"
 ```
 
 It never changes the env file, and never overwrites an item. Remove the lines it names, or delete the file when it
-says nothing else is in it. [Moving off env files](../guides/moving-off-env-files.md) covers what it skips, and
-importing into a map that already has keys.
+says nothing else is in it, as here. [Moving off env files](../guides/moving-off-env-files.md) covers what it skips,
+and importing into a map that already has keys.
 
 `import` creates 1Password items only. With another vault, add each secret there and map it by hand; see
 [Infisical](../integrations/vaults/infisical.md), [Bitwarden](../integrations/vaults/bitwarden.md),
@@ -69,7 +70,7 @@ keypin run -- npm run dev
 ```
 
 ```
-ok     Read 2 dev values from 1Password account my.1password.com  op://App Secrets/billing dev stripe key/password, op://App Secrets/billing dev webhook secret/password
+ok     Read 2 dev values from 1Password account my.1password.com  op://Private/billing dev database url/password, op://Private/billing dev resend api key/password
 ```
 
 `run` reads the `dev` value of each key that has one, sets it as an environment variable, and starts the command.
@@ -86,5 +87,3 @@ ok     Read 2 dev values from 1Password account my.1password.com  op://App Secre
 
 `--only NAME` passes only the keys you name, and `--env <name>` reads another environment. For `wrangler dev`,
 see [Troubleshooting](../reference/troubleshooting.md#wrangler-dev): a `.dev.vars` file has to go entirely.
-
-Next: [Ship to production](ship-to-production.md).

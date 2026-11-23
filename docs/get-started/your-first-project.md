@@ -39,7 +39,7 @@ Here it is in a project with a `.env` that sets `DATABASE_URL` and `RESEND_API_K
 secret `STRIPE_API_KEY`, and a wrangler config that requires `RESEND_API_KEY`:
 
 ```
-billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub acme/billing
+billing /work/billing · read 1 env file, 1 wrangler config, 1 workflow; GitHub acme/billing
 4 things to do, in this order:
 1 Sign in to Cloudflare
     wrangler login
@@ -94,16 +94,8 @@ worker = "billing-worker"
 - **`Not checked:`** lines name what `check` couldn't read, and why. That is unverified, not missing.
 - **`Note:`** lines are worth reading, but they aren't things to do.
 
-Run `keypin check` again after each change. When nothing is left, it says so and exits 0:
-
-```
-ok     Looked up 4 items in 1Password account my.1password.com, not the values
-ok     Checked 2 accounts
-billing /work/billing · read 1 env file, 1 wrangler config, 1 workflow; GitHub acme/billing
-ok     3 keys, 2 destinations. Everything checks out.
-```
-
+Run `keypin check` again after each change. When nothing is left, it prints `Everything checks out` and exits 0.
 It exits 1 while there's something to do. `keypin check --json` prints the same report as JSON, for scripts and
 agents.
 
-Next: [Run your app locally](run-your-app-locally.md), which does step 3 and runs your app with the keys.
+[Run your app locally](run-your-app-locally.md) does step 3 and runs your app with the keys.

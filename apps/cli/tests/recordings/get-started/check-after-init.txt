@@ -1,0 +1,57 @@
+$ keypin check
+exit 1
+
+--- given terminal ---
+false
+
+--- calls vault ---
+
+--- calls destination ---
+
+--- calls asked ---
+
+--- stdout ---
+billing /work/billing · read 1 env file, 1 wrangler config, 1 workflow; GitHub acme/billing
+4 things to do, in this order:
+1 Sign in to Cloudflare
+    wrangler login
+  Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
+2 Set up 1Password
+  keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected.
+3 Move .env's keys into 1Password
+  .env sets DATABASE_URL, RESEND_API_KEY, which keypin.toml doesn't map.
+    keypin import .env DATABASE_URL RESEND_API_KEY --vault <vault> --account <1Password sign-in address>
+  Leave out a name that isn't a key; it stays in the file.
+4 Add the production keys to keypin.toml
+  STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and keypin.toml doesn't publish it there.
+  RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and keypin.toml doesn't publish it there.
+  If you ran the import above, run keypin check again for this TOML instead; the import wrote some of these tables.
+  Replace each <...> with the real value; keypin rejects a map that still has one:
+
+[1password]
+account = "<1Password sign-in address>"
+
+[keys.STRIPE_API_KEY]
+rotate_every = "90d"
+
+[keys.STRIPE_API_KEY.prod]
+from = "op://<vault>/<item>/<field>"
+
+[[keys.STRIPE_API_KEY.prod.publish]]
+to = "github-actions"
+repo = "acme/billing"
+
+[keys.RESEND_API_KEY]
+rotate_every = "90d"
+
+[keys.RESEND_API_KEY.prod]
+from = "op://<vault>/<item>/<field>"
+
+[[keys.RESEND_API_KEY.prod.publish]]
+to = "cloudflare-worker"
+account = "11111111111111111111111111111111"
+worker = "billing-worker"
+
+  Then run keypin check again.
+
+--- stderr ---

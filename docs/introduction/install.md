@@ -36,5 +36,3 @@ This leaves your projects' `keypin.toml` files, and the two files keypin keeps o
 projects in `~/.config/keypin/registry.json`, and publish receipts in `~/.local/state/keypin/state.json`. Delete
 them if you won't use keypin again. Finish any rotation first: `state.json` holds the provider ID of each key
 `rotate` created. See [Files and state](../reference/files-and-state.md).
-
-Next: [Your first project](../get-started/your-first-project.md).

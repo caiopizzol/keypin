@@ -64,7 +64,7 @@ cd ~/code/my-project
 keypin init                     # write keypin.toml
 keypin check                    # what the project uses, what's missing, and what to run or add
 keypin import .env STRIPE_KEY --vault Private --account my.1password.com
-                                # move a key from .env into 1Password and map it
+                                # move a key into 1Password; it says which .env lines to remove
 keypin run -- npm run dev       # run your app with the keys from your vault
 ```
 

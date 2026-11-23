@@ -19,6 +19,14 @@ const FLOW_HEADER = /^flowchart\s+LR$/;
 const FLOW_EDGE =
   /^(\w+)(?:\["([^"]*)"\])?\s*(?:--\s*([^-"]+?)\s*-->|-->)\s*(\w+)(?:\["([^"]*)"\])?$/;
 
+const decoded = (text: string) => {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return null;
+  }
+};
+
 const parser = unified().use(remarkParse).use(remarkGfm);
 
 const walk = (node: Nodes): Nodes[] => [
@@ -78,7 +86,12 @@ function listedPages(tree: Root): { pages: string[]; problems: string[] } {
         continue;
       }
       const path = posix.normalize(link.url);
-      if (!path.endsWith(".md") || path.startsWith("../") || posix.isAbsolute(path)) {
+      if (
+        SCHEME.test(link.url) ||
+        !path.endsWith(".md") ||
+        path.startsWith("../") ||
+        posix.isAbsolute(path)
+      ) {
         problems.push(`${INDEX} links to ${link.url}, not a page in docs/.`);
         continue;
       }
@@ -157,8 +170,12 @@ export function docsProblems(root: string): string[] {
       const url = node.url.startsWith(REPO_URL) ? `/${node.url.slice(REPO_URL.length)}` : node.url;
       if (SCHEME.test(url)) continue;
       const at = url.indexOf("#");
-      const path = decodeURIComponent(at === -1 ? url : url.slice(0, at));
-      const id = at === -1 ? "" : decodeURIComponent(url.slice(at + 1));
+      const path = decoded((at === -1 ? url : url.slice(0, at)).split("?")[0] ?? "");
+      const id = at === -1 ? "" : decoded(url.slice(at + 1));
+      if (path === null || id === null) {
+        problems.push(`${file} links to ${node.url}, which has a malformed % escape.`);
+        continue;
+      }
       const target =
         path === ""
           ? file

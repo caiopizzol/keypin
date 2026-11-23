@@ -85,6 +85,18 @@ describe("docsProblems", () => {
     ]);
   });
 
+  test("a query string is not part of the path, and a malformed escape doesn't stop the check", () => {
+    expect(
+      problems({
+        "docs/guides/use.md":
+          "# Use\n\n## Step one\n\n[Plain](https://github.com/caiopizzol/keypin/blob/main/docs/install.md?plain=1#with-npm), [Bad](../in%stall.md), [Gone](../gone.md)\n",
+      }),
+    ).toEqual([
+      "docs/guides/use.md links to ../in%stall.md, which has a malformed % escape.",
+      "docs/guides/use.md links to ../gone.md, which doesn't exist.",
+    ]);
+  });
+
   test("links outside the repo or from its root", () => {
     expect(
       problems({
@@ -111,13 +123,14 @@ describe("docsProblems", () => {
   test("docs/README.md entries keypin.dev can't read", () => {
     expect(
       problems({
-        "docs/README.md": `- [Install](install.md)\n${INDEX}- Use\n- [Site](https://keypin.dev)\n`,
+        "docs/README.md": `- [Install](install.md)\n${INDEX}- Use\n- [Site](https://keypin.dev)\n- [Guide](https://example.com/guide.md)\n`,
       }),
     ).toEqual([
       "docs/README.md lists pages before its first ## section.",
       "docs/README.md lists install.md twice.",
       "docs/README.md has a list item that isn't one link to a page.",
       "docs/README.md links to https://keypin.dev, not a page in docs/.",
+      "docs/README.md links to https://example.com/guide.md, not a page in docs/.",
     ]);
   });
 

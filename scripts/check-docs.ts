@@ -88,6 +88,7 @@ function listedPages(tree: Root): { pages: string[]; problems: string[] } {
       const path = posix.normalize(link.url);
       if (
         SCHEME.test(link.url) ||
+        /[?#]/.test(link.url) ||
         !path.endsWith(".md") ||
         path.startsWith("../") ||
         posix.isAbsolute(path)

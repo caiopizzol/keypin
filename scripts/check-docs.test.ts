@@ -123,7 +123,7 @@ describe("docsProblems", () => {
   test("docs/README.md entries keypin.dev can't read", () => {
     expect(
       problems({
-        "docs/README.md": `- [Install](install.md)\n${INDEX}- Use\n- [Site](https://keypin.dev)\n- [Guide](https://example.com/guide.md)\n`,
+        "docs/README.md": `- [Install](install.md)\n${INDEX}- Use\n- [Site](https://keypin.dev)\n- [Guide](https://example.com/guide.md)\n- [Again](install.md?plain=guide.md)\n- [Query](?plain=guide.md)\n`,
       }),
     ).toEqual([
       "docs/README.md lists pages before its first ## section.",
@@ -131,6 +131,8 @@ describe("docsProblems", () => {
       "docs/README.md has a list item that isn't one link to a page.",
       "docs/README.md links to https://keypin.dev, not a page in docs/.",
       "docs/README.md links to https://example.com/guide.md, not a page in docs/.",
+      "docs/README.md links to install.md?plain=guide.md, not a page in docs/.",
+      "docs/README.md links to ?plain=guide.md, not a page in docs/.",
     ]);
   });
 

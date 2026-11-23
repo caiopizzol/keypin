@@ -159,8 +159,8 @@ a [1Password service account](service-accounts.md) token. See secretspec's
 that run `secretspec run`, isn't asked for at the repo, and `check` notes that the job's `secrets.<NAME>` can go. Add `OP_SERVICE_ACCOUNT_TOKEN`, or your vault's
 token, to [`ignore`](../reference/secretspec-toml.md#toolkeypin).
 
-`keypin rotate` needs a destination for the key, so it can't rotate a key that only `secretspec run` reads. To move a
-key to `secretspec run`:
+`keypin rotate` saves a new key to the vault, where `secretspec run` reads it, so such a key needs no destination. To
+move a key to `secretspec run`:
 
 1. Change the workflow, and check that it runs.
 2. Remove the GitHub entry from the key's `publish` in `[tool.keypin.<profile>.<KEY>]`, so `keypin publish` and

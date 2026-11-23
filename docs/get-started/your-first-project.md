@@ -38,7 +38,7 @@ billing /work/billing · read 1 env file, 1 wrangler config, 1 workflow; GitHub 
   /work/billing/secretspec.toml: [profiles.default] RESEND_API_KEY: names no provider in secretspec.toml, so CI and the console can't find its vault; add providers = ["..."] to it, or set [defaults] providers
 4 Name the vault in secretspec.toml
   A secret's provider in secretspec.toml names its vault, so secretspec, CI and the console find it there.
-  Replace each <...> with the real value; keypin rejects a map that still has one:
+  Replace each <...> with the real value; keypin rejects a secretspec.toml that still has one:
 
 [providers]
 onepassword = "onepassword://<vault>"

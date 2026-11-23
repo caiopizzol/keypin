@@ -23,9 +23,10 @@ permission = "sending_access"
 - `permission`: what the new key may do, `full_access` or `sending_access`. Add `domain_id` to limit a sending key
   to one domain.
 
-`rotate` uses the `production` profile, or the last profile; `--profile <name>` picks another. The key needs at
-least one [destination](publishing.md#destinations). It checks every account, shows a plan and asks `y`. It then
-creates the key, saves it to your vault with today's rotated date, and publishes it like `keypin publish`. It asks a
+`rotate` uses the `production` profile, or the last profile; `--profile <name>` picks another. It checks every
+account, shows a plan and asks `y`. It then creates the key, saves it to your vault with today's rotated date, and
+publishes it like `keypin publish` to its [destinations](publishing.md#destinations), if it has any. For a key with
+none, the plan names each workflow whose `secretspec run` reads it, or says nothing in the repo does. It asks a
 second `y` before it deletes the old key, and only if every destination got the new one. A rerun picks up where a
 failed or declined run stopped; if the key it made leaked, `--discard` makes a fresh one instead. When keypin doesn't know the old key's ID at the provider,
 as on a first Resend rotation, the plan says the old key stays: delete it there once nothing uses it.

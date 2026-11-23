@@ -51,7 +51,8 @@ Actions; for another vault, see [Other vaults](#other-vaults).
    added to your `[providers]`), or it can read `KEYPIN_GITHUB_TOKEN`. In step 3, pipe the token to
    `secretspec set OP_SERVICE_ACCOUNT_TOKEN --profile rotation`, and give each item a
    [rotated date](../integrations/vaults/1password.md#rotated-date). Without a `production` profile, put this one
-   above the last, which `publish` and `rotate` use.
+   above the last, which `publish` and `rotate` use. A scheduled run can't read that vault, so it notes it couldn't
+   refresh these two dates and keeps the last ones in `.keypin/status.json`; the rotation itself still runs.
 
    ```toml
    [providers]

@@ -2,14 +2,15 @@
 
 A GitHub Actions workflow in your repository can rotate keys on a schedule. It runs on your runners, never on a
 keypin server. keypin creates each new key, saves it to your vault and publishes it, then stops: the old key keeps
-working until a person approves deleting it. For now, it supports keys kept in 1Password and published to GitHub
-Actions.
+working until a person approves deleting it. The setup below is for keys kept in 1Password and published to GitHub
+Actions; for another vault, see [Other vaults](#other-vaults).
 
 ## Setup
 
-1. Move each key and its issuer's `admin` item into a vault you create, and update the references in `keypin.toml`.
-   A [service account](service-accounts.md) can't open the Private, Personal or Employee vaults, or the default
-   Shared vault. `rotate --due` skips a key without `rotate_every` in the map or a `rotated` date on its item.
+1. Move each key and its issuer's `admin` item into a vault you create, and point `[providers]` and each `admin`
+   reference in `secretspec.toml` at it. A [service account](service-accounts.md) can't open the Private, Personal or
+   Employee vaults, or the default Shared vault. `rotate --due` skips a key without `rotate_every` or a `rotated`
+   date on its item.
 2. Create a service account with write access to that vault, and save its token as the Actions secret
    `OP_SERVICE_ACCOUNT_TOKEN`. keypin reads each admin key from the vault, so it isn't a secret of its own.
 3. Create a fine-grained GitHub token for this repository only, with the Secrets permission set to Read and write,
@@ -21,8 +22,8 @@ Actions.
    though GitHub can delay or skip a scheduled run. To check at other times, change the
    [schedule](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule);
    add `timezone:` to use your own time zone.
-5. [Ignore](../reference/secretspec-toml.md#keypins-settings) the two secrets in `secretspec.toml`, or `keypin check`
-   asks you to add them:
+5. [Ignore](../reference/secretspec-toml.md#toolkeypin) the two secrets in `secretspec.toml`, or `keypin check` asks
+   you to add them:
 
    ```toml
    [tool.keypin]
@@ -100,6 +101,20 @@ jobs:
 If your plan has environments with deployment branches, keep both secrets in an environment only the default branch can
 use, and add `environment: <name>` to the job.
 
+## Other vaults
+
+With Infisical or AWS Secrets Manager, the job signs in to the vault with GitHub Actions OIDC, so the repo stores no
+vault token. Set up the identity or role on the vault's page
+([Infisical](../integrations/vaults/infisical.md#signing-in-from-github-actions),
+[AWS Secrets Manager](../integrations/vaults/aws-secrets-manager.md#signing-in-from-github-actions)), with write
+access to the keys and their admin keys. In the workflow, add `id-token: write` under `permissions`, and set
+`KEYPIN_INFISICAL_IDENTITY_ID` or `KEYPIN_AWS_ROLE_ARN` in place of `KEYPIN_1PASSWORD` and
+`OP_SERVICE_ACCOUNT_TOKEN`, which then needn't be ignored. With Bitwarden Secrets Manager, save `BWS_ACCESS_TOKEN` as
+an Actions secret, set it in their place, and ignore it instead.
+
+Doppler keeps no rotated date, so `rotate --due` never rotates a Doppler key. A job can still sign in to Doppler with
+[OIDC](../integrations/vaults/doppler.md#signing-in-from-github-actions) to publish.
+
 ## Runs
 
 `rotate --due` rotates each key that is due and has an `issuer` and destinations, and says why it skips the others.
@@ -107,7 +122,7 @@ Without a terminal, `--yes` approves only routine writes, as in [publishing](pub
 
 When an old key waits for approval, the run passes with a warning; a red run means something failed. To approve, run
 the workflow with **approve revoke** checked, and a key to approve only that one. keypin deletes an old key only if
-every destination got the new one, and only in a terminal if a destination taken out of the map may still use it.
+every destination got the new one, and only in a terminal if a destination taken out of `secretspec.toml` may still use it.
 Resend can't tell keypin which key the vault holds, so keypin never revokes the key a first rotation replaces: once
 nothing uses it, delete it at Resend yourself. Later rotations wait for approval.
 

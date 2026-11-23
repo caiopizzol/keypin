@@ -1,69 +1,73 @@
 # Publishing
 
-`keypin publish` reads a key from 1Password and writes it to every destination listed for it.
+`keypin publish` reads a key from your vault and writes it to every destination listed for it in `secretspec.toml`.
 
 ```sh
-keypin publish API_TOKEN             # the prod entry
-keypin publish API_TOKEN --profile dev   # another environment
-keypin publish --all                 # every key with destinations, with one approval
-keypin publish --all --plan          # show the plan and write nothing
+keypin publish API_TOKEN                     # production, or the last profile
+keypin publish API_TOKEN --profile staging   # another profile
+keypin publish --all                         # every key with destinations, with one approval
+keypin publish --all --plan                  # show the plan and write nothing
 ```
 
 Run `keypin check` first: it lists what's missing.
 
 ## Destinations
 
-List each place `publish` writes the key under its environment. `keypin check` prints these for each secret a
-workflow or Worker needs, with the Worker of a wrangler `[env.staging]` under the environment `staging`. It skips,
+List each place `publish` writes the key in the key's `[tool.keypin.<profile>.<KEY>]` table, under `publish`. The
+key must be declared in that profile or in `[profiles.default]`. `keypin check` prints these tables for each secret a workflow or Worker needs,
+with the Worker of a wrangler `[env.staging]` under the profile `staging`. It skips,
 with a note, an env with `routes = []`, `workers_dev = false`, and no preview URL, trigger, Durable Object, email
 address, or binding from another Worker, since only `wrangler dev` runs it.
 
 ```toml
-[[keys.API_TOKEN.prod.publish]]
+[profiles.production]
+API_TOKEN = { description = "API token" }
+
+[[tool.keypin.production.API_TOKEN.publish]]
 to = "github-actions"
 repo = "owner/repo"
 
-[[keys.API_TOKEN.prod.publish]]
+[[tool.keypin.production.API_TOKEN.publish]]
 to = "cloudflare-worker"
-account = "<Cloudflare account ID>"
+account = "11111111111111111111111111111111" # Cloudflare account ID
 worker = "my-worker"
 
-[[keys.API_TOKEN.prod.publish]]
+[[tool.keypin.production.API_TOKEN.publish]]
 to = "vercel-project"
-team = "<team ID or slug>"
+team = "acme" # team ID or slug
 project = "my-project"
 environment = "production"
 
-[[keys.API_TOKEN.prod.publish]]
+[[tool.keypin.production.API_TOKEN.publish]]
 to = "supabase-functions"
-project_ref = "<20-letter project ref>"
+project_ref = "abcdefghijklmnopqrst" # 20-letter project ref
 
-[[keys.API_TOKEN.prod.publish]]
+[[tool.keypin.production.API_TOKEN.publish]]
 to = "netlify-project"
-team = "<team slug>"
+team = "acme" # team slug
 project = "my-project.netlify.app"
 context = "production"
 
-[[keys.API_TOKEN.prod.publish]]
+[[tool.keypin.production.API_TOKEN.publish]]
 to = "railway-service"
-project = "<project ID>"
+project = "6f1d2c3b-4a5e-4f60-8a7b-9c0d1e2f3a4b" # project ID
 environment = "production"
 service = "api"
 
-[[keys.API_TOKEN.prod.publish]]
+[[tool.keypin.production.API_TOKEN.publish]]
 to = "convex-deployment"
 url = "https://happy-animal-123.convex.cloud"
 
-[[keys.API_TOKEN.prod.publish]]
+[[tool.keypin.production.API_TOKEN.publish]]
 to = "fly-app"
 app = "my-app"
 
-[[keys.API_TOKEN.prod.publish]]
+[[tool.keypin.production.API_TOKEN.publish]]
 to = "gitlab-project"
 project = "acme/billing"
 ```
 
-The map says where a key goes, not who writes it, so every teammate publishes from the same map:
+`secretspec.toml` says where a key goes, not who writes it, so every teammate publishes from the same file:
 
 - **GitHub:** Actions secrets, as the login in `git config github.account`, or else the active `gh` login. It needs
   write access to the repo. GitHub reserves secret names that start with `GITHUB_`. Add
@@ -88,7 +92,7 @@ The map says where a key goes, not who writes it, so every teammate publishes fr
   `dev-server`. It uses a personal access token in `KEYPIN_NETLIFY_TOKEN`, from a member of the `team`, and doesn't
   read the `netlify` login or `NETLIFY_AUTH_TOKEN`. Netlify uses a new value only from the next build and deploy,
   so redeploy after publishing; keypin doesn't. It stops rather than write to a variable not marked as secret. It
-  leaves other contexts and branch values alone. For `netlify dev`, run `keypin run -- netlify dev`.
+  leaves other contexts and branch values alone. For `netlify dev`, run `secretspec run -- netlify dev`.
 - **Railway:** service variables, with a workspace or account token in `KEYPIN_RAILWAY_TOKEN` that reaches the
   `project`, or a project token for the `environment`. keypin doesn't read the `railway` login, `RAILWAY_TOKEN` or
   `RAILWAY_API_TOKEN`. `environment` and `service` take a name or an ID. Railway stages the change and uses the new
@@ -112,7 +116,7 @@ The map says where a key goes, not who writes it, so every teammate publishes fr
 
 ## Steps
 
-1. **Accounts:** it checks that each login reaches the account the map pins, and stops if one doesn't.
+1. **Accounts:** it checks that each login reaches the account the destination names, and stops if one doesn't.
 2. **Plan:** it reads the value and shows what it will write where. It skips a destination when this machine's
    receipt shows it already got this value; keypin never reads a destination's secret.
 3. **Approval:** you answer `y`.
@@ -127,45 +131,34 @@ A teammate's machine has no receipts, so their first publish counts as a first w
 ## --plan
 
 `--plan` runs the account checks and shows the full plan, then stops, even without a terminal. Use it to see what
-you'll approve. It reads the value, so 1Password asks you to approve it, but it never writes or prints a value. It
+you'll approve. It reads the value, so 1Password may ask you to approve it, but it never writes or prints a value. It
 exits 3 when the plan would write and 0 when there's nothing to write.
 
 ## Every key
 
-`--all` publishes every key that has destinations in the environment, with one plan and one approval. If a write
+`--all` publishes every key that has destinations in the profile, with one plan and one approval. If a write
 fails, it stops and keeps the receipts so far; run it again to continue.
 
-keypin never deletes a secret from a destination you remove from the map.
+keypin never deletes a secret from a destination you remove from the file.
 
-## Pulling in CI
+## Reading keys in CI
 
-A CI job can sign in to your vault and read a key itself, instead of getting a copy from `publish`. `pull` doesn't
-set up that sign-in (see [Service accounts](service-accounts.md) for 1Password, and Pulling in GitHub Actions for
-[AWS Secrets Manager](../integrations/vaults/aws-secrets-manager.md#pulling-in-github-actions),
-[Infisical](../integrations/vaults/infisical.md#pulling-in-github-actions) and [Doppler](../integrations/vaults/doppler.md#pulling-in-github-actions)); it lists the job, so
-the map still says who reads the key:
+A CI job can read its keys from your vault at job time with `secretspec run`, instead of getting copies from
+`publish`. The job needs secretspec, the 1Password CLI for a 1Password provider, and the vault's credentials, such as
+a [1Password service account](service-accounts.md) token. See secretspec's
+[GitHub Actions guide](https://secretspec.dev/ci/github-actions/).
 
-```toml
-[keys.API_TOKEN.prod]
-from = "op://my-project/prod api token/credential"
-
-[[keys.API_TOKEN.prod.pull]]
-by = "github-actions"
-repo = "owner/repo"
-environment = "production" # optional: only the jobs in this GitHub environment
+```yaml
+- run: secretspec run --profile production -- <command>
+  env:
+    OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 ```
 
-The job runs `keypin run --profile prod --only API_TOKEN -- <command>`; without `--profile`, `run` uses `default` or the first
-environment. `run` doesn't read `pull`: your vault decides which jobs it lets in. `run` doesn't pass GitHub's OIDC
-token-request variables to the command.
+`keypin check` reads each job that runs `secretspec run`. Its profile is the one in `--profile` or `-P`, else
+`SECRETSPEC_PROFILE` in the step, job or workflow, else `default`. A secret that profile declares isn't asked for at
+the repo, and `check` notes that the job's `secrets.<NAME>` can go. Add `OP_SERVICE_ACCOUNT_TOKEN`, or your vault's
+token, to [`ignore`](../reference/secretspec-toml.md#toolkeypin).
 
-- `publish` writes nothing for a key that is only pulled, and `publish --all` skips it.
-- `rotate` and `rotate --due` rotate it like a key with destinations. Once your vault holds the new key, the jobs
-  read it, so only the revoke is left.
-- `status` lists who pulls each key, apart from its destinations.
-- `check` reads the secret names stored in each repo or environment that pulls a key, and reports a copy left
-  there, or a workflow that still uses `secrets.API_TOKEN`.
-
-To move a key from `publish` to `pull`, replace its `publish` entry with a `pull` entry for the same place: the map
-rejects a place in both. Change the workflow to `keypin run`, then delete the old secret, such as
-`gh secret delete API_TOKEN --repo owner/repo --env "production"`. keypin never deletes a copy it published.
+`keypin rotate` needs a destination for the key, so it can't rotate a key that only `secretspec run` reads. To move a key to `secretspec run`, change the workflow, then
+delete the old secret, such as `gh secret delete API_TOKEN --repo owner/repo`. keypin never deletes a copy it
+published.

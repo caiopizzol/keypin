@@ -627,9 +627,25 @@ describe("keypin rotate --check, the setup check a workflow runs before the firs
     });
     expect(await undated.run("--check"), undated.stderr.text).toBe(1);
     expect(undated.stderr.text).toContain(
-      'FAILED RESEND_API_KEY (prod): its vault keeps no rotation date, so scheduled rotation can\'t cover it. Set rotate_every = "never" in [tool.keypin.prod.RESEND_API_KEY], or remove it, and rotate it by hand with keypin rotate RESEND_API_KEY --profile prod.',
+      'FAILED RESEND_API_KEY (prod): its vault keeps no rotation date, so scheduled rotation can\'t cover it. rotate_every applies to RESEND_API_KEY in every profile, so either set it to "never" (or remove it) in every [tool.keypin.<profile>.RESEND_API_KEY] that sets it, which stops scheduled rotation of RESEND_API_KEY in every profile, or keep its prod value in a vault that keeps rotation dates. Rotate it by hand with keypin rotate RESEND_API_KEY --profile prod.',
     );
     unchanged(w);
+  });
+
+  test("a dated schedule on a vault that keeps no rotated date fails while an old key waits too", async () => {
+    const w = await rotatedOnceOnALaptop();
+    expect(await ci(w).run("--due", "--yes")).toBe(0);
+    const undated = machine(w, {
+      vaults: vaults.map((vault) => ({ ...vault, keepsRotated: false as const })),
+    });
+    expect(await undated.run("--check"), undated.stderr.text).toBe(1);
+    expect(undated.stderr.text).toContain(
+      "RESEND_API_KEY  check  rotated 2026-11-09, the old key waits",
+    );
+    expect(undated.stderr.text).toContain(
+      "FAILED RESEND_API_KEY (prod): its vault keeps no rotation date, so scheduled rotation can't cover it.",
+    );
+    expect(undated.stderr.text).not.toContain("is ready for keypin rotate --due");
   });
 
   test("a vault lookup that failed still fails, even where the vault keeps no rotated date", async () => {
@@ -660,7 +676,7 @@ describe("keypin rotate --check, the setup check a workflow runs before the firs
     });
     await undated.run("--check", "--profile", "dev");
     expect(undated.stderr.text).toContain(
-      "[tool.keypin.dev.RESEND_API_KEY], or remove it, and rotate it by hand with keypin rotate RESEND_API_KEY --profile dev.",
+      "or keep its dev value in a vault that keeps rotation dates. Rotate it by hand with keypin rotate RESEND_API_KEY --profile dev.",
     );
   });
 

@@ -222,9 +222,26 @@ describe("keypin with Doppler", () => {
     const run = project({ map: ISSUER_MAP });
     expect(await cli(["rotate", "--check"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
-      'STRIPE_API_KEY (prod): its vault keeps no rotation date, so scheduled rotation can\'t cover it. Set rotate_every = "never" in [tool.keypin.prod.STRIPE_API_KEY], or remove it, and rotate it by hand with keypin rotate STRIPE_API_KEY --profile prod.',
+      'STRIPE_API_KEY (prod): its vault keeps no rotation date, so scheduled rotation can\'t cover it. rotate_every applies to STRIPE_API_KEY in every profile, so either set it to "never" (or remove it) in every [tool.keypin.<profile>.STRIPE_API_KEY] that sets it, which stops scheduled rotation of STRIPE_API_KEY in every profile, or keep its prod value in a vault that keeps rotation dates. Rotate it by hand with keypin rotate STRIPE_API_KEY --profile prod.',
     );
     expect(run.issued).toEqual([]);
+  });
+
+  test("the way out sets rotate_every in every profile; setting it in one profile alone is refused", async () => {
+    const both = ISSUER_MAP.replace(
+      "[tool.keypin.prod.STRIPE_API_KEY]",
+      '[tool.keypin.dev.STRIPE_API_KEY]\nrotate_every = "90d"\n\n[tool.keypin.prod.STRIPE_API_KEY]',
+    );
+    const followed = project({
+      map: both.replaceAll('rotate_every = "90d"', 'rotate_every = "never"'),
+    });
+    await cli(["rotate", "--check"], followed.deps);
+    expect(followed.stderr.text).toMatch(/STRIPE_API_KEY +skip +never rotates/);
+    expect(followed.stderr.text).not.toContain("keeps no rotation date");
+
+    const one = project({ map: both.replace('rotate_every = "90d"', 'rotate_every = "never"') });
+    expect(await cli(["rotate", "--check"], one.deps)).toBe(1);
+    expect(one.stdout.text + one.stderr.text).toContain("a key rotates on one schedule");
   });
 
   test("rotate --due skips that key, and exits 0", async () => {

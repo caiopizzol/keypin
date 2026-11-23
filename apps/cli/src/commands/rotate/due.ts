@@ -187,17 +187,19 @@ export async function checkDue(context: Context, path: string): Promise<number> 
   const codes: number[] = [];
   for (const choice of picked) {
     out.line("");
+    const key = map.keys.find((each) => each.name === choice.keyId);
+    const ref = key?.environments[environment]?.ref;
+    const read = ref !== undefined && metadata.dates.get(refKey(ref)) != null;
+    const undated = read && vaultKindOf(deps.vaults, ref.kind).keepsRotated === false;
+    if (key?.rotateEvery?.days != null && undated) {
+      const { keyId } = choice;
+      out.line(
+        `${out.mark(false)} ${keyId} (${environment}): its vault keeps no rotation date, so scheduled rotation can't cover it. rotate_every applies to ${keyId} in every profile, so either set it to "never" (or remove it) in every [tool.keypin.<profile>.${keyId}] that sets it, which stops scheduled rotation of ${keyId} in every profile, or keep its ${environment} value in a vault that keeps rotation dates. Rotate it by hand with keypin rotate ${keyId} --profile ${environment}.`,
+      );
+      codes.push(1);
+      continue;
+    }
     if (choice.action === "skip" && choice.date === "missing") {
-      const ref = map.keys.find((key) => key.name === choice.keyId)?.environments[environment]?.ref;
-      const read = ref !== undefined && metadata.dates.get(refKey(ref)) != null;
-      if (read && vaultKindOf(deps.vaults, ref.kind).keepsRotated === false) {
-        const { keyId } = choice;
-        out.line(
-          `${out.mark(false)} ${keyId} (${environment}): its vault keeps no rotation date, so scheduled rotation can't cover it. Set rotate_every = "never" in [tool.keypin.${environment}.${keyId}], or remove it, and rotate it by hand with keypin rotate ${keyId} --profile ${environment}.`,
-        );
-        codes.push(1);
-        continue;
-      }
       out.line(
         `${out.mark(false)} ${choice.keyId}: ${choice.why}, so keypin rotate --due never rotates it. Give its vault item a rotated date: the day the key last changed.`,
       );

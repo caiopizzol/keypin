@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -81,6 +81,10 @@ beforeAll(async () => {
     `import { results } from "./index.ts";\nconsole.log(JSON.stringify(results));\n`,
   );
   await writeFile(
+    join(consumer, "names.ts"),
+    `import { isEnvironmentName, isVariableName } from "@keypin/rules";\nconsole.log(isVariableName("API_KEY"), isEnvironmentName("prod"));\n`,
+  );
+  await writeFile(
     join(consumer, "change.ts"),
     `import { destinations, issuers, loadMap, pulls, vaults } from "@keypin/rules";
 import { maps } from "./index.ts";
@@ -129,14 +133,31 @@ describe("@keypin/rules", () => {
       "package/LICENSE",
       "package/dist/index.d.ts",
       "package/dist/index.js",
+      "package/dist/load-map.js",
+      "package/dist/rules.js",
       "package/package.json",
     ]);
   });
 
-  test("its JavaScript imports nothing, from Node or anywhere else", async () => {
-    const code = await readFile(join(consumer, "node_modules/@keypin/rules/dist/index.js"), "utf8");
-    expect(code).not.toContain("node:");
-    expect(code).not.toMatch(/^\s*import\s|\brequire\(|\bimport\(/m);
+  test("its JavaScript imports only its own files, nothing from Node or anywhere else", async () => {
+    const dist = join(consumer, "node_modules/@keypin/rules/dist");
+    const files = (await readdir(dist)).filter((file) => file.endsWith(".js"));
+    for (const file of files) {
+      const code = await readFile(join(dist, file), "utf8");
+      expect(code).not.toContain("node:");
+      expect(code).not.toMatch(/\brequire\(|\bimport\(/);
+      const imports = code.match(/^\s*import\s[^;]*/gm) ?? [];
+      for (const line of imports) expect(line).toMatch(/ from "\.\/[\w-]+\.js"$/);
+    }
+  });
+
+  test("a consumer that checks only names bundles no connector's rules", async () => {
+    const built = await Bun.build({ entrypoints: [join(consumer, "names.ts")], minify: true });
+    const code = (await built.outputs[0]?.text()) ?? "";
+    expect(code).toContain("prod");
+    for (const { kind } of [...destinations, ...issuers, ...vaults, ...pulls])
+      expect(code).not.toMatch(new RegExp(`["'\`]${kind}["'\`]`));
+    for (const { scheme } of vaults) expect(code).not.toContain(scheme);
   });
 
   test.each(["Bundler", "NodeNext"])(

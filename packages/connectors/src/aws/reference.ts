@@ -15,7 +15,8 @@ export type SecretsManagerPin = Pick<SecretsManagerRef, "account">;
 export type SecretsManagerScope = Pick<SecretsManagerRef, "kind" | "account" | "region">;
 
 export const SCHEME = "awssm://";
-const SHAPE = `must be ${SCHEME}<region>/<secret name>, with :<JSON key> after the name to read one key of a JSON secret`;
+const SHAPE =
+  "must be awssm://<region>/<secret name>, with :<JSON key> after the name to read one key of a JSON secret";
 const REGION = /^[a-z]{2}(?:-[a-z]+)+-\d+$/;
 const NAME = /^[A-Za-z0-9/_+=.@-]{1,512}$/;
 const FIELD = /^[A-Za-z0-9_.:/=+@-]{1,100}$/;

@@ -6,5 +6,17 @@ export default defineConfig({
     platform: "neutral",
     tsconfig: "../../tsconfig.rules.json",
     dts: true,
+    hash: false,
+    outputOptions: {
+      codeSplitting: {
+        groups: [
+          {
+            name: "rules",
+            test: /[\\/](core|connectors)[\\/]src[\\/].*(?<!\.d)\.ts$|[\\/]smol-toml[\\/]/,
+          },
+          { name: "load-map", test: /[\\/]rules[\\/]src[\\/]load-map\.ts$/ },
+        ],
+      },
+    },
   },
 });

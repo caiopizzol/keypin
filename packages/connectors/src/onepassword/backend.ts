@@ -191,7 +191,7 @@ export function onePasswordBackend(
       }
 
       if (!found) {
-        if (ref.field !== VALUE_FIELD || ref.section !== null) {
+        if ((ref.field !== VALUE_FIELD && ref.fallback !== VALUE_FIELD) || ref.section !== null) {
           throw new Error(`${where(ref)}: no such item; create it in 1Password first`);
         }
         const fields = [passwordField(secret)];
@@ -233,7 +233,7 @@ function noVault(scope: OnePasswordScope, mode: SignInMode): string {
   const account = `1Password account "${scope.account}"`;
   if (mode === "desktop") return `${account} has no vault "${scope.vault}"`;
   const move =
-    "move the item to a vault you create, update its reference in keypin.toml, and grant the service account read access to that vault";
+    "move the item to a vault you create, update its vault in secretspec.toml, and grant the service account read access to that vault";
   if (BUILT_IN.includes(scope.vault.toLowerCase()))
     return `${account}: service accounts can't open the built-in vault "${scope.vault}"; ${move}`;
   if (scope.vault.toLowerCase() === DEFAULT_SHARED)
@@ -282,17 +282,15 @@ function valueField(item: FullItem, ref: OnePasswordRef): Field {
   if (ref.section !== null && !sections.length) {
     throw new Error(`${where(ref)}: the item has no section "${ref.section}"`);
   }
-  const [field, ...more] = named(
-    item.fields.filter(
-      (field) => ref.section === null || sections.some((section) => section.id === field.sectionId),
-    ),
-    ref.field,
+  const inSection = item.fields.filter(
+    (field) => ref.section === null || sections.some((section) => section.id === field.sectionId),
   );
+  const own = named(inSection, ref.field);
+  const name = own.length || ref.fallback === undefined ? ref.field : ref.fallback;
+  const [field, ...more] = name === ref.field ? own : named(inSection, name);
   if (!field) throw new Error(`${where(ref)}: ${missingField(item, ref)}`);
   if (more.length) {
-    throw new Error(
-      `${where(ref)}: ${more.length + 1} fields are named "${ref.field}"; name a section`,
-    );
+    throw new Error(`${where(ref)}: ${more.length + 1} fields are named "${name}"; name a section`);
   }
   if (field.fieldType === "Totp") {
     throw new Error(
@@ -312,7 +310,8 @@ function missingField(item: FullItem, ref: OnePasswordRef): string {
   if (item.files.some((file) => sameName(file.attributes.name, ref.field)))
     return `"${ref.field}" is a file attached to the item; ${files}`;
   if (item.category === "Document") return `the item is a Document; ${files}`;
-  return `the item has no field "${ref.field}"`;
+  const or = ref.fallback === undefined ? "" : ` or "${ref.fallback}"`;
+  return `the item has no field "${ref.field}"${or}`;
 }
 
 function withValue(

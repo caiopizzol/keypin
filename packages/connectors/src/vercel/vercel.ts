@@ -67,7 +67,7 @@ export class VercelEnvDestination implements Destination {
     if (project.status === 403 || project.status === 404)
       return fail(
         `the token can't reach the project ${this.#project} in team ${this.#team}`,
-        `check team and project in keypin.toml, or ${tokenFix}`,
+        `check team and project in secretspec.toml, or ${tokenFix}`,
       );
     if (project.status !== 200) throw failure("GET", "/v9/projects", project);
 

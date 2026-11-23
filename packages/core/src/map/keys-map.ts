@@ -17,11 +17,9 @@ export interface KeyEntry {
   environments: Partial<Record<Environment, EnvEntry>>;
 }
 
-export type VaultPins = Readonly<Record<string, unknown>>;
-
 export interface KeysMap {
   file: string;
-  pins: VaultPins;
+  project: string;
   environments: readonly Environment[];
   ignore: readonly string[];
   keys: KeyEntry[];
@@ -30,16 +28,19 @@ export interface KeysMap {
 export type MapResult = { ok: true; map: KeysMap } | { ok: false; errors: string[] };
 
 export function runEnvironment(map: Pick<KeysMap, "environments">): Environment {
-  return map.environments[0] ?? "dev";
+  return map.environments.includes(RUN) ? RUN : (map.environments[0] ?? RUN);
 }
 
 export function publishEnvironment(map: Pick<KeysMap, "environments">): Environment {
-  return map.environments.at(-1) ?? "prod";
+  return map.environments.includes(PUBLISH) ? PUBLISH : (map.environments.at(-1) ?? PUBLISH);
 }
 
 export function envFlag(environment: Environment, fallback: Environment): string {
-  return environment === fallback ? "" : ` --env ${environment}`;
+  return environment === fallback ? "" : ` --profile ${environment}`;
 }
+
+const RUN = "default";
+const PUBLISH = "production";
 
 export function pairedWith(
   map: Pick<KeysMap, "keys">,

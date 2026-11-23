@@ -364,7 +364,7 @@ describe("keypin in a real terminal", () => {
       const result = await drive({ scenario: "ignored-keys", args: ["check"] });
       expect(result.exit).toBe(0);
       expect(result.screen).toContain("✓ 1 key, 1 destination. Everything checks out.");
-      expect(result.screen).toContain("Note: keypin.toml ignores 2 keys");
+      expect(result.screen).toContain("Note: secretspec.toml ignores 2 keys");
       expect(result.screen).not.toContain("OPENAI_API_KEY");
       expect(result.screen).not.toContain("ANTHROPIC_API_KEY");
       clean(result);
@@ -458,7 +458,7 @@ describe("keypin in a real terminal", () => {
       expect(result.screen).toMatch(/^✗ 1 of 1 account failed the check/m);
       expect(result.screen).toContain("1 Sign in to GitHub\n");
       expect(result.screen).toContain(
-        "2 Sign in to 1Password\n  Set account under [1password] in keypin.toml",
+        "2 Sign in to 1Password\n  Set the account in your onepassword:// provider in secretspec.toml",
       );
       expect(result.screen).not.toContain("Fix the login");
       expect(result.screen).not.toContain("Error {");
@@ -529,170 +529,8 @@ describe("keypin in a real terminal", () => {
       expect(result.effects).toEqual([
         "1password create my.1password.com/Private/billing dev resend api key (18 chars)",
       ]);
-      expect(result.files["keypin.toml"]).toContain("[keys.RESEND_API_KEY]");
+      expect(result.files["secretspec.toml"]).toContain("[profiles.dev.RESEND_API_KEY]");
       clean(result);
-    },
-    SLOW,
-  );
-
-  test(
-    "with Infisical, run, status and publish read from the organization and leak nothing",
-    async () => {
-      const where = "Infisical organization acme at https://app.infisical.com";
-      const run = await drive({
-        scenario: "infisical",
-        args: ["run", "--", "sh", "-c", "env | grep -c INFISICAL_UNIVERSAL_AUTH || true"],
-      });
-      expect(run.exit).toBe(0);
-      expect(run.screen).toMatch(new RegExp(`^✓ Read 1 dev value from ${where}`, "m"));
-      expect(run.screen).toMatch(/^0$/m);
-      const status = await drive({ scenario: "infisical", args: ["status"] });
-      expect(status.screen).toContain(`✓ Read 2 rotated dates from ${where}, not the values`);
-      expect(status.screen).toContain("STRIPE_KEY  prod  due in 5 days");
-      const publish = await drive({
-        scenario: "infisical",
-        args: ["publish", "STRIPE_KEY"],
-        answers: ["y"],
-      });
-      expect(publish.exit).toBe(0);
-      expect(publish.screen).toContain(`from infisical://billing/prod/STRIPE_KEY in ${where}`);
-      expect(publish.effects).toEqual([
-        "destination write github-actions:acme/billing STRIPE_KEY (23 chars)",
-      ]);
-      for (const result of [run, status, publish]) {
-        expect(result.screen).not.toContain("1Password");
-        clean(result);
-      }
-    },
-    SLOW,
-  );
-
-  test(
-    "with Doppler, run and publish read from the workplace, and the token never leaks",
-    async () => {
-      const where = "Doppler workplace acme";
-      const run = await drive({
-        scenario: "doppler",
-        args: ["run", "--", "sh", "-c", "env | grep -c DOPPLER_TOKEN || true"],
-      });
-      expect(run.exit).toBe(0);
-      expect(run.screen).toMatch(new RegExp(`^✓ Read 1 dev value from ${where}`, "m"));
-      expect(run.screen).toMatch(/^0$/m);
-      const publish = await drive({
-        scenario: "doppler",
-        args: ["publish", "STRIPE_KEY"],
-        answers: ["y"],
-      });
-      expect(publish.exit).toBe(0);
-      expect(publish.screen).toContain(`from doppler://billing/prd/STRIPE_KEY in ${where}`);
-      expect(publish.effects).toEqual([
-        "destination write github-actions:acme/billing STRIPE_KEY (23 chars)",
-      ]);
-      for (const result of [run, publish]) {
-        expect(result.screen).not.toContain("1Password");
-        clean(result);
-      }
-    },
-    SLOW,
-  );
-
-  test(
-    "with AWS Secrets Manager, run, status and publish read from the account and leak nothing",
-    async () => {
-      const where = "AWS account 123456789012 in eu-west-1";
-      const run = await drive({ scenario: "awssm", args: ["run", "--", "true"] });
-      expect(run.exit).toBe(0);
-      expect(run.screen).toMatch(
-        new RegExp(
-          `^✓ Read 1 dev value from ${where}  awssm://eu-west-1/billing/dev:STRIPE_KEY`,
-          "m",
-        ),
-      );
-      const status = await drive({ scenario: "awssm", args: ["status"] });
-      expect(status.screen).toContain("(rotated 2026-08-01, every 90d)");
-      expect(status.screen).toContain("Tag the AWS secret with keypin-rotated:<JSON key>");
-      const publish = await drive({
-        scenario: "awssm",
-        args: ["publish", "STRIPE_KEY"],
-        answers: ["y"],
-      });
-      expect(publish.exit).toBe(0);
-      expect(publish.effects).toEqual([
-        "destination write github-actions:acme/billing STRIPE_KEY (23 chars)",
-      ]);
-      for (const result of [run, status, publish]) {
-        expect(result.screen).not.toContain("1Password");
-        clean(result);
-      }
-    },
-    SLOW,
-  );
-
-  test(
-    "with Bitwarden, run, status and publish read from the organization and leak nothing",
-    async () => {
-      const where =
-        "Bitwarden organization 2f1d6c9e-8a3b-4c5d-9e7f-0a1b2c3d4e5f at https://vault.bitwarden.com";
-      const run = await drive({
-        scenario: "bitwarden",
-        args: ["run", "--", "sh", "-c", "env | grep -c BWS_ACCESS_TOKEN || true"],
-      });
-      expect(run.exit).toBe(0);
-      expect(run.screen).toMatch(new RegExp(`^✓ Read 1 dev value from ${where}`, "m"));
-      expect(run.screen).toMatch(/^0$/m);
-      const status = await drive({ scenario: "bitwarden", args: ["status"] });
-      expect(status.screen).toContain(`✓ Read 2 rotated dates from ${where}, not the values`);
-      expect(status.screen).toContain("STRIPE_KEY  prod  due in 5 days");
-      const publish = await drive({
-        scenario: "bitwarden",
-        args: ["publish", "STRIPE_KEY"],
-        answers: ["y"],
-      });
-      expect(publish.exit).toBe(0);
-      expect(publish.screen).toContain(`from bitwarden://billing/STRIPE_KEY in ${where}`);
-      expect(publish.effects).toEqual([
-        "destination write github-actions:acme/billing STRIPE_KEY (23 chars)",
-      ]);
-      for (const result of [run, status, publish]) {
-        expect(result.screen).not.toContain("1Password");
-        clean(result);
-      }
-    },
-    SLOW,
-  );
-
-  test(
-    "with an Infisical access token, check names it and run's command never sees it",
-    async () => {
-      const check = await drive({ scenario: "infisical-token", args: ["check"] });
-      expect(check.exit).toBe(0);
-      expect(check.screen).toContain(
-        "Note: keypin signs in to Infisical with the access token in INFISICAL_TOKEN",
-      );
-      const run = await drive({
-        scenario: "infisical-token",
-        args: ["run", "--", "sh", "-c", "env | grep -c INFISICAL || true"],
-      });
-      expect(run.exit).toBe(0);
-      expect(run.screen).toMatch(/^0$/m);
-      for (const result of [check, run]) clean(result);
-    },
-    SLOW,
-  );
-
-  test(
-    "with Infisical, check and run need no 1Password token, though KEYPIN_1PASSWORD=service-account",
-    async () => {
-      const env = { KEYPIN_1PASSWORD: "service-account" };
-      const check = await drive({ scenario: "infisical", args: ["check"], env });
-      expect(check.exit).toBe(0);
-      expect(check.screen).toContain("Everything checks out.");
-      const run = await drive({ scenario: "infisical", args: ["run", "--", "true"], env });
-      expect(run.exit).toBe(0);
-      for (const result of [check, run]) {
-        expect(result.screen).not.toContain("OP_SERVICE_ACCOUNT_TOKEN");
-        clean(result);
-      }
     },
     SLOW,
   );
@@ -702,7 +540,7 @@ describe("keypin in a real terminal", () => {
     async () => {
       const result = await drive({ scenario: "fresh", args: ["init"] });
       expect(result.exit).toBe(0);
-      expect(result.screen).toContain("✓ wrote <sandbox>/billing/keypin.toml");
+      expect(result.screen).toContain("✓ wrote <sandbox>/billing/secretspec.toml");
       expect(result.screen).toContain("Next: keypin check");
       expect(result.files[".config/keypin/registry.json"]).toContain("<sandbox>/billing");
       clean(result);
@@ -1008,7 +846,7 @@ describe("keypin rotate in a real terminal", () => {
       const result = await drive({ scenario: "paired", args: ["rotate", "API_KEY_ID"] });
       expect(result.exit).toBe(1);
       expect(result.screen).toContain(
-        'keypin rotate: key "API_KEY_ID" prod holds the ID of API_SECRET, and keypin rotates the two together. Run keypin rotate API_SECRET.',
+        "keypin rotate: API_KEY_ID in profile prod holds the ID of API_SECRET, and keypin rotates the two together. Run keypin rotate API_SECRET.",
       );
       expect(result.effects).toEqual([]);
       clean(result);

@@ -9,12 +9,7 @@ import {
   ROLE_ARN,
   SECRET_KEY,
 } from "./credentials";
-import {
-  SCHEME,
-  type SecretsManagerPin,
-  type SecretsManagerRef,
-  type SecretsManagerReference,
-} from "./reference";
+import { SCHEME, type SecretsManagerRef, type SecretsManagerReference } from "./reference";
 import { awsIssuerRules, type AwsSpec, secretsManagerVaultRules } from "./rules";
 import { ROTATED_TAG } from "./secrets-manager";
 
@@ -33,8 +28,7 @@ const DOCS = "docs/integrations/vaults/aws-secrets-manager.md";
 export const secretsManagerVault: VaultKind<
   SecretsManagerHost,
   SecretsManagerRef,
-  SecretsManagerReference,
-  SecretsManagerPin
+  SecretsManagerReference
 > = {
   ...secretsManagerVaultRules,
   newValueByHand: "Put a new value in the AWS secret",
@@ -45,7 +39,7 @@ export const secretsManagerVault: VaultKind<
     const refs = map.keys.flatMap((key) =>
       Object.values(key.environments).flatMap((entry) => (entry ? [entry.ref] : [])),
     );
-    return map.pins.awssm !== undefined && refs.every((ref) => ref.kind === "awssm")
+    return refs.length > 0 && refs.every((ref) => ref.kind === "awssm")
       ? `create the secrets in AWS Secrets Manager and map them with ${SCHEME} references (${DOCS})`
       : undefined;
   },
@@ -60,7 +54,7 @@ export const secretsManagerVault: VaultKind<
   prerequisites({ failures }, { env }) {
     if (!failures.length) return [];
     const fix = failures.some((reason) => reason.kind === "wrong-account")
-      ? `sign in to the AWS account keypin.toml pins under [awssm]`
+      ? `sign in to the AWS account secretspec.toml names under [awssm]`
       : env[ROLE_ARN]?.trim()
         ? oidcFix(env, failures)
         : `${NO_CREDENTIALS} (${DOCS})`;

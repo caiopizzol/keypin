@@ -119,8 +119,8 @@ export class GoogleIssuer implements Issuer {
       return {
         ok: false,
         facts: `${currentId === null ? "the vault's key is" : "keypin issued a key"} in project ${this.#project}`,
-        reason: `keypin.toml pins project_number ${this.#pinned}, and the key is in project ${this.#project}`,
-        fix: `check project_number in keypin.toml, and that the vault holds the key from project ${this.#pinned}`,
+        reason: `secretspec.toml names project_number ${this.#pinned}, and the key is in project ${this.#project}`,
+        fix: `check project_number in secretspec.toml, and that the vault holds the key from project ${this.#pinned}`,
       };
 
     const read = await this.#request("GET", name);

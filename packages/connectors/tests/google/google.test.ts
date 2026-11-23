@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, parseMap, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, readSecretspec, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { GoogleIssuer, googleIssuer } from "../../src/google/index";
 import { keyIdOf } from "../../src/google/google";
@@ -133,7 +133,7 @@ describe("Google Cloud issuer", () => {
     const check = await subject.issuer.checkAccount(null, new Secret(VAULT));
     assert(!check.ok);
     expect(check.reason).toBe(
-      "keypin.toml pins project_number 729401556318, and the key is in project 481537286014",
+      "secretspec.toml names project_number 729401556318, and the key is in project 481537286014",
     );
     expect(subject.requests.some((r) => r.method !== "GET" && !r.path.endsWith("/token"))).toBe(
       false,
@@ -392,21 +392,28 @@ describe("key IDs", () => {
 });
 
 describe("the google issuer kind", () => {
-  const map = (issuer: string) => `[1password]
-account = "my.1password.com"
+  const map = (issuer: string) => `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.GEMINI_API_KEY.prod]
-from = "op://Private/gemini key/credential"
+[providers]
+vault = "onepassword://my.1password.com@Private"
 
-[keys.GEMINI_API_KEY.prod.issuer]
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+GEMINI_API_KEY = { description = "GEMINI_API_KEY", ref = { item = "gemini key", field = "credential" } }
+
+[tool.keypin.prod.GEMINI_API_KEY.issuer]
 kind = "google"
 admin = "op://Private/google key maker/credential"
 ${issuer}`;
 
   test("takes the admin item and the project ID", () => {
-    const parsed = parseMap(
+    const parsed = readSecretspec(
       map(`project_number = "481537286014"\n`),
-      "keypin.toml",
+      "secretspec.toml",
       [],
       [googleIssuer],
       [onePasswordVault],
@@ -419,9 +426,9 @@ ${issuer}`;
   });
 
   test("refuses a project ID where the project number belongs", () => {
-    const parsed = parseMap(
+    const parsed = readSecretspec(
       map(`project_number = "acme-prod"\n`),
-      "keypin.toml",
+      "secretspec.toml",
       [],
       [googleIssuer],
       [onePasswordVault],
@@ -433,15 +440,21 @@ ${issuer}`;
   });
 
   test("needs project_number", () => {
-    const parsed = parseMap(map(""), "keypin.toml", [], [googleIssuer], [onePasswordVault]);
+    const parsed = readSecretspec(
+      map(""),
+      "secretspec.toml",
+      [],
+      [googleIssuer],
+      [onePasswordVault],
+    );
     assert(!parsed.ok);
     expect(parsed.errors.join("\n")).toContain(`missing field "project_number"`);
   });
 
   test("rejects other fields", () => {
-    const parsed = parseMap(
+    const parsed = readSecretspec(
       map(`project_number = "481537286014"\nlocation = "global"\n`),
-      "keypin.toml",
+      "secretspec.toml",
       [],
       [googleIssuer],
       [onePasswordVault],

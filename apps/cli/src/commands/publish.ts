@@ -75,7 +75,7 @@ function parseRequest(args: string[]) {
   const { values, positionals } = parseArgs({
     args,
     options: {
-      env: { type: "string" },
+      profile: { type: "string" },
       yes: { type: "boolean", default: false },
       all: { type: "boolean", default: false },
       plan: { type: "boolean", default: false },
@@ -86,11 +86,11 @@ function parseRequest(args: string[]) {
   if (values.all) {
     if (positionals.length)
       throw new UsageError("keypin publish takes a variable name or --all, not both");
-    return { keyId: null, env: values.env, yes: values.yes, plan: values.plan };
+    return { keyId: null, env: values.profile, yes: values.yes, plan: values.plan };
   }
   if (keyId === undefined || extra.length)
     throw new UsageError("keypin publish takes one key: the variable name, or --all");
-  return { keyId, env: values.env, yes: values.yes, plan: values.plan };
+  return { keyId, env: values.profile, yes: values.yes, plan: values.plan };
 }
 
 function jobsFor(request: Request, map: KeysMap, say: (text: string) => void): Job[] {
@@ -104,7 +104,8 @@ function jobsFor(request: Request, map: KeysMap, say: (text: string) => void): J
     const key = map.keys.find((k) => k.name === keyId);
     if (!key) throw new Error(`${map.file} has no key "${keyId}"`);
     const entry = key.environments[environment];
-    if (!entry) throw new Error(`key "${keyId}" has no ${environment} entry in ${map.file}`);
+    if (!entry)
+      throw new Error(`${keyId} isn't a secret of [profiles.${environment}] in ${map.file}`);
     return [job(key, entry)];
   }
   const jobs = map.keys.flatMap((key) => {

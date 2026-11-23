@@ -105,19 +105,27 @@ const shelf: DestinationKind<ShelfTarget> = {
 };
 
 const MAP = `
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.API_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+API_KEY = { description = "API_KEY", ref = { item = "api key", field = "password" } }
+
+[tool.keypin.prod.API_KEY]
 rotate_every = "90d"
-prod = { from = "op://Private/api key/password", publish = [
-  { to = "shelf", account = "library", shelf = "top" },
-] }
+publish = [{ to = "shelf", account = "library", shelf = "top" }]
 `;
 
 function setup(answer: string, files: Record<string, string> = {}) {
   const kinds = [...destinations, shelf];
-  const disk = memoryFiles({ "/work/billing/keypin.toml": MAP, ...files });
+  const disk = memoryFiles({ "/work/billing/secretspec.toml": MAP, ...files });
   const vault = fakeVault({ values: { "api key": SENTINEL } });
   const fake = fakeDeps({
     disk,
@@ -149,7 +157,7 @@ function setup(answer: string, files: Record<string, string> = {}) {
 }
 
 describe("a destination kind defined outside keypin", () => {
-  test("parses from keypin.toml and shows its label in the plan", async () => {
+  test("parses from secretspec.toml and shows its label in the plan", async () => {
     const run = setup("");
     await cli(["publish", "API_KEY", "--plan"], run.deps);
     expect(run.stderr.text).toContain("Shelf  top shelf  as librarian, account library");
@@ -199,7 +207,7 @@ describe("a destination kind's own discovery", () => {
     expect(await run.record("own-discovery", ["check"])).toBe(1);
     expect(run.stdout.text).toContain("read 0 env files, 0 wrangler configs, 1 shelf file");
     expect(run.stdout.text).toContain(
-      "NEW_KEY: shelf.json needs it; keypin.toml doesn't publish it to the bottom shelf.",
+      "NEW_KEY: shelf.json needs it; secretspec.toml doesn't publish it to the bottom shelf.",
     );
     const json = setup("", { "/work/billing/shelf.json": shelfJson });
     await cli(["check", "--json"], json.deps);

@@ -67,7 +67,7 @@ export class NetlifyEnvDestination implements Destination {
     if (site.status === 403 || site.status === 404)
       return fail(
         `the token can't reach the project ${this.#project}`,
-        `check project in keypin.toml, or ${tokenFix}`,
+        `check project in secretspec.toml, or ${tokenFix}`,
       );
     if (site.status !== 200) throw failure("GET", "/sites", site);
     const body = isRecord(site.body) ? site.body : {};
@@ -77,7 +77,7 @@ export class NetlifyEnvDestination implements Destination {
     if (this.#team !== slug && this.#team !== accountId)
       return fail(
         `the project ${this.#project} belongs to team ${slug}, not ${this.#team}`,
-        `set team to ${slug} in keypin.toml if that's the right project, or check project`,
+        `set team to ${slug} in secretspec.toml if that's the right project, or check project`,
         slug,
       );
 

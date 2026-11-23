@@ -13,29 +13,39 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - run: keypin run --env prod --only STRIPE_API_KEY -- ./deploy.sh
+      - run: keypin run --profile prod --only STRIPE_API_KEY -- ./deploy.sh
 
---- file keypin.toml ---
-[1password]
-account = "my.1password.com"
+--- file secretspec.toml ---
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.DATABASE_URL]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+DATABASE_URL = { description = "DATABASE_URL", ref = { item = "billing dev database url", field = "password" } }
+RESEND_API_KEY = { description = "RESEND_API_KEY", ref = { item = "billing dev resend api key", field = "password" } }
+
+[profiles.prod]
+
+[tool.keypin.dev.DATABASE_URL]
 rotate_every = "90d"
-dev = "op://Private/billing dev database url/password"
 
-[keys.RESEND_API_KEY]
-rotate_every = "90d"
-dev = "op://Private/billing dev resend api key/password"
-
-[keys.STRIPE_API_KEY]
+[tool.keypin.dev.RESEND_API_KEY]
 rotate_every = "90d"
 
-[keys.STRIPE_API_KEY.prod]
-from = "op://Private/billing prod stripe api key/password"
 
-[[keys.STRIPE_API_KEY.prod.pull]]
-by = "github-actions"
-repo = "acme/billing"
+[profiles.prod.STRIPE_API_KEY]
+description = "STRIPE_API_KEY"
+ref = { item = "billing prod stripe api key", field = "password" }
+
+[tool.keypin.prod.STRIPE_API_KEY]
+rotate_every = "90d"
+pull = [{ by = "github-actions", repo = "acme/billing" }]
 
 --- given git ---
 {
@@ -69,7 +79,7 @@ ids billing prod stripe api key
 billing /work/billing · read 1 env file, 0 wrangler configs, 1 workflow; GitHub acme/billing
 1 thing to do:
 1 Fix a problem
-  STRIPE_API_KEY: keypin.toml says jobs in acme/billing pull it from the vault at job time, but acme/billing still has it as an Actions secret; delete the Actions secret: gh secret delete STRIPE_API_KEY --repo acme/billing.
+  STRIPE_API_KEY: secretspec.toml says jobs in acme/billing pull it from the vault at job time, but acme/billing still has it as an Actions secret; delete the Actions secret: gh secret delete STRIPE_API_KEY --repo acme/billing.
 
 --- stderr ---
 ok     Looked up 3 items in 1Password account my.1password.com, not the values

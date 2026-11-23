@@ -16,14 +16,22 @@ jobs:
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
---- file keypin.toml ---
-[1password]
-  account = "my.1password.com"
+--- file secretspec.toml ---
+[project]
+name = "billing"
+revision = "1.0"
 
-  [keys.STRIPE_API_KEY]
-  rotate_every = "90d"
-  prod = "op://Private/billing prod stripe api key/password"
-  
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+STRIPE_API_KEY = { description = "Stripe", ref = { item = "billing prod stripe api key", field = "password" } }
+
+[tool.keypin.prod]
+STRIPE_API_KEY = { rotate_every = "90d" }
 
 --- given git ---
 {
@@ -43,7 +51,7 @@ ids billing prod stripe api key
 --- stdout ---
 {
   "folder": "/work/billing",
-  "map": "/work/billing/keypin.toml",
+  "map": "/work/billing/secretspec.toml",
   "registered": true,
   "read": {
     "env": [
@@ -96,7 +104,7 @@ ids billing prod stripe api key
     "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields"
   ],
   "problems": [
-    "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and keypin.toml doesn't publish it there. In [keys.STRIPE_API_KEY] in keypin.toml, replace prod = \"op://Private/billing prod stripe api key/password\" with prod = { from = \"op://Private/billing prod stripe api key/password\", publish = [{ to = \"github-actions\", repo = \"acme/billing\" }] }"
+    "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there. Set publish = [{ to = \"github-actions\", repo = \"acme/billing\" }] in [tool.keypin.prod.STRIPE_API_KEY] in secretspec.toml"
   ],
   "ok": false
 }

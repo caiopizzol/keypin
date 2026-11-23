@@ -162,7 +162,7 @@ test("a destination removed from the map is reported, not deleted", () => {
 
 test("another project's destinations for the same variable and environment aren't removed from this one", () => {
   const web = receipt("github-actions:acme/web:STRIPE_API_KEY", OLD, {
-    mapFile: "/work/web/keypin.toml",
+    mapFile: "/work/web/secretspec.toml",
   });
   const receipts = [receipt(WORKER, NEW), receipt(GITHUB, NEW), web];
   const plan = planPublish({

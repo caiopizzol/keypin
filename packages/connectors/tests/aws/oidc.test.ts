@@ -286,7 +286,7 @@ describe("signing in to AWS with GitHub Actions OIDC", () => {
       actual: "999999999999",
     });
     expect(error.message).toBe(
-      `AWS account ${ACCOUNT} in eu-west-1: sign-in failed: the role in KEYPIN_AWS_ROLE_ARN belongs to AWS account 999999999999, but keypin.toml pins ${ACCOUNT}`,
+      `AWS account ${ACCOUNT} in eu-west-1: sign-in failed: the role in KEYPIN_AWS_ROLE_ARN belongs to AWS account 999999999999, but secretspec.toml names ${ACCOUNT}`,
     );
     expect(run.calls.map((c) => c.call)).toEqual([GITHUB, ASSUME, IDENTITY]);
   });

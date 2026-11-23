@@ -18,20 +18,28 @@ import {
 
 const ACCOUNT = "11111111111111111111111111111111";
 const OTHER_ACCOUNT = "22222222222222222222222222222222";
-const MAP_FILE = "/work/billing/keypin.toml";
-const REF = "op://Private/billing stripe api key/password";
-
+const MAP_FILE = "/work/billing/secretspec.toml";
 const MAP = `
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.Stripe_Key]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+Stripe_Key = { description = "Stripe", ref = { item = "billing stripe api key", field = "password" } }
+
+[tool.keypin.prod.Stripe_Key]
 rotate_every = "365d"
-prod = { from = "${REF}", publish = [
+publish = [
   { to = "cloudflare-worker", account = "${ACCOUNT}", worker = "billing-worker" },
   { to = "github-actions", repo = "Acme/Billing" },
   { to = "github-actions", repo = "Acme/Billing", environment = "Production" },
-] }
+]
 `;
 
 const DESTINATION_IDS = [

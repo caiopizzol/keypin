@@ -1,18 +1,30 @@
 $ keypin check
 exit 1
 
---- file keypin.toml ---
+--- file secretspec.toml ---
 
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.STRIPE_API_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+STRIPE_API_KEY = { description = "STRIPE_API_KEY", ref = { item = "billing stripe api key", field = "password" } }
+
+[profiles.prod]
+STRIPE_API_KEY = { description = "STRIPE_API_KEY", ref = { item = "billing stripe api key", field = "password" } }
+
+[tool.keypin.prod.STRIPE_API_KEY]
 rotate_every = "365d"
-dev = "op://Private/billing stripe api key/password"
-prod = { from = "op://Private/billing stripe api key/password", publish = [
+publish = [
   { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
   { to = "github-actions", repo = "acme/billing" },
-] }
+]
 
 --- given 1Password desktop app ---
 "a Snap or Flatpak"

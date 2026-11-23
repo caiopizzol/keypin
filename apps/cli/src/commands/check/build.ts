@@ -8,7 +8,6 @@ import {
   type KeyRef,
   type KeysMap,
   loadRegistry,
-  parseMap,
   type PublishTarget,
   pullPlace,
   type PullReader,
@@ -19,7 +18,7 @@ import {
 import { type Deps } from "../../deps";
 import { count, output } from "../../output";
 import { registryPath } from "../../paths";
-import { locateMap, MAP_FILE } from "../../project";
+import { locateMap, MAP_FILE, readMap } from "../../project";
 import { publisherFor } from "../../publisher";
 import { scanProject } from "../../scan";
 import { approval, mapSignIn } from "../../sign-in";
@@ -61,15 +60,13 @@ export async function build(
     steps.push({ order, title, body, covers: [text], signIn });
   };
   const found = await locateMap(deps.files, folder);
-  const parsed = found
-    ? parseMap(found.text, found.file, deps.destinations, deps.issuers, deps.vaults, deps.pulls)
-    : null;
+  const parsed = found ? readMap(deps, found) : null;
   const mapped = parsed?.ok
     ? parsed.map.keys.flatMap((key) =>
         Object.values(key.environments).flatMap((e) => (e ? [e.ref] : [])),
       )
     : [];
-  const signIn = mapSignIn(deps, parsed?.ok ? parsed.map : null, mapped);
+  const signIn = mapSignIn(deps, mapped);
   const root = found ? dirname(found.file) : folder;
   const pulled = parsed?.ok
     ? parsed.map.keys.flatMap((key) =>
@@ -171,7 +168,7 @@ export async function build(
   }
   const map = parsed.map;
   if (!map.keys.length) {
-    const empty = `${found.file} maps no keys yet; run keypin import for an env file, and add the TOML below for production`;
+    const empty = `${found.file} declares no keys yet; run keypin import for an env file, and add the TOML below for production`;
     report.problems.push(empty);
     return done(gapsOf(map), empty);
   }

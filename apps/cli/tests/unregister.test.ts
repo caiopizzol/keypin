@@ -6,17 +6,17 @@ import { fakeDeps, memoryFiles, REGISTRY, registryWith } from "./fakes";
 function registered(...projects: string[]) {
   return memoryFiles({
     [REGISTRY]: registryWith(...projects),
-    "/work/billing/keypin.toml": "# mine\n",
+    "/work/billing/secretspec.toml": "# mine\n",
   });
 }
 
 describe("keypin unregister", () => {
-  test("removes the current folder and leaves its keypin.toml", async () => {
+  test("removes the current folder and leaves its secretspec.toml", async () => {
     const disk = registered("/work/billing", "/work/web");
     const { deps, stderr } = fakeDeps({ disk });
     expect(await cli(["unregister"], deps)).toBe(0);
     expect((await loadRegistry(disk.files, REGISTRY)).projects).toEqual(["/work/web"]);
-    expect(disk.contents.get("/work/billing/keypin.toml")).toBe("# mine\n");
+    expect(disk.contents.get("/work/billing/secretspec.toml")).toBe("# mine\n");
     expect(stderr.text).toBe(
       `keypin: /work/billing is no longer registered (1 project in ${REGISTRY})\n`,
     );

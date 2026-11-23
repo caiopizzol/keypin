@@ -22,13 +22,13 @@ import { closeVault } from "../vault";
 export async function run(args: string[], deps: Deps): Promise<number> {
   const { values, positionals } = parseArgs({
     args,
-    options: { env: { type: "string" }, only: { type: "string", multiple: true } },
+    options: { profile: { type: "string" }, only: { type: "string", multiple: true } },
     allowPositionals: true,
   });
   if (!positionals.length) throw new UsageError("keypin run needs a command after --");
 
   const map = await findMap(deps);
-  const environment = pickEnvironment(map, values.env, runEnvironment(map));
+  const environment = pickEnvironment(map, values.profile, runEnvironment(map));
   const available = map.keys.flatMap((key) => {
     const entry = key.environments[environment];
     return entry ? [{ key, ref: entry.ref }] : [];
@@ -38,7 +38,7 @@ export async function run(args: string[], deps: Deps): Promise<number> {
   const reserved = keys.filter((k) => signInNames.includes(k.key.name));
   if (reserved.length)
     throw new Error(
-      `keypin.toml maps ${reserved.map((k) => k.key.name).join(", ")}, which keypin uses to sign in; keypin run doesn't pass it to a command`,
+      `secretspec.toml declares ${reserved.map((k) => k.key.name).join(", ")}, which keypin uses to sign in; keypin run doesn't pass it to a command`,
     );
 
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);

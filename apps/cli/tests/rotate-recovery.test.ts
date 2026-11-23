@@ -1,17 +1,9 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { Fetch, VaultBackend } from "@keypin/core";
-import { infisicalBackend } from "@keypin/connectors/infisical";
-import {
-  type FakeInfisical,
-  infisicalFetch,
-  memoryStore,
-  mergeHeld,
-} from "@keypin/connectors/infisical/testing";
 import { memoryKeys, resendFetch } from "@keypin/connectors/resend/testing";
 import { cli } from "../src/cli";
-import { NEEDS_APPROVAL } from "../src/approval";
 import { issuer } from "../src/start";
-import { fakeDeps, fakeDestinations, memoryFiles, STATE, writableVault } from "./fakes";
+import { fakeDeps, fakeDestinations, memoryFiles, writableVault } from "./fakes";
 
 const OLD = "re_old_sentinel_value_5d2a";
 const ADMIN = "re_admin_sentinel_value_8c3e";
@@ -22,39 +14,29 @@ const WORKER = "cloudflare-worker:mailer RESEND_API_KEY";
 const ISSUER = `issuer = { kind = "resend", admin = "op://Private/resend admin key/credential", permission = "sending_access" }`;
 
 const MAP = `
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.RESEND_API_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+RESEND_API_KEY = { description = "RESEND_API_KEY", ref = { item = "mailer resend key", field = "credential" } }
+
+[tool.keypin.prod.RESEND_API_KEY]
 rotate_every = "90d"
-
-[keys.RESEND_API_KEY.prod]
-from = "op://Private/mailer resend key/credential"
-publish = [
-  { to = "github-actions", repo = "acme/mailer" },
-]
+publish = [{ to = "github-actions", repo = "acme/mailer" }]
 ${ISSUER}
 `;
 
 const WITH_WORKER = MAP.replace(
-  "publish = [\n",
-  'publish = [\n  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "mailer" },\n',
+  "publish = [{",
+  'publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "mailer" }, {',
 );
-
-const INFISICAL_MAP = `
-[infisical]
-organization = "acme"
-
-[keys.RESEND_API_KEY]
-rotate_every = "90d"
-
-[keys.RESEND_API_KEY.prod]
-from = "infisical://mailer/prod/RESEND_API_KEY"
-publish = [
-  { to = "github-actions", repo = "acme/mailer" },
-]
-issuer = { kind = "resend", admin = "infisical://mailer/prod/RESEND_ADMIN_KEY", permission = "sending_access" }
-`;
 
 const VALUES = { "mailer resend key": OLD, "resend admin key": ADMIN };
 
@@ -66,7 +48,7 @@ interface World {
 
 function world(backend: VaultBackend, map = MAP): World {
   return {
-    disk: memoryFiles({ "/work/billing/keypin.toml": map }),
+    disk: memoryFiles({ "/work/billing/secretspec.toml": map }),
     backend,
     keys: memoryKeys(["re-old"]),
   };
@@ -170,7 +152,7 @@ describe("keypin rotate recovers without losing a key", () => {
     );
     expect(second.live()).toEqual(["re-old", "re-new-2"]);
 
-    at.disk.contents.set("/work/billing/keypin.toml", WITH_WORKER);
+    at.disk.contents.set("/work/billing/secretspec.toml", WITH_WORKER);
     const added = rotation(at, ["y", "y"]);
     expect(await added.run()).toBe(0);
     expect(added.delivered(NEW(2))).toEqual([WORKER]);
@@ -180,86 +162,5 @@ describe("keypin rotate recovers without losing a key", () => {
       added.requests.filter((r) => !r.startsWith("GET")),
       "no create and no revoke",
     ).toEqual([]);
-  });
-
-  test("a resumed rotation whose key was deleted at Resend checks the vault takes writes before it creates one", async () => {
-    const infisical: FakeInfisical = {
-      organization: "acme",
-      projects: {
-        mailer: {
-          prod: {
-            RESEND_API_KEY: { value: OLD, rotated: "2026-08-01" },
-            RESEND_ADMIN_KEY: { value: ADMIN },
-          },
-        },
-      },
-    };
-    const store = memoryStore();
-    const backend = infisicalBackend(
-      { clientId: "client-id-1", clientSecret: "client-secret-4e7b" },
-      infisicalFetch(infisical, store),
-    );
-    const at = world(backend, INFISICAL_MAP);
-    expect(await rotation(at, ["y"]).run()).toBe(0);
-    expect(await rotation(at, ["y", "n"]).run(), "re-new-1 is left to revoke").toBe(0);
-
-    infisical.projects.mailer = {
-      ...infisical.projects.mailer,
-      shared: { RESEND_API_KEY: { value: NEW(2) } },
-    };
-    const saved = store.load().find((entry) => entry.name === "RESEND_API_KEY");
-    if (!saved) throw new Error("the second rotation saved no key");
-    store.save({ ...saved, secret: { value: "${shared.RESEND_API_KEY}" } });
-    at.keys.save({ ...at.keys.load(), live: ["re-old", "re-new-1"] });
-
-    const recover = rotation(at, ["y", "y"]);
-    expect(await recover.run()).toBe(1);
-    expect(recover.stderr.text).toContain(
-      "the secret references infisical://mailer/shared/RESEND_API_KEY, so a new key saved here would leave that secret, and everything that uses it, with the old key; point keypin.toml at infisical://mailer/shared/RESEND_API_KEY instead. Nothing was created.",
-    );
-    expect(recover.asked).toEqual([]);
-    expect(
-      recover.requests.filter((r) => !r.startsWith("GET")),
-      "Resend makes no key",
-    ).toEqual([]);
-    expect(recover.live()).toEqual(["re-old", "re-new-1"]);
-  });
-
-  test("--plan after an approved Infisical change writes nothing, and the rerun finishes", async () => {
-    const infisical: FakeInfisical = {
-      organization: "acme",
-      projects: {
-        mailer: {
-          prod: {
-            RESEND_API_KEY: { value: OLD, rotated: "2026-08-01" },
-            RESEND_ADMIN_KEY: { value: ADMIN },
-          },
-        },
-      },
-    };
-    const store = memoryStore();
-    const backend = infisicalBackend(
-      { clientId: "client-id-1", clientSecret: "client-secret-4e7b" },
-      infisicalFetch(infisical, store),
-    );
-    const at = world(backend, INFISICAL_MAP);
-    expect(await rotation(at, ["y"]).run()).toBe(0);
-    infisical.heldByPolicy = [];
-    expect(await rotation(at, ["y"]).run()).toBe(NEEDS_APPROVAL);
-    mergeHeld(infisical, store);
-
-    const before = at.disk.contents.get(STATE);
-    const plan = rotation(at, ["y", "y"]);
-    expect(await plan.run("--plan")).toBe(NEEDS_APPROVAL);
-    expect(plan.disk.contents.get(STATE), "--plan leaves the state file as it was").toBe(before);
-    expect(plan.asked).toEqual([]);
-    expect(plan.delivered(NEW(2))).toEqual([]);
-    expect(plan.requests.filter((r) => !r.startsWith("GET"))).toEqual([]);
-
-    const finish = rotation(at, ["y", "y"]);
-    expect(await finish.run()).toBe(0);
-    expect(finish.delivered(NEW(2))).toEqual([GITHUB]);
-    expect(finish.requests).toContain("DELETE /api-keys/re-new-1");
-    expect(finish.live()).toEqual(["re-old", "re-new-2"]);
   });
 });

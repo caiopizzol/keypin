@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, parseMap, Secret } from "@keypin/core";
+import { type Fetch, readSecretspec, Secret } from "@keypin/core";
 import { expectNoneOf } from "@keypin/core/testing";
 import {
   FlySecretsDestination,
@@ -114,7 +114,7 @@ describe("refusals", () => {
     const check = await destination.checkAccount();
     assert(!check.ok);
     expect(check.reason).toBe("the token can't reach the app other-api");
-    expect(check.fix).toContain("check app in keypin.toml");
+    expect(check.fix).toContain("check app in secretspec.toml");
   });
 
   test("an app in another organization than the map pins fails the check", async () => {
@@ -124,7 +124,7 @@ describe("refusals", () => {
     expect(check.reason).toBe(
       "the app billing-api belongs to the organization acme, not acme-staging",
     );
-    expect(check.fix).toBe("check org in keypin.toml");
+    expect(check.fix).toBe("check org in secretspec.toml");
   });
 
   test("a token Fly.io doesn't know fails the check", async () => {
@@ -201,11 +201,11 @@ describe("sign-in", () => {
   });
 });
 
-describe("keypin.toml", () => {
+describe("secretspec.toml", () => {
   const map = (fields: string, key = "API_KEY") =>
-    parseMap(
-      `[1password]\naccount = "my.1password.com"\n\n[keys.${key}.prod]\nfrom = "op://Private/web/credential"\n\n[[keys.${key}.prod.publish]]\nto = "fly-app"\n${fields}\n`,
-      "keypin.toml",
+    readSecretspec(
+      `[project]\nname = "web"\nrevision = "1.0"\n\n[profiles.prod]\n${key} = { description = "a key", providers = ["onepassword://my.1password.com@Private"], ref = { item = "web", field = "credential" } }\n\n[[tool.keypin.prod.${key}.publish]]\nto = "fly-app"\n${fields}\n`,
+      "secretspec.toml",
       [flyApp],
       [],
       [onePasswordVault],
@@ -232,9 +232,9 @@ describe("keypin.toml", () => {
     expect(errors(map(`app = "billing-api"\nmachine = "x"`))).not.toBe("");
   });
 
-  test("refuses a name Fly.io can't hold", () => {
+  test("a name Fly.io can't hold isn't a secret name either", () => {
     expect(errors(map(`app = "billing-api"`, "API-KEY"))).toContain(
-      "Fly.io names use only letters, digits and _",
+      "API-KEY: a secret's name uses letters, digits and _",
     );
   });
 

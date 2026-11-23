@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, parseMap, Secret } from "@keypin/core";
+import { type Fetch, readSecretspec, Secret } from "@keypin/core";
 import { expectNoneOf } from "@keypin/core/testing";
 import { onePasswordVault } from "../../src/onepassword/index";
 import {
@@ -262,11 +262,11 @@ describe("sign-in", () => {
   });
 });
 
-describe("keypin.toml", () => {
+describe("secretspec.toml", () => {
   const map = (table: string) =>
-    parseMap(
-      `[1password]\naccount = "my.1password.com"\n\n[keys.API_KEY.prod]\nfrom = "op://Private/web/credential"\n\n[[keys.API_KEY.prod.publish]]\n${table}`,
-      "keypin.toml",
+    readSecretspec(
+      `[project]\nname = "billing"\nrevision = "1.0"\n\n[providers]\nvault = "onepassword://my.1password.com@Private"\n\n[defaults]\nproviders = ["vault"]\n\n[profiles.prod]\nAPI_KEY = { description = "API_KEY", ref = { item = "web", field = "credential" } }\n\n[[tool.keypin.prod.API_KEY.publish]]\n${table}\n`,
+      "secretspec.toml",
       [vercelProject],
       [],
       [onePasswordVault],
@@ -284,9 +284,9 @@ describe("keypin.toml", () => {
   test("needs each field, and refuses a name Vercel reserves", () => {
     const missing = map(`to = "vercel-project"\nteam = "team_acme"\nproject = "web"\n`);
     expect(missing.ok ? [] : missing.errors.join("\n")).toContain(`missing field "environment"`);
-    const reserved = parseMap(
-      `[1password]\naccount = "a.1password.com"\n\n[keys.TZ.prod]\nfrom = "op://P/i/f"\n\n[[keys.TZ.prod.publish]]\nto = "vercel-project"\nteam = "acme"\nproject = "web"\nenvironment = "production"\n`,
-      "keypin.toml",
+    const reserved = readSecretspec(
+      `[project]\nname = "billing"\nrevision = "1.0"\n\n[providers]\nvault = "onepassword://a.1password.com@P"\n\n[defaults]\nproviders = ["vault"]\n\n[profiles.prod]\nTZ = { description = "TZ", ref = { item = "i", field = "f" } }\n\n[tool.keypin.prod.TZ]\npublish = [{ to = "vercel-project", team = "acme", project = "web", environment = "production" }]\n`,
+      "secretspec.toml",
       [vercelProject],
       [],
       [onePasswordVault],

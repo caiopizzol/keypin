@@ -5,8 +5,8 @@ exit 0
 false
 
 --- calls vault ---
-read billing dev database url
-read billing dev resend api key
+read billing default database url
+read billing default resend api key
 
 --- calls destination ---
 
@@ -15,4 +15,4 @@ read billing dev resend api key
 --- stdout ---
 
 --- stderr ---
-ok     Read 2 dev values from 1Password account my.1password.com  op://Private/billing dev database url/password, op://Private/billing dev resend api key/password
+ok     Read 2 default values from 1Password account my.1password.com  op://Private/billing default database url/password, op://Private/billing default resend api key/password

@@ -67,7 +67,7 @@ export function loginLine(result: DestinationResult): string {
     result.reached === null || result.reached === result.pinned
       ? ""
       : `, and it reaches ${result.reached}`;
-  return `${MAP_FILE} pins ${result.pinned}; the login is ${result.login}${signedIn}${reaches}.`;
+  return `${MAP_FILE} names ${result.pinned}; the login is ${result.login}${signedIn}${reaches}.`;
 }
 
 export async function checkItem(ref: KeyRef, deps: Deps): Promise<CheckedItem> {

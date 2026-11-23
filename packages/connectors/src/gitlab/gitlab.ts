@@ -108,7 +108,7 @@ export class GitLabVariablesDestination implements Destination {
     if (!isRecord(place))
       return fail(
         `the login can't reach the ${this.#owner} ${this.#path} on ${this.#host}`,
-        `check ${this.#owner}${this.#host === DEFAULT_HOST ? "" : " and host"} in keypin.toml, or ${create}`,
+        `check ${this.#owner}${this.#host === DEFAULT_HOST ? "" : " and host"} in secretspec.toml, or ${create}`,
         publisher,
       );
     if (!isRecord(place.ciVariables))

@@ -216,7 +216,7 @@ describe("signing in with GitHub Actions OIDC", () => {
     const run = setup({ workplace: "other" });
     const error = await failure(run.vault.read(REF));
     expect(String(error)).toContain(
-      "sign-in failed: the service account identity token for the identity in KEYPIN_DOPPLER_IDENTITY_ID belongs to the workplace other Inc (other), but keypin.toml pins acme",
+      "sign-in failed: the service account identity token for the identity in KEYPIN_DOPPLER_IDENTITY_ID belongs to the workplace other Inc (other), but secretspec.toml names acme",
     );
     expect(run.calls.map((c) => c.call)).toEqual([GITHUB, LOGIN, ME, REVOKE]);
     expect(run.fake.revoked).toEqual([OIDC_TOKEN]);

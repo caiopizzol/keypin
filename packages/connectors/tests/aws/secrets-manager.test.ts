@@ -155,7 +155,7 @@ describe("signing in", () => {
       reason: { kind: "wrong-account", pinned: ACCOUNT, actual: "999999999999" },
     });
     expect(String(failed)).toContain(
-      "the access key in AWS_ACCESS_KEY_ID belongs to AWS account 999999999999, but keypin.toml pins 123456789012",
+      "the access key in AWS_ACCESS_KEY_ID belongs to AWS account 999999999999, but secretspec.toml names 123456789012",
     );
   });
 

@@ -35,27 +35,34 @@ function toyRef(value: unknown): ToyRef | null {
     : null;
 }
 
-const toy: VaultKind<unknown, ToyRef, ToyReference, string> = {
+const toy: VaultKind<unknown, ToyRef, ToyReference> = {
   kind: "toy",
   name: "Toy",
   scheme: "toy://",
   placeholder: "the shelf and slot",
-  needsPin: `needs your toy box: add [toy] with box = "..."`,
-  readPin(read) {
-    read.only(["box"]);
-    return read.required("box");
-  },
   parse(rest) {
     const [shelf, slot, ...more] = rest.split("/");
     return shelf && slot && !more.length
       ? { kind: "toy", shelf, slot }
       : "must be toy://<shelf>/<slot>";
   },
-  pinned: (reference, box) => ({ ...reference, box }),
+  pinned: (reference, { box }) => ({ ...reference, box }),
   format: ({ shelf, slot }) => `toy://${shelf}/${slot}`,
   account: ({ box }) => `toy box ${box}`,
   sameItem: (a, b) => a.shelf === b.shelf && a.slot === b.slot,
   stored: toyRef,
+  secretspec: {
+    provider: "toy",
+    locate: ({ uri, ref }) => {
+      const box = uri.slice("toy://".length);
+      const shelf = ref?.shelf;
+      const slot = ref?.slot;
+      if (!box) return `uses ${uri}, which names no toy box`;
+      return typeof shelf === "string" && typeof slot === "string"
+        ? { kind: "toy", box, shelf, slot }
+        : `a toy needs ref = { shelf = "...", slot = "..." }`;
+    },
+  },
   signInVariables: ["TOY_KEY_RING"],
   newValueByHand: "Put a new toy in the slot and write today on its tag",
   addRotatedDate: "Write the day the toy last changed on its tag.",
@@ -88,18 +95,26 @@ const toyBackend = (values: Record<string, string>, reads: KeyRef[]): VaultBacke
 };
 
 const MAP = `
-[toy]
-box = "attic"
+[project]
+name = "billing"
+revision = "1.0"
 
-[1password]
-account = "my.1password.com"
+[providers]
+attic = "toy://attic"
+acme = "onepassword://my.1password.com@Private"
 
-[keys.TOY_KEY]
-dev = "toy://top/left"
-prod = { from = "toy://top/right", publish = [{ to = "github-actions", repo = "acme/billing" }] }
+[defaults]
+providers = ["attic"]
 
-[keys.OTHER_KEY]
-dev = "op://Private/other key/password"
+[profiles.dev]
+TOY_KEY = { description = "toy", ref = { shelf = "top", slot = "left" } }
+OTHER_KEY = { description = "other", providers = ["acme"], ref = { item = "other key", field = "password" } }
+
+[profiles.prod]
+TOY_KEY = { description = "toy", ref = { shelf = "top", slot = "right" } }
+
+[tool.keypin.prod.TOY_KEY]
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 `;
 
 const issuer = (): Issuer => ({
@@ -112,7 +127,7 @@ const issuer = (): Issuer => ({
 
 function setup(map = MAP, env: Record<string, string> = {}) {
   const disk = memoryFiles({
-    "/work/billing/keypin.toml": map,
+    "/work/billing/secretspec.toml": map,
     [REGISTRY]: registryWith("/work/billing"),
   });
   const launcher = fakeLauncher();
@@ -138,17 +153,17 @@ function setup(map = MAP, env: Record<string, string> = {}) {
 }
 
 describe("a vault kind defined outside keypin", () => {
-  test("parses its references and pin from keypin.toml, with its own errors", async () => {
+  test("finds its secrets in secretspec.toml, with its own errors", async () => {
     const run = setup(
-      `[keys.A]\ndev = "toy://top"\n[keys.B]\ndev = "toy://top/left"\n[keys.C]\ndev = "vault://x"\n`,
+      `[project]\nname = "billing"\nrevision = "1.0"\n\n[profiles.dev]\nA = { description = "a", providers = ["toy://attic"], ref = { shelf = "top" } }\nB = { description = "b", providers = ["toy://"], ref = { shelf = "top", slot = "left" } }\nC = { description = "c", providers = ["vault://x"] }\n`,
     );
     expect(await cli(["check"], run.deps)).toBe(1);
-    expect(run.stdout.text).toContain(`key "A" dev: field "from" must be toy://<shelf>/<slot>`);
     expect(run.stdout.text).toContain(
-      `key "B" dev: field "from" needs your toy box: add [toy] with box = "..."`,
+      `[profiles.dev] A: a toy needs ref = { shelf = "...", slot = "..." }`,
     );
+    expect(run.stdout.text).toContain(`[profiles.dev] B: uses toy://, which names no toy box`);
     expect(run.stdout.text).toContain(
-      `key "C" dev: field "from" must start with op:// or awssm:// or bitwarden:// or doppler:// or infisical:// or toy://`,
+      `[profiles.dev] C: uses vault://x, and keypin reads only 1Password and Toy from secretspec.toml`,
     );
   });
 
@@ -176,10 +191,12 @@ describe("a vault kind defined outside keypin", () => {
     expect(run.launcher.launches[0]?.env).not.toHaveProperty("TOY_KEY_RING");
     expect(run.launcher.launches[0]?.env.KEEP_ME).toBe("yes");
 
-    const mapped = setup(`${MAP}\n[keys.TOY_KEY_RING]\ndev = "toy://top/left"\n`);
+    const mapped = setup(
+      `${MAP}\n[profiles.dev.TOY_KEY_RING]\ndescription = "ring"\nref = { shelf = "top", slot = "left" }\n`,
+    );
     expect(await cli(["run", "--", "env"], mapped.deps)).toBe(1);
     expect(mapped.stderr.text).toContain(
-      "keypin.toml maps TOY_KEY_RING, which keypin uses to sign in; keypin run doesn't pass it to a command",
+      "secretspec.toml declares TOY_KEY_RING, which keypin uses to sign in; keypin run doesn't pass it to a command",
     );
     expect(mapped.launcher.launches).toEqual([]);
   });
@@ -188,7 +205,7 @@ describe("a vault kind defined outside keypin", () => {
     const run = setup(
       MAP.replace(
         "publish = [",
-        'issuer = { kind = "resend", admin = "toy://top/left", permission = "sending_access" }, publish = [',
+        'issuer = { kind = "resend", admin = "toy://top/left", permission = "sending_access" }\npublish = [',
       ),
     );
     expect(await cli(["rotate", "TOY_KEY"], run.deps)).toBe(1);
@@ -197,7 +214,9 @@ describe("a vault kind defined outside keypin", () => {
   });
 
   test("status gives its own next steps for a key without a rotation date", async () => {
-    const run = setup(MAP.replace("[keys.TOY_KEY]", '[keys.TOY_KEY]\nrotate_every = "90d"'));
+    const run = setup(
+      MAP.replace("[tool.keypin.prod.TOY_KEY]", '[tool.keypin.prod.TOY_KEY]\nrotate_every = "90d"'),
+    );
     await cli(["status"], run.deps);
     expect(run.stdout.text).toContain(
       "TOY_KEY (prod): no rotated date\n    Write the day the toy last changed on its tag.",

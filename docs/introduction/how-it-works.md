@@ -37,7 +37,7 @@ repo = "me/billing"
 
 Here `STRIPE_KEY` has one 1Password field for `dev` and another for `prod`, and the `prod` value is published to the
 GitHub repo `me/billing`. keypin rejects a field it doesn't know and a `<...>` left in a value. Every field is in
-[keypin.toml](../reference/keypin-toml.md).
+[keypin.toml](../reference/secretspec-toml.md).
 
 ## References
 

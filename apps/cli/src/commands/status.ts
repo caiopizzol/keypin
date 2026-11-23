@@ -12,7 +12,6 @@ import {
   localDay,
   type MapResult,
   messageOf,
-  parseMap,
   publishEnvironment,
   pullName,
   type PullKinds,
@@ -31,7 +30,7 @@ import {
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
 import { registryPath, statePath } from "../paths";
-import { findMap, MAP_FILE, ROTATION_FILE, STATUS_FILE } from "../project";
+import { findMap, MAP_FILE, ROTATION_FILE, STATUS_FILE, readMap } from "../project";
 import { columns, count, type Output, output, tilde } from "../output";
 import { approval } from "../sign-in";
 import { distinctRefs, refKey } from "../vault";
@@ -60,11 +59,7 @@ export async function status(args: string[], deps: Deps): Promise<number> {
     const file = join(project, MAP_FILE);
     try {
       const text = await deps.files.read(file);
-      if (text !== null)
-        maps.set(
-          project,
-          parseMap(text, file, deps.destinations, deps.issuers, deps.vaults, deps.pulls),
-        );
+      if (text !== null) maps.set(project, readMap(deps, { file, text }));
     } catch (error) {
       deps.stderr.write(`keypin: couldn't read ${file}: ${messageOf(error)}\n`);
     }

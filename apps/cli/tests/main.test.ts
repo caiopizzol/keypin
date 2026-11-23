@@ -6,15 +6,20 @@ import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { NO_ENV_FILE } from "../src/runtime";
 
 const MAIN = fileURLToPath(new URL("../src/main.ts", import.meta.url));
-const MAP = `[1password]
-account = "my.1password.com"
+const MAP = `[project]
+name = "billing"
+revision = "1.0"
+
+[profiles.dev]
+
+[profiles.prod]
 `;
 
 let folder = "";
 beforeEach(async () => {
   folder = await mkdtemp(join(tmpdir(), "keypin-main-"));
   await writeFile(join(folder, ".env"), "FROM_DOTENV=leaked\n");
-  await writeFile(join(folder, "keypin.toml"), MAP);
+  await writeFile(join(folder, "secretspec.toml"), MAP);
 });
 afterEach(async () => {
   await rm(folder, { recursive: true, force: true });

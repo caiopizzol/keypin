@@ -65,9 +65,7 @@ export const githubActionsRules: DestinationRules<GitHubTarget> = {
   kind: "github-actions",
   label: "GitHub",
   parse(read) {
-    read.only(["repo", "environment"], {
-      account: `field "account" is from keypin 0.6; the map pins only repo = "owner/name", and each machine publishes as its own GitHub login (git config github.account, else the active gh login). Delete it (see docs/reference/keypin-toml.md for the current format)`,
-    });
+    read.only(["repo", "environment"]);
     const found = readPlace(read);
     if (found === undefined) return undefined;
     const { repo, environment } = found;

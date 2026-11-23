@@ -21,7 +21,7 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
   const { values, positionals } = parseArgs({
     args,
     options: {
-      env: { type: "string" },
+      profile: { type: "string" },
       yes: { type: "boolean", default: false },
       plan: { type: "boolean", default: false },
       due: { type: "boolean", default: false },
@@ -41,12 +41,12 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
   if (values.discard && (values.due || approve || values.check))
     throw new UsageError("--discard takes one key: keypin rotate <VARIABLE> --discard");
   if (values.check && (positionals.length || values.due || approve || values.plan || values.yes))
-    throw new UsageError("--check takes only --env: it checks every key --due rotates");
+    throw new UsageError("--check takes only --profile: it checks every key --due rotates");
   if (extra.length || (keyId === undefined && !values.due && !approve && !values.check))
     throw new UsageError("keypin rotate takes one key: the variable name");
   const map = await findMap(deps);
-  const environment = pickEnvironment(map, values.env, publishEnvironment(map));
-  const envArgs = environment === publishEnvironment(map) ? [] : ["--env", environment];
+  const environment = pickEnvironment(map, values.profile, publishEnvironment(map));
+  const envArgs = environment === publishEnvironment(map) ? [] : ["--profile", environment];
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);
   const file = join(dirname(map.file), ROTATION_FILE);
   const committed = await loadRotationFile(deps.files, file);

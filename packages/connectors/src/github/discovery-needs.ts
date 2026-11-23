@@ -91,7 +91,7 @@ export function needsOf(
       ...oidc,
       ...[...fromOrganization].map(
         ([name, { paths, environments }]) =>
-          `${name}: ${paths.join(", ")} uses it; ${repo.label} has it (org secret), which keypin.toml doesn't publish${
+          `${name}: ${paths.join(", ")} uses it; ${repo.label} has it (org secret), which secretspec.toml doesn't publish${
             environments.length
               ? ` (a secret of the environment ${environments.join(" or ")}, which check doesn't read, would take its place)`
               : ""
@@ -113,7 +113,7 @@ export function needsOf(
         );
       return unmapped.length
         ? [
-            `${repo.label} has ${unmapped.join(", ")}, which no workflow names and keypin.toml doesn't publish there; a workflow that passes secrets on may use them`,
+            `${repo.label} has ${unmapped.join(", ")}, which no workflow names and secretspec.toml doesn't publish there; a workflow that passes secrets on may use them`,
           ]
         : [];
     },

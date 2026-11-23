@@ -15,13 +15,13 @@ import { version } from "../../../package.json";
 const COMMAND_USAGE: [string, string][] = [
   [
     "init",
-    `  keypin init [folder]     register a project and write a keypin.toml template
+    `  keypin init [folder]     register a project and write a secretspec.toml
 `,
   ],
   [
     "unregister",
     `  keypin unregister [folder]
-                           stop listing a project; its keypin.toml stays
+                           stop listing a project; its secretspec.toml stays
 `,
   ],
   [
@@ -46,38 +46,38 @@ const COMMAND_USAGE: [string, string][] = [
   ],
   [
     "import",
-    `  keypin import <env-file> [NAME...] [--env <name>] --vault <vault> [--account <sign-in address>] [--yes]
-                           move an env file's values into new 1Password items and map them for one
-                           environment (default: the first, dev): only the named variables, or every
-                           one; the account is the map's, or --account when there's no map yet. It
+    `  keypin import <env-file> [NAME...] [--profile <name>] --vault <vault> [--account <sign-in address>] [--yes]
+                           move an env file's values into new 1Password items and declare them for
+                           one profile (default: default): only the named variables, or every
+                           one; the account is secretspec.toml's, or --account when it has none. It
                            never overwrites an item or a reference, so --yes is enough to approve it.
                            The file stays.
 `,
   ],
   [
     "run",
-    `  keypin run [--env <name>] [--only NAME[,NAME]] -- <command>
-                           run a command with one environment's keys (default: the first, dev),
-                           or only the named ones
+    `  keypin run [--profile <name>] [--only NAME[,NAME]] -- <command>
+                           run a command with one profile's keys (default: default, or the first
+                           profile), or only the named ones
 `,
   ],
   [
     "publish",
-    `  keypin publish <VARIABLE> [--env <name>] [--yes | --plan]
+    `  keypin publish <VARIABLE> [--profile <name>] [--yes | --plan]
                            check accounts, plan, confirm, then write the key to every destination
-                           (default environment: the last, prod); --plan reads the value, prints
+                           (default: production, or the last profile); --plan reads the value, prints
                            the plan and the command to approve it, and writes nothing
 `,
   ],
   [
     "publish",
-    `  keypin publish --all [--env <name>] [--yes | --plan]
+    `  keypin publish --all [--profile <name>] [--yes | --plan]
                            the same for every key with destinations, with one plan and one approval
 `,
   ],
   [
     "rotate",
-    `  keypin rotate <VARIABLE> [--env <name>] [--yes | --plan]
+    `  keypin rotate <VARIABLE> [--profile <name>] [--yes | --plan]
                            replace a key that has an issuer: create a new key at the provider, save
                            it to 1Password, publish it, then ask before revoking the old key; run it
                            again to continue after a failure or to revoke the old key later; --plan
@@ -87,7 +87,7 @@ const COMMAND_USAGE: [string, string][] = [
   ],
   [
     "rotate",
-    `  keypin rotate <VARIABLE> --discard [--env <name>] [--yes | --plan]
+    `  keypin rotate <VARIABLE> --discard [--profile <name>] [--yes | --plan]
                            throw away an unfinished rotation, whose new key may have leaked: make
                            a fresh key, publish it everywhere, then ask before revoking the
                            discarded one
@@ -95,7 +95,7 @@ const COMMAND_USAGE: [string, string][] = [
   ],
   [
     "rotate",
-    `  keypin rotate --due [--env <name>] [--yes]
+    `  keypin rotate --due [--profile <name>] [--yes]
                            the same for every key that is due and has an issuer and destinations;
                            without a terminal it stops before revoking, and the old key waits for
                            approval. Records the result in .keypin/, never a value
@@ -103,7 +103,7 @@ const COMMAND_USAGE: [string, string][] = [
   ],
   [
     "rotate",
-    `  keypin rotate --check [--env <name>]
+    `  keypin rotate --check [--profile <name>]
                            check that --due can run here, without a terminal, and change nothing:
                            for every key --due rotates, due or not, find the item, read the key and
                            the admin key, check the issuer and each destination, and fail if a write
@@ -112,7 +112,7 @@ const COMMAND_USAGE: [string, string][] = [
   ],
   [
     "rotate",
-    `  keypin rotate --approve-revoke [<VARIABLE>] [--env <name>]
+    `  keypin rotate --approve-revoke [<VARIABLE>] [--profile <name>]
                            revoke the old key of each rotation waiting for approval, once every
                            destination has the new key; this is the approval, so no y is asked
 `,

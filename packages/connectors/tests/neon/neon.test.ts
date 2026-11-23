@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, parseMap, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, readSecretspec, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { NeonIssuer, neonIssuer } from "../../src/neon/index";
 import { type FakeNeon, memoryWorld, neonFetch } from "../../src/neon/testing";
@@ -417,21 +417,30 @@ describe("checkAccount", () => {
     });
 });
 
-describe("keypin.toml", () => {
+describe("secretspec.toml", () => {
   const twoKeys = (second: string) => `
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.DATABASE_URL.prod]
-from = "op://Private/app database/password"
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+DATABASE_URL = { description = "DATABASE_URL", ref = { item = "app database", field = "password" } }
+DIRECT_URL = { description = "DIRECT_URL", ref = { item = "app direct database", field = "password" } }
+
+[tool.keypin.prod.DATABASE_URL]
 issuer = { kind = "neon", admin = "op://Private/neon api key/credential", project_id = "proj-1", branch_id = "br-main", database = "appdb", roles = ["app_a", "app_b"] }
 
-[keys.DIRECT_URL.prod]
-from = "op://Private/app direct database/password"
+[tool.keypin.prod.DIRECT_URL]
 issuer = { kind = "neon", admin = "op://Private/neon api key/credential", ${second} }
 `;
   const parseTwo = (second: string) =>
-    parseMap(twoKeys(second), "/w/keypin.toml", [], [neonIssuer], [onePasswordVault]);
+    readSecretspec(twoKeys(second), "/w/secretspec.toml", [], [neonIssuer], [onePasswordVault]);
 
   test("two keys whose issuers reset the same role are refused, naming both", () => {
     const parsed = parseTwo(
@@ -439,7 +448,7 @@ issuer = { kind = "neon", admin = "op://Private/neon api key/credential", ${seco
     );
     assert(!parsed.ok);
     expect(parsed.errors).toEqual([
-      `/w/keypin.toml: key "DIRECT_URL" prod issuer: key "DATABASE_URL" prod also rotates role app_b on Neon branch br-main of project proj-1, so rotating either key breaks the other. Change one issuer so they share nothing, or remove one`,
+      `/w/secretspec.toml: [tool.keypin.prod.DIRECT_URL] issuer: [tool.keypin.prod.DATABASE_URL] also rotates role app_b on Neon branch br-main of project proj-1, so rotating either key breaks the other. Change one issuer so they share nothing, or remove one`,
     ]);
   });
 
@@ -453,15 +462,18 @@ issuer = { kind = "neon", admin = "op://Private/neon api key/credential", ${seco
   });
 
   const map = (roles: string) => `
-[1password]
-account = "my.1password.com"
+[project]
+name = "app"
+revision = "1.0"
 
-[keys.DATABASE_URL.prod]
-from = "op://Private/app database/password"
+[profiles.prod]
+DATABASE_URL = { description = "a key", providers = ["onepassword://my.1password.com@Private"], ref = { item = "app database", field = "password" } }
+
+[tool.keypin.prod.DATABASE_URL]
 issuer = { kind = "neon", admin = "op://Private/neon api key/credential", project_id = "proj-1", branch_id = "br-main", database = "appdb", roles = ${roles} }
 `;
   const parse = (roles: string) =>
-    parseMap(map(roles), "/w/keypin.toml", [], [neonIssuer], [onePasswordVault]);
+    readSecretspec(map(roles), "/w/secretspec.toml", [], [neonIssuer], [onePasswordVault]);
 
   test("reads the issuer table", () => {
     const parsed = parse(`["app_a", "app_b"]`);

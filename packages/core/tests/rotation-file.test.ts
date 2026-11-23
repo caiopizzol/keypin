@@ -6,7 +6,7 @@ import {
   type Issued,
   type KeyRef,
   loadRotationFile,
-  parseMap,
+  readSecretspec,
   type Progress,
   restoreIssued,
   restoreReceipts,
@@ -21,54 +21,79 @@ import {
 import { day } from "../src/testing/day";
 import { fakeFiles, ISSUERS, KINDS, PULLS, receipt, VAULT_KINDS } from "./fixtures";
 
-const FILE = "/work/mailer/keypin.toml";
+const FILE = "/work/mailer/secretspec.toml";
 const TODAY = day("2026-11-09");
 const RESEND = `issuer = { kind = "resend", admin = "op://Private/resend admin key/credential", permission = "sending_access" }`;
 const GITHUB = `publish = [{ to = "github-actions", repo = "acme/mailer" }]`;
 
 const MAP = `
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.DUE_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+DEV_ONLY = { description = "DEV_ONLY", ref = { item = "dev only", field = "credential" } }
+
+[profiles.prod]
+DUE_KEY = { description = "DUE_KEY", ref = { item = "due key", field = "credential" } }
+TODAY_KEY = { description = "TODAY_KEY", ref = { item = "today key", field = "credential" } }
+FRESH_KEY = { description = "FRESH_KEY", ref = { item = "fresh key", field = "credential" } }
+BY_HAND = { description = "BY_HAND", ref = { item = "by hand", field = "credential" } }
+NOWHERE = { description = "NOWHERE", ref = { item = "nowhere", field = "credential" } }
+UNREADABLE = { description = "UNREADABLE", ref = { item = "unreadable", field = "credential" } }
+UNDATED = { description = "UNDATED", ref = { item = "undated", field = "credential" } }
+FOREVER = { description = "FOREVER", ref = { item = "forever", field = "credential" } }
+
+[tool.keypin.dev.DEV_ONLY]
 rotate_every = "90d"
-prod = { from = "op://Private/due key/credential", ${GITHUB}, ${RESEND} }
 
-[keys.TODAY_KEY]
+[tool.keypin.prod.DUE_KEY]
 rotate_every = "90d"
-prod = { from = "op://Private/today key/credential", ${GITHUB}, ${RESEND} }
+${GITHUB}
+${RESEND}
 
-[keys.FRESH_KEY]
+[tool.keypin.prod.TODAY_KEY]
 rotate_every = "90d"
-prod = { from = "op://Private/fresh key/credential", ${GITHUB}, ${RESEND} }
+${GITHUB}
+${RESEND}
 
-[keys.BY_HAND]
+[tool.keypin.prod.FRESH_KEY]
 rotate_every = "90d"
-prod = { from = "op://Private/by hand/credential", ${GITHUB} }
+${GITHUB}
+${RESEND}
 
-[keys.NOWHERE]
+[tool.keypin.prod.BY_HAND]
 rotate_every = "90d"
-prod = { from = "op://Private/nowhere/credential", ${RESEND} }
+${GITHUB}
 
-[keys.UNREADABLE]
+[tool.keypin.prod.NOWHERE]
 rotate_every = "90d"
-prod = { from = "op://Private/unreadable/credential", ${GITHUB}, ${RESEND} }
+${RESEND}
 
-[keys.UNDATED]
+[tool.keypin.prod.UNREADABLE]
 rotate_every = "90d"
-prod = { from = "op://Private/undated/credential", ${GITHUB}, ${RESEND} }
+${GITHUB}
+${RESEND}
 
-[keys.FOREVER]
+[tool.keypin.prod.UNDATED]
+rotate_every = "90d"
+${GITHUB}
+${RESEND}
+
+[tool.keypin.prod.FOREVER]
 rotate_every = "never"
-prod = { from = "op://Private/forever/credential", ${GITHUB}, ${RESEND} }
-
-[keys.DEV_ONLY]
-rotate_every = "90d"
-dev = "op://Private/dev only/credential"
+${GITHUB}
+${RESEND}
 `;
 
 function parsed() {
-  const result = parseMap(MAP, FILE, KINDS, ISSUERS, VAULT_KINDS);
+  const result = readSecretspec(MAP, FILE, KINDS, ISSUERS, VAULT_KINDS);
   if (!result.ok) throw new Error(result.errors.join("\n"));
   return result.map;
 }
@@ -139,8 +164,8 @@ describe("rotate --due picks keys", () => {
 
   test("a key CI pulls from the vault is rotated like one with a destination", () => {
     const pulled = `pull = [{ by = "github-actions", repo = "acme/mailer" }]`;
-    const result = parseMap(
-      `[1password]\naccount = "my.1password.com"\n[keys.DUE_KEY]\nrotate_every = "90d"\nprod = { from = "op://Private/due key/credential", ${pulled}, ${RESEND} }\n`,
+    const result = readSecretspec(
+      `[project]\nname = "billing"\nrevision = "1.0"\n\n[providers]\nvault = "onepassword://my.1password.com@Private"\n\n[defaults]\nproviders = ["vault"]\n\n[profiles.prod]\nDUE_KEY = { description = "DUE_KEY", ref = { item = "due key", field = "credential" } }\n\n[tool.keypin.prod.DUE_KEY]\nrotate_every = "90d"\n${pulled}\n${RESEND}\n`,
       FILE,
       KINDS,
       ISSUERS,
@@ -149,7 +174,9 @@ describe("rotate --due picks keys", () => {
     );
     if (!result.ok) throw new Error(result.errors.join("\n"));
     const map = result.map;
-    expect(dueRefs(map, "prod")).toEqual([map.keys[0]?.environments.prod?.ref]);
+    expect(dueRefs(map, "prod")).toEqual([
+      map.keys.find((key) => key.name === "DUE_KEY")?.environments.prod?.ref,
+    ]);
     expect(
       dueKeys({ map, environment: "prod", today: TODAY, metadata, progress: () => null }),
     ).toEqual([{ keyId: "DUE_KEY", action: "rotate", why: "was due 2026-10-30" }]);
@@ -172,7 +199,7 @@ const IDS = { vault: "vault-id-1", item: "item-id-1" };
 
 function published() {
   const map = parsed();
-  const ref = map.keys[0]?.environments.prod?.ref ?? null;
+  const ref = map.keys.find((key) => key.name === "DUE_KEY")?.environments.prod?.ref ?? null;
   let state = recordIssued(emptyState(), ISSUED);
   state = recordReceipt(
     state,
@@ -326,19 +353,30 @@ describe("destinations taken out of the map", () => {
   const WEB = "cloudflare-worker:web:DUE_KEY";
   const worker = (account: string) =>
     `
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.DUE_KEY]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+DUE_KEY = { description = "DUE_KEY", ref = { item = "due key", field = "credential" } }
+
+[tool.keypin.prod.DUE_KEY]
 rotate_every = "90d"
-prod = { from = "op://Private/due key/credential", publish = [{ to = "cloudflare-worker", account = "${account}", worker = "web" }], ${RESEND} }
+publish = [{ to = "cloudflare-worker", account = "${account}", worker = "web" }]
+${RESEND}
 `;
 
   test("a Worker of the same name in another account counts as taken out while it may hold the old key", async () => {
-    const result = parseMap(worker(NEW_ACCOUNT), FILE, KINDS, ISSUERS, VAULT_KINDS);
+    const result = readSecretspec(worker(NEW_ACCOUNT), FILE, KINDS, ISSUERS, VAULT_KINDS);
     if (!result.ok) throw new Error(result.errors.join("\n"));
     const map = result.map;
-    const ref = map.keys[0]?.environments.prod?.ref ?? null;
+    const ref = map.keys.find((key) => key.name === "DUE_KEY")?.environments.prod?.ref ?? null;
     const sent = (account: string, generation: string, at: string) =>
       receipt(WEB, generation, {
         keyId: "DUE_KEY",
@@ -375,10 +413,11 @@ prod = { from = "op://Private/due key/credential", publish = [{ to = "cloudflare
   });
 
   test("a write to the same Worker name in the account the map no longer names doesn't count as published", async () => {
-    const before = parseMap(worker(OLD_ACCOUNT), FILE, KINDS, ISSUERS, VAULT_KINDS);
-    const after = parseMap(worker(NEW_ACCOUNT), FILE, KINDS, ISSUERS, VAULT_KINDS);
+    const before = readSecretspec(worker(OLD_ACCOUNT), FILE, KINDS, ISSUERS, VAULT_KINDS);
+    const after = readSecretspec(worker(NEW_ACCOUNT), FILE, KINDS, ISSUERS, VAULT_KINDS);
     if (!before.ok || !after.ok) throw new Error("map");
-    const ref = before.map.keys[0]?.environments.prod?.ref ?? null;
+    const ref =
+      before.map.keys.find((key) => key.name === "DUE_KEY")?.environments.prod?.ref ?? null;
     const state = recordReceipt(
       recordIssued(emptyState(), ISSUED),
       receipt(WEB, ISSUED.generation, {
@@ -409,7 +448,7 @@ prod = { from = "op://Private/due key/credential", publish = [{ to = "cloudflare
   test("a case-only edit to a GitHub repository name keeps the saved write, as the planner does", async () => {
     const { map, state } = published();
     const file = await rotationFile(state, map, KINDS, null);
-    const renamed = parseMap(
+    const renamed = readSecretspec(
       MAP.replaceAll("acme/mailer", "acme/Mailer"),
       FILE,
       KINDS,
@@ -441,7 +480,7 @@ prod = { from = "op://Private/due key/credential", publish = [{ to = "cloudflare
   test("a case-only edit to a GitHub owner is a changed account, as the planner treats it, so --due publishes again", async () => {
     const { map, state } = published();
     const file = await rotationFile(state, map, KINDS, null);
-    const edited = parseMap(
+    const edited = readSecretspec(
       MAP.replaceAll("acme/mailer", "Acme/mailer"),
       FILE,
       KINDS,

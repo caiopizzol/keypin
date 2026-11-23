@@ -85,7 +85,7 @@ export function buildStatus(input: StatusInput): Status {
         kind: "no-map",
         severity: "problem",
         project,
-        message: `${project} has no readable keypin.toml`,
+        message: `${project} has no readable secretspec.toml`,
       });
       continue;
     }
@@ -241,7 +241,7 @@ function rotationDue(input: {
   if (!rotateEvery) {
     add(
       "bad-rotation-period",
-      `${label}: keypin.toml has no rotate_every for this key; add one, such as "90d", or "never"`,
+      `${label}: secretspec.toml has no rotate_every for this key; add one, such as "90d", or "never"`,
     );
     return null;
   }

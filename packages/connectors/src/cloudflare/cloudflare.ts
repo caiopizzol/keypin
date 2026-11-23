@@ -56,7 +56,7 @@ export class WorkerSecretDestination implements Destination {
     const settings = await this.#request("GET", `${this.#base()}/settings`);
     if (settings.status === 404) {
       const reason = `account ${this.#account} has no Worker ${this.#worker}`;
-      const fix = `deploy the Worker first, or fix worker in keypin.toml. A Worker in a Workers for Platforms dispatch namespace isn't listed here, and keypin doesn't publish to one`;
+      const fix = `deploy the Worker first, or fix worker in secretspec.toml. A Worker in a Workers for Platforms dispatch namespace isn't listed here, and keypin doesn't publish to one`;
       return { ...facts, destinationAccount: null, ok: false, reason, fix };
     }
     if (accounts === null && DENIED.includes(settings.status)) {

@@ -93,7 +93,7 @@ describe("a service account sign-in", () => {
     const { backend, calls, opened } = fakeSdk();
     const failure = backend.itemIds(ref("other.1password.com"));
     await expect(failure).rejects.toThrow(
-      "the service account signs in to acme.1password.com, but keypin.toml pins other.1password.com",
+      "the service account signs in to acme.1password.com, but secretspec.toml names other.1password.com",
     );
     await expect(failure).rejects.not.toThrow(TOKEN);
     expect(calls).toEqual([]);
@@ -117,7 +117,7 @@ describe("a service account sign-in", () => {
       const { backend, calls, opened } = fakeSdk();
       expect(pinKind(account), account).toBe("address");
       await expect(backend.itemIds(ref(account)), account).rejects.toThrow(
-        `the service account signs in to acme.1password.com, but keypin.toml pins ${account}`,
+        `the service account signs in to acme.1password.com, but secretspec.toml names ${account}`,
       );
       expect(calls).toEqual([]);
       expect(opened).toEqual([]);
@@ -240,14 +240,14 @@ describe("a service account sign-in", () => {
     const { backend } = fakeSdk();
     for (const vault of ["Private", "personal", "Employee"])
       await expect(backend.itemIds(ref("acme.1password.com", vault))).rejects.toThrow(
-        `service accounts can't open the built-in vault "${vault}"; move the item to a vault you create, update its reference in keypin.toml, and grant the service account read access to that vault`,
+        `service accounts can't open the built-in vault "${vault}"; move the item to a vault you create, update its vault in secretspec.toml, and grant the service account read access to that vault`,
       );
   });
 
   test("a missing Shared vault may be the default one, which service accounts can't open", async () => {
     const { backend } = fakeSdk();
     await expect(backend.itemIds(ref("acme.1password.com", "Shared"))).rejects.toThrow(
-      `the vault "Shared" isn't visible to this service account. If it's the default Shared vault, service accounts can't open it; move the item to a vault you create, update its reference in keypin.toml, and grant the service account read access to that vault. If you created it, the service account wasn't granted it`,
+      `the vault "Shared" isn't visible to this service account. If it's the default Shared vault, service accounts can't open it; move the item to a vault you create, update its vault in secretspec.toml, and grant the service account read access to that vault. If you created it, the service account wasn't granted it`,
     );
   });
 

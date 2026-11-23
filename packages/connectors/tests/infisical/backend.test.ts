@@ -164,7 +164,7 @@ describe("signing in", () => {
   test("an identity from another organization is refused before any secret is read", async () => {
     const fake = fakeInfisical({ organization: "other", secrets: { "prod:/:STRIPE_KEY": STRIPE } });
     await expect(infisicalBackend(CREDENTIALS, fake.fetch).read(REF)).rejects.toThrow(
-      "sign-in failed: the machine identity belongs to the organization other, but keypin.toml pins acme; keypin reads only from top-level organizations, not sub-organizations",
+      "sign-in failed: the machine identity belongs to the organization other, but secretspec.toml names acme; keypin reads only from top-level organizations, not sub-organizations",
     );
     expect(fake.calls.some((c) => c.path.startsWith("/api/v4"))).toBe(false);
   });
@@ -336,7 +336,7 @@ describe("reading", () => {
       .catch((e: unknown) => e);
     assert(error instanceof Error);
     expect(error.message).toContain(
-      "sign-in failed: the server has no POST /api/v1/auth/universal-auth/login; check that url in keypin.toml points to the Infisical server itself, with no path",
+      "sign-in failed: the server has no POST /api/v1/auth/universal-auth/login; check that url in secretspec.toml points to the Infisical server itself, with no path",
     );
     expect(error.message).not.toContain("older than keypin supports");
   });
@@ -568,7 +568,7 @@ describe("writing", () => {
     });
     const vault = infisicalBackend(CREDENTIALS, fake.fetch);
     const refused =
-      "the secret references infisical://billing/prod/BASE and infisical://billing/dev/payments/KEY, so a new key saved here would leave that secret, and everything that uses it, with the old key; point keypin.toml at the source secret instead";
+      "the secret references infisical://billing/prod/BASE and infisical://billing/dev/payments/KEY, so a new key saved here would leave that secret, and everything that uses it, with the old key; point secretspec.toml at the source secret instead";
     await expect(vault.checkWrite?.(REF)).rejects.toThrow(refused);
     await expect(vault.write(REF, new Secret("new-value-1234"))).rejects.toThrow(refused);
     expect(

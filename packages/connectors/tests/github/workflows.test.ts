@@ -201,7 +201,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - run: npx keypin@0.33.1 run --env prod --only API_TOKEN,Other -- npm test
+      - run: npx keypin@0.33.1 run --profile prod --only API_TOKEN,Other -- npm test
   deploy:
     environment: production
     steps:
@@ -211,7 +211,7 @@ jobs:
             --only=DEPLOY_KEY --only "SECOND" -- ./deploy.sh
       - run: keypin run -- ./all.sh
       - run: keypin run --only "\${{ inputs.key }}" -- ./one.sh
-      - run: keypin run --env "\${{ inputs.env }}" -- ./any.sh
+      - run: keypin run --profile "\${{ inputs.env }}" -- ./any.sh
       - run: echo keypin status
 `);
     assert(refs);
@@ -225,15 +225,15 @@ jobs:
     expect(refs.uses).toEqual([]);
   });
 
-  test("reads --env and --only the way the shell passes them, quotes removed", () => {
+  test("reads --profile and --only the way the shell passes them, quotes removed", () => {
     const refs = workflowRefs(`
 jobs:
   deploy:
     steps:
-      - run: keypin run --env="prod" --only API_KEY -- ./deploy.sh
-      - run: keypin run --env 'prod' --only="API_KEY" -- ./deploy.sh
-      - run: keypin run "--env=prod" --only='API'_KEY -- ./deploy.sh
-      - run: keypin run --env="$KEYPIN_ENV" -- ./deploy.sh
+      - run: keypin run --profile="prod" --only API_KEY -- ./deploy.sh
+      - run: keypin run --profile 'prod' --only="API_KEY" -- ./deploy.sh
+      - run: keypin run "--profile=prod" --only='API'_KEY -- ./deploy.sh
+      - run: keypin run --profile="$KEYPIN_PROFILE" -- ./deploy.sh
 `);
     assert(refs);
     expect(refs.runs).toEqual([
@@ -249,7 +249,7 @@ jobs:
 jobs:
   deploy:
     steps:
-      - run: keypin run --only="FIRST, SECOND" --env="prod" -- ./deploy.sh
+      - run: keypin run --only="FIRST, SECOND" --profile="prod" -- ./deploy.sh
 `);
     assert(refs);
     expect(refs.runs).toEqual([
@@ -323,7 +323,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - run: keypin run --env prod --only API_KEY -- ./deploy.sh
+      - run: keypin run --profile prod --only API_KEY -- ./deploy.sh
 `);
     assert(refs);
     expect(refs.hidesUses).toBe(false);

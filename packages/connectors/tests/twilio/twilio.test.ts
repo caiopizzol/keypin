@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, parseMap, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, readSecretspec, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { TwilioIssuer, twilioIssuer } from "../../src/twilio/index";
 import {
@@ -365,25 +365,32 @@ describe("Twilio issuer", () => {
   });
 });
 
-describe("the twilio issuer in keypin.toml", () => {
-  const map = (issuer: string) => `[1password]
-account = "my.1password.com"
+describe("the twilio issuer in secretspec.toml", () => {
+  const map = (issuer: string) => `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.TWILIO_API_SECRET.prod]
-from = "op://Private/app twilio secret/credential"
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+TWILIO_API_SECRET = { description = "TWILIO_API_SECRET", ref = { item = "app twilio secret", field = "credential" } }
+TWILIO_API_KEY = { description = "TWILIO_API_KEY", ref = { item = "app twilio key sid", field = "credential" } }
+
+[tool.keypin.prod.TWILIO_API_SECRET]
 ${issuer}
-
-[keys.TWILIO_API_KEY.prod]
-from = "op://Private/app twilio key sid/credential"
 `;
 
   test("names the key that holds the API key SID", () => {
-    const parsed = parseMap(
-      map(`[keys.TWILIO_API_SECRET.prod.issuer]
+    const parsed = readSecretspec(
+      map(`[tool.keypin.prod.TWILIO_API_SECRET.issuer]
 kind = "twilio"
 admin = "op://Private/twilio admin/credential"
 key_id = "TWILIO_API_KEY"`),
-      "keypin.toml",
+      "secretspec.toml",
       [],
       [twilioIssuer],
       [onePasswordVault],
@@ -395,11 +402,11 @@ key_id = "TWILIO_API_KEY"`),
   });
 
   test("requires key_id", () => {
-    const parsed = parseMap(
-      map(`[keys.TWILIO_API_SECRET.prod.issuer]
+    const parsed = readSecretspec(
+      map(`[tool.keypin.prod.TWILIO_API_SECRET.issuer]
 kind = "twilio"
 admin = "op://Private/twilio admin/credential"`),
-      "keypin.toml",
+      "secretspec.toml",
       [],
       [twilioIssuer],
       [onePasswordVault],

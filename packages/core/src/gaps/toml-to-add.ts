@@ -1,41 +1,41 @@
 import { parse as parseToml } from "smol-toml";
 import type { Environment } from "../contracts";
 import type { Place } from "../discovery";
-import type { NewKeys, VaultKind, VaultKinds } from "../login";
+import type { NewKeys, VaultKind } from "../login";
 import type { KeyEntry, KeysMap } from "../map";
 import { isRecord } from "../record";
-import { formatReference } from "../reference";
 import { type Found, proposedIn } from "./places";
 
 const ROTATE_EVERY = "90d";
+const FILE = "secretspec.toml";
 
 interface Creates {
   readonly vault: string;
-  readonly from: string;
-  readonly pin: readonly string[];
+  readonly provider: string;
   readonly options: string;
   readonly pinOptions: string;
-  pinned(map: KeysMap | null): boolean;
+  pinned(text: string, environment: Environment): boolean;
+  hasAccount(map: KeysMap | null): boolean;
 }
 
 export function creating(vault: VaultKind, keys: NewKeys): Creates {
-  const pin = Object.entries(keys.pin);
   return {
     vault: vault.name,
-    from: `${vault.scheme}${keys.reference}`,
-    pin: [`[${vault.kind}]`, ...pin.map(([field, value]) => `${field} = ${str(value)}`)],
+    provider: keys.provider,
     options: keys.options,
-    pinOptions: pin.map(([field, value]) => ` --${field} ${value}`).join(""),
-    pinned: (map) => Boolean(map?.pins[vault.kind]),
+    pinOptions: ` ${keys.account}`,
+    hasAccount: (map) =>
+      (map?.keys ?? []).some((key) =>
+        Object.values(key.environments).some((entry) => entry?.ref.kind === vault.kind),
+      ),
+    pinned: (text, environment) => {
+      const data = parsed(text);
+      const profile = table(table(data.profiles)[environment]);
+      return [table(data.defaults), table(profile.defaults)].some(
+        (defaults) => Array.isArray(defaults.providers) && defaults.providers.length > 0,
+      );
+    },
   };
-}
-
-export function hasEnvironments(text: string): boolean {
-  try {
-    return parseToml(text).environments !== undefined;
-  } catch {
-    return false;
-  }
 }
 
 export function tomlToAdd(
@@ -44,7 +44,6 @@ export function tomlToAdd(
   publish: Environment,
   text: string,
   newKeys: Creates,
-  vaults: VaultKinds,
 ): { text: string | null; pinned: boolean; edits: Map<string, string> } {
   const blocks: string[][] = [];
   const edits = new Map<string, string>();
@@ -53,7 +52,7 @@ export function tomlToAdd(
     const group = `${found.need.name} ${proposedIn(found.place, publish)}`;
     groups.set(group, [...(groups.get(group) ?? []), found]);
   }
-  const started = new Set<string>();
+  const declares = new Set<Environment>();
   for (const all of groups.values()) {
     const name = all[0]?.need.name ?? "";
     const environment = all[0] ? proposedIn(all[0].place, publish) : publish;
@@ -78,13 +77,16 @@ export function tomlToAdd(
     });
     if (!found.length) continue;
     const own: string[][] = [];
-    if (!key && !started.has(id)) own.push([`[keys.${id}]`, `rotate_every = ${str(ROTATE_EVERY)}`]);
-    started.add(id);
-    if (!key?.environments[environment])
-      own.push([`[keys.${id}.${environment}]`, `from = ${str(newKeys.from)}`]);
+    const at = `${environment}.${id}`;
+    if (!key?.environments[environment]) {
+      own.push([`[profiles.${at}]`, `description = ${str(id)}`]);
+      declares.add(environment);
+    }
+    if (!key?.rotateEvery && !rawTool(text, id, environment))
+      own.push([`[tool.keypin.${at}]`, `rotate_every = ${str(ROTATE_EVERY)}`]);
     for (const { place } of found)
       own.push([
-        `[[keys.${id}.${environment}.publish]]`,
+        `[[tool.keypin.${at}.publish]]`,
         ...place.fields.map(([field, value]) => `${field} = ${str(value)}`),
       ]);
     if (key && !appends(text, own)) {
@@ -93,8 +95,6 @@ export function tomlToAdd(
         key,
         environment,
         found.map((f) => f.place),
-        newKeys,
-        vaults,
       );
       for (const { place } of found) edits.set(`${name} ${place.id}`, edit);
       continue;
@@ -102,9 +102,8 @@ export function tomlToAdd(
     blocks.push(...own);
   }
   if (!blocks.length) return { text: null, pinned: false, edits };
-  const pinned =
-    blocks.some((block) => block.includes(`from = ${str(newKeys.from)}`)) && !newKeys.pinned(map);
-  if (pinned) blocks.unshift([...newKeys.pin]);
+  const pinned = [...declares].some((environment) => !newKeys.pinned(text, environment));
+  if (pinned) blocks.unshift(["[defaults]", `providers = [${str(newKeys.provider)}]`]);
   return { text: `${blocks.map((block) => block.join("\n")).join("\n\n")}\n`, pinned, edits };
 }
 
@@ -113,34 +112,40 @@ function inlineEdit(
   key: KeyEntry,
   environment: Environment,
   places: readonly Place[],
-  newKeys: Creates,
-  vaults: VaultKinds,
 ): string {
   const entries = places.map(
     (place) => `{ ${place.fields.map(([field, value]) => `${field} = ${str(value)}`).join(", ")} }`,
   );
   const list = `publish = [${entries.join(", ")}]`;
-  const entry = key.environments[environment];
-  const at = `[keys.${key.name}]`;
-  if (!entry)
-    return `Add ${environment} = { from = ${str(newKeys.from)}, ${list} } to ${at} in keypin.toml`;
-  const from = `from = ${str(formatReference(entry.ref, vaults))}`;
-  const raw = rawEntry(text, key.name, environment);
-  if (typeof raw === "string")
-    return `In ${at} in keypin.toml, replace ${environment} = ${str(raw)} with ${environment} = { ${from}, ${list} }`;
+  const at = `[tool.keypin.${environment}.${key.name}]`;
+  const declare = key.environments[environment]
+    ? ""
+    : `declare ${key.name} in [profiles.${environment}], and `;
+  const raw = rawTool(text, key.name, environment);
   if (isRecord(raw) && Array.isArray(raw.publish))
-    return `Add ${entries.join(" and ")} to the publish list of ${environment} in ${at} in keypin.toml`;
-  return `In ${at} in keypin.toml, replace the ${environment} entry with ${environment} = { ${from}, ${list} }`;
+    return `${sentence(declare)}${declare ? "add" : "Add"} ${entries.join(" and ")} to the publish list of ${at} in ${FILE}`;
+  return `${sentence(declare)}${declare ? "set" : "Set"} ${list} in ${at} in ${FILE}`;
 }
 
-function rawEntry(text: string, name: string, environment: Environment): unknown {
+function sentence(text: string): string {
+  return text ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : "";
+}
+
+function rawTool(text: string, name: string, environment: Environment): unknown {
+  const keypin = table(table(parsed(text).tool).keypin);
+  return table(keypin[environment])[name];
+}
+
+function parsed(text: string): Record<string, unknown> {
   try {
-    const data = parseToml(text);
-    const key = isRecord(data.keys) ? data.keys[name] : undefined;
-    return isRecord(key) ? key[environment] : undefined;
+    return parseToml(text);
   } catch {
-    return undefined;
+    return {};
   }
+}
+
+function table(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
 }
 
 function appends(text: string, blocks: readonly string[][]): boolean {

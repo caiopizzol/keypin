@@ -92,7 +92,7 @@ A job can sign in with OIDC and read a key itself, so the repo stores no copy. L
        with:
          node-version: 24
      - run: npm install -g keypin
-     - run: keypin run --env prod --only STRIPE_KEY -- <command>
+     - run: keypin run --profile prod --only STRIPE_KEY -- <command>
        env:
          KEYPIN_AWS_ROLE_ARN: arn:aws:iam::123456789012:role/my-role
    ```

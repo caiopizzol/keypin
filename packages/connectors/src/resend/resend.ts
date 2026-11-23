@@ -65,7 +65,7 @@ export class ResendIssuer implements Issuer {
           ok: false,
           facts,
           reason: `the admin key's team has no Resend domain ${this.#domainId}`,
-          fix: `check domain_id in keypin.toml against ${DOMAINS}`,
+          fix: `check domain_id in secretspec.toml against ${DOMAINS}`,
         };
       if (domain.status !== 200) throw failure("GET", "/domains/<domain_id>", domain);
       const name = typeof domain.body.name === "string" ? domain.body.name : this.#domainId;

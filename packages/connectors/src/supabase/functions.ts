@@ -60,7 +60,7 @@ export class SupabaseSecretsDestination implements Destination {
     if (listed.status === 403 || listed.status === 404)
       return fail(
         `the token can't read the Edge Function secrets of project ${this.#ref}`,
-        `check project_ref in keypin.toml, or give the token ${PERMISSION} on the project; see ${TOKEN_DOCS}`,
+        `check project_ref in secretspec.toml, or give the token ${PERMISSION} on the project; see ${TOKEN_DOCS}`,
       );
     if (listed.status !== 200 || !Array.isArray(listed.body))
       throw failure("GET", "/secrets", listed);

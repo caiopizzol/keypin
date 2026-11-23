@@ -54,7 +54,8 @@ export function vaultAccounts(refs: readonly KeyRef[], vaults: readonly VaultRul
 }
 
 export function describeRef(ref: KeyRef, vaults: readonly VaultRules[]): string {
-  return `${formatReference(ref, vaults)} (${vaultAccount(ref, vaults)})`;
+  const vault = vaultKindOf(vaults, ref.kind);
+  return `${vault.describe?.(ref) ?? vault.format(ref)} (${vaultAccount(ref, vaults)})`;
 }
 
 export function sameAccount(a: KeyRef, b: KeyRef, vaults: readonly VaultRules[]): boolean {
@@ -73,6 +74,12 @@ export function sameField(a: KeyRef, b: KeyRef, vaults: readonly VaultRules[]): 
 
 export function sameRef(a: KeyRef, b: KeyRef, vaults: readonly VaultRules[]): boolean {
   return sameItem(a, b, vaults) && sameField(a, b, vaults);
+}
+
+export function mayShareField(a: KeyRef, b: KeyRef, vaults: readonly VaultRules[]): boolean {
+  if (!sameItem(a, b, vaults)) return false;
+  const vault = vaultKindOf(vaults, a.kind);
+  return vault.mayShareField?.(a, b) ?? sameField(a, b, vaults);
 }
 
 export function storedRef(value: unknown, vaults: readonly VaultRules[]): KeyRef | null {

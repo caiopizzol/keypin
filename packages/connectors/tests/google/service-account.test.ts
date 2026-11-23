@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, parseMap, parseObject, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, readSecretspec, parseObject, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { googleServiceAccountIssuer, ServiceAccountKeyIssuer } from "../../src/google/index";
 import {
@@ -357,18 +357,30 @@ describe("Google Cloud service account key issuer", () => {
 });
 
 describe("the google-service-account issuer kind", () => {
-  const map = (extra: string) => `[1password]
-account = "my.1password.com"
+  const map = (extra: string) => `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.GOOGLE_APPLICATION_CREDENTIALS.prod]
-from = "op://Private/app service account/credential"
+[providers]
+vault = "onepassword://my.1password.com@Private"
 
-[keys.GOOGLE_APPLICATION_CREDENTIALS.prod.issuer]
-kind = "google-service-account"
-admin = "op://Private/google key admin/credential"
-${extra}`;
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+GOOGLE_APPLICATION_CREDENTIALS = { description = "GOOGLE_APPLICATION_CREDENTIALS", ref = { item = "app service account", field = "credential" } }
+
+[tool.keypin.prod.GOOGLE_APPLICATION_CREDENTIALS]
+issuer = { kind = "google-service-account", admin = "op://Private/google key admin/credential", ${extra} }
+`;
   const parse = (extra: string) =>
-    parseMap(map(extra), "keypin.toml", [], [googleServiceAccountIssuer], [onePasswordVault]);
+    readSecretspec(
+      map(extra),
+      "secretspec.toml",
+      [],
+      [googleServiceAccountIssuer],
+      [onePasswordVault],
+    );
 
   test("takes only the admin item", () => {
     const parsed = parse("");

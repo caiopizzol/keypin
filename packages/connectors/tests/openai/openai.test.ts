@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, parseMap, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, readSecretspec, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { OpenAIIssuer, openaiIssuer } from "../../src/openai/index";
 import {
@@ -369,15 +369,24 @@ describe("the fake's redacted value", () => {
 
 describe("the issuer table", () => {
   const map = (fields: string) => `
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.OPENAI_API_KEY.prod]
-from = "op://Private/openai key/credential"
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+OPENAI_API_KEY = { description = "OPENAI_API_KEY", ref = { item = "openai key", field = "credential" } }
+
+[tool.keypin.prod.OPENAI_API_KEY]
 issuer = { kind = "openai", admin = "op://Private/openai admin key/credential", ${fields} }
 `;
   const parse = (fields: string) =>
-    parseMap(map(fields), "/w/keypin.toml", [], [openaiIssuer], [onePasswordVault]);
+    readSecretspec(map(fields), "/w/secretspec.toml", [], [openaiIssuer], [onePasswordVault]);
 
   test("reads project_id and scopes", () => {
     const parsed = parse(`project_id = "proj_1", scopes = ["api.responses.write"]`);

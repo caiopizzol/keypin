@@ -9,7 +9,7 @@ import {
   NO_CREDENTIALS,
   NO_JOB_TOKEN,
 } from "./credentials";
-import { type InfisicalPin, type InfisicalRef, type InfisicalReference, SCHEME } from "./reference";
+import { type InfisicalRef, type InfisicalReference, SCHEME } from "./reference";
 import { infisicalVaultRules } from "./rules";
 
 export interface InfisicalHost {
@@ -23,14 +23,14 @@ function fixFor(failures: readonly SignInReason[], { env }: InfisicalHost): stri
   if (failures.some((reason) => reason.kind === "no-credentials"))
     return oidc ? NO_JOB_TOKEN : `${NO_CREDENTIALS} (docs/integrations/vaults/infisical.md)`;
   if (failures.some((reason) => reason.kind === "wrong-account"))
-    return "use a machine identity from the organization keypin.toml pins under [infisical]; keypin can't read from a sub-organization";
+    return "use a machine identity from the organization secretspec.toml names under [infisical]; keypin can't read from a sub-organization";
   if (oidc)
-    return `check ${IDENTITY_ID}, the machine identity's OIDC Auth settings and the url under [infisical] in keypin.toml (docs/integrations/vaults/infisical.md)`;
+    return `check ${IDENTITY_ID}, the machine identity's OIDC Auth settings and the url under [infisical] in secretspec.toml (docs/integrations/vaults/infisical.md)`;
   const variables =
     credentials && "variable" in credentials
       ? credentials.variable
       : `${CLIENT_ID}, ${CLIENT_SECRET}`;
-  return `check ${variables} and the url under [infisical] in keypin.toml`;
+  return `check ${variables} and the url under [infisical] in secretspec.toml`;
 }
 
 function signedInWith({ env }: InfisicalHost): string | null {
@@ -43,12 +43,7 @@ function signedInWith({ env }: InfisicalHost): string | null {
   return `the Universal Auth client ID and secret${ignored.length ? `, not ${ignored.join(" or ")}` : ""}`;
 }
 
-export const infisicalVault: VaultKind<
-  InfisicalHost,
-  InfisicalRef,
-  InfisicalReference,
-  InfisicalPin
-> = {
+export const infisicalVault: VaultKind<InfisicalHost, InfisicalRef, InfisicalReference> = {
   ...infisicalVaultRules,
   newValueByHand: "Put a new value in the Infisical secret and set its rotated metadata to today",
   addRotatedDate:
@@ -60,7 +55,7 @@ export const infisicalVault: VaultKind<
     const refs = map.keys.flatMap((key) =>
       Object.values(key.environments).flatMap((entry) => (entry ? [entry.ref] : [])),
     );
-    return map.pins.infisical !== undefined && refs.every((ref) => ref.kind === "infisical")
+    return refs.length > 0 && refs.every((ref) => ref.kind === "infisical")
       ? `add the secrets in Infisical and map them with ${SCHEME} references (docs/integrations/vaults/infisical.md)`
       : undefined;
   },

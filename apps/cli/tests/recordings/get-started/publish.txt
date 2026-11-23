@@ -5,7 +5,7 @@ exit 0
 true
 
 --- calls vault ---
-read billing prod stripe api key
+read secretspec/billing/production/STRIPE_API_KEY
 
 --- calls destination ---
 check github-actions:acme/billing
@@ -18,7 +18,7 @@ Write 1 secret? [y/N]
 
 --- stderr ---
 
-STRIPE_API_KEY prod  from op://Private/billing prod stripe api key/password in 1Password account my.1password.com
+STRIPE_API_KEY production  from op://Private/secretspec/billing/production/STRIPE_API_KEY/value in 1Password account my.1password.com
 ok     GitHub  acme/billing  as acme, account acme
 
 ok     Read 1 value from 1Password account my.1password.com
@@ -27,7 +27,7 @@ Plan  generation e24c133a66cb5e4d
   + GitHub  acme/billing  first write  needs approval
 
 ok     GitHub  acme/billing  wrote STRIPE_API_KEY
-Published STRIPE_API_KEY (prod) to 1 destination.
+Published STRIPE_API_KEY (production) to 1 destination.
 
 --- wrote /home/me/.local/state/keypin/state.json ---
 {
@@ -35,19 +35,20 @@ Published STRIPE_API_KEY (prod) to 1 destination.
   "receipts": [
     {
       "keyId": "STRIPE_API_KEY",
-      "environment": "prod",
-      "mapFile": "/work/billing/keypin.toml",
+      "environment": "production",
+      "mapFile": "/work/billing/secretspec.toml",
       "source": {
         "kind": "1password",
         "vault": "Private",
-        "item": "billing prod stripe api key",
+        "item": "secretspec/billing/production/STRIPE_API_KEY",
         "section": null,
-        "field": "password",
+        "field": "value",
+        "fallback": "password",
         "account": "my.1password.com"
       },
       "sourceIds": {
         "vault": "id-private",
-        "item": "id-billing prod stripe api key"
+        "item": "id-secretspec/billing/production/stripe_api_key"
       },
       "destinationId": "github-actions:acme/billing:STRIPE_API_KEY",
       "generation": "e24c133a66cb5e4d",

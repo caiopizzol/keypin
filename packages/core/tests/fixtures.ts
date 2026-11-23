@@ -5,19 +5,31 @@ import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { infisicalVault } from "@keypin/connectors/infisical";
 import type { Files, KeyEntry, Receipt } from "../src/index";
 
-export const MAP_FILE = "/work/web/keypin.toml";
+export const MAP_FILE = "/work/web/secretspec.toml";
 
 export const VALID_MAP = `
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.SESSION_SECRET]
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+SESSION_SECRET = { description = "SESSION_SECRET", ref = { item = "web dev session secret", field = "password" } }
+
+[profiles.prod]
+SESSION_SECRET = { description = "SESSION_SECRET", ref = { item = "web prod session secret", field = "password" } }
+
+[tool.keypin.prod.SESSION_SECRET]
 rotate_every = "180d"
-dev  = "op://Private/web dev session secret/password"
-prod = { from = "op://Private/web prod session secret/password", publish = [
+publish = [
   { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "web" },
   { to = "github-actions", repo = "acme/web" },
-] }
+]
 `;
 
 export const KEY: KeyEntry = {
@@ -46,7 +58,7 @@ export const KEY: KeyEntry = {
   },
 };
 
-export const KEY_MAP = "/work/billing/keypin.toml";
+export const KEY_MAP = "/work/billing/secretspec.toml";
 
 export const WORKER = "cloudflare-worker:billing-worker:STRIPE_API_KEY";
 export const GITHUB = "github-actions:acme/billing:STRIPE_API_KEY";

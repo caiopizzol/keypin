@@ -78,7 +78,7 @@ export class GitHubSecretDestination implements Destination {
         destinationAccount: null,
         ok: false,
         reason: `${publisher} can't see ${this.#repo}`,
-        fix: `check repo in keypin.toml, or publish as a login that can see it: git config github.account <login> (${NOT_ENTERPRISE})`,
+        fix: `check repo in secretspec.toml, or publish as a login that can see it: git config github.account <login> (${NOT_ENTERPRISE})`,
       };
     }
     if (repo.status !== 200) throw this.#failure(`GitHub GET /repos/${this.#repo}`, repo);
@@ -94,7 +94,7 @@ export class GitHubSecretDestination implements Destination {
     if (!sameLogin(owner, this.#owner))
       return refused({
         reason: `${this.#repo} is owned by ${owner}, not ${this.#owner} (moved or renamed?)`,
-        fix: `if the repository moved, set repo to its current owner/name in keypin.toml`,
+        fix: `if the repository moved, set repo to its current owner/name in secretspec.toml`,
       });
     if (this.#login !== null && !sameLogin(publisher, this.#login))
       return refused({
@@ -104,7 +104,7 @@ export class GitHubSecretDestination implements Destination {
     if (repo.body.archived === true)
       return refused({
         reason: `${this.#repo} is archived, so it's read-only and GitHub won't let anyone set its secrets`,
-        fix: `unarchive it in the repository's Settings, or remove it from keypin.toml`,
+        fix: `unarchive it in the repository's Settings, or remove it from secretspec.toml`,
       });
     if (!write)
       return refused({
@@ -172,7 +172,7 @@ export class GitHubSecretDestination implements Destination {
     if (key.status === 404 && this.#environment !== null)
       return {
         reason: `${this.#repo} has no environment named ${this.#environment}, or ${publisher} can't see its secrets`,
-        fix: `create it in the repository's Settings > Environments, or fix environment in keypin.toml`,
+        fix: `create it in the repository's Settings > Environments, or fix environment in secretspec.toml`,
       };
     if (key.status === 403 || key.status === 404)
       return {

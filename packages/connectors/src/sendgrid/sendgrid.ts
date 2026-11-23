@@ -91,7 +91,7 @@ export class SendGridIssuer implements Issuer {
         ok: false,
         facts,
         reason: `the admin key's ${this.#account()} has no key ${id}, ${currentId === null ? "the vault's key" : "the one keypin issued last time"}: it was deleted, or it's from another account or region`,
-        fix: `check the admin key, and subuser and region in keypin.toml, against ${DASHBOARD}; if the key was deleted, make a new one there, put it in the vault and publish it, then run this again`,
+        fix: `check the admin key, and subuser and region in secretspec.toml, against ${DASHBOARD}; if the key was deleted, make a new one there, put it in the vault and publish it, then run this again`,
       };
     if (found.status === 401 || found.status === 403) return this.#refused(found);
     if (found.status !== 200) throw failure("GET", "/v3/api_keys/<id>", found);
@@ -188,7 +188,7 @@ export class SendGridIssuer implements Issuer {
         ok: false,
         facts,
         reason: `SendGrid refused the admin key for subuser ${this.#subuser}: the subuser doesn't exist, or the admin key isn't from its parent account`,
-        fix: `check subuser in keypin.toml against ${SUBUSERS}, and use a key from the parent account`,
+        fix: `check subuser in secretspec.toml against ${SUBUSERS}, and use a key from the parent account`,
       };
     if (reply.status === 403 || reply.status === 404)
       return { ok: false, facts, reason: "SendGrid refused the admin key", fix: ADMIN_FIX };

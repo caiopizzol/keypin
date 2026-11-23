@@ -220,12 +220,12 @@ export class CloudflareIssuer implements Issuer {
     if (kind === "account API token" && this.#account === null)
       return {
         reason: "the vault holds an account API token (cfat_), and the issuer has no account_id",
-        fix: "add account_id, the account the token belongs to, to the issuer in keypin.toml",
+        fix: "add account_id, the account the token belongs to, to the issuer in secretspec.toml",
       };
     if (kind === "user API token" && this.#account !== null)
       return {
         reason: `the vault holds a user API token (cfut_), and the issuer's account_id makes keypin look for an account API token`,
-        fix: "remove account_id from the issuer in keypin.toml",
+        fix: "remove account_id from the issuer in secretspec.toml",
       };
     return null;
   }
@@ -245,7 +245,7 @@ export class CloudflareIssuer implements Issuer {
         fix:
           this.#account === null
             ? "put the token your apps use in the vault; for an account API token, add account_id to the issuer"
-            : "check account_id in keypin.toml, and put the token your apps use in the vault",
+            : "check account_id in secretspec.toml, and put the token your apps use in the vault",
       };
     throw new Error(returned("GET", `${this.#base()}/verify with the vault's token`, reply));
   }
@@ -280,7 +280,7 @@ export class CloudflareIssuer implements Issuer {
           ? `create a token by hand at ${this.dashboard()}, put it in the vault and publish it, then run this again`
           : this.#account === null
             ? "put a token that can create tokens for the same user in the admin item"
-            : "check account_id in keypin.toml, or have a Super Administrator make the admin token",
+            : "check account_id in secretspec.toml, or have a Super Administrator make the admin token",
       };
     throw new Error(returned("GET", `${this.#base()}/<id>`, reply));
   }

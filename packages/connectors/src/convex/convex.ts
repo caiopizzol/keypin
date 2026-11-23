@@ -84,7 +84,7 @@ export class ConvexEnvDestination implements Destination {
         publisher,
         `the deploy key is for deployment ${kind.name}, not ${expected}`,
         kind.name,
-        `check url in keypin.toml, or ${generate}`,
+        `check url in secretspec.toml, or ${generate}`,
       );
 
     const reached = await this.#request("GET", "/get_canonical_urls");

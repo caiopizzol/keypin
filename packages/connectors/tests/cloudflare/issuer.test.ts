@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, parseMap, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, readSecretspec, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { CloudflareIssuer, cloudflareIssuer } from "../../src/cloudflare/index";
 import {
@@ -188,7 +188,7 @@ describe("checkAccount", () => {
     assert(!check.ok);
     expect(check.reason).toContain(`as an account API token of account ${ACCOUNT}`);
     expect(check.fix).toBe(
-      "check account_id in keypin.toml, and put the token your apps use in the vault",
+      "check account_id in secretspec.toml, and put the token your apps use in the vault",
     );
   });
 
@@ -499,15 +499,18 @@ describe("revoke", () => {
 
 describe("the issuer table", () => {
   const map = (fields: string) => `
-[1password]
-account = "my.1password.com"
+[project]
+name = "app"
+revision = "1.0"
 
-[keys.CLOUDFLARE_API_TOKEN.prod]
-from = "op://Private/deploy token/credential"
+[profiles.prod]
+CLOUDFLARE_API_TOKEN = { description = "a key", providers = ["onepassword://my.1password.com@Private"], ref = { item = "deploy token", field = "credential" } }
+
+[tool.keypin.prod.CLOUDFLARE_API_TOKEN]
 issuer = { kind = "cloudflare", admin = "op://Private/cloudflare token maker/credential"${fields} }
 `;
   const parse = (fields: string) =>
-    parseMap(map(fields), "/w/keypin.toml", [], [cloudflareIssuer], [onePasswordVault]);
+    readSecretspec(map(fields), "/w/secretspec.toml", [], [cloudflareIssuer], [onePasswordVault]);
 
   test("reads a user token issuer, and account_id for an account token issuer", () => {
     const user = parse("");

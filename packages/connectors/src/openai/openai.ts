@@ -102,7 +102,7 @@ export class OpenAIIssuer implements Issuer {
         ok: false,
         facts,
         reason: `project ${this.#project} doesn't list key ${issued.key}, the one keypin issued last time, but OpenAI still accepts the vault's key`,
-        fix: `check project_id in keypin.toml, and that the admin key is from the organization that has the key at ${DASHBOARD}`,
+        fix: `check project_id in secretspec.toml, and that the admin key is from the organization that has the key at ${DASHBOARD}`,
       };
     }
 
@@ -113,7 +113,7 @@ export class OpenAIIssuer implements Issuer {
         ok: false,
         facts,
         reason: `no key in project ${this.#project} matches the vault's key: it was deleted, it's from another project, or the item holds another value`,
-        fix: `check project_id in keypin.toml against ${SETTINGS}, and put the key your apps use in the vault`,
+        fix: `check project_id in secretspec.toml against ${SETTINGS}, and put the key your apps use in the vault`,
       };
     if (more.length)
       return {
@@ -229,7 +229,7 @@ export class OpenAIIssuer implements Issuer {
         ok: false,
         facts,
         reason: `the admin key's organization has no project ${this.#projectId}`,
-        fix: `check project_id in keypin.toml against ${SETTINGS}`,
+        fix: `check project_id in secretspec.toml against ${SETTINGS}`,
       };
     throw failure("GET", "/organization/projects/<project_id>", reply);
   }

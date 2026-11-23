@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, parseMap, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, readSecretspec, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { AtlasIssuer, type AtlasIssuerOptions, atlasIssuer } from "../../src/mongodb-atlas/index";
 import { nextName } from "../../src/mongodb-atlas/atlas";
@@ -299,7 +299,7 @@ describe("refusals", () => {
     const { atlas } = setup({ projectId: "000000000000000000000000" });
     const check = await refused(atlas);
     expect(check.facts).toBe("Atlas answered HTTP 404 GROUP_NOT_FOUND");
-    expect(check.fix).toContain("check project_id in keypin.toml");
+    expect(check.fix).toContain("check project_id in secretspec.toml");
   });
 
   test("a vault value that isn't a connection string", async () => {
@@ -426,18 +426,25 @@ describe("create errors", () => {
 });
 
 describe("the map", () => {
-  const map = (issuer: string) => `[1password]
-account = "my.1password.com"
+  const map = (issuer: string) => `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.MONGODB_URI.prod]
-from = "op://Private/app mongodb uri/password"
+[providers]
+vault = "onepassword://my.1password.com@Private"
 
-[keys.MONGODB_URI.prod.issuer]
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+MONGODB_URI = { description = "MONGODB_URI", ref = { item = "app mongodb uri", field = "password" } }
+
+[tool.keypin.prod.MONGODB_URI.issuer]
 kind = "mongodb-atlas"
 admin = "op://Private/atlas service account/credential"
 ${issuer}`;
   const parse = (text: string) =>
-    parseMap(text, "keypin.toml", [], [atlasIssuer], [onePasswordVault]);
+    readSecretspec(text, "secretspec.toml", [], [atlasIssuer], [onePasswordVault]);
 
   test("takes the client ID and project ID", () => {
     const parsed = parse(map(`client_id = "${CLIENT}"\nproject_id = "${PROJECT}"\n`));

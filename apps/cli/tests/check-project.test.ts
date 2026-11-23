@@ -1,14 +1,14 @@
 import { assert, describe, expect, test } from "vite-plus/test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { isRecord, parseMap, SignInFailed, type StoreRead } from "@keypin/core";
+import { isRecord, readSecretspec, SignInFailed, type StoreRead } from "@keypin/core";
 import { CloudflareReader } from "@keypin/connectors/cloudflare";
 import { fakeSignIn } from "@keypin/connectors/cloudflare/testing";
 import { cli } from "../src/cli";
 import { destinations, issuers, vaults } from "../src/start";
 import { THEN } from "../src/commands/check/render";
 import { AFTER_IMPORT, PASTE } from "../src/commands/check/steps";
-import { TEMPLATE } from "../src/commands/init";
+import { template } from "../src/commands/init";
 import type { Deps } from "../src/deps";
 import {
   fakeDeps,
@@ -24,9 +24,11 @@ import {
 import { recording } from "./recording";
 import { version } from "../../../package.json";
 
+const TEMPLATE = template("billing");
+
 const ACCOUNT = "11111111111111111111111111111111";
 const ROOT = "/work/billing";
-const MAP = `${ROOT}/keypin.toml`;
+const MAP = `${ROOT}/secretspec.toml`;
 
 const PROJECT: Record<string, string> = {
   [`${ROOT}/.env`]: `DATABASE_URL=${SENTINEL}\nRESEND_API_KEY=${SENTINEL}\n`,
@@ -53,37 +55,53 @@ jobs:
 `,
 };
 
-const MAPPED = `[1password]
-account = "my.1password.com"
+const MAPPED = `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.DATABASE_URL]
-rotate_every = "90d"
-dev = "op://Private/billing dev database url/password"
+[providers]
+vault = "onepassword://my.1password.com@Private"
 
-[keys.RESEND_API_KEY]
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+DATABASE_URL = { description = "DATABASE_URL", ref = { item = "billing dev database url", field = "password" } }
+RESEND_API_KEY = { description = "RESEND_API_KEY", ref = { item = "billing dev resend api key", field = "password" } }
+
+[profiles.prod]
+
+[tool.keypin.dev.DATABASE_URL]
 rotate_every = "90d"
-dev = "op://Private/billing dev resend api key/password"
+
+[tool.keypin.dev.RESEND_API_KEY]
+rotate_every = "90d"
 `;
+
+const MAPPED_STAGING = MAPPED.replace("[profiles.prod]", "[profiles.staging]\n\n[profiles.prod]");
 
 const PUBLISHED = `${MAPPED}
-[keys.RESEND_API_KEY.prod]
-from = "op://Private/billing prod resend api key/password"
 
-[[keys.RESEND_API_KEY.prod.publish]]
-to = "cloudflare-worker"
-account = "${ACCOUNT}"
-worker = "billing-worker"
+[profiles.prod.RESEND_API_KEY]
+description = "RESEND_API_KEY"
+ref = { item = "billing prod resend api key", field = "password" }
 
-[keys.STRIPE_API_KEY]
+[profiles.prod.STRIPE_API_KEY]
+description = "STRIPE_API_KEY"
+ref = { item = "billing prod stripe api key", field = "password" }
+
+[tool.keypin.prod.RESEND_API_KEY]
+publish = [{ to = "cloudflare-worker", account = "${ACCOUNT}", worker = "billing-worker" }]
+
+[tool.keypin.prod.STRIPE_API_KEY]
 rotate_every = "90d"
-
-[keys.STRIPE_API_KEY.prod]
-from = "op://Private/billing prod stripe api key/password"
-
-[[keys.STRIPE_API_KEY.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 `;
+
+const NO_STRIPE = PUBLISHED.replace(/\[profiles\.prod\.STRIPE_API_KEY\][^[]*/, "").replace(
+  /\[tool\.keypin\.prod\.STRIPE_API_KEY\][\s\S]*$/,
+  "",
+);
 
 interface Setup {
   files?: Record<string, string | null>;
@@ -120,6 +138,8 @@ function setup(options: Setup = {}) {
       "billing prod resend api key": SENTINEL,
       "billing prod stripe api key": SENTINEL,
       "billing prod item": SENTINEL,
+      "secretspec/billing/production/STRIPE_API_KEY": SENTINEL,
+      "secretspec/billing/production/RESEND_API_KEY": SENTINEL,
     },
   });
   const destinations = fakeDestinations();
@@ -223,7 +243,7 @@ function steps(text: string): string[] {
 
 const FILLED: [string, string][] = [
   ["<1Password sign-in address>", "my.1password.com"],
-  ["op://<vault>/<item>/<field>", "op://Private/billing prod item/password"],
+  ["@<vault>", "@Private"],
 ];
 
 function fill(toml: string): string {
@@ -247,7 +267,7 @@ describe("keypin check on a whole project", () => {
     const first = setup({ files: { [MAP]: TEMPLATE, [`${ROOT}/.env`]: null } });
     await cli(["check"], first.deps);
     const pasted = `${TEMPLATE}\n${fill(added(first.stdout.text))}`;
-    assert(parseMap(pasted, MAP, destinations, issuers, vaults).ok, pasted);
+    assert(readSecretspec(pasted, MAP, destinations, issuers, vaults).ok, pasted);
 
     const run = setup({
       files: { [MAP]: pasted },
@@ -276,7 +296,7 @@ describe("keypin check on a whole project", () => {
     };
     const paste = (text: string) => {
       const pasted = `${run.disk.contents.get(MAP) ?? ""}\n${fill(added(text))}`;
-      const parsed = parseMap(pasted, MAP, destinations, issuers, vaults);
+      const parsed = readSecretspec(pasted, MAP, destinations, issuers, vaults);
       assert(parsed.ok, parsed.ok ? "" : parsed.errors.join("\n"));
       return parsed.map;
     };
@@ -316,13 +336,19 @@ describe("keypin check on a whole project", () => {
       const text = run.stdout.text;
       expect(text).toContain("    keypin import .env PORT --vault <vault>");
       expect(text.includes(AFTER_IMPORT)).toBe(warns);
-      const parsed = parseMap(`${map}\n${fill(added(text))}`, MAP, destinations, issuers, vaults);
+      const parsed = readSecretspec(
+        `${map}\n${fill(added(text))}`,
+        MAP,
+        destinations,
+        issuers,
+        vaults,
+      );
       assert(parsed.ok, parsed.ok ? "" : parsed.errors.join("\n"));
       expect(parsed.map.keys.map((k) => k.name)).toContain("STRIPE_API_KEY");
     },
   );
 
-  test("an env file named for an environment suggests importing it with --env", async () => {
+  test("an env file named for an environment suggests importing it with --profile", async () => {
     const run = setup({
       files: {
         [MAP]: MAPPED,
@@ -347,7 +373,9 @@ describe("keypin check on a whole project", () => {
 
     const first = setup({
       files: {
-        [MAP]: `environments = ["production", "staging"]\n${MAPPED.replaceAll("dev =", "production =")}`,
+        [MAP]: MAPPED.replace("[profiles.dev]", "[profiles.production]")
+          .replace("[profiles.prod]", "[profiles.staging]")
+          .replaceAll("[tool.keypin.dev.", "[tool.keypin.production."),
         [`${ROOT}/.env.production`]: `NEW_KEY=${SENTINEL}\n`,
       },
     });
@@ -359,10 +387,15 @@ describe("keypin check on a whole project", () => {
   test("an env file named for an unlisted environment flags an already-mapped key too", async () => {
     const run = setup({
       files: {
-        [MAP]: `environments = ["dev", "staging", "prod"]\n${MAPPED.replace(
-          'dev = "op://Private/billing dev database url/password"',
-          'staging = "op://Private/billing staging database url/password"',
-        )}`,
+        [MAP]: MAPPED_STAGING.replace(
+          'DATABASE_URL = { description = "DATABASE_URL", ref = { item = "billing dev database url", field = "password" } }\n',
+          "",
+        )
+          .replace(
+            "[profiles.staging]\n",
+            '[profiles.staging]\nDATABASE_URL = { description = "DATABASE_URL", ref = { item = "billing staging database url", field = "password" } }\n',
+          )
+          .replace("[tool.keypin.dev.DATABASE_URL]", "[tool.keypin.staging.DATABASE_URL]"),
         [`${ROOT}/.env.production`]: `DATABASE_URL=${SENTINEL}\n`,
       },
     });
@@ -385,12 +418,12 @@ describe("keypin check on a whole project", () => {
     const run = setup({ files: { [MAP]: `${TEMPLATE}\n${added(first.stdout.text)}` } });
     expect(await cli(["check", "--json"], run.deps)).toBe(1);
     const data = json(run.stdout.text);
-    expect(data.problems.length).toBeGreaterThanOrEqual(3);
+    expect(data.problems.length).toBeGreaterThanOrEqual(2);
     for (const problem of data.problems) expect(String(problem)).toContain("<...> placeholder");
     expect(run.vault).toEqual([]);
   });
 
-  test("with no keypin.toml at all, check still reports the project", async () => {
+  test("with no secretspec.toml at all, check still reports the project", async () => {
     const run = setup({ files: { [REGISTRY]: registryWith() } });
     expect(await run.record("no-map", ["check", "--json"])).toBe(1);
     expect(run.vault).toEqual([]);
@@ -427,9 +460,9 @@ describe("keypin check on a whole project", () => {
       [`${ROOT}/.env`]: `PORT=3000\n`,
       [`${ROOT}/.github/workflows/deploy.yml`]: workflow,
     };
-    const ignore = `ignore = ["OPENAI_API_KEY", "anthropic_api_key", "PORT", "UNUSED"]\n`;
+    const ignore = `[tool.keypin]\nignore = ["OPENAI_API_KEY", "anthropic_api_key", "PORT", "UNUSED"]\n`;
     const run = setup({
-      files: { ...files, [MAP]: `${ignore}${PUBLISHED}` },
+      files: { ...files, [MAP]: `${PUBLISHED}\n${ignore}` },
       deps: { workerSignIn: () => fakeSignIn("oauth") },
       github: { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] },
       worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
@@ -452,7 +485,9 @@ describe("keypin check on a whole project", () => {
     const workflow = /^```yaml\n([\s\S]*?)^```/m
       .exec(docs)?.[1]
       ?.replace(/keypin@\S+/, "keypin@<version>");
-    const ignore = /^ *```toml\n *(ignore = [^\n]*\n) *```/m.exec(docs)?.[1];
+    const ignore = /^ *```toml\n *(\[tool\.keypin\]\n *ignore = [^\n]*\n) *```/m
+      .exec(docs)?.[1]
+      ?.replace(/^ +/gm, "");
     expect(docs, "release-please bumps the pin with each release").toContain(
       `keypin@${version} # x-release-please-version`,
     );
@@ -460,7 +495,7 @@ describe("keypin check on a whole project", () => {
     assert(ignore !== undefined);
     const run = setup({
       files: {
-        [MAP]: `${ignore}${PUBLISHED}`,
+        [MAP]: `${PUBLISHED}\n${ignore}`,
         [`${ROOT}/.github/workflows/rotate-keys.yml`]: workflow,
       },
       deps: { workerSignIn: () => fakeSignIn("oauth") },
@@ -473,7 +508,7 @@ describe("keypin check on a whole project", () => {
   test("ignore matches names in any case, so check never proposes a key ignore would reject", async () => {
     const run = setup({
       files: {
-        [MAP]: `ignore = ["extra_key", "local_key"]\n${PUBLISHED}`,
+        [MAP]: `${PUBLISHED}\n[tool.keypin]\nignore = ["extra_key", "local_key"]\n`,
         [`${ROOT}/.env`]: `LOCAL_KEY=${SENTINEL}\n`,
         [`${ROOT}/wrangler.toml`]: `name = "billing-worker"\naccount_id = "${ACCOUNT}"\n\n[secrets]\nrequired = ["RESEND_API_KEY", "EXTRA_KEY"]\n`,
       },
@@ -482,7 +517,7 @@ describe("keypin check on a whole project", () => {
       worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
     });
     expect(await cli(["check"], run.deps)).toBe(0);
-    expect(run.stdout.text).toContain("Note: keypin.toml ignores 2 keys");
+    expect(run.stdout.text).toContain("Note: secretspec.toml ignores 2 keys");
     expect(run.stdout.text).not.toContain("EXTRA_KEY");
     expect(run.stdout.text).not.toContain("LOCAL_KEY");
   });
@@ -501,17 +536,15 @@ describe("keypin check on a whole project", () => {
   test("steps come in the order to do them: logins, import, TOML, publish", async () => {
     const run = setup({
       files: {
-        [MAP]: MAPPED.replace(
-          "[keys.RESEND_API_KEY]",
-          `[keys.STRIPE_API_KEY.prod]
-  from = "op://Private/billing prod stripe api key/password"
+        [MAP]: `${MAPPED}
+[profiles.prod.STRIPE_API_KEY]
+description = "STRIPE_API_KEY"
+ref = { item = "billing prod stripe api key", field = "password" }
 
-  [[keys.STRIPE_API_KEY.prod.publish]]
-  to = "github-actions"
-  repo = "acme/billing"
-
-  [keys.RESEND_API_KEY]`,
-        ),
+[[tool.keypin.prod.STRIPE_API_KEY.publish]]
+to = "github-actions"
+repo = "acme/billing"
+`,
         [`${ROOT}/.env`]: `DATABASE_URL=${SENTINEL}\nNEW_KEY=${SENTINEL}\n`,
       },
       deps: { ghLogin: async () => "not logged in" },
@@ -530,20 +563,34 @@ describe("keypin check on a whole project", () => {
     });
     expect(await run.record("held-but-not-published", ["check"])).toBe(1);
     assert(
-      parseMap(`${MAPPED}\n${fill(added(run.stdout.text))}`, MAP, destinations, issuers, vaults).ok,
+      readSecretspec(
+        `${MAPPED}\n${fill(added(run.stdout.text))}`,
+        MAP,
+        destinations,
+        issuers,
+        vaults,
+      ).ok,
     );
   });
 
   test("a key whose prod table is inline gets an entry for its publish list instead", async () => {
-    const map = `[1password]
-  account = "my.1password.com"
+    const map = `[project]
+name = "billing"
+revision = "1.0"
 
-  [keys.STRIPE_API_KEY]
-  rotate_every = "90d"
-  prod = { from = "op://Private/billing prod stripe api key/password", publish = [
-    { to = "cloudflare-worker", account = "${ACCOUNT}", worker = "billing-worker" },
-  ] }
-  `;
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+STRIPE_API_KEY = { description = "STRIPE_API_KEY", ref = { item = "billing prod stripe api key", field = "password" } }
+
+[tool.keypin.prod.STRIPE_API_KEY]
+rotate_every = "90d"
+publish = [{ to = "cloudflare-worker", account = "${ACCOUNT}", worker = "billing-worker" }]
+`;
     const run = setup({
       files: { [MAP]: map, [`${ROOT}/.env`]: null, [`${ROOT}/wrangler.toml`]: null },
     });
@@ -551,55 +598,36 @@ describe("keypin check on a whole project", () => {
     expect(json(run.stdout.text).add).toBeNull();
   });
 
-  test("a key whose prod entry is a bare reference gets the table to replace it with", async () => {
-    const ref = "op://Private/billing prod stripe api key/password";
-    const map = `[1password]
-  account = "my.1password.com"
+  test("a key whose keypin settings are an inline table gets the publish list to set", async () => {
+    const settings = `STRIPE_API_KEY = { rotate_every = "90d" }`;
+    const map = `[project]
+name = "billing"
+revision = "1.0"
 
-  [keys.STRIPE_API_KEY]
-  rotate_every = "90d"
-  prod = "${ref}"
-  `;
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+STRIPE_API_KEY = { description = "Stripe", ref = { item = "billing prod stripe api key", field = "password" } }
+
+[tool.keypin.prod]
+${settings}
+`;
     const run = setup({
       files: { [MAP]: map, [`${ROOT}/.env`]: null, [`${ROOT}/wrangler.toml`]: null },
     });
-    expect(await run.record("bare-prod-reference", ["check", "--json"])).toBe(1);
+    expect(await run.record("inline-tool-settings", ["check", "--json"])).toBe(1);
     const data = json(run.stdout.text);
     expect(data.add).toBeNull();
-    const replaced = `prod = { from = "${ref}", publish = [{ to = "github-actions", repo = "acme/billing" }] }`;
-    expect(String(data.problems[0])).toContain(`replace prod = "${ref}" with ${replaced}`);
-    const parsed = parseMap(
-      map.replace(`prod = "${ref}"`, replaced),
-      MAP,
-      destinations,
-      issuers,
-      vaults,
+    const list = `publish = [{ to = "github-actions", repo = "acme/billing" }]`;
+    expect(String(data.problems[0])).toContain(
+      `Set ${list} in [tool.keypin.prod.STRIPE_API_KEY] in secretspec.toml`,
     );
-    assert(parsed.ok);
-    expect(parsed.map.keys[0]?.environments.prod?.publish).toEqual([
-      { to: "github-actions", repo: "acme/billing", account: "acme" },
-    ]);
-  });
-
-  test("a key whose prod entry is an inline table without a publish list gets the entry to replace it with", async () => {
-    const ref = "op://Private/billing prod stripe api key/password";
-    const entry = `prod = { from = "${ref}" }`;
-    const map = `[1password]
-  account = "my.1password.com"
-
-  [keys.STRIPE_API_KEY]
-  rotate_every = "90d"
-  ${entry}
-  `;
-    const run = setup({
-      files: { [MAP]: map, [`${ROOT}/.env`]: null, [`${ROOT}/wrangler.toml`]: null },
-    });
-    expect(await run.record("inline-prod-without-publish", ["check", "--json"])).toBe(1);
-    const replaced = `prod = { from = "${ref}", publish = [{ to = "github-actions", repo = "acme/billing" }] }`;
-    expect(String(json(run.stdout.text).problems[0])).toContain(
-      `replace the prod entry with ${replaced}`,
-    );
-    const parsed = parseMap(map.replace(entry, replaced), MAP, destinations, issuers, vaults);
+    const fixed = map.replace(settings, `STRIPE_API_KEY = { rotate_every = "90d", ${list} }`);
+    const parsed = readSecretspec(fixed, MAP, destinations, issuers, vaults);
     assert(parsed.ok);
     expect(parsed.map.keys[0]?.environments.prod?.publish).toEqual([
       { to: "github-actions", repo: "acme/billing", account: "acme" },
@@ -607,19 +635,23 @@ describe("keypin check on a whole project", () => {
   });
 
   test("a lowercase map key gets publish commands in its own spelling", async () => {
-    const map = `[1password]
-  account = "my.1password.com"
+    const map = `[project]
+name = "billing"
+revision = "1.0"
 
-  [keys.stripe_api_key]
-  rotate_every = "90d"
+[providers]
+vault = "onepassword://my.1password.com@Private"
 
-  [keys.stripe_api_key.prod]
-  from = "op://Private/billing prod stripe api key/password"
+[defaults]
+providers = ["vault"]
 
-  [[keys.stripe_api_key.prod.publish]]
-  to = "github-actions"
-  repo = "acme/billing"
-  `;
+[profiles.prod]
+stripe_api_key = { description = "stripe_api_key", ref = { item = "billing prod stripe api key", field = "password" } }
+
+[tool.keypin.prod.stripe_api_key]
+rotate_every = "90d"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
+`;
     const run = setup({
       files: { [MAP]: map, [`${ROOT}/.env`]: null, [`${ROOT}/wrangler.toml`]: null },
     });
@@ -629,13 +661,13 @@ describe("keypin check on a whole project", () => {
   test("the same Worker name in two accounts is two places", async () => {
     const other = "22222222222222222222222222222222";
     const map = `${MAPPED}
-[keys.RESEND_API_KEY.prod]
-from = "op://Private/billing prod resend api key/password"
 
-[[keys.RESEND_API_KEY.prod.publish]]
-to = "cloudflare-worker"
-account = "${ACCOUNT}"
-worker = "billing-worker"
+[profiles.prod.RESEND_API_KEY]
+description = "RESEND_API_KEY"
+ref = { item = "billing prod resend api key", field = "password" }
+
+[tool.keypin.prod.RESEND_API_KEY]
+publish = [{ to = "cloudflare-worker", account = "${ACCOUNT}", worker = "billing-worker" }]
 `;
     const run = setup({
       files: {
@@ -672,10 +704,10 @@ worker = "billing-worker"
     expect(data.add).toBeNull();
     expect(data.problems).toEqual([
       expect.stringContaining(
-        `keypin.toml can't publish RESEND_API_KEY to two Workers named billing-worker from one environment (accounts ${ACCOUNT} and ${other}); publish one of them from another environment, listed in environments`,
+        `secretspec.toml can't publish RESEND_API_KEY to two Workers named billing-worker from one profile (accounts ${ACCOUNT} and ${other}); publish one of them from another profile in secretspec.toml`,
       ),
     ]);
-    expect(parseMap(map, MAP, destinations, issuers, vaults).ok).toBe(true);
+    expect(readSecretspec(map, MAP, destinations, issuers, vaults).ok).toBe(true);
   });
 
   test("two unnamed Workers that need one secret each get their own TOML", async () => {
@@ -717,7 +749,7 @@ worker = "billing-worker"
       ]),
     );
     const filled = `${MAPPED}\n${data.add.replaceAll("<vault>/<item>/<field>", "Private/billing prod resend api key/password")}`;
-    const parsed = parseMap(filled, MAP, destinations, issuers, vaults);
+    const parsed = readSecretspec(filled, MAP, destinations, issuers, vaults);
     assert(parsed.ok, parsed.ok ? "" : parsed.errors.join("\n"));
   });
 
@@ -740,42 +772,38 @@ required = ["RESEND_API_KEY"]
       [`${ROOT}/.github/workflows/deploy.yml`]: null,
       [`${ROOT}/wrangler.toml`]: wrangler,
     });
-    const both = (
-      environments: string,
-      staging: string,
-      prod = "prod",
-    ) => `environments = ${environments}
-${MAPPED}
-[keys.RESEND_API_KEY.${prod}]
-from = "op://Private/billing prod resend api key/password"
+    const both = (staging: string, prod = "prod") => `${MAPPED_STAGING}
+[profiles.${prod}.RESEND_API_KEY]
+description = "Resend"
+ref = { item = "billing prod resend api key", field = "password" }
 
-[[keys.RESEND_API_KEY.${prod}.publish]]
+[[tool.keypin.${prod}.RESEND_API_KEY.publish]]
 to = "cloudflare-worker"
 account = "${ACCOUNT}"
 worker = "billing-worker"
 
-[keys.RESEND_API_KEY.${staging}]
-from = "op://Private/billing prod item/password"
+[profiles.${staging}.RESEND_API_KEY]
+description = "Resend"
+ref = { item = "billing prod item", field = "password" }
 
-[[keys.RESEND_API_KEY.${staging}.publish]]
+[[tool.keypin.${staging}.RESEND_API_KEY.publish]]
 to = "cloudflare-worker"
 account = "${ACCOUNT}"
 worker = "billing-worker-staging"
 `;
     const held = { ok: true as const, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] };
 
-    test("is proposed under the keypin environment of the same name, with the line to list it", async () => {
+    test("is proposed under the profile of the same name, with the profile to add", async () => {
       const run = setup({ files: files(MAPPED) });
       expect(await run.record("wrangler-env-proposed", ["check", "--json"])).toBe(1);
       const data = json(run.stdout.text);
       assert(typeof data.add === "string");
       expect(data.add.match(/worker = /g)).toHaveLength(2);
-      const line = 'environments = ["dev", "staging", "prod"]';
       expect(data.problems).toContain(
-        `keypin.toml has no environment for the wrangler env staging; add at the top of keypin.toml: ${line} (keypin run uses the first, keypin publish the last)`,
+        "secretspec.toml has no profile for the wrangler env staging; add to secretspec.toml, above [profiles.prod] so keypin publish keeps using it: [profiles.staging]",
       );
-      const parsed = parseMap(
-        `${line}\n${MAPPED}\n${fill(data.add)}`,
+      const parsed = readSecretspec(
+        `${MAPPED_STAGING}\n${fill(data.add)}`,
         MAP,
         destinations,
         issuers,
@@ -792,31 +820,19 @@ worker = "billing-worker-staging"
       run.unchanged();
     });
 
-    test("never moves a sole environment from first place", async () => {
+    test("with a production profile, a new profile may go anywhere", async () => {
       const run = setup({
-        files: files(`environments = ["dev"]\n${MAPPED}`),
-      });
-      expect(await cli(["check", "--json"], run.deps)).toBe(1);
-      expect(json(run.stdout.text).problems).toContainEqual(
-        expect.stringContaining(
-          'replace the environments line in keypin.toml with: environments = ["dev", "staging"]',
-        ),
-      );
-    });
-
-    test("keeps the map's order and puts a new environment before the last", async () => {
-      const run = setup({
-        files: files(`environments = ["local", "live"]\n${MAPPED.replaceAll("dev =", "local =")}`),
+        files: files(MAPPED.replace("[profiles.prod]", "[profiles.production]")),
       });
       expect(await cli(["check", "--json"], run.deps)).toBe(1);
       expect(json(run.stdout.text).problems).toContain(
-        `keypin.toml has no environment for the wrangler env staging; replace the environments line in keypin.toml with: environments = ["local", "staging", "live"] (keypin run uses the first, keypin publish the last)`,
+        "secretspec.toml has no profile for the wrangler env staging; add to secretspec.toml: [profiles.staging]",
       );
     });
 
     test("published from its environment is covered, and never by a prod entry", async () => {
       const run = setup({
-        files: files(both(`["dev", "staging", "prod"]`, "staging")),
+        files: files(both("staging")),
         worker: held,
       });
       expect(await cli(["check", "--json"], run.deps)).toBe(0);
@@ -832,7 +848,7 @@ worker = "billing-worker-staging"
       expect(data.problems).toEqual([]);
 
       const wrong = setup({
-        files: files(both(`["dev", "staging", "prod"]`, "prod", "staging")),
+        files: files(both("prod", "staging")),
         worker: held,
       });
       expect(await cli(["check", "--json"], wrong.deps)).toBe(1);
@@ -851,7 +867,7 @@ worker = "billing-worker-staging"
       ]);
       expect(swapped.add).toBeNull();
       expect(swapped.problems).toEqual([
-        "RESEND_API_KEY: wrangler.toml requires it; keypin.toml publishes it to the Worker billing-worker-staging from prod, but that Worker is the wrangler env staging, so it would get the prod value; move that publish entry to staging",
+        "RESEND_API_KEY: wrangler.toml requires it; secretspec.toml publishes it to the Worker billing-worker-staging from prod, but that Worker is the wrangler env staging, so it would get the prod value; move that publish entry to staging",
       ]);
     });
 
@@ -860,7 +876,7 @@ worker = "billing-worker-staging"
       async (folder) => {
         const run = setup({
           files: {
-            ...files(both(`["dev", "staging", "prod"]`, "prod", "staging")),
+            ...files(both("prod", "staging")),
             [`${ROOT}/${folder}/wrangler.toml`]: `name = "billing-worker-staging"\naccount_id = "${ACCOUNT}"\n\n[secrets]\nrequired = ["RESEND_API_KEY"]\n`,
           },
           worker: held,
@@ -901,15 +917,25 @@ name = "billing-worker"
 [env.${second}.secrets]
 required = ["RESEND_API_KEY"]
 `;
-        const map = `environments = ["dev", "staging", "prod"]
-${MAPPED}
-[keys.RESEND_API_KEY.staging]
-from = "op://Private/billing prod item/password"
+        const map = `[project]
+name = "billing"
+revision = "1.0"
 
-[[keys.RESEND_API_KEY.staging.publish]]
-to = "cloudflare-worker"
-account = "${ACCOUNT}"
-worker = "billing-worker"
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+
+[profiles.staging]
+RESEND_API_KEY = { description = "RESEND_API_KEY", ref = { item = "billing prod item", field = "password" } }
+
+[profiles.prod]
+
+[tool.keypin.staging.RESEND_API_KEY]
+publish = [{ to = "cloudflare-worker", account = "${ACCOUNT}", worker = "billing-worker" }]
 `;
         const run = setup({ files: files(map, wrangler), worker: held });
         expect(await cli(["check", "--json"], run.deps)).toBe(0);
@@ -940,17 +966,25 @@ name = "billing-worker"
 [env.staging.secrets]
 required = ["RESEND_API_KEY"]
 `;
-      const map = `environments = ["dev", "staging", "prod"]
-[1password]
-account = "my.1password.com"
+      const map = `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.RESEND_API_KEY.dev]
-from = "op://Private/billing prod item/password"
+[providers]
+vault = "onepassword://my.1password.com@Private"
 
-[[keys.RESEND_API_KEY.dev.publish]]
-to = "cloudflare-worker"
-account = "${ACCOUNT}"
-worker = "billing-worker"
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+RESEND_API_KEY = { description = "RESEND_API_KEY", ref = { item = "billing prod item", field = "password" } }
+
+[profiles.staging]
+
+[profiles.prod]
+
+[tool.keypin.dev.RESEND_API_KEY]
+publish = [{ to = "cloudflare-worker", account = "${ACCOUNT}", worker = "billing-worker" }]
 `;
       const run = setup({ files: files(map, wrangler), worker: held });
       expect(await cli(["check", "--json"], run.deps)).toBe(1);
@@ -983,25 +1017,29 @@ name = "billing-worker"
 [env.staging.secrets]
 required = ["${a}", "${b}"]
 `;
-        const map = `environments = ["dev", "staging", "prod"]
-[1password]
-account = "my.1password.com"
+        const map = `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.RESEND_API_KEY.prod]
-from = "op://Private/billing prod item/password"
+[providers]
+vault = "onepassword://my.1password.com@Private"
 
-[[keys.RESEND_API_KEY.prod.publish]]
-to = "cloudflare-worker"
-account = "${ACCOUNT}"
-worker = "billing-worker"
+[defaults]
+providers = ["vault"]
 
-[keys.OTHER_KEY.staging]
-from = "op://Private/billing prod item/password"
+[profiles.dev]
 
-[[keys.OTHER_KEY.staging.publish]]
-to = "cloudflare-worker"
-account = "${ACCOUNT}"
-worker = "billing-worker"
+[profiles.staging]
+OTHER_KEY = { description = "OTHER_KEY", ref = { item = "billing prod item", field = "password" } }
+
+[profiles.prod]
+RESEND_API_KEY = { description = "RESEND_API_KEY", ref = { item = "billing prod item", field = "password" } }
+
+[tool.keypin.staging.OTHER_KEY]
+publish = [{ to = "cloudflare-worker", account = "${ACCOUNT}", worker = "billing-worker" }]
+
+[tool.keypin.prod.RESEND_API_KEY]
+publish = [{ to = "cloudflare-worker", account = "${ACCOUNT}", worker = "billing-worker" }]
 `;
         const both = {
           ok: true as const,
@@ -1103,9 +1141,11 @@ required = ["RESEND_API_KEY"]
       const data = json(run.stdout.text);
       assert(typeof data.add === "string");
       expect(data.add).not.toContain("Staging_EU]");
-      expect(data.add.match(/\[\[keys\.RESEND_API_KEY\.prod\.publish\]\]/g)).toHaveLength(2);
+      expect(data.add.match(/\[\[tool\.keypin\.prod\.RESEND_API_KEY\.publish\]\]/g)).toHaveLength(
+        2,
+      );
       expect(data.notes).toContain(
-        "wrangler.toml env Staging_EU isn't a keypin environment name, so check proposes its Worker under prod; publish it from the environment that holds its value",
+        "wrangler.toml env Staging_EU isn't a profile name keypin reads, so check proposes its Worker under prod; publish it from the profile that holds its value",
       );
       expect(JSON.stringify(data.problems)).not.toContain("environments =");
     });
@@ -1240,7 +1280,7 @@ required = ["RESEND_API_KEY"]
 
   test("an organization secret shared with the repo counts as held, labelled as such", async () => {
     const run = setup({
-      files: { [MAP]: PUBLISHED.replace(/\[keys\.STRIPE_API_KEY\][\s\S]*$/, "") },
+      files: { [MAP]: NO_STRIPE },
       worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
       deps: {
         organizationSecrets: async (repo, login) => {
@@ -1253,9 +1293,9 @@ required = ["RESEND_API_KEY"]
     expect(run.calls).toContain("organization acme/billing as null");
     expect(run.stdout.text).not.toContain("doesn't have it");
     expect(run.stdout.text).toContain(
-      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing has it (org secret), which keypin.toml doesn't publish",
+      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing has it (org secret), which secretspec.toml doesn't publish",
     );
-    expect(run.stdout.text).not.toContain("[keys.STRIPE_API_KEY");
+    expect(run.stdout.text).not.toContain("[tool.keypin.prod.STRIPE_API_KEY");
   });
 
   const ORG_SECRET = {
@@ -1268,7 +1308,7 @@ required = ["RESEND_API_KEY"]
   test("an ignored org secret gets no org-secret note", async () => {
     const run = setup({
       files: {
-        [MAP]: `ignore = ["STRIPE_API_KEY"]\n${PUBLISHED.replace(/\[keys\.STRIPE_API_KEY\][\s\S]*$/, "")}`,
+        [MAP]: `${NO_STRIPE}\n[tool.keypin]\nignore = ["STRIPE_API_KEY"]\n`,
       },
       worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
       deps: {
@@ -1280,7 +1320,7 @@ required = ["RESEND_API_KEY"]
     });
     expect(await cli(["check"], run.deps)).toBe(0);
     expect(run.stdout.text).not.toContain("(org secret)");
-    expect(run.stdout.text).toContain("Note: keypin.toml ignores 1 key");
+    expect(run.stdout.text).toContain("Note: secretspec.toml ignores 1 key");
   });
 
   test("an org secret doesn't stand in for a missing secret of a job's environment", async () => {
@@ -1338,11 +1378,11 @@ required = ["RESEND_API_KEY"]
     });
     await cli(["check", "--json"], run.deps);
     expect(json(run.stdout.text).notes).toContain(
-      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing has it (org secret), which keypin.toml doesn't publish (a secret of the environment ${{ inputs.target }}, which check doesn't read, would take its place)",
+      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing has it (org secret), which secretspec.toml doesn't publish (a secret of the environment ${{ inputs.target }}, which check doesn't read, would take its place)",
     );
   });
 
-  test("a secret keypin.toml publishes to the repo is missing there even if the org list can't be read", async () => {
+  test("a secret secretspec.toml publishes to the repo is missing there even if the org list can't be read", async () => {
     const run = setup({
       files: { [MAP]: PUBLISHED },
       worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
@@ -1378,7 +1418,7 @@ required = ["RESEND_API_KEY"]
       expect.objectContaining({ name: "STRIPE_API_KEY", holds: null }),
     );
     expect(data.problems).toContain(
-      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; keypin.toml doesn't publish it to acme/billing. Add the TOML below",
+      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; secretspec.toml doesn't publish it to acme/billing. Add the TOML below",
     );
   });
 
@@ -1429,14 +1469,14 @@ jobs:
     expect(await run.record("job-environment-read", ["check"])).toBe(1);
     expect(run.calls).toContain("github acme/billing as null in production");
     expect(run.stdout.text).toContain(
-      "  STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing (environment production) doesn't have it, and keypin.toml doesn't publish it there.\n",
+      "  STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing (environment production) doesn't have it, and secretspec.toml doesn't publish it there.\n",
     );
   });
 
   test("a map that publishes to the job's environment checks that environment's secrets", async () => {
     const map = PUBLISHED.replace(
-      'repo = "acme/billing"\n',
-      'repo = "acme/billing"\nenvironment = "Production"\n',
+      'repo = "acme/billing" }',
+      'repo = "acme/billing", environment = "Production" }',
     );
     const reads: string[] = [];
     const run = setup({
@@ -1475,7 +1515,7 @@ jobs:
     });
     expect(await cli(["check"], run.deps)).toBe(1);
     expect(run.stdout.text).toContain(
-      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing has it, but keypin.toml doesn't publish it there.",
+      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing has it, but secretspec.toml doesn't publish it there.",
     );
     expect(added(run.stdout.text)).not.toContain("environment =");
   });
@@ -1488,8 +1528,8 @@ jobs:
       )
       .join("")}`;
   const PRODUCTION_ONLY = PUBLISHED.replace(
-    'repo = "acme/billing"\n',
-    'repo = "acme/billing"\nenvironment = "production"\n',
+    'repo = "acme/billing" }',
+    'repo = "acme/billing", environment = "production" }',
   );
   const readsBy = (held: Record<string, string[]>, reads: string[]) => ({
     githubSecrets: async (_repo: string, _login: string | null, environment?: string) => {
@@ -1525,7 +1565,6 @@ jobs:
     );
   });
 
-  const NO_STRIPE = PUBLISHED.replace(/\[keys\.STRIPE_API_KEY\][\s\S]*$/, "");
   const CALLER = `
 on: push
 jobs:
@@ -1581,18 +1620,16 @@ jobs:
     );
   });
 
-  test("a caller-passed secret keypin.toml publishes to the environment is still checked", async () => {
+  test("a caller-passed secret secretspec.toml publishes to the environment is still checked", async () => {
     const map = `${NO_STRIPE}
-[keys.API_TOKEN]
+
+[profiles.prod.API_TOKEN]
+description = "API_TOKEN"
+ref = { item = "billing prod item", field = "password" }
+
+[tool.keypin.prod.API_TOKEN]
 rotate_every = "90d"
-
-[keys.API_TOKEN.prod]
-from = "op://Private/billing prod item/password"
-
-[[keys.API_TOKEN.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
-environment = "production"
+publish = [{ to = "github-actions", repo = "acme/billing", environment = "production" }]
 `;
     const run = calledBy(map, {});
     expect(await cli(["check", "--json"], run.deps)).toBe(1);
@@ -1616,10 +1653,10 @@ environment = "production"
     expect(await cli(["check", "--json"], run.deps)).toBe(1);
     const data = json(run.stdout.text);
     expect(data.notes).toContain(
-      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing has it (org secret), which keypin.toml doesn't publish",
+      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing has it (org secret), which secretspec.toml doesn't publish",
     );
     expect(data.problems).toEqual([
-      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing (environment production) has it, but keypin.toml doesn't publish it there. Add the TOML below",
+      "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing (environment production) has it, but secretspec.toml doesn't publish it there. Add the TOML below",
     ]);
     expect(data.production).not.toContainEqual(
       expect.objectContaining({ name: "STRIPE_API_KEY", place: "acme/billing" }),
@@ -1822,7 +1859,7 @@ jobs:
   test("a repo secret in ignore is left out of the note on secrets no workflow names", async () => {
     const run = setup({
       files: {
-        [MAP]: `ignore = ["stripe_api_key"]\n${MAPPED}`,
+        [MAP]: `${MAPPED}\n[tool.keypin]\nignore = ["stripe_api_key"]\n`,
         [`${ROOT}/.env`]: null,
         [`${ROOT}/wrangler.toml`]: null,
         [`${ROOT}/.github/workflows/deploy.yml`]: PASSES_SECRETS_ON,
@@ -1867,7 +1904,7 @@ jobs:
       expect(run.stdout.text).toContain(
         flag.length
           ? '"place": "the Worker billing-worker",\n      "usedBy": [\n        "wrangler.toml"\n      ],\n      "mapped": null,\n      "holds": true'
-          : "RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker has it, but keypin.toml doesn't publish it there.",
+          : "RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker has it, but secretspec.toml doesn't publish it there.",
       );
       expect(leaks(...run.everything())).toBe(false);
     }
@@ -1999,7 +2036,7 @@ describe("keypin check's prerequisites", () => {
     expect(steps(typed.stdout.text)[0]).toBe("1 Sign in to 1Password");
     expect(typed.stdout.text).not.toContain("Fix the vault item");
     expect(typed.stdout.text).toContain(
-      "Set account under [1password] in keypin.toml to a sign-in address or account ID the 1Password app lists",
+      "Set the account in your onepassword:// provider in secretspec.toml to a sign-in address or account ID the 1Password app lists",
     );
     expect(typed.stdout.text).toContain("The account is gone.");
     const plain = failing(new Error("sign-in failed: the app has no account"));
@@ -2062,15 +2099,14 @@ describe("keypin check on Cloudflare cases", () => {
 
 describe("keypin check, for a key CI pulls from the vault", () => {
   const PULLED = `${MAPPED}
-[keys.STRIPE_API_KEY]
+
+[profiles.prod.STRIPE_API_KEY]
+description = "STRIPE_API_KEY"
+ref = { item = "billing prod stripe api key", field = "password" }
+
+[tool.keypin.prod.STRIPE_API_KEY]
 rotate_every = "90d"
-
-[keys.STRIPE_API_KEY.prod]
-from = "op://Private/billing prod stripe api key/password"
-
-[[keys.STRIPE_API_KEY.prod.pull]]
-by = "github-actions"
-repo = "acme/billing"
+pull = [{ by = "github-actions", repo = "acme/billing" }]
 `;
   const OIDC = `
 on: push
@@ -2080,7 +2116,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - run: keypin run --env prod --only STRIPE_API_KEY -- ./deploy.sh
+      - run: keypin run --profile prod --only STRIPE_API_KEY -- ./deploy.sh
 `;
   const project = (workflow: string, map = PULLED) => ({
     [MAP]: map,
@@ -2102,7 +2138,7 @@ jobs:
       github: COPY,
     });
     expect(await run.record("pulled-secret-still-used", ["check"])).toBe(1);
-    expect(run.stdout.text).not.toContain("[[keys.STRIPE_API_KEY.prod.publish]]");
+    expect(run.stdout.text).not.toContain("[[tool.keypin.prod.STRIPE_API_KEY.publish]]");
   });
 
   test("a job that pulls the key, and no copy left, checks out", async () => {
@@ -2124,8 +2160,8 @@ jobs:
 
   test("a pull entry for an environment covers only that environment's jobs", async () => {
     const map = PULLED.replace(
-      'repo = "acme/billing"\n',
-      'repo = "acme/billing"\nenvironment = "production"\n',
+      'repo = "acme/billing" }',
+      'repo = "acme/billing", environment = "production" }',
     );
     const workflow = `
 on: push
@@ -2149,7 +2185,7 @@ jobs:
     const data = json(run.stdout.text);
     expect(data.problems).toEqual(
       expect.arrayContaining([
-        "STRIPE_API_KEY: keypin.toml says jobs in acme/billing environment production pull it from the vault at job time, but .github/workflows/deploy.yml still uses secrets.STRIPE_API_KEY and acme/billing environment production still has it as an Actions secret; read it with keypin run --env prod --only STRIPE_API_KEY -- <command> instead, then delete the Actions secret: gh secret delete STRIPE_API_KEY --repo acme/billing --env production",
+        "STRIPE_API_KEY: secretspec.toml says jobs in acme/billing environment production pull it from the vault at job time, but .github/workflows/deploy.yml still uses secrets.STRIPE_API_KEY and acme/billing environment production still has it as an Actions secret; read it with keypin run --profile prod --only STRIPE_API_KEY -- <command> instead, then delete the Actions secret: gh secret delete STRIPE_API_KEY --repo acme/billing --env production",
       ]),
     );
     expect(data.production).toEqual([
@@ -2158,37 +2194,37 @@ jobs:
   });
 
   test("a copy the map also publishes from another environment is a conflict, not a copy to delete", async () => {
-    const map = PULLED.replace(
-      "[[keys.STRIPE_API_KEY.prod.pull]]",
-      `[keys.STRIPE_API_KEY.dev]
-from = "op://Private/billing dev stripe api key/password"
-publish = [{ to = "github-actions", repo = "acme/billing" }]
+    const map = `${PULLED}
+[profiles.dev.STRIPE_API_KEY]
+description = "Stripe"
+ref = { item = "billing dev stripe api key", field = "password" }
 
-[[keys.STRIPE_API_KEY.prod.pull]]`,
-    );
+[tool.keypin.dev.STRIPE_API_KEY]
+publish = [{ to = "github-actions", repo = "acme/billing" }]
+`;
     const run = setup({ files: project(OIDC, map), github: COPY });
     await cli(["check", "--json"], run.deps);
     const problems = JSON.stringify(json(run.stdout.text).problems);
     expect(problems).toContain(
-      "STRIPE_API_KEY: keypin.toml says jobs in acme/billing pull it from the vault at job time, but also publishes it there for dev; keep the pull entry or the publish entry, not both",
+      "STRIPE_API_KEY: secretspec.toml says jobs in acme/billing pull it from the vault at job time, but also publishes it there for dev; keep the pull entry or the publish entry, not both",
     );
     expect(problems).not.toContain("gh secret delete");
   });
 
   test("a copy another map key publishes under a differently cased name is a conflict, not a copy to delete", async () => {
-    const map = PULLED.replace(
-      "[[keys.STRIPE_API_KEY.prod.pull]]",
-      `[keys.stripe_api_key.dev]
-from = "op://Private/billing dev stripe api key/password"
-publish = [{ to = "github-actions", repo = "acme/billing" }]
+    const map = `${PULLED}
+[profiles.dev.stripe_api_key]
+description = "Stripe"
+ref = { item = "billing dev stripe api key", field = "password" }
 
-[[keys.STRIPE_API_KEY.prod.pull]]`,
-    );
+[tool.keypin.dev.stripe_api_key]
+publish = [{ to = "github-actions", repo = "acme/billing" }]
+`;
     const run = setup({ files: project(OIDC, map), github: COPY });
     await cli(["check", "--json"], run.deps);
     const problems = JSON.stringify(json(run.stdout.text).problems);
     expect(problems).toContain(
-      "STRIPE_API_KEY: keypin.toml says jobs in acme/billing pull it from the vault at job time, but also publishes it there for stripe_api_key (dev); keep the pull entry or the publish entry, not both",
+      "STRIPE_API_KEY: secretspec.toml says jobs in acme/billing pull it from the vault at job time, but also publishes it there for stripe_api_key (dev); keep the pull entry or the publish entry, not both",
     );
     expect(problems).not.toContain("gh secret delete");
   });
@@ -2206,26 +2242,26 @@ publish = [{ to = "github-actions", repo = "acme/billing" }]
     );
     expect(data.problems).toEqual(
       expect.arrayContaining([
-        "STRIPE_API_KEY: keypin.toml says jobs in acme/billing pull it from the vault at job time, but acme/billing still has it as an Actions secret; check can't tell which secrets every workflow of acme/billing uses, so it can't tell whether one still uses secrets.STRIPE_API_KEY; once none does, delete the Actions secret: gh secret delete STRIPE_API_KEY --repo acme/billing",
+        "STRIPE_API_KEY: secretspec.toml says jobs in acme/billing pull it from the vault at job time, but acme/billing still has it as an Actions secret; check can't tell which secrets every workflow of acme/billing uses, so it can't tell whether one still uses secrets.STRIPE_API_KEY; once none does, delete the Actions secret: gh secret delete STRIPE_API_KEY --repo acme/billing",
       ]),
     );
   });
 
   test("a copy in a repo whose workflows check can't read isn't called safe to delete", async () => {
-    const map = PULLED.replace('repo = "acme/billing"\n', 'repo = "acme/jobs"\n');
+    const map = PULLED.replace('repo = "acme/billing" }', 'repo = "acme/jobs" }');
     const run = setup({ files: project(OIDC, map), github: COPY });
     await cli(["check", "--json"], run.deps);
     expect(json(run.stdout.text).problems).toEqual(
       expect.arrayContaining([
-        "STRIPE_API_KEY: keypin.toml says jobs in acme/jobs pull it from the vault at job time, but acme/jobs still has it as an Actions secret; check can't read the workflows of acme/jobs, so it can't tell whether one still uses secrets.STRIPE_API_KEY; once none does, delete the Actions secret: gh secret delete STRIPE_API_KEY --repo acme/jobs",
+        "STRIPE_API_KEY: secretspec.toml says jobs in acme/jobs pull it from the vault at job time, but acme/jobs still has it as an Actions secret; check can't read the workflows of acme/jobs, so it can't tell whether one still uses secrets.STRIPE_API_KEY; once none does, delete the Actions secret: gh secret delete STRIPE_API_KEY --repo acme/jobs",
       ]),
     );
   });
 
   test("quotes a GitHub environment name in the delete command", async () => {
     const map = PULLED.replace(
-      'repo = "acme/billing"\n',
-      'repo = "acme/billing"\nenvironment = "Production EU"\n',
+      'repo = "acme/billing" }',
+      'repo = "acme/billing", environment = "Production EU" }',
     );
     const workflow = OIDC.replace("runs-on: ubuntu-latest", "environment: Production EU");
     const run = setup({ files: project(workflow, map), github: COPY });
@@ -2236,19 +2272,19 @@ publish = [{ to = "github-actions", repo = "acme/billing" }]
   });
 
   test("a keypin run for another keypin environment doesn't count as the pull", async () => {
-    const workflow = OIDC.replace("--env prod", "--env dev");
+    const workflow = OIDC.replace("--profile prod", "--profile dev");
     const run = setup({ files: project(workflow) });
     await cli(["check", "--json"], run.deps);
     expect(json(run.stdout.text).notes).toEqual(
       expect.arrayContaining([
-        'STRIPE_API_KEY: .github/workflows/deploy.yml reads it with keypin run, but keypin.toml has no pull entry for acme/billing; add [[keys.STRIPE_API_KEY.dev.pull]] with by = "github-actions", repo = "acme/billing"',
-        "STRIPE_API_KEY: keypin.toml says jobs in acme/billing pull it, but no workflow there runs keypin run for it",
+        'STRIPE_API_KEY: .github/workflows/deploy.yml reads it with keypin run, but secretspec.toml has no pull entry for acme/billing; add [[tool.keypin.dev.STRIPE_API_KEY.pull]] with by = "github-actions", repo = "acme/billing"',
+        "STRIPE_API_KEY: secretspec.toml says jobs in acme/billing pull it, but no workflow there runs keypin run for it",
       ]),
     );
   });
 
-  test("a keypin run whose --env is an expression may be the pull", async () => {
-    const workflow = OIDC.replace("--env prod", '--env "${{ inputs.env }}"');
+  test("a keypin run whose --profile is an expression may be the pull", async () => {
+    const workflow = OIDC.replace("--profile prod", '--profile "${{ inputs.env }}"');
     const run = setup({ files: project(workflow) });
     await cli(["check", "--json"], run.deps);
     expect(JSON.stringify(json(run.stdout.text).notes ?? [])).not.toContain("STRIPE_API_KEY");
@@ -2257,15 +2293,15 @@ publish = [{ to = "github-actions", repo = "acme/billing" }]
   test("notes a keypin run with no pull entry, and a pull entry no workflow runs", async () => {
     const workflow = OIDC.replace("--only STRIPE_API_KEY", "--only RESEND_API_KEY");
     const map = PULLED.replace(
-      'by = "github-actions"\nrepo = "acme/billing"\n',
-      'by = "github-actions"\nrepo = "acme/billing"\nenvironment = "production"\n',
+      '{ by = "github-actions", repo = "acme/billing" }',
+      '{ by = "github-actions", repo = "acme/billing", environment = "production" }',
     );
     const run = setup({ files: project(workflow, map) });
     await cli(["check", "--json"], run.deps);
     expect(json(run.stdout.text).notes).toEqual(
       expect.arrayContaining([
-        'RESEND_API_KEY: .github/workflows/deploy.yml reads it with keypin run, but keypin.toml has no pull entry for acme/billing; add [[keys.RESEND_API_KEY.prod.pull]] with by = "github-actions", repo = "acme/billing"',
-        "STRIPE_API_KEY: keypin.toml says jobs in acme/billing environment production pull it, but no workflow there runs keypin run for it",
+        'RESEND_API_KEY: .github/workflows/deploy.yml reads it with keypin run, but secretspec.toml has no pull entry for acme/billing; add [[tool.keypin.prod.RESEND_API_KEY.pull]] with by = "github-actions", repo = "acme/billing"',
+        "STRIPE_API_KEY: secretspec.toml says jobs in acme/billing environment production pull it, but no workflow there runs keypin run for it",
       ]),
     );
   });

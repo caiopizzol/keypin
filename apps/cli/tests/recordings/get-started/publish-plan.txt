@@ -5,7 +5,7 @@ exit 3
 false
 
 --- calls vault ---
-read billing prod stripe api key
+read secretspec/billing/production/STRIPE_API_KEY
 
 --- calls destination ---
 check github-actions:acme/billing
@@ -16,7 +16,7 @@ check github-actions:acme/billing
 
 --- stderr ---
 
-STRIPE_API_KEY prod  from op://Private/billing prod stripe api key/password in 1Password account my.1password.com
+STRIPE_API_KEY production  from op://Private/secretspec/billing/production/STRIPE_API_KEY/value in 1Password account my.1password.com
 ok     GitHub  acme/billing  as acme, account acme
 
 ok     Read 1 value from 1Password account my.1password.com

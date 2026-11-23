@@ -16,7 +16,7 @@ exit 0
 --- stdout ---
 
 --- stderr ---
-ok     wrote /work/billing/keypin.toml
+ok     wrote /work/billing/secretspec.toml
 ok     registered (1 project)
 
 Next: keypin check  what this project uses, and the TOML to add
@@ -30,28 +30,14 @@ Next: keypin check  what this project uses, and the TOML to add
   "shared": []
 }
 
---- wrote /work/billing/keypin.toml ---
-# keypin.toml: this project's keys. It holds names and places, never values.
-# Uncomment and edit. Every field is checked; an unknown one is an error.
-#
-# The 1Password account the keys below read from: its sign-in address or account ID.
-# [1password]
-# account = "my.1password.com"
-#
-# A key, named after the variable your program reads.
-# [keys.EXAMPLE_API_KEY]
-# rotate_every = "180d" # <n>d, <n>w, <n>m or never
-# dev = "op://Private/my-project dev example api key/password" # what keypin run reads
-#
-# What keypin publish reads, and every place it writes it.
-# [keys.EXAMPLE_API_KEY.prod]
-# from = "op://Private/my-project prod example api key/password"
-#
-# [[keys.EXAMPLE_API_KEY.prod.publish]]
-# to = "cloudflare-worker"
-# account = "<cloudflare account ID>"
-# worker = "my-worker"
-#
-# [[keys.EXAMPLE_API_KEY.prod.publish]]
-# to = "github-actions"
-# repo = "owner/repo"
+--- wrote /work/billing/secretspec.toml ---
+# secretspec.toml: this project's secrets, by name and place, never values.
+# keypin's settings for each key go in [tool.keypin.<profile>.<KEY>].
+
+[project]
+name = "billing"
+revision = "1.0"
+
+[profiles.default]
+
+[profiles.production]

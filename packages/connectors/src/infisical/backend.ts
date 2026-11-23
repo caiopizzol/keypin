@@ -112,7 +112,7 @@ export function infisicalBackend(
     if (response.status === 404 && body.error === "Not Found")
       throw fail(
         options.always
-          ? `the server has no ${method} ${path}; check that url in keypin.toml points to the Infisical server itself, with no path`
+          ? `the server has no ${method} ${path}; check that url in secretspec.toml points to the Infisical server itself, with no path`
           : `the server has no ${method} ${path}, so it may be older than keypin supports; keypin needs Infisical from September 2025 or later`,
       );
     if (response.status === 429)
@@ -164,7 +164,7 @@ export function infisicalBackend(
       );
     if (organization !== place.organization)
       throw new SignInFailed(
-        `${where}: sign-in failed: the machine identity belongs to the organization ${organization}, but keypin.toml pins ${place.organization}; keypin reads only from top-level organizations, not sub-organizations`,
+        `${where}: sign-in failed: the machine identity belongs to the organization ${organization}, but secretspec.toml names ${place.organization}; keypin reads only from top-level organizations, not sub-organizations`,
         { kind: "wrong-account", pinned: place.organization, actual: organization },
       );
   }
@@ -196,7 +196,7 @@ export function infisicalBackend(
       new SignInFailed(`${account(place)}: sign-in failed: ${why}`, { kind });
     if (!CLOUD.includes(place.url) && originOf(given.confirmedUrl) !== place.url)
       throw failed(
-        `keypin sends GitHub's OIDC token only to Infisical Cloud, and keypin.toml's url is ${place.url}; if that server is yours, set ${CONFIRMED_URL}=${place.url} in the job`,
+        `keypin sends GitHub's OIDC token only to Infisical Cloud, and secretspec.toml's url is ${place.url}; if that server is yours, set ${CONFIRMED_URL}=${place.url} in the job`,
       );
     const idToken =
       options.idToken ??

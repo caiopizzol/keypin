@@ -32,7 +32,7 @@ interface SetupOptions {
 }
 
 function setup(options: SetupOptions = {}) {
-  const disk = memoryFiles({ "/work/web/keypin.toml": WEB_MAP, ...options.files });
+  const disk = memoryFiles({ "/work/web/secretspec.toml": WEB_MAP, ...options.files });
   disk.folders.add("/work/web/src");
   const vault = fakeVault({
     values: {
@@ -71,33 +71,35 @@ describe("keypin run", () => {
     expect(leaks(stdout.text, stderr.text)).toBe(false);
   });
 
-  test("--env reads another declared environment; an undeclared one is a usage error", async () => {
+  test("--profile reads another declared environment; an undeclared one is a usage error", async () => {
     const { deps, launcher, calls } = setup();
-    expect(await cli(["run", "--env", "prod", "--", "true"], deps)).toBe(0);
+    expect(await cli(["run", "--profile", "prod", "--", "true"], deps)).toBe(0);
     expect(calls).toEqual(["read web prod session secret"]);
     expect(launcher.launches[0]?.env.SESSION_SECRET).toBe(PROD_VALUE);
     const staging = setup();
-    expect(await cli(["run", "--env", "staging", "--", "true"], staging.deps)).toBe(2);
+    expect(await cli(["run", "--profile", "staging", "--", "true"], staging.deps)).toBe(2);
     expect(staging.stderr.text).toContain(
-      `--env is one of "dev", "prod" in /work/web/keypin.toml, got "staging"`,
+      `--profile is one of "dev", "prod" in /work/web/secretspec.toml, got "staging"`,
     );
     expect(staging.launcher.launches).toHaveLength(0);
   });
 
   describe("--only", () => {
     const TWO_KEYS = `${WEB_MAP}
-[keys.CLOUDFLARE_API_TOKEN]
-prod = "op://Private/ci cloudflare token/credential"
+
+[profiles.prod.CLOUDFLARE_API_TOKEN]
+description = "CLOUDFLARE_API_TOKEN"
+ref = { item = "ci cloudflare token", field = "credential" }
 `;
     const twoKeys = () =>
       setup({
-        files: { "/work/web/keypin.toml": TWO_KEYS },
+        files: { "/work/web/secretspec.toml": TWO_KEYS },
         values: { "ci cloudflare token": "ci-token" },
       });
 
     test("without it, every key the environment has is added", async () => {
       const { deps, launcher, calls } = twoKeys();
-      expect(await cli(["run", "--env", "prod", "--", "true"], deps)).toBe(0);
+      expect(await cli(["run", "--profile", "prod", "--", "true"], deps)).toBe(0);
       expect(calls).toHaveLength(2);
       expect(Object.keys(launcher.launches[0]?.env ?? {}).toSorted()).toEqual([
         "CLOUDFLARE_API_TOKEN",
@@ -108,11 +110,11 @@ prod = "op://Private/ci cloudflare token/credential"
 
     test("CLOUDFLARE_API_TOKEN stays a mappable key; KEYPIN_CLOUDFLARE_API_TOKEN never reaches the command", async () => {
       const { deps, launcher } = setup({
-        files: { "/work/web/keypin.toml": TWO_KEYS },
+        files: { "/work/web/secretspec.toml": TWO_KEYS },
         values: { "ci cloudflare token": "ci-token" },
         env: { KEYPIN_CLOUDFLARE_API_TOKEN: "keypin-sign-in-token" },
       });
-      expect(await cli(["run", "--env", "prod", "--", "true"], deps)).toBe(0);
+      expect(await cli(["run", "--profile", "prod", "--", "true"], deps)).toBe(0);
       expect(launcher.launches[0]?.env.CLOUDFLARE_API_TOKEN).toBe("ci-token");
       expect(JSON.stringify(launcher.launches)).not.toContain("keypin-sign-in-token");
       expect(Object.keys(launcher.launches[0]?.env ?? {})).not.toContain(
@@ -121,11 +123,11 @@ prod = "op://Private/ci cloudflare token/credential"
     });
 
     test("a mapped KEYPIN_CLOUDFLARE_API_TOKEN is refused, and nothing starts", async () => {
-      const map = `${WEB_MAP}\n[keys.KEYPIN_CLOUDFLARE_API_TOKEN]\ndev = "op://Private/cf token/password"\n`;
-      const { deps, launcher, stderr } = setup({ files: { "/work/web/keypin.toml": map } });
+      const map = `${WEB_MAP}\n\n[profiles.dev.KEYPIN_CLOUDFLARE_API_TOKEN]\ndescription = "KEYPIN_CLOUDFLARE_API_TOKEN"\nref = { item = "cf token", field = "password" }\n`;
+      const { deps, launcher, stderr } = setup({ files: { "/work/web/secretspec.toml": map } });
       expect(await cli(["run", "--", "true"], deps)).toBe(1);
       expect(stderr.text).toContain(
-        "keypin.toml maps KEYPIN_CLOUDFLARE_API_TOKEN, which keypin uses to sign in; keypin run doesn't pass it to a command",
+        "secretspec.toml declares KEYPIN_CLOUDFLARE_API_TOKEN, which keypin uses to sign in; keypin run doesn't pass it to a command",
       );
       expect(launcher.launches).toEqual([]);
     });
@@ -133,7 +135,7 @@ prod = "op://Private/ci cloudflare token/credential"
     test("adds only the named keys and reads nothing else", async () => {
       for (const only of [["--only", "SESSION_SECRET"], ["--only=SESSION_SECRET,SESSION_SECRET"]]) {
         const { deps, launcher, calls, stderr } = twoKeys();
-        expect(await cli(["run", "--env", "prod", ...only, "--", "true"], deps)).toBe(0);
+        expect(await cli(["run", "--profile", "prod", ...only, "--", "true"], deps)).toBe(0);
         expect(calls).toEqual(["read web prod session secret"]);
         expect(launcher.launches).toEqual([
           { command: ["true"], env: { PATH: "/usr/bin", SESSION_SECRET: PROD_VALUE } },
@@ -146,7 +148,7 @@ prod = "op://Private/ci cloudflare token/credential"
       const second = twoKeys();
       expect(
         await cli(
-          ["run", "--env", "prod", "--only", "CLOUDFLARE_API_TOKEN", "--", "true"],
+          ["run", "--profile", "prod", "--only", "CLOUDFLARE_API_TOKEN", "--", "true"],
           second.deps,
         ),
       ).toBe(0);
@@ -157,7 +159,7 @@ prod = "op://Private/ci cloudflare token/credential"
 
       const both = twoKeys();
       const args = ["--only", "SESSION_SECRET", "--only", "CLOUDFLARE_API_TOKEN"];
-      expect(await cli(["run", "--env", "prod", ...args, "--", "true"], both.deps)).toBe(0);
+      expect(await cli(["run", "--profile", "prod", ...args, "--", "true"], both.deps)).toBe(0);
       expect(both.launcher.launches[0]?.env).toEqual({
         PATH: "/usr/bin",
         SESSION_SECRET: PROD_VALUE,
@@ -181,14 +183,14 @@ prod = "op://Private/ci cloudflare token/credential"
       ACTIONS_ID_TOKEN_REQUEST_URL: "https://pipelines.example/idtoken",
       ACTIONS_ID_TOKEN_REQUEST_TOKEN: "request-token",
     };
-    const map = `environments = ["dev", "prod", "ci"]\n${WEB_MAP}`;
+    const map = `${WEB_MAP}\n[profiles.ci]\n`;
     for (const [args, expected] of [
       [[], { PATH: "/usr/bin", SESSION_SECRET: SENTINEL }],
-      [["--env", "ci"], { PATH: "/usr/bin" }],
+      [["--profile", "ci"], { PATH: "/usr/bin" }],
     ] as const) {
       const { deps, launcher, calls } = setup({
         env: oidc,
-        files: { "/work/web/keypin.toml": map },
+        files: { "/work/web/secretspec.toml": map },
       });
       expect(await cli(["run", ...args, "--", "true"], deps)).toBe(0);
       expect(calls).toHaveLength(args.length ? 0 : 1);
@@ -198,8 +200,10 @@ prod = "op://Private/ci cloudflare token/credential"
   });
 
   test("the first declared environment is the default", async () => {
-    const map = `environments = ["local", "production"]\n${WEB_MAP.replace("\ndev = ", "\nlocal = ").replace("\nprod = ", "\nproduction = ")}`;
-    const disk = memoryFiles({ "/work/web/keypin.toml": map });
+    const map = WEB_MAP.replace("[profiles.dev]", "[profiles.local]")
+      .replace("[profiles.prod]", "[profiles.production]")
+      .replace("[tool.keypin.prod.", "[tool.keypin.production.");
+    const disk = memoryFiles({ "/work/web/secretspec.toml": map });
     const vault = fakeVault({ values: { "web dev session secret": SENTINEL } });
     const launcher = fakeLauncher();
     const { deps } = fakeDeps({
@@ -265,7 +269,7 @@ prod = "op://Private/ci cloudflare token/credential"
     let before = "";
     const fake = fakeDeps({
       disk: memoryFiles({
-        "/work/web/keypin.toml": WEB_MAP,
+        "/work/web/secretspec.toml": WEB_MAP,
         "/work/web/.env": `SESSION_SECRET=${SENTINEL}\n`,
       }),
       backend: fakeVault({ values: { "web dev session secret": SENTINEL } }).vault,
@@ -292,10 +296,10 @@ prod = "op://Private/ci cloudflare token/credential"
   });
 
   test("hides every value it passes in the CI log before the command starts", async () => {
-    const map = `${WEB_MAP}\n[keys.TLS_KEY]\ndev = "op://Private/web tls key/password"\n`;
+    const map = `${WEB_MAP}\n\n[profiles.dev.TLS_KEY]\ndescription = "TLS_KEY"\nref = { item = "web tls key", field = "password" }\n`;
     const pem = `-----BEGIN KEY-----\n${SENTINEL}\n-----END KEY-----\n`;
     const { deps, launcher, masked } = setup({
-      files: { "/work/web/keypin.toml": map },
+      files: { "/work/web/secretspec.toml": map },
       values: { "web tls key": pem },
     });
     let maskedAtLaunch: string[] = [];
@@ -337,17 +341,19 @@ prod = "op://Private/ci cloudflare token/credential"
     expect(leaks(stderr.text)).toBe(false);
   });
 
-  test("needs a command and a keypin.toml", async () => {
+  test("needs a command and a secretspec.toml", async () => {
     const { deps, launcher } = setup();
     expect(await cli(["run"], deps)).toBe(2);
     const none = fakeDeps({ deps: { cwd: "/work/billing" } });
     expect(await cli(["run", "--", "true"], none.deps)).toBe(1);
-    expect(none.stderr.text).toContain(`no keypin.toml in /work/billing or any folder above it`);
+    expect(none.stderr.text).toContain(
+      `no secretspec.toml in /work/billing or any folder above it`,
+    );
     expect(launcher.launches).toHaveLength(0);
   });
 
   test("a value with a NUL character starts nothing and is named only by its variable", async () => {
-    const disk = memoryFiles({ "/work/web/keypin.toml": WEB_MAP });
+    const disk = memoryFiles({ "/work/web/secretspec.toml": WEB_MAP });
     const vault = fakeVault({ values: { "web dev session secret": `${SENTINEL}\0tail` } });
     let launched = 0;
     const { deps, stdout, stderr } = fakeDeps({
@@ -423,7 +429,7 @@ prod = "op://Private/ci cloudflare token/credential"
     test("no .dev.vars warning when the map provides no keys for this run", async () => {
       const { deps, launcher, stderr } = setup({
         files: {
-          "/work/web/keypin.toml": `[1password]\naccount = "my.1password.com"\n`,
+          "/work/web/secretspec.toml": `[project]\nname = "billing"\nrevision = "1.0"\n\n[profiles.dev]\n\n[profiles.prod]\n`,
           "/work/web/.dev.vars": `PORT=8787\n`,
         },
       });
@@ -474,7 +480,7 @@ prod = "op://Private/ci cloudflare token/credential"
     test("a real FIFO named .env doesn't block run", async () => {
       const folder = await mkdtemp(join(tmpdir(), "keypin-run-"));
       try {
-        await writeFile(join(folder, "keypin.toml"), WEB_MAP);
+        await writeFile(join(folder, "secretspec.toml"), WEB_MAP);
         expect(spawnSync("mkfifo", [join(folder, ".env")]).status).toBe(0);
         const { deps, launcher, stderr } = setup();
         deps.cwd = folder;

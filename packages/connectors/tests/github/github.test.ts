@@ -381,7 +381,7 @@ describe("an environment secret", () => {
       `${REPO} has no environment named prod/eu, or acme can't see its secrets`,
     );
     expect(check.fix).toBe(
-      "create it in the repository's Settings > Environments, or fix environment in keypin.toml",
+      "create it in the repository's Settings > Environments, or fix environment in secretspec.toml",
     );
     await expect(github.write("API_KEY", new Secret(SENTINEL))).rejects.toThrow(/checkAccount/);
     expect(requests.some((r) => r.method !== "GET")).toBe(false);
@@ -476,7 +476,7 @@ describe("refusals that say what to do", () => {
       "acme/billing is archived, so it's read-only and GitHub won't let anyone set its secrets",
     );
     expect(check.fix).toBe(
-      "unarchive it in the repository's Settings, or remove it from keypin.toml",
+      "unarchive it in the repository's Settings, or remove it from secretspec.toml",
     );
     expect(requests.some((r) => r.method === "PUT")).toBe(false);
   });
@@ -628,7 +628,7 @@ describe("refusals that say what to do", () => {
     const check = await destination(routes).github.checkAccount();
     assert(!check.ok);
     expect(check.fix).toBe(
-      "check repo in keypin.toml, or publish as a login that can see it: git config github.account <login> (keypin publishes only to github.com; GitHub Enterprise Server and ghe.com aren't supported yet)",
+      "check repo in secretspec.toml, or publish as a login that can see it: git config github.account <login> (keypin publishes only to github.com; GitHub Enterprise Server and ghe.com aren't supported yet)",
     );
   });
 });

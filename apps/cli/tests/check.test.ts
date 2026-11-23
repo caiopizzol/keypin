@@ -28,7 +28,7 @@ import {
 } from "./fakes";
 import { recording } from "./recording";
 
-const MAP_FILE = "/work/billing/keypin.toml";
+const MAP_FILE = "/work/billing/secretspec.toml";
 
 function setup(
   options: {
@@ -68,7 +68,7 @@ function setup(
         exit,
         stdout: fake.stdout.text,
         stderr: fake.stderr.text,
-        files: { "keypin.toml": before.get(MAP_FILE) ?? "" },
+        files: { "secretspec.toml": before.get(MAP_FILE) ?? "" },
         given: { "bad accounts": options.badAccount, ...more.given },
         calls: { vault: vault.calls, destination: destinations.log, ...more.calls },
       }),
@@ -99,10 +99,13 @@ describe("keypin check", () => {
   test("the all-good line counts keys and destinations, and nothing else is listed", async () => {
     const run = setup({
       map: `${BILLING_MAP}
-[keys.OTHER_KEY]
-prod = { from = "op://Private/billing stripe api key/password", publish = [
-  { to = "github-actions", repo = "acme/billing" },
-] }
+
+[profiles.prod.OTHER_KEY]
+description = "OTHER_KEY"
+ref = { item = "billing stripe api key", field = "password" }
+
+[tool.keypin.prod.OTHER_KEY]
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 `,
     });
     expect(await cli(["check"], run.deps)).toBe(0);
@@ -133,7 +136,7 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
     });
     expect(await cli(["check"], run.deps)).toBe(1);
     expect(run.stdout.text).toContain(
-      "  keypin.toml pins acme; the login is alice (git config github.account), signed in as acme.\n",
+      "  secretspec.toml names acme; the login is alice (git config github.account), signed in as acme.\n",
     );
   });
 
@@ -316,7 +319,7 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
       ),
     );
     const run = setup({
-      map: `${BILLING_MAP}\n[keys.OTHER]\ndev = "op://Private/other key/password"\n`,
+      map: `${BILLING_MAP}\n\n[profiles.dev.OTHER]\ndescription = "OTHER"\nref = { item = "other key", field = "password" }\n`,
       deps: { vault: () => vault },
     });
     const given = { "1Password desktop app": "not installed" };
@@ -340,7 +343,9 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
   });
 
   test("a map that doesn't parse lists its errors, reads nothing, exit 1", async () => {
-    const run = setup({ map: `${BILLING_MAP}\n[keys.BAD]\nrotate_every = "soon"\n` });
+    const run = setup({
+      map: `${BILLING_MAP}\n[tool.keypin.dev.STRIPE_API_KEY]\nrotate_every = "soon"\n`,
+    });
     expect(await run.record("map-does-not-parse", ["check", "--json"])).toBe(1);
     expect(run.calls).toEqual([]);
     expect(run.log).toEqual([]);
@@ -357,7 +362,7 @@ prod = { from = "op://Private/billing stripe api key/password", publish = [
     run.disk.contents.delete(MAP_FILE);
     expect(await cli(["check"], run.deps)).toBe(1);
     expect(run.stdout.text).toContain(
-      "Create keypin.toml\n  There's no keypin.toml in /work/billing or any folder above it.\n    keypin init\n",
+      "Create secretspec.toml\n  There's no secretspec.toml in /work/billing or any folder above it.\n    keypin init\n",
     );
   });
 

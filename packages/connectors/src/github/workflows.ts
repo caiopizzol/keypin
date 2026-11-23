@@ -177,10 +177,10 @@ function keypinRuns(script: string): Omit<KeypinRun, "environment">[] {
     let only: string[] | null = null;
     for (let i = 0; i < words.length; i++) {
       const [flag = "", inline] = (words[i] ?? "").split(/=(.*)/s);
-      if (flag !== "--env" && flag !== "--only") break;
+      if (flag !== "--profile" && flag !== "--only") break;
       const value = inline ?? words[++i] ?? "";
       const plain = !value.includes("$");
-      if (flag === "--env") {
+      if (flag === "--profile") {
         env = plain ? value : null;
         dynamicEnv = !plain;
       } else if (!plain) {

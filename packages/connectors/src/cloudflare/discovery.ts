@@ -114,13 +114,13 @@ function needsOf(workers: readonly Worker[], view: MapView) {
       : base;
     if (worker.env !== null && !isEnvironmentName(worker.env) && worker.required?.length)
       notes.push(
-        `${worker.config} env ${worker.env} isn't a keypin environment name, so check proposes its Worker under ${environment}; publish it from the environment that holds its value`,
+        `${worker.config} env ${worker.env} isn't a profile name keypin reads, so check proposes its Worker under ${environment}; publish it from the profile that holds its value`,
       );
     for (const name of worker.required ?? []) needs.push({ name, place, usedBy: worker.config });
     for (const name of worker.vars)
       if (view.publishes(name, base))
         problems.push(
-          `${name}: keypin.toml publishes it to ${base.label} as a secret, but ${worker.config}${worker.env ? ` env ${worker.env}` : ""} sets it in vars, so the next wrangler deploy replaces the secret with that var; remove it from vars`,
+          `${name}: secretspec.toml publishes it to ${base.label} as a secret, but ${worker.config}${worker.env ? ` env ${worker.env}` : ""} sets it in vars, so the next wrangler deploy replaces the secret with that var; remove it from vars`,
         );
   }
   for (const [id, envs] of declaredBy) {
@@ -160,7 +160,7 @@ function workerPlace(worker: Worker, ambiguous: boolean): Place {
                 ? { name: target.worker, detail: target.account }
                 : undefined,
             twice: (key, taken) =>
-              `keypin.toml can't publish ${key} to two Workers named ${name} from one environment (accounts ${taken} and ${detail}); publish one of them from another environment, listed in environments`,
+              `secretspec.toml can't publish ${key} to two Workers named ${name} from one profile (accounts ${taken} and ${detail}); publish one of them from another profile in secretspec.toml`,
           },
         }),
     matches: (keyName, secret) => keyName === secret,

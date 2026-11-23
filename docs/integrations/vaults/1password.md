@@ -60,4 +60,4 @@ A job signs in with a service account, so its references must be in a vault you 
 ```
 
 The repo stores the token instead of each key. Add `OP_SERVICE_ACCOUNT_TOKEN` to
-[`ignore`](../../reference/keypin-toml.md#ignored-keys), or `keypin check` asks you to map it.
+[`ignore`](../../reference/secretspec-toml.md#keypins-settings), or `keypin check` asks you to map it.

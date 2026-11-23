@@ -19,11 +19,17 @@ const OLD = "auth_secret_old_sentinel_3f9a";
 const GITHUB = "github-actions:acme/app";
 
 const mapFor = (name: string, issuerTable = `{ kind = "random" }`) => `
-[1password]
-account = "my.1password.com"
+[project]
+name = "app"
+revision = "1.0"
 
-[keys.${name}.prod]
-from = "op://Private/app secret/password"
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[profiles.prod]
+${name} = { description = "auth secret", providers = ["vault"], ref = { item = "app secret", field = "password" } }
+
+[tool.keypin.prod.${name}]
 publish = [{ to = "github-actions", repo = "acme/app" }]
 issuer = ${issuerTable}
 `;
@@ -40,7 +46,7 @@ interface Setup extends FakeDestinationOptions {
 function setup(options: Setup = {}) {
   const disk =
     options.disk ??
-    memoryFiles({ "/work/billing/keypin.toml": options.map ?? mapFor("AUTH_SECRET") });
+    memoryFiles({ "/work/billing/secretspec.toml": options.map ?? mapFor("AUTH_SECRET") });
   const vault = options.vault ?? writableVault({ "app secret": OLD }, options.failSave);
   const destinations = fakeDestinations(options);
   const answers = [...(options.answers ?? [])];
@@ -114,7 +120,7 @@ describe("the random issuer", () => {
     ]) {
       const run = setup({ map: mapFor("AUTH_SECRET", table) });
       expect(await run.run()).toBe(1);
-      expect(run.stderr.text).toContain(`key "AUTH_SECRET" prod: issuer: ${error}`);
+      expect(run.stderr.text).toContain(`[tool.keypin.prod.AUTH_SECRET]: issuer: ${error}`);
       expect(run.vault.log).toEqual([]);
     }
   });
@@ -124,7 +130,7 @@ describe("the random issuer", () => {
       const run = setup({ map: mapFor(name) });
       expect(await run.run(name)).toBe(1);
       expect(run.stderr.text).toContain(
-        `key "${name}" prod: issuer: random can't rotate this key, because Better Auth encrypts two-factor secrets and OAuth tokens with it, and a new value can't read them. Add a version to BETTER_AUTH_SECRETS by hand instead: https://better-auth.com/docs/reference/options#secrets`,
+        `[tool.keypin.prod.${name}]: issuer: random can't rotate this key, because Better Auth encrypts two-factor secrets and OAuth tokens with it, and a new value can't read them. Add a version to BETTER_AUTH_SECRETS by hand instead: https://better-auth.com/docs/reference/options#secrets`,
       );
       expect(run.vault.log).toEqual([]);
       expect(run.destinations.log).toEqual([]);
@@ -197,26 +203,6 @@ describe("keypin rotate with a random issuer", () => {
     expect(await run.run()).toBe(NEEDS_APPROVAL);
     expect(run.saved()).toBe(OLD);
     expect(run.destinations.log.some((line) => line.startsWith("write"))).toBe(false);
-  });
-});
-
-describe("keypin rotate with a random issuer in a vault that holds changes for approval", () => {
-  test("refuses before reading anything and says to publish a value by hand", async () => {
-    const map = `
-[infisical]
-organization = "acme"
-
-[keys.AUTH_SECRET.prod]
-from = "infisical://app/prod/AUTH_SECRET"
-publish = [{ to = "github-actions", repo = "acme/app" }]
-issuer = { kind = "random" }
-`;
-    const run = setup({ map });
-    expect(await run.run()).toBe(1);
-    expect(run.stderr.text).toContain(
-      "keypin rotate: Infisical may hold a change for approval, and keypin couldn't tell later whether the random value it made was approved or rejected, so it can't rotate AUTH_SECRET. Make a new value yourself, save it, then run keypin publish AUTH_SECRET.",
-    );
-    expect(run.vault.log).toEqual([]);
   });
 });
 

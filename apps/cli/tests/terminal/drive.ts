@@ -195,7 +195,7 @@ export async function drive(options: DriveOptions): Promise<Drive> {
   const hide = (text: string) => text.replaceAll(sandbox, "<sandbox>");
   const files = Object.fromEntries(
     Object.entries({
-      ...snapshot(project, ["keypin.toml", ".env"]),
+      ...snapshot(project, ["secretspec.toml", ".env"]),
       ...snapshot(home, [".config/keypin/registry.json", ".local/state/keypin/state.json"]),
     }).map(([path, text]) => [path, hide(text)]),
   );

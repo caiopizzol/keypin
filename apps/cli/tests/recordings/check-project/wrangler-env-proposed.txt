@@ -4,17 +4,28 @@ exit 1
 --- file .env.example ---
 DATABASE_URL=
 
---- file keypin.toml ---
-[1password]
-account = "my.1password.com"
+--- file secretspec.toml ---
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.DATABASE_URL]
-rotate_every = "90d"
-dev = "op://Private/billing dev database url/password"
+[providers]
+vault = "onepassword://my.1password.com@Private"
 
-[keys.RESEND_API_KEY]
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+DATABASE_URL = { description = "DATABASE_URL", ref = { item = "billing dev database url", field = "password" } }
+RESEND_API_KEY = { description = "RESEND_API_KEY", ref = { item = "billing dev resend api key", field = "password" } }
+
+[profiles.prod]
+
+[tool.keypin.dev.DATABASE_URL]
 rotate_every = "90d"
-dev = "op://Private/billing dev resend api key/password"
+
+[tool.keypin.dev.RESEND_API_KEY]
+rotate_every = "90d"
 
 --- file wrangler.toml ---
 name = "billing-worker"
@@ -49,7 +60,7 @@ ids billing dev resend api key
 --- stdout ---
 {
   "folder": "/work/billing",
-  "map": "/work/billing/keypin.toml",
+  "map": "/work/billing/secretspec.toml",
   "registered": true,
   "read": {
     "env": [
@@ -116,7 +127,7 @@ ids billing dev resend api key
     }
   ],
   "local": [],
-  "add": "[keys.RESEND_API_KEY.prod]\nfrom = \"op://<vault>/<item>/<field>\"\n\n[[keys.RESEND_API_KEY.prod.publish]]\nto = \"cloudflare-worker\"\naccount = \"11111111111111111111111111111111\"\nworker = \"billing-worker\"\n\n[keys.RESEND_API_KEY.staging]\nfrom = \"op://<vault>/<item>/<field>\"\n\n[[keys.RESEND_API_KEY.staging.publish]]\nto = \"cloudflare-worker\"\naccount = \"11111111111111111111111111111111\"\nworker = \"billing-worker-staging\"\n",
+  "add": "[profiles.prod.RESEND_API_KEY]\ndescription = \"RESEND_API_KEY\"\n\n[[tool.keypin.prod.RESEND_API_KEY.publish]]\nto = \"cloudflare-worker\"\naccount = \"11111111111111111111111111111111\"\nworker = \"billing-worker\"\n\n[profiles.staging.RESEND_API_KEY]\ndescription = \"RESEND_API_KEY\"\n\n[[tool.keypin.staging.RESEND_API_KEY.publish]]\nto = \"cloudflare-worker\"\naccount = \"11111111111111111111111111111111\"\nworker = \"billing-worker-staging\"\n",
   "unknown": [],
   "prerequisites": [
     {
@@ -129,9 +140,9 @@ ids billing dev resend api key
     "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields"
   ],
   "problems": [
-    "keypin.toml has no environment for the wrangler env staging; add at the top of keypin.toml: environments = [\"dev\", \"staging\", \"prod\"] (keypin run uses the first, keypin publish the last)",
-    "RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and keypin.toml doesn't publish it there. Add the TOML below",
-    "RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker-staging doesn't have it, and keypin.toml doesn't publish it there. Add the TOML below"
+    "secretspec.toml has no profile for the wrangler env staging; add to secretspec.toml, above [profiles.prod] so keypin publish keeps using it: [profiles.staging]",
+    "RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and secretspec.toml doesn't publish it there. Add the TOML below",
+    "RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker-staging doesn't have it, and secretspec.toml doesn't publish it there. Add the TOML below"
   ],
   "ok": false
 }

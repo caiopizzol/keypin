@@ -5,12 +5,9 @@
   "apps/cli/src/commands/import/index.ts": 11,
   "apps/cli/src/commands/import/plan.ts": 5,
   "apps/cli/src/commands/import/request.ts": 3,
-  "apps/cli/src/commands/import/target.ts": 10,
-  "apps/cli/src/commands/init.ts": 8,
+  "apps/cli/src/commands/import/target.ts": 8,
   "apps/cli/src/commands/run.ts": 1,
   "apps/cli/src/deps.ts": 2,
   "apps/cli/src/publisher.ts": 1,
-  "packages/core/src/login.ts": 2,
-  "packages/core/src/map/index.ts": 2,
-  "packages/core/src/map/key.ts": 2
+  "packages/core/src/login.ts": 2
 }

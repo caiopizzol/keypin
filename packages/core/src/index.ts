@@ -139,6 +139,7 @@ export {
   type FolderListing,
   type FoundNeed,
   type JobReader,
+  type KeypinPin,
   type MapView,
   type Needs,
   type OnlyFrom,

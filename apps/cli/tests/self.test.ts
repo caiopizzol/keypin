@@ -31,7 +31,11 @@ function here(over: Partial<Here> & { links?: Record<string, string> } = {}): He
 
 describe("selfFor", () => {
   test("the keypin on PATH is this keypin: keypin, in the folder the user typed", () => {
-    expect(selfFor(here())).toEqual({ folder: "/tmp/project", command: ["keypin"] });
+    expect(selfFor(here())).toEqual({
+      folder: "/tmp/project",
+      command: ["keypin"],
+      version: "0.39.0",
+    });
   });
 
   test("another keypin on PATH: the full command", () => {
@@ -209,7 +213,11 @@ describe("selfFor on disk", () => {
 
   test("a symlinked bin and a symlinked folder resolve to keypin in the typed folder", async () => {
     const disk = await onDisk();
-    expect(selfFor(disk)).toEqual({ folder: join(root, "link"), command: ["keypin"] });
+    expect(selfFor(disk)).toEqual({
+      folder: join(root, "link"),
+      command: ["keypin"],
+      version: "0.39.0",
+    });
   });
 
   test("a bin pointing at another copy prints the full command", async () => {

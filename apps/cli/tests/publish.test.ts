@@ -159,6 +159,7 @@ describe("keypin publish", () => {
       self: {
         folder: "/work/billing/src",
         command: ["/opt/bun 1.4/bun", "--no-env-file", "/home/me/keypin/apps/cli/src/main.ts"],
+        version: "0.39.0",
       },
     };
     expect(await cli(["publish", "STRIPE_API_KEY", "--profile", "prod", "--yes"], fake)).toBe(
@@ -173,7 +174,10 @@ describe("keypin publish", () => {
 
   test("when the keypin on PATH is this keypin, the command to approve is keypin itself", async () => {
     const run = setup();
-    const fake = { ...run.deps, self: { folder: "/tmp/billing", command: ["keypin"] } };
+    const fake = {
+      ...run.deps,
+      self: { folder: "/tmp/billing", command: ["keypin"], version: "0.39.0" },
+    };
     expect(await cli(["publish", "STRIPE_API_KEY", "--plan"], fake)).toBe(NEEDS_APPROVAL);
     expect(run.stderr.text).toContain(
       "To approve, run this in a terminal:\n  cd /tmp/billing && keypin publish STRIPE_API_KEY\n",

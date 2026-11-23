@@ -58,7 +58,7 @@ function journey() {
       disk,
       backend: vault.vault,
       deps: {
-        self: { folder: ROOT, command: ["keypin"] },
+        self: { folder: ROOT, command: ["keypin"], version: "0.39.0" },
         git: async (_folder, gitArgs) =>
           gitArgs[0] === "ls-files" ? "" : (GIT[gitArgs.join(" ")] ?? null),
         githubSecrets: async () => ({ ok: true, secrets: [] }),

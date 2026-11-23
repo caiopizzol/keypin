@@ -181,6 +181,9 @@ async function lookUp(
     used: uses,
     about: github.repo ? `GitHub ${github.repo}` : null,
     report: { github: { repo: github.repo, login } },
+    keypinPins: workflows.flatMap((w) =>
+      w.refs.keypin.map((version) => ({ file: w.path, version })),
+    ),
     needs: (view) => needsOf(github, workflows, view),
   };
 }

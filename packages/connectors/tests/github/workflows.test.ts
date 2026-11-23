@@ -2,6 +2,26 @@ import { assert, describe, expect, test } from "vite-plus/test";
 import { workflowRefs } from "../../src/github/index";
 
 describe("workflows", () => {
+  test("finds the keypin versions run steps install, and nothing that only looks like one", () => {
+    const refs = workflowRefs(`
+on: push
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm install -g keypin@0.39.0 # x-release-please-version
+      - run: npx --yes keypin@0.39.0 check && bunx keypin@1.0.0-rc.1 status
+      - run: |
+          git config user.email keypin@users.noreply.github.com
+          npm install -g @keypin/rules@0.38.0 mykeypin@2.0.0 keypin@latest keypin@0.40
+      - uses: actions/checkout@v7
+        with:
+          note: keypin@9.9.9
+`);
+    assert(refs);
+    expect(refs.keypin).toEqual(["0.39.0", "1.0.0-rc.1"]);
+  });
+
   test("finds secrets and vars in expressions and if conditions, not in comments", () => {
     const refs = workflowRefs(`
 on: push

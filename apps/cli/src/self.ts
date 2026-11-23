@@ -3,6 +3,7 @@ import { delimiter, isAbsolute, resolve, sep } from "node:path";
 export interface Self {
   folder: string;
   command: readonly string[];
+  version: string;
 }
 
 export interface Here {
@@ -27,7 +28,7 @@ export function terminalPath(path: string | undefined): string {
 }
 
 export function selfFor(here: Here): Self {
-  return { folder: shownFolder(here), command: commandFor(here) };
+  return { folder: shownFolder(here), command: commandFor(here), version: here.version };
 }
 
 function commandFor(here: Here): readonly string[] {

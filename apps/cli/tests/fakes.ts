@@ -317,6 +317,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
     self: {
       folder: "/work/billing",
       command: ["/opt/bun/bin/bun", "--no-env-file", "/home/me/keypin/apps/cli/src/main.ts"],
+      version: "0.39.0",
     },
     env: {},
     home: HOME,

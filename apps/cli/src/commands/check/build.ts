@@ -24,6 +24,7 @@ import { distinctRefs, refKey } from "../../vault";
 import { type CheckedItem, type DestinationResult, type Report, ITEM_NOTE } from "./report";
 import { prerequisites, loginLine, checkItem, checkDestination } from "./lookups";
 import { type Step, ORDER, plan, providersStep } from "./steps";
+import { versionNotes } from "./versions";
 
 export async function build(
   folder: string,
@@ -83,6 +84,8 @@ export async function build(
   const report: Report = { ...head, ...scanned.report, ...tail };
   for (const vault of deps.vaults)
     report.notes.push(...(vault.signInNotes?.({ signIn, env: deps.env }) ?? []));
+  const pins = scanned.scan.discovered.flatMap((found) => found.keypinPins ?? []);
+  report.notes.push(...versionNotes(pins, deps.self.version));
   const targets = new Map<string, PublishTarget>();
   const items = new Map<string, CheckedItem>();
   const kinds = new Map<string, KeyRef["kind"]>();

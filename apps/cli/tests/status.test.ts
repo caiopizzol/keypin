@@ -186,7 +186,7 @@ describe("keypin status", () => {
     expect(stdout.text).toContain("  /work/web/secretspec.toml: ");
   });
 
-  test("a project still on the init template, or with no keys, is a problem that points at check", async () => {
+  test("a project with no keys yet is a problem that points at check", async () => {
     for (const map of [
       TEMPLATE,
       `[project]\nname = "billing"\nrevision = "1.0"\n\n[profiles.dev]\n\n[profiles.prod]\n`,
@@ -198,7 +198,7 @@ describe("keypin status", () => {
       const { deps, stdout, stderr } = fakeDeps({ disk: files });
       expect(await cli(["status"], deps)).toBe(1);
       expect(stdout.text).toContain(
-        "  /work/billing/secretspec.toml maps no keys yet (it's empty, or still the keypin init template); run keypin check in /work/billing for what to add",
+        "  /work/billing/secretspec.toml declares no keys yet; run keypin check in /work/billing for what to add",
       );
       expect(stderr.text).toBe("");
     }

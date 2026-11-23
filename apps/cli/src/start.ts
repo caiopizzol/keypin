@@ -34,7 +34,6 @@ import {
   githubActions,
   githubIdToken,
   listRepoSecrets,
-  maskInLog,
   sshHostname,
 } from "@keypin/connectors/github";
 import { gitlabGroup, gitlabProject } from "@keypin/connectors/gitlab";
@@ -314,7 +313,6 @@ export function realDeps(): Deps {
       process.stdout.write(`::warning title=${title}::${text}\n`);
       return true;
     },
-    maskInLog: (values) => maskInLog(process.env, values, process.stderr),
     styled: {
       stdout: isStyled(process.stdout.isTTY, process.env),
       stderr: isStyled(process.stderr.isTTY, process.env),

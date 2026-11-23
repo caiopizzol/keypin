@@ -101,7 +101,7 @@ export function buildStatus(input: StatusInput): Status {
         kind: "no-keys",
         severity: "problem",
         project,
-        message: `${result.map.file} maps no keys yet (it's empty, or still the keypin init template); run keypin check in ${project} for what to add`,
+        message: `${result.map.file} declares no keys yet; run keypin check in ${project} for what to add`,
       });
       continue;
     }

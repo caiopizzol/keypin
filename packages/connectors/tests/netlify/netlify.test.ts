@@ -265,9 +265,9 @@ describe("secretspec.toml", () => {
     expect(map(table("production", "1d01c0c0-4554-4747-93b8-34ce3448ab95")).ok).toBe(true);
   });
 
-  test("refuses the dev context, and points to keypin run", () => {
+  test("refuses the dev context, and points to secretspec run", () => {
     expect(errors(map(table("dev")))).toContain(`can't be "dev"`);
-    expect(errors(map(table("dev")))).toContain("keypin run -- netlify dev");
+    expect(errors(map(table("dev")))).toContain("secretspec run -- netlify dev");
     expect(errors(map(table("all")))).toContain(`field "context" must be one of production`);
   });
 

@@ -329,7 +329,7 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - run: keypin run --profile prod --only API_KEY -- ./deploy.sh
+      - run: secretspec run --profile production -- ./deploy.sh
 `);
     assert(refs);
     expect(refs.hidesUses).toBe(false);

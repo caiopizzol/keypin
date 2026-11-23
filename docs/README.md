@@ -24,6 +24,7 @@
 
 ### Vaults
 
+- [1Password](integrations/vaults/1password.md)
 - [Infisical](integrations/vaults/infisical.md)
 - [Bitwarden](integrations/vaults/bitwarden.md)
 - [Doppler](integrations/vaults/doppler.md)

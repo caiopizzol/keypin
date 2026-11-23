@@ -148,6 +148,26 @@ publish = [{ to = "github-actions", repo = "acme/billing" }]
     run.unchanged();
   });
 
+  test("an issuer's admin item is looked up like a key's item, and a missing one names the key", async () => {
+    const map = BILLING_MAP.replace(
+      'rotate_every = "365d"',
+      'rotate_every = "365d"\nissuer = { kind = "resend", admin = "op://Private/resend admin key/credential", permission = "sending_access" }',
+    );
+    const run = setup({ map });
+    expect(await run.record("missing-admin-item", ["check"])).toBe(1);
+    expect(run.calls).toContain("ids resend admin key");
+    expect(run.stdout.text).toContain("Used by STRIPE_API_KEY (prod) as its issuer's admin key.");
+    run.unchanged();
+
+    const found = setup({
+      map,
+      values: { "billing stripe api key": SENTINEL, "resend admin key": "re_admin_value" },
+    });
+    expect(await cli(["check"], found.deps), found.stdout.text).toBe(0);
+    expect(found.calls).toContain("ids resend admin key");
+    expect(found.calls.some((call) => call.startsWith("read"))).toBe(false);
+  });
+
   test("through the real 1Password backend, check lists items and never gets one", async () => {
     const stored: FullItem = {
       id: "item-1",

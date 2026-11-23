@@ -45,7 +45,9 @@ export async function build(
   const parsed = found ? readMap(deps, found) : null;
   const mapped = parsed?.ok
     ? parsed.map.keys.flatMap((key) =>
-        Object.values(key.environments).flatMap((e) => (e ? [e.ref] : [])),
+        Object.values(key.environments).flatMap((e) =>
+          e ? [e.ref, ...(e.issuer?.admin ? [e.issuer.admin] : [])] : [],
+        ),
       )
     : [];
   const signIn = mapSignIn(deps, mapped);
@@ -151,7 +153,8 @@ export async function build(
   const users = new Map<string, string[]>();
   const use = (id: string, label: string) => users.set(id, [...(users.get(id) ?? []), label]);
 
-  const refs = distinctRefs(entries.map(({ entry }) => entry.ref));
+  const admins = entries.flatMap(({ entry }) => (entry.issuer?.admin ? [entry.issuer.admin] : []));
+  const refs = distinctRefs([...entries.map(({ entry }) => entry.ref), ...admins]);
   for (const vault of deps.vaults)
     report.notes.push(...(vault.itemNotes?.(refs, { signIn, env: deps.env }) ?? []));
   report.notes.push(ITEM_NOTE);
@@ -204,6 +207,8 @@ export async function build(
     const from = items.get(refKey(entry.ref));
     if (!from) throw new Error(`no item check for ${formatReference(entry.ref, deps.vaults)}`);
     use(`item ${refKey(entry.ref)}`, name);
+    const admin = entry.issuer?.admin;
+    if (admin) use(`item ${refKey(admin)}`, `${name} as its issuer's admin key`);
     const reached = entry.publish.map((target) => {
       use(`place ${placeOf(target)}`, name);
       const result = destinations.get(placeOf(target));

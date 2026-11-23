@@ -4,15 +4,20 @@ import { output, tilde } from "./output";
 import { registryLocked } from "./publishing";
 
 export async function registerProject(deps: Deps, folder: string): Promise<boolean> {
-  const added = await registryLocked(deps, async (path) => {
-    const before = await loadRegistry(deps.files, path);
-    if (before.projects.includes(folder)) return false;
-    await register(deps.files, path, folder);
+  const out = output(deps.stderr, deps.styled.stderr, deps.columns);
+  const where = tilde(folder, deps.home);
+  try {
+    const added = await registryLocked(deps, async (path) => {
+      const before = await loadRegistry(deps.files, path);
+      if (before.projects.includes(folder)) return false;
+      await register(deps.files, path, folder);
+      return true;
+    });
+    if (added) out.line(`${out.mark(true)} keypin status now lists ${where}`);
     return true;
-  });
-  if (added) {
-    const out = output(deps.stderr, deps.styled.stderr, deps.columns);
-    out.line(`${out.mark(true)} keypin status now lists ${tilde(folder, deps.home)}`);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    out.warn(`keypin status can't list ${where}: ${reason}`);
+    return false;
   }
-  return added;
 }

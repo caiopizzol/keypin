@@ -102,6 +102,21 @@ function setup(
 }
 
 describe("keypin publish", () => {
+  test("a registry keypin can't write is a warning; publish still runs", async () => {
+    const run = setup({ terminal: "yes" });
+    const { files } = run.disk;
+    const write = files.write.bind(files);
+    files.write = async (path, text) => {
+      if (path.startsWith("/home/me/.config/keypin/")) throw new Error("read-only file system");
+      return write(path, text);
+    };
+    expect(await cli(["publish", "STRIPE_API_KEY"], run.deps)).toBe(0);
+    expect(run.delivered(SENTINEL).length).toBeGreaterThan(0);
+    expect(run.stderr.text).toContain(
+      "keypin status can't list /work/billing: read-only file system",
+    );
+  });
+
   test("a state file keypin can't save stops publish before any destination changes", async () => {
     const run = setup({ terminal: "yes" });
     const { files } = run.disk;

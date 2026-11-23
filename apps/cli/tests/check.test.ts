@@ -377,6 +377,23 @@ publish = [{ to = "github-actions", repo = "acme/billing" }]
     expect(run.stderr.text.slice(again)).not.toContain("now lists");
   });
 
+  test("a registry keypin can't write is a warning; check still reports", async () => {
+    const run = setup();
+    run.disk.contents.set(REGISTRY, registryWith());
+    const write = run.disk.files.write.bind(run.disk.files);
+    run.disk.files.write = async (path, text) => {
+      if (path.startsWith("/home/me/.config/keypin/")) throw new Error("read-only file system");
+      return write(path, text);
+    };
+    expect(await cli(["check", "--json"], run.deps)).toBe(0);
+    expect(run.stderr.text).toContain(
+      "keypin status can't list /work/billing: read-only file system",
+    );
+    const report: unknown = JSON.parse(run.stdout.text);
+    assert(isRecord(report));
+    expect(report.registered).toBe(false);
+  });
+
   test("no map anywhere above the folder registers nothing", async () => {
     const run = setup();
     run.disk.contents.delete(MAP_FILE);

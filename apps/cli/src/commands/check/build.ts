@@ -121,8 +121,7 @@ export async function build(
     );
     return done(gapsOf(null));
   }
-  await registerProject(deps, root);
-  report.registered = true;
+  report.registered = await registerProject(deps, root);
 
   if (!parsed.ok) {
     report.problems.push(...parsed.errors);

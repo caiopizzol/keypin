@@ -16,7 +16,6 @@ import { providerLines } from "./providers";
 import { tomlToAdd } from "./toml-to-add";
 
 const PUBLISH_PROFILE = "production";
-const SECRETSPEC_DEFAULT = "default";
 
 export type { Fix, Gaps, LocalFile, Need, ProjectScan } from "./report";
 export { providerLines, type ProviderLines } from "./providers";
@@ -169,13 +168,13 @@ export function findGaps(
     if (file.kind !== "set") continue;
     const suffix = envFileSuffix(file.path.split("/").at(-1) ?? "");
     const env = suffix !== undefined && environments.includes(suffix) ? suffix : run;
-    const flag = env === SECRETSPEC_DEFAULT ? "" : ` --profile ${env}`;
+    const using = `SECRETSPEC_PROFILE=${env} `;
     const caveat =
       suffix !== undefined &&
       !environments.includes(suffix) &&
       isEnvironmentName(suffix) &&
       !/^(local|dev|development)$/.test(suffix)
-        ? `declare them in ${run}; if they're the values of another profile, add it to secretspec.toml and use --profile <name>`
+        ? `declare them in ${run}; if they're the values of another profile, add it to secretspec.toml and set SECRETSPEC_PROFILE=<name>`
         : null;
     const other = caveat === null ? "" : `; these commands ${caveat}`;
     const names = file.names.filter(isVariableName);
@@ -199,8 +198,8 @@ export function findGaps(
       profile: env,
       names,
       commands: [
-        ...names.map((name) => `secretspec add ${name}${flag}`),
-        `secretspec import dotenv:${file.path}${flag}`,
+        ...names.map((name) => `${using}secretspec add ${name}`),
+        `${using}secretspec import dotenv:${file.path}`,
       ],
       caveat: caveat && `These commands ${caveat}`,
     });
@@ -210,7 +209,7 @@ export function findGaps(
     } else if (unmapped.length) {
       const sets = `${file.path} sets ${unmapped.join(", ")}, which secretspec.toml doesn't declare`;
       const found = importing(sets, unmapped);
-      const text = `${sets}; a plain setting can stay, and for a key run secretspec add NAME${flag}, then secretspec import dotenv:${file.path}${flag}${other}`;
+      const text = `${sets}; a plain setting can stay, and for a key run ${using}secretspec add NAME, then ${using}secretspec import dotenv:${file.path}${other}`;
       notes.push(text);
       fixes.push({ ...found, text });
     }

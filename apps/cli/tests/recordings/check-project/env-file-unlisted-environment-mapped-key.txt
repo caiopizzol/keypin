@@ -183,8 +183,8 @@ ids billing staging database url
     "no item \"billing staging database url\" (DATABASE_URL (staging))",
     "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there. Add the TOML below",
     "RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and secretspec.toml doesn't publish it there. Add the TOML below",
-    ".env sets DATABASE_URL, which secretspec.toml declares, but not in profile dev; for a key run secretspec add DATABASE_URL --profile dev, then secretspec import dotenv:.env --profile dev",
-    ".env.production sets DATABASE_URL, which secretspec.toml declares, but not in profile dev; for a key run secretspec add DATABASE_URL --profile dev, then secretspec import dotenv:.env.production --profile dev; these commands declare them in dev; if they're the values of another profile, add it to secretspec.toml and use --profile <name>"
+    ".env sets DATABASE_URL, which secretspec.toml declares, but not in profile dev; for a key run SECRETSPEC_PROFILE=dev secretspec add DATABASE_URL, then SECRETSPEC_PROFILE=dev secretspec import dotenv:.env",
+    ".env.production sets DATABASE_URL, which secretspec.toml declares, but not in profile dev; for a key run SECRETSPEC_PROFILE=dev secretspec add DATABASE_URL, then SECRETSPEC_PROFILE=dev secretspec import dotenv:.env.production; these commands declare them in dev; if they're the values of another profile, add it to secretspec.toml and set SECRETSPEC_PROFILE=<name>"
   ],
   "ok": false
 }

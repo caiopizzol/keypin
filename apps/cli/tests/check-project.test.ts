@@ -305,7 +305,12 @@ describe("keypin check on a whole project", () => {
       const before = run.stdout.text.length;
       await cli(["check"], run.deps);
       const text = run.stdout.text.slice(before);
-      return { text, adds: [...text.matchAll(/^ {4}secretspec add (\S+)$/gm)].map((m) => m[1]) };
+      return {
+        text,
+        adds: [...text.matchAll(/^ {4}SECRETSPEC_PROFILE=default secretspec add (\S+)$/gm)].map(
+          (m) => m[1],
+        ),
+      };
     };
     const paste = (text: string) => {
       const pasted = `${run.disk.contents.get(MAP) ?? ""}\n${fill(added(text))}`;
@@ -316,7 +321,7 @@ describe("keypin check on a whole project", () => {
 
     const first = await check();
     expect(first.adds).toEqual(["DATABASE_URL", "RESEND_API_KEY", "PORT"]);
-    expect(first.text).toContain("    secretspec import dotenv:.env\n");
+    expect(first.text).toContain("    SECRETSPEC_PROFILE=default secretspec import dotenv:.env\n");
     expect(first.text).toContain(AFTER_IMPORT);
     const declared = ["DATABASE_URL", "RESEND_API_KEY"]
       .map((name) => `${name} = { description = "${name}" }`)
@@ -345,7 +350,7 @@ describe("keypin check on a whole project", () => {
     });
     expect(await cli(["check"], run.deps)).toBe(1);
     const text = run.stdout.text;
-    expect(text).toMatch(/^ {4}secretspec add PORT( --profile dev)?$/m);
+    expect(text).toMatch(/^ {4}SECRETSPEC_PROFILE=(default|dev) secretspec add PORT$/m);
     expect(text).not.toContain(AFTER_IMPORT);
     const parsed = readSecretspec(
       `${map}\n${fill(pinning(text) + added(text))}`,
@@ -358,7 +363,7 @@ describe("keypin check on a whole project", () => {
     expect(parsed.map.keys.map((k) => k.name)).toContain("STRIPE_API_KEY");
   });
 
-  test("an env file named for an environment suggests importing it with --profile", async () => {
+  test("an env file named for an environment suggests importing it with SECRETSPEC_PROFILE", async () => {
     const run = setup({
       files: {
         [MAP]: MAPPED,

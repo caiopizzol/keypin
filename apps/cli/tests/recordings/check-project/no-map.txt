@@ -123,7 +123,7 @@ github acme/billing as null
     }
   ],
   "notes": [
-    ".env sets DATABASE_URL, RESEND_API_KEY, which secretspec.toml doesn't declare; a plain setting can stay, and for a key run secretspec add NAME, then secretspec import dotenv:.env"
+    ".env sets DATABASE_URL, RESEND_API_KEY, which secretspec.toml doesn't declare; a plain setting can stay, and for a key run SECRETSPEC_PROFILE=default secretspec add NAME, then SECRETSPEC_PROFILE=default secretspec import dotenv:.env"
   ],
   "problems": [
     "no secretspec.toml in /work/billing or any folder above it; run secretspec init, then keypin check again",

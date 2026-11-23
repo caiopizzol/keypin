@@ -121,8 +121,8 @@ billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub
   Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
 2 Move .env's keys into your vault
   .env sets PORT, which secretspec.toml doesn't declare.
-    secretspec add PORT --profile dev
-    secretspec import dotenv:.env --profile dev
+    SECRETSPEC_PROFILE=dev secretspec add PORT
+    SECRETSPEC_PROFILE=dev secretspec import dotenv:.env
   Leave out a name that isn't a key: secretspec import copies only declared names, and the file stays.
 3 Add the production keys to secretspec.toml
   OPENAI_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there.

@@ -21,7 +21,7 @@ export function ownScope(scope: VaultScope): Scope {
 }
 
 export function scopeOf(ref: DopplerRef): Scope {
-  return { kind: ref.kind, workplace: ref.workplace, project: ref.project, config: ref.config };
+  return { kind: ref.kind, project: ref.project, config: ref.config };
 }
 
 export function isConfigName(entry: unknown): entry is { project: string; config: string } {

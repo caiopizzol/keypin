@@ -29,7 +29,6 @@ for (const token of Object.keys(TOKENS)) {
       const store = memoryStore();
       const scope = {
         kind: "doppler" as const,
-        workplace: "acme",
         project: "billing",
         config: "prd",
       };

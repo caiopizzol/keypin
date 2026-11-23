@@ -267,6 +267,32 @@ const bitwarden: Scenario = {
   env: { BWS_ACCESS_TOKEN: FAKE_ACCESS_TOKEN },
 };
 
+const doppler: Scenario = {
+  ...ready,
+  about:
+    "ready, but secretspec.toml reads from a fake Doppler project, signed in with a service account token",
+  files: {
+    ...ready.files,
+    "secretspec.toml": vaultMap(
+      `doppler = "doppler://billing"\ndoppler_prd = "doppler://billing/prd"\n\n[profiles.dev.defaults]\nproviders = ["doppler"]\n\n[profiles.prod.defaults]\nproviders = ["doppler_prd"]`,
+      "",
+      "",
+    ),
+  },
+  onePassword: { accounts: {} },
+  doppler: {
+    workplace: "acme",
+    projects: {
+      billing: {
+        dev: { STRIPE_KEY: { value: "verify-dev-stripe-2c7d" } },
+        prd: { STRIPE_KEY: { value: "verify-prod-stripe-5e8b" } },
+      },
+    },
+    tokens: { "dp.sa.verify-account-token-1a9f": { type: "service_account", write: true } },
+  },
+  env: { DOPPLER_TOKEN: "dp.sa.verify-account-token-1a9f" },
+};
+
 const RESEND_MAP = `[project]
 name = "billing"
 revision = "1.0"
@@ -1144,6 +1170,7 @@ export const scenarios: Record<string, Scenario> = {
   ready,
   infisical,
   bitwarden,
+  doppler,
   "infisical-token": {
     ...infisical,
     about: "infisical, but signed in with a machine identity's access token in INFISICAL_TOKEN",

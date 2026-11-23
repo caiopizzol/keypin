@@ -8,7 +8,7 @@ import {
   TOKEN_VARIABLE,
   tokenKind,
 } from "./credentials";
-import { type DopplerRef, type DopplerReference, SCHEME } from "./reference";
+import type { DopplerRef } from "./reference";
 import { dopplerVaultRules } from "./rules";
 
 export interface DopplerHost {
@@ -21,13 +21,9 @@ function fixFor(failures: readonly SignInReason[], { env }: DopplerHost): string
   const oidc = credentials !== null && "identityId" in credentials;
   if (failures.some((reason) => reason.kind === "no-credentials"))
     return oidc ? NO_JOB_TOKEN : `${NO_CREDENTIALS} (docs/integrations/vaults/doppler.md)`;
-  if (failures.some((reason) => reason.kind === "wrong-account"))
-    return oidc
-      ? `use an identity from a service account in the workplace secretspec.toml names under [doppler]`
-      : `use a token from the workplace secretspec.toml names under [doppler]`;
   if (oidc)
-    return `check ${IDENTITY_ID}, the identity's claims and the workplace under [doppler] in secretspec.toml (docs/integrations/vaults/doppler.md)`;
-  return `check ${TOKEN_VARIABLE} and the workplace under [doppler] in secretspec.toml`;
+    return `check ${IDENTITY_ID} and the identity's claims (docs/integrations/vaults/doppler.md)`;
+  return `check ${TOKEN_VARIABLE}`;
 }
 
 function signedInWith({ env }: DopplerHost): string | null {
@@ -38,7 +34,7 @@ function signedInWith({ env }: DopplerHost): string | null {
   return `the ${tokenKind(credentials.token)} in ${TOKEN_VARIABLE}`;
 }
 
-export const dopplerVault: VaultKind<DopplerHost, DopplerRef, DopplerReference> = {
+export const dopplerVault: VaultKind<DopplerHost, DopplerRef> = {
   ...dopplerVaultRules,
   newValueByHand: "Put a new value in the Doppler secret",
   addRotatedDate:
@@ -51,7 +47,7 @@ export const dopplerVault: VaultKind<DopplerHost, DopplerRef, DopplerReference> 
       Object.values(key.environments).flatMap((entry) => (entry ? [entry.ref] : [])),
     );
     return refs.length > 0 && refs.every((ref) => ref.kind === "doppler")
-      ? `add the secrets in Doppler and map them with ${SCHEME} references (docs/integrations/vaults/doppler.md)`
+      ? "declare the secrets in secretspec.toml, then save each value in Doppler with secretspec set (docs/integrations/vaults/doppler.md)"
       : undefined;
   },
   itemNotes(refs, host) {

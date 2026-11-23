@@ -579,6 +579,30 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
+    "with Doppler, check and publish read from the provider's config, and the token never leaks",
+    async () => {
+      const check = await drive({ scenario: "doppler", args: ["check"] });
+      expect(check.exit).toBe(0);
+      expect(check.screen).toContain("Looked up 2 items in Doppler, not the values");
+      const publish = await drive({
+        scenario: "doppler",
+        args: ["publish", "STRIPE_KEY"],
+        answers: ["y"],
+      });
+      expect(publish.exit).toBe(0);
+      expect(publish.screen).toContain("from doppler://billing/prd/STRIPE_KEY in Doppler");
+      expect(publish.effects).toEqual([
+        "destination write github-actions:acme/billing STRIPE_KEY (23 chars)",
+      ]);
+      for (const result of [check, publish]) {
+        expect(result.screen).not.toContain("1Password");
+        clean(result);
+      }
+    },
+    SLOW,
+  );
+
+  test(
     "with an Infisical access token, check names it and never shows it",
     async () => {
       const check = await drive({ scenario: "infisical-token", args: ["check"] });

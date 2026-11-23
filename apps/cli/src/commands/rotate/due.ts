@@ -143,11 +143,22 @@ export async function rotateDue(context: Context, flags: Flags, path: string): P
   choices.forEach((c, i) => out.line(`  ${(rows[i] ?? []).join("  ")}  ${out.dim(c.why)}`));
   const picked = choices.filter((c) => c.action === "rotate" || c.action === "finish");
   const waiting = choices.filter((c) => c.action === "waiting");
-  if (!picked.length)
+  const blocked = waiting.filter((c) => c.blocked !== undefined);
+  const codes: number[] = [];
+  for (const choice of choices) {
+    const problem = undatedProblem(context, choice);
+    if (problem === null) continue;
+    out.line(`${out.mark(false)} ${problem}`);
+    codes.push(1);
+  }
+  for (const c of blocked)
+    out.line(
+      `${out.mark(false)} ${c.keyId} (${environment}) ${c.blocked === localDay(deps.now()) ? "is due today" : `was due ${c.blocked}`}, but keypin won't rotate it while its old key waits for approval.`,
+    );
+  if (blocked.length) codes.push(NEEDS_APPROVAL);
+  if (!picked.length && !blocked.length)
     out.line(waiting.length ? "Nothing is due. An old key waits for approval." : "Nothing is due.");
   for (const c of waiting) waitsNotice(context, c.keyId);
-  if (!picked.length) return 0;
-  const codes: number[] = [];
   for (const choice of picked) {
     out.line("");
     try {
@@ -190,8 +201,8 @@ export async function checkDue(context: Context, path: string): Promise<number> 
     const key = map.keys.find((each) => each.name === choice.keyId);
     const ref = key?.environments[environment]?.ref;
     const read = ref !== undefined && metadata.dates.get(refKey(ref)) != null;
-    const undated = read && vaultKindOf(deps.vaults, ref.kind).keepsRotated === false;
-    if (key?.rotateEvery?.days != null && undated) {
+    const keepsNoDate = read && vaultKindOf(deps.vaults, ref.kind).keepsRotated === false;
+    if (key?.rotateEvery?.days != null && keepsNoDate) {
       const { keyId } = choice;
       out.line(
         `${out.mark(false)} ${keyId} (${environment}): its vault keeps no rotation date, so scheduled rotation can't cover it. rotate_every applies to ${keyId} in every profile, so either set it to "never" (or remove it) in every [tool.keypin.<profile>.${keyId}] that sets it, which stops scheduled rotation of ${keyId} in every profile, or keep its ${environment} value in a vault that keeps rotation dates. Rotate it by hand with keypin rotate ${keyId} --profile ${environment}.`,
@@ -199,10 +210,9 @@ export async function checkDue(context: Context, path: string): Promise<number> 
       codes.push(1);
       continue;
     }
-    if (choice.action === "skip" && choice.date === "missing") {
-      out.line(
-        `${out.mark(false)} ${choice.keyId}: ${choice.why}, so keypin rotate --due never rotates it. Give its vault item a rotated date: the day the key last changed.`,
-      );
+    const problem = undatedProblem(context, choice);
+    if (problem !== null) {
+      out.line(`${out.mark(false)} ${problem}`);
       codes.push(1);
       continue;
     }
@@ -258,6 +268,22 @@ export async function approveAll(
   }
   if (!codes.length) out.line(`No old key waits for approval in ${environment}.`);
   return worst(codes);
+}
+
+function undated(choice: DueChoice): boolean {
+  return (
+    (choice.action === "skip" || choice.action === "waiting") &&
+    (choice.date === "missing" || choice.date === "unread")
+  );
+}
+
+function undatedProblem({ map, environment, deps }: Context, choice: DueChoice): string | null {
+  if (!undated(choice)) return null;
+  if ("date" in choice && choice.date === "unread")
+    return `${choice.keyId}: the vault's rotated date couldn't be read, so keypin can't tell when it's due. Fix the error above, then run this again.`;
+  const ref = map.keys.find((key) => key.name === choice.keyId)?.environments[environment]?.ref;
+  if (ref !== undefined && vaultKindOf(deps.vaults, ref.kind).keepsRotated === false) return null;
+  return `${choice.keyId}: no rotated date in the vault, so keypin rotate --due never rotates it. Give its vault item a rotated date: the day the key last changed.`;
 }
 
 const NO_FLAGS: Flags = {

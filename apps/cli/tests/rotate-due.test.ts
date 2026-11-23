@@ -10,6 +10,7 @@ import { NEEDS_APPROVAL } from "../src/approval";
 import type { Deps } from "../src/deps";
 import { issuer as connect, vaults } from "../src/start";
 import { fakeDeps, memoryFiles, parseJson, writableVault } from "./fakes";
+import { recording } from "./recording";
 
 const OLD = "re_old_sentinel_value_4b1c";
 const ADMIN = "re_admin_sentinel_value_7e2f";
@@ -422,6 +423,94 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
   });
 });
 
+async function recorded(name: string, run: ReturnType<typeof machine>, ...argv: string[]) {
+  const exit = await run.run(...argv);
+  await expect(
+    recording({
+      args: ["rotate", ...argv],
+      exit,
+      stdout: run.stdout.text,
+      stderr: run.stderr.text,
+      calls: { "runner warnings": run.warnings },
+    }),
+  ).toMatchFileSnapshot(`./recordings/rotate-due/${name}.txt`);
+  return exit;
+}
+
+const SESSION = `${MAP}
+[profiles.prod.SESSION_SECRET]
+description = "SESSION_SECRET"
+ref = { item = "session secret", field = "credential" }
+
+[tool.keypin.prod.SESSION_SECRET]
+rotate_every = "30d"
+issuer = { kind = "random" }
+`;
+
+describe("keypin rotate --due says who must act: 0 when nothing does, 3 for an approval, 1 for a fix", () => {
+  test("a waiting key that comes due exits 3 every run until someone approves, then rotates", async () => {
+    const w = await rotatedOnceOnALaptop();
+    expect(await ci(w).run("--due", "--yes")).toBe(0);
+    const quiet = ci(w);
+    expect(await quiet.run("--due", "--yes"), "waiting, not due yet").toBe(0);
+    expect(quiet.stderr.text).toContain("Nothing is due. An old key waits for approval.");
+
+    w.dates.set(ITEM, "2026-08-01");
+    const blocked = ci(w);
+    expect(await recorded("waiting-key-due", blocked, "--due", "--yes")).toBe(NEEDS_APPROVAL);
+    expect(blocked.warnings).toEqual([WARNING]);
+    expect(blocked.stderr.text).not.toContain("Nothing is due");
+    expect(await ci(w).run("--due", "--yes"), "still blocked the next day").toBe(NEEDS_APPROVAL);
+    expect(w.effects).toHaveLength(2);
+
+    expect(await ci(w).run("--approve-revoke")).toBe(0);
+    expect(await ci(w).run("--due", "--yes")).toBe(0);
+    expect(w.effects).toEqual([
+      "resend create re-new-1",
+      "resend create re-new-2",
+      "resend revoke re-new-1",
+      "resend create re-new-3",
+    ]);
+  });
+
+  test("a key with no rotated date fails the run, and the other keys still rotate", async () => {
+    const w = await world(SESSION);
+    w.inner.values.set("session secret", "s_old_sentinel_value_1d4e");
+    w.dates.delete(ITEM);
+    w.dates.set("session secret", "2026-08-01");
+    const run = ci(w);
+    expect(await recorded("undated-key-fails", run, "--due", "--yes")).toBe(1);
+    expect(run.stderr.text).toContain("SESSION_SECRET  rotate  was due 2026-08-31");
+    expect(w.inner.values.get("session secret")).not.toBe("s_old_sentinel_value_1d4e");
+    expect(w.effects).toEqual([]);
+  });
+
+  test("a rotated date the vault couldn't read fails the run", async () => {
+    const w = await world();
+    w.vault.metadata = async () => {
+      throw new Error("the service account was deleted");
+    };
+    const run = ci(w);
+    expect(await run.run("--due", "--yes")).toBe(1);
+    expect(run.stderr.text).toContain("keypin: the service account was deleted");
+    expect(run.stderr.text).toContain(
+      "FAILED RESEND_API_KEY: the vault's rotated date couldn't be read, so keypin can't tell when it's due. Fix the error above, then run this again.",
+    );
+    expect(w.effects).toEqual([]);
+  });
+
+  test("a vault that keeps no rotated date is skipped, as --check already says", async () => {
+    const w = await world();
+    w.dates.delete(ITEM);
+    const run = machine(w, {
+      vaults: vaults.map((vault) => ({ ...vault, keepsRotated: false as const })),
+    });
+    expect(await run.run("--due", "--yes"), run.stderr.text).toBe(0);
+    expect(run.stderr.text).toContain("RESEND_API_KEY  skip  no rotated date in the vault");
+    expect(run.stderr.text).toContain("Nothing is due.");
+  });
+});
+
 describe("keypin rotate --due after a person replaced a waiting key by hand", () => {
   const HAND = "re_hand_sentinel_value_9a3d";
 
@@ -485,14 +574,17 @@ describe("keypin rotate --due after a person replaced a waiting key by hand", ()
     expect(w.keys.load().live).toEqual(["key-0", "hand-1"]);
   });
 
-  test("a vault that can't be read keeps the old key waiting", async () => {
+  test("a vault that can't be read keeps the old key waiting, and a due key that waits needs approval", async () => {
     const w = await replacedByHand("2026-08-01");
     w.inner.values.delete(ITEM);
     const run = ci(w);
-    expect(await run.run("--due", "--yes")).toBe(0);
+    expect(await run.run("--due", "--yes")).toBe(NEEDS_APPROVAL);
     expect(run.stderr.text).toContain('no item "mailer resend key"');
     expect(run.stderr.text).toContain(
-      "RESEND_API_KEY  wait  rotated 2026-11-09, the old key waits",
+      "RESEND_API_KEY  wait  rotated 2026-11-09, the old key waits; was due 2026-10-30",
+    );
+    expect(run.stderr.text).toContain(
+      "FAILED RESEND_API_KEY (prod) was due 2026-10-30, but keypin won't rotate it while its old key waits for approval.",
     );
     expect(w.effects).toHaveLength(2);
   });
@@ -502,9 +594,9 @@ describe("keypin rotate --due after a person replaced a waiting key by hand", ()
     w.inner.itemIds.set(ITEM, "id-replaced");
     w.inner.log.length = 0;
     const run = ci(w);
-    expect(await run.run("--due", "--yes")).toBe(0);
+    expect(await run.run("--due", "--yes")).toBe(NEEDS_APPROVAL);
     expect(run.stderr.text).toContain(
-      "RESEND_API_KEY  wait  rotated 2026-11-09, the old key waits",
+      "RESEND_API_KEY  wait  rotated 2026-11-09, the old key waits; was due 2026-10-30",
     );
     expect(await ci(w).run("--check")).toBe(1);
     expect(w.inner.log.filter((line) => line.startsWith("read"))).toEqual([]);

@@ -128,7 +128,7 @@ export {
   waitsForRevoke,
   writeRotationFile,
 } from "./rotation-file";
-export { type DueChoice, dueKeys, dueRefs, type Progress } from "./due";
+export { type DateProblem, type DueChoice, dueKeys, dueRefs, type Progress } from "./due";
 export { envFileKind, envNames, envValues, type EnvFileKind } from "./dotenv";
 export {
   type Discovered,

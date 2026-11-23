@@ -1,0 +1,38 @@
+$ keypin rotate --due --yes
+exit 1
+
+--- calls runner warnings ---
+
+--- stdout ---
+
+--- stderr ---
+ok     keypin status now lists /work/billing
+ok     Read 2 rotated dates from 1Password account my.1password.com, not the values
+
+Keys in prod
+  RESEND_API_KEY  skip    no rotated date in the vault
+  STRIPE_KEY      skip    no issuer, so keypin can't make a new key
+  SESSION_SECRET  rotate  was due 2026-08-31
+FAILED RESEND_API_KEY: no rotated date in the vault, so keypin rotate --due never rotates it. Give its vault item a rotated date: the day the key last changed.
+
+SESSION_SECRET prod  from op://Private/session secret/credential in 1Password account my.1password.com
+ok     Looked up 1 item ID in 1Password account my.1password.com, not the values
+ok     Read the key op://Private/session secret/credential
+ok     random  32 random bytes, base64
+
+Plan
+  + random     create a new key
+    replaces the old value: anything signed with it stops working, so everyone signs in again. Don't use it for Better Auth, which also reads AUTH_SECRET: its stored two-factor secrets would become unreadable
+  ~ 1Password  save it to op://Private/session secret/credential, rotated today
+  = random     nothing to revoke: the new value replaces the old one
+
+secretspec.toml publishes SESSION_SECRET (prod) nowhere, and nothing in this repo reads it at job time. Check what uses it before you revoke the old key.
+
+ok     random  created SESSION_SECRET prod 2026-11-09 12:00:00 a1b2c3
+ok     1Password  op://Private/session secret/credential  saved, rotated 2026-11-09
+
+Rotated SESSION_SECRET (prod): the new key is in 1Password.
+Nothing to revoke: the old value stops working once your apps use the new one.
+ok     wrote /work/billing/.keypin/rotation.json
+ok     Read 3 rotated dates from 1Password account my.1password.com, not the values
+ok     wrote /work/billing/.keypin/status.json

@@ -1,8 +1,8 @@
 # Configuration
 
-Moved to [keypin.toml](reference/secretspec-toml.md).
+Moved to [secretspec.toml](reference/secretspec-toml.md).
 
-- <a name="keys"></a>[Keys](reference/secretspec-toml.md#keys)
+- <a name="keys"></a>[keypin's settings](reference/secretspec-toml.md#keypins-settings)
 - <a name="vault-items"></a>[Vault items](reference/secretspec-toml.md#vault-items)
 - <a name="pulling-in-ci"></a>[Pulling in CI](guides/publishing.md#pulling-in-ci)
 - <a name="rotating-a-key"></a>[Rotating a key](guides/rotating-a-key.md)

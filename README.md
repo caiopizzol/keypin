@@ -61,56 +61,15 @@ npm install -g keypin
 
 ```sh
 cd ~/code/my-project
-keypin init    # write keypin.toml
-keypin check   # what the project uses, what's missing, and what to run or add
+keypin init                     # write keypin.toml
+keypin check                    # what the project uses, what's missing, and what to run or add
+keypin import .env STRIPE_KEY --vault Private --account my.1password.com
+                                # move a key from .env into 1Password and map it
+keypin run -- npm run dev       # run your app with the keys from your vault
 ```
 
-`check` starts with the logins and apps you still need to set up, if any.
-
-### Local keys
-
-Move the secrets from your `.env` into 1Password, then run your app with them:
-
-```sh
-keypin import .env STRIPE_KEY DATABASE_URL --vault Private --account my.1password.com
-keypin run -- npm run dev
-```
-
-`import` creates one item per variable and maps it. Variables you don't name, such as `PORT`, stay in the file. See
-[Moving off env files](https://github.com/caiopizzol/keypin/blob/main/docs/guides/moving-off-env-files.md).
-
-### Production keys
-
-Put each prod value in 1Password first:
-
-- **In a file:** `keypin import .env.production STRIPE_KEY --env prod --vault Private`
-- **Only in GitHub or Cloudflare:** neither keypin nor you can read it back, so make a new key at the provider.
-
-Then `keypin check` prints the TOML to add for each secret a workflow or Worker needs:
-
-```toml
-[[keys.STRIPE_KEY.prod.publish]]
-to = "github-actions"
-repo = "me/my-project"
-```
-
-Paste it into `keypin.toml` and replace each `<...>`. For a key you didn't import, `from` takes its reference: in
-1Password, open the field's menu and select **Copy Secret Reference**.
-
-Then publish:
-
-```sh
-keypin publish --all
-```
-
-`publish` shows what it will write where and waits for you to answer `y`.
-
-A GitHub Actions job can instead read a key from your vault at job time, without a copy published to it. With AWS
-Secrets Manager, Infisical or Doppler it signs in with OIDC. See [Pulling in CI](https://github.com/caiopizzol/keypin/blob/main/docs/guides/publishing.md#pulling-in-ci).
-
-To rotate a key, give it an
-[issuer](https://github.com/caiopizzol/keypin/blob/main/docs/guides/rotating-a-key.md) and run `keypin rotate
-RESEND_API_KEY`. keypin creates the new key, saves and publishes it, and asks before it revokes the old one.
+[Get started](https://github.com/caiopizzol/keypin/blob/main/docs/get-started/your-first-project.md) walks through
+each step, then publishing your production keys.
 
 ## Commands
 
@@ -140,6 +99,8 @@ npx skills add caiopizzol/keypin -g    # all your projects
 
 ## Docs
 
+- [How it works](https://github.com/caiopizzol/keypin/blob/main/docs/introduction/how-it-works.md): the vault, the
+  map and where keys go
 - [keypin.toml](https://github.com/caiopizzol/keypin/blob/main/docs/reference/keypin-toml.md): keys, environments and vault
   items
 - [Moving off env files](https://github.com/caiopizzol/keypin/blob/main/docs/guides/moving-off-env-files.md): moving an env file's values into 1Password

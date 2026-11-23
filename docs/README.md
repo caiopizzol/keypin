@@ -1,5 +1,17 @@
 # keypin docs
 
+## Introduction
+
+- [What keypin is](introduction/what-keypin-is.md)
+- [How it works](introduction/how-it-works.md)
+- [Install](introduction/install.md)
+
+## Get started
+
+- [Your first project](get-started/your-first-project.md)
+- [Run your app locally](get-started/run-your-app-locally.md)
+- [Ship to production](get-started/ship-to-production.md)
+
 ## Guides
 
 - [Moving off env files](guides/moving-off-env-files.md)

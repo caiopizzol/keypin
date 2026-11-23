@@ -71,7 +71,8 @@ also deploys.
   the user makes a new value at the provider, puts it in the 1Password field and sets `rotated` to today; then
   publish it, and remind them to revoke the old one.
 
-Details: [keypin.toml](https://github.com/caiopizzol/keypin/blob/main/docs/reference/keypin-toml.md),
+Details: [How it works](https://github.com/caiopizzol/keypin/blob/main/docs/introduction/how-it-works.md),
+[keypin.toml](https://github.com/caiopizzol/keypin/blob/main/docs/reference/keypin-toml.md),
 [Moving off env files](https://github.com/caiopizzol/keypin/blob/main/docs/guides/moving-off-env-files.md),
 [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/guides/publishing.md),
 [Rotating a key](https://github.com/caiopizzol/keypin/blob/main/docs/guides/rotating-a-key.md),

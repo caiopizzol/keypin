@@ -161,6 +161,7 @@ check github-actions:acme/billing
   "production": [],
   "local": [],
   "add": null,
+  "providers": null,
   "unknown": [],
   "prerequisites": [
     {
@@ -170,7 +171,7 @@ check github-actions:acme/billing
     }
   ],
   "notes": [
-    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields"
+    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin publish --plan reads the fields"
   ],
   "problems": [
     "RESEND_API_KEY: secretspec.toml publishes it to the Worker billing-worker as a secret, but wrangler.toml sets it in vars, so the next wrangler deploy replaces the secret with that var; remove it from vars"

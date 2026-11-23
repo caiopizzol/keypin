@@ -1,7 +1,6 @@
 import { parse as parseToml } from "smol-toml";
 import type { Environment } from "../contracts";
 import type { Place } from "../discovery";
-import type { NewKeys, VaultKind } from "../login";
 import type { KeyEntry, KeysMap } from "../map";
 import { isRecord } from "../record";
 import { type Found, proposedIn } from "./places";
@@ -9,42 +8,12 @@ import { type Found, proposedIn } from "./places";
 const ROTATE_EVERY = "90d";
 const FILE = "secretspec.toml";
 
-interface Creates {
-  readonly vault: string;
-  readonly provider: string;
-  readonly options: string;
-  readonly pinOptions: string;
-  pinned(text: string, environment: Environment): boolean;
-  hasAccount(map: KeysMap | null): boolean;
-}
-
-export function creating(vault: VaultKind, keys: NewKeys): Creates {
-  return {
-    vault: vault.name,
-    provider: keys.provider,
-    options: keys.options,
-    pinOptions: ` ${keys.account}`,
-    hasAccount: (map) =>
-      (map?.keys ?? []).some((key) =>
-        Object.values(key.environments).some((entry) => entry?.ref.kind === vault.kind),
-      ),
-    pinned: (text, environment) => {
-      const data = parsed(text);
-      const profile = table(table(data.profiles)[environment]);
-      return [table(data.defaults), table(profile.defaults)].some(
-        (defaults) => Array.isArray(defaults.providers) && defaults.providers.length > 0,
-      );
-    },
-  };
-}
-
 export function tomlToAdd(
   needs: readonly Found[],
   map: KeysMap | null,
   publish: Environment,
   text: string,
-  newKeys: Creates,
-): { text: string | null; pinned: boolean; edits: Map<string, string> } {
+): { text: string | null; declares: Environment[]; edits: Map<string, string> } {
   const blocks: string[][] = [];
   const edits = new Map<string, string>();
   const groups = new Map<string, Found[]>();
@@ -79,16 +48,16 @@ export function tomlToAdd(
     const own: string[][] = [];
     const at = `${environment}.${id}`;
     if (!key?.environments[environment]) {
-      own.push([`[profiles.${at}]`, `description = ${str(id)}`]);
+      const usedBy = [...new Set(all.flatMap((each) => each.need.usedBy))];
+      own.push([`[profiles.${at}]`, `description = ${str(`Used by ${usedBy.join(", ")}`)}`]);
       declares.add(environment);
     }
-    if (!key?.rotateEvery && !rawTool(text, id, environment))
-      own.push([`[tool.keypin.${at}]`, `rotate_every = ${str(ROTATE_EVERY)}`]);
-    for (const { place } of found)
-      own.push([
-        `[[tool.keypin.${at}.publish]]`,
-        ...place.fields.map(([field, value]) => `${field} = ${str(value)}`),
-      ]);
+    const rotates = key?.rotateEvery || rawTool(text, id, environment);
+    own.push([
+      `[tool.keypin.${at}]`,
+      ...(rotates ? [] : [`rotate_every = ${str(ROTATE_EVERY)}`]),
+      publishList(found.map((f) => f.place)),
+    ]);
     if (key && !appends(text, own)) {
       const edit = inlineEdit(
         text,
@@ -101,10 +70,8 @@ export function tomlToAdd(
     }
     blocks.push(...own);
   }
-  if (!blocks.length) return { text: null, pinned: false, edits };
-  const pinned = [...declares].some((environment) => !newKeys.pinned(text, environment));
-  if (pinned) blocks.unshift(["[defaults]", `providers = [${str(newKeys.provider)}]`]);
-  return { text: `${blocks.map((block) => block.join("\n")).join("\n\n")}\n`, pinned, edits };
+  const toml = blocks.map((block) => block.join("\n")).join("\n\n");
+  return { text: blocks.length ? `${toml}\n` : null, declares: [...declares], edits };
 }
 
 function inlineEdit(
@@ -113,10 +80,8 @@ function inlineEdit(
   environment: Environment,
   places: readonly Place[],
 ): string {
-  const entries = places.map(
-    (place) => `{ ${place.fields.map(([field, value]) => `${field} = ${str(value)}`).join(", ")} }`,
-  );
-  const list = `publish = [${entries.join(", ")}]`;
+  const entries = places.map(entry);
+  const list = publishList(places);
   const at = `[tool.keypin.${environment}.${key.name}]`;
   const declare = key.environments[environment]
     ? ""
@@ -125,6 +90,14 @@ function inlineEdit(
   if (isRecord(raw) && Array.isArray(raw.publish))
     return `${sentence(declare)}${declare ? "add" : "Add"} ${entries.join(" and ")} to the publish list of ${at} in ${FILE}`;
   return `${sentence(declare)}${declare ? "set" : "Set"} ${list} in ${at} in ${FILE}`;
+}
+
+function entry(place: Place): string {
+  return `{ ${place.fields.map(([field, value]) => `${field} = ${str(value)}`).join(", ")} }`;
+}
+
+function publishList(places: readonly Place[]): string {
+  return `publish = [${places.map(entry).join(", ")}]`;
 }
 
 function sentence(text: string): string {

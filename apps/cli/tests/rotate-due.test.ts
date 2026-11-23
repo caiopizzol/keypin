@@ -141,6 +141,30 @@ async function rotatedOnceOnALaptop(map = MAP) {
 }
 
 describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () => {
+  test("a key with an issuer and no destination is checked, rotated, and its old key waits", async () => {
+    const vaultOnly = MAP.replace(
+      'publish = [{ to = "github-actions", repo = "acme/mailer" }]\nissuer',
+      "issuer",
+    );
+    expect(vaultOnly).not.toContain(
+      'publish = [{ to = "github-actions", repo = "acme/mailer" }]\nissuer',
+    );
+    const w = await rotatedOnceOnALaptop(vaultOnly);
+    const check = ci(w);
+    expect(await check.run("--check"), check.stderr.text).toBe(0);
+    expect(check.stderr.text).toContain("RESEND_API_KEY  check");
+
+    const run = ci(w);
+    expect(await run.run("--due", "--yes"), run.stderr.text).toBe(0);
+    expect(run.stderr.text).toContain("RESEND_API_KEY  rotate  was due 2026-10-30");
+    expect(run.stderr.text).toContain(
+      "The old key re-new-1 still works, and waits for approval.\n",
+    );
+    expect(run.warnings).toEqual([WARNING]);
+    expect(w.effects).toEqual(["resend create re-new-1", "resend create re-new-2"]);
+    expect(w.github.value("acme/mailer", "RESEND_API_KEY")).toBeUndefined();
+  });
+
   test("rotates a due key and stops before revoking; --approve-revoke on another fresh runner revokes it", async () => {
     const w = await rotatedOnceOnALaptop();
     const first = ci(w);
@@ -339,7 +363,7 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
     w.repo.contents.set(MAP_FILE, MAP);
     const rotated = ci(w);
     expect(await rotated.run("--due", "--yes")).toBe(0);
-    expect(rotated.stderr.text).toContain(`- ${WEB}: not in the map any more (last got`);
+    expect(rotated.stderr.text).toContain(`- ${WEB}: not in secretspec.toml any more (last got`);
     expect(json(w, ROTATION)).toMatchObject({
       published: [{ destination: DESTINATION }, { destination: WEB }],
     });
@@ -347,7 +371,7 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
     const refused = ci(w);
     expect(await refused.run("--approve-revoke")).toBe(1);
     expect(refused.stderr.text).toContain(
-      `Stopped: something no longer in the map may still use the old key re-new-1, so keypin won't revoke it without a terminal. Nothing was revoked. Once nothing uses it, run this in a terminal:\n  ${RERUN} rotate RESEND_API_KEY --approve-revoke`,
+      `Stopped: something no longer in secretspec.toml may still use the old key re-new-1, so keypin won't revoke it without a terminal. Nothing was revoked. Once nothing uses it, run this in a terminal:\n  ${RERUN} rotate RESEND_API_KEY --approve-revoke`,
     );
     expect(w.effects).toEqual(["resend create re-new-1", "resend create re-new-2"]);
 
@@ -384,54 +408,10 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
 
     const refused = ci(w);
     expect(await refused.run("--approve-revoke")).toBe(1);
-    expect(refused.stderr.text).toContain("Stopped: something no longer in the map may still use");
-    expect(w.effects, "nothing revoked").toHaveLength(2);
-  });
-});
-
-describe("keypin rotate --due for a key CI pulls from the vault", () => {
-  const PULLED = MAP.replace(
-    'publish = [{ to = "github-actions", repo = "acme/mailer" }]\nissuer',
-    'pull = [{ by = "github-actions", repo = "acme/mailer" }]\nissuer',
-  );
-
-  test("a vault save that didn't land is finished by the next --due, not left waiting", async () => {
-    const w = await rotatedOnceOnALaptop(PULLED);
-    const save = w.vault.write.bind(w.vault);
-    w.vault.write = async () => {
-      throw new Error("1Password: the request timed out");
-    };
-    expect(await ci(w).run("--due", "--yes")).toBe(1);
-    expect(w.effects).toEqual(["resend create re-new-1", "resend create re-new-2"]);
-    w.vault.write = save;
-
-    const next = ci(w);
-    expect(await next.run("--due", "--yes")).toBe(0);
-    expect(next.stderr.text).toContain(
-      "RESEND_API_KEY  finish  finishing the rotation from 2026-11-09",
+    expect(refused.stderr.text).toContain(
+      "Stopped: something no longer in secretspec.toml may still use",
     );
-    expect(w.effects).toEqual([
-      "resend create re-new-1",
-      "resend create re-new-2",
-      "resend create re-new-3",
-    ]);
-    expect(next.warnings).toEqual([WARNING]);
-
-    expect(await ci(w).run("--approve-revoke", "RESEND_API_KEY")).toBe(0);
-    expect(w.effects.at(-1)).toBe("resend revoke re-new-1");
-  });
-
-  test("after the vault goes back to the old key, a key that isn't due is skipped, not finished", async () => {
-    const w = await rotatedOnceOnALaptop(PULLED);
-    const pulledByAJob = w.value();
-    expect(await ci(w).run("--due", "--yes")).toBe(0);
-    expect(w.effects).toEqual(["resend create re-new-1", "resend create re-new-2"]);
-    w.inner.values.set(ITEM, pulledByAJob);
-
-    const next = ci(w);
-    expect(await next.run("--due", "--yes")).toBe(0);
-    expect(next.stderr.text).toContain("RESEND_API_KEY  skip  not due until 2027-02-07");
-    expect(w.effects, "nothing created or revoked").toHaveLength(2);
+    expect(w.effects, "nothing revoked").toHaveLength(2);
   });
 });
 

@@ -35,8 +35,6 @@ export interface VaultUse {
 
 export interface NewKeys {
   readonly provider: string;
-  readonly options: string;
-  readonly account: string;
 }
 
 export interface SecretspecAt {

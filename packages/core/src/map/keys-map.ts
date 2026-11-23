@@ -1,12 +1,10 @@
 import type { Environment, KeyId, KeyRef } from "../contracts";
 import type { PublishTarget } from "../destination";
 import type { IssuerSpec } from "../issuer";
-import type { PullReader } from "../pull";
 
 export interface EnvEntry {
   ref: KeyRef;
   publish: PublishTarget[];
-  pull: PullReader[];
   issuer?: IssuerSpec;
   idKey?: KeyId;
 }
@@ -50,8 +48,8 @@ export function pairedWith(
   return map.keys.find((key) => key.environments[environment]?.idKey === name);
 }
 
-export function reaches(entry: Pick<EnvEntry, "publish" | "pull">): boolean {
-  return entry.publish.length > 0 || entry.pull.length > 0;
+export function reaches(entry: Pick<EnvEntry, "publish">): boolean {
+  return entry.publish.length > 0;
 }
 
 export function isEnvironmentName(name: string): boolean {

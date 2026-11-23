@@ -53,6 +53,7 @@ check github-actions:acme/other
 --- stdout ---
 
 --- stderr ---
+ok     keypin status now lists /work/billing
 Not published, no prod destinations: DEV_ONLY
 
 STRIPE_API_KEY prod  from op://Private/billing stripe api key/password in 1Password account my.1password.com
@@ -69,3 +70,12 @@ Needs approval:
 Stopped before reading any value: this publish needs approval, and --yes can't give it. Nothing was read and nothing was written.
 To approve, run this in a terminal:
   cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts publish --all --profile prod
+
+--- wrote /home/me/.config/keypin/registry.json ---
+{
+  "version": 1,
+  "projects": [
+    "/work/billing"
+  ],
+  "shared": []
+}

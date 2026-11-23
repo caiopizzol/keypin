@@ -5,43 +5,25 @@ import {
   formatReference,
   type Gaps,
   kindOf,
+  providerLines,
   type KeyRef,
   type KeysMap,
-  loadRegistry,
   type PublishTarget,
-  pullPlace,
-  type PullReader,
   secretKey,
   sentence,
   vaultAccounts,
 } from "@keypin/core";
 import { type Deps } from "../../deps";
 import { count, output } from "../../output";
-import { registryPath } from "../../paths";
 import { locateMap, MAP_FILE, readMap } from "../../project";
 import { publisherFor } from "../../publisher";
+import { registerProject } from "../../register";
 import { scanProject } from "../../scan";
 import { approval, mapSignIn } from "../../sign-in";
 import { distinctRefs, refKey } from "../../vault";
 import { type CheckedItem, type DestinationResult, type Report, ITEM_NOTE } from "./report";
 import { prerequisites, loginLine, checkItem, checkDestination } from "./lookups";
-import { type Step, ORDER, plan } from "./steps";
-
-function publishedAt(map: KeysMap, name: string, reader: PullReader, deps: Deps): string[] {
-  const place = pullPlace(reader, deps.pulls);
-  const secret = (target: PublishTarget, key: string) => secretKey(target, key, deps.destinations);
-  return map.keys.flatMap((other) =>
-    map.environments.flatMap((environment) =>
-      other.environments[environment]?.publish.some(
-        (target) =>
-          checkId(target, deps.destinations) === place &&
-          secret(target, other.name) === secret(target, name),
-      )
-        ? [other.name === name ? environment : `${other.name} (${environment})`]
-        : [],
-    ),
-  );
-}
+import { type Step, ORDER, plan, providersStep } from "./steps";
 
 export async function build(
   folder: string,
@@ -68,19 +50,7 @@ export async function build(
     : [];
   const signIn = mapSignIn(deps, mapped);
   const root = found ? dirname(found.file) : folder;
-  const pulled = parsed?.ok
-    ? parsed.map.keys.flatMap((key) =>
-        parsed.map.environments.flatMap((environment) =>
-          (key.environments[environment]?.pull ?? []).map((reader) => ({
-            key: key.name,
-            environment,
-            reader,
-            publishedIn: publishedAt(parsed.map, key.name, reader, deps),
-          })),
-        ),
-      )
-    : [];
-  const scanned = await scanProject(deps, root, pulled);
+  const scanned = await scanProject(deps, root);
   const head = {
     folder: root,
     map: found?.file ?? null,
@@ -96,6 +66,7 @@ export async function build(
     production: [],
     local: [],
     add: null,
+    providers: null,
     unknown: scanned.unknowns,
     prerequisites: [],
     notes: [],
@@ -120,6 +91,7 @@ export async function build(
       report.production = gaps.production;
       report.local = gaps.local;
       report.add = gaps.add;
+      report.providers = gaps.providers?.toml ?? null;
       report.problems.push(...gaps.problems);
       report.notes.push(...gaps.notes);
     }
@@ -138,23 +110,18 @@ export async function build(
     const counts = scanned.read.map(({ noun, count: n }) => count(n, noun)).join(", ");
     const read = [`read ${counts}`, ...scanned.about].join("; ");
     const fixes = gaps?.fixes ?? [];
-    return { report, steps: plan(report, all, fixes, gaps?.addsPin ?? false, empty), read };
+    return { report, steps: plan(report, all, fixes, gaps?.providers ?? null, empty), read };
   };
   if (!found || !parsed) {
     problem(
       ORDER.map,
       `Create ${MAP_FILE}`,
-      [`There's no ${MAP_FILE} in ${folder} or any folder above it.`, "  keypin init"],
-      `no ${MAP_FILE} in ${folder} or any folder above it; run keypin init, then keypin check again`,
+      [`There's no ${MAP_FILE} in ${folder} or any folder above it.`, "  secretspec init"],
+      `no ${MAP_FILE} in ${folder} or any folder above it; run secretspec init, then keypin check again`,
     );
     return done(gapsOf(null));
   }
-  const registry = await loadRegistry(deps.files, registryPath(deps));
-  report.registered = registry.projects.includes(root);
-  if (!report.registered)
-    report.notes.push(
-      `${root} isn't registered, so keypin status doesn't list it; run keypin init there`,
-    );
+  report.registered = await registerProject(deps, root);
 
   if (!parsed.ok) {
     report.problems.push(...parsed.errors);
@@ -164,11 +131,13 @@ export async function build(
       body: parsed.errors,
       covers: parsed.errors,
     });
+    const lines = providerLines(found.text, [], deps.vaults);
+    if (lines) steps.push(providersStep(lines));
     return done(null);
   }
   const map = parsed.map;
   if (!map.keys.length) {
-    const empty = `${found.file} declares no keys yet; run keypin import for an env file, and add the TOML below for production`;
+    const empty = `${found.file} declares no keys yet; declare them with secretspec add, and add the TOML below for production`;
     report.problems.push(empty);
     return done(gapsOf(map), empty);
   }

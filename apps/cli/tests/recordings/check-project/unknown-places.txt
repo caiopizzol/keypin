@@ -21,9 +21,6 @@ jobs:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 --- file secretspec.toml ---
-# secretspec.toml: this project's secrets, by name and place, never values.
-# keypin's settings for each key go in [tool.keypin.<profile>.<KEY>].
-
 [project]
 name = "billing"
 revision = "1.0"
@@ -111,7 +108,8 @@ required = ["RESEND_API_KEY"]
       "elsewhere": []
     }
   ],
-  "add": "[defaults]\nproviders = [\"onepassword://<1Password sign-in address>@<vault>\"]\n\n[profiles.production.STRIPE_API_KEY]\ndescription = \"STRIPE_API_KEY\"\n\n[tool.keypin.production.STRIPE_API_KEY]\nrotate_every = \"90d\"\n\n[[tool.keypin.production.STRIPE_API_KEY.publish]]\nto = \"github-actions\"\nrepo = \"<owner>/<repo>\"\n\n[profiles.production.RESEND_API_KEY]\ndescription = \"RESEND_API_KEY\"\n\n[tool.keypin.production.RESEND_API_KEY]\nrotate_every = \"90d\"\n\n[[tool.keypin.production.RESEND_API_KEY.publish]]\nto = \"cloudflare-worker\"\naccount = \"<Cloudflare account ID>\"\nworker = \"<Worker name>\"\n",
+  "add": "[profiles.production.STRIPE_API_KEY]\ndescription = \"Used by .github/workflows/deploy.yml\"\n\n[tool.keypin.production.STRIPE_API_KEY]\nrotate_every = \"90d\"\npublish = [{ to = \"github-actions\", repo = \"<owner>/<repo>\" }]\n\n[profiles.production.RESEND_API_KEY]\ndescription = \"Used by wrangler.toml\"\n\n[tool.keypin.production.RESEND_API_KEY]\nrotate_every = \"90d\"\npublish = [{ to = \"cloudflare-worker\", account = \"<Cloudflare account ID>\", worker = \"<Worker name>\" }]\n",
+  "providers": "[providers]\nonepassword = \"onepassword://<vault>\"\n\n[defaults]\nproviders = [\"onepassword\"]\n",
   "unknown": [
     {
       "what": "the secrets of the Worker in wrangler.toml",
@@ -135,10 +133,10 @@ required = ["RESEND_API_KEY"]
     }
   ],
   "notes": [
-    ".env sets DATABASE_URL, RESEND_API_KEY, which secretspec.toml doesn't declare; a plain setting can stay, and for a key run keypin import .env NAME... --vault <vault> --account <1Password sign-in address>"
+    ".env sets DATABASE_URL, RESEND_API_KEY, which secretspec.toml doesn't declare; a plain setting can stay, and for a key run SECRETSPEC_PROFILE=default secretspec add NAME, then SECRETSPEC_PROFILE=default secretspec import dotenv:.env"
   ],
   "problems": [
-    "/work/billing/secretspec.toml declares no keys yet; run keypin import for an env file, and add the TOML below for production",
+    "/work/billing/secretspec.toml declares no keys yet; declare them with secretspec add, and add the TOML below for production",
     "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; secretspec.toml doesn't publish it to the GitHub repository. Add the TOML below",
     "RESEND_API_KEY: wrangler.toml requires it; secretspec.toml doesn't publish it to the Worker in wrangler.toml. Add the TOML below"
   ],

@@ -2,9 +2,6 @@ $ keypin check --json
 exit 1
 
 --- file secretspec.toml ---
-# secretspec.toml: this project's secrets, by name and place, never values.
-# keypin's settings for each key go in [tool.keypin.<profile>.<KEY>].
-
 [project]
 name = "billing"
 revision = "1.0"
@@ -49,6 +46,7 @@ revision = "1.0"
   "production": [],
   "local": [],
   "add": null,
+  "providers": null,
   "unknown": [],
   "prerequisites": [
     {
@@ -59,7 +57,7 @@ revision = "1.0"
   ],
   "notes": [],
   "problems": [
-    "/work/billing/secretspec.toml declares no keys yet; run keypin import for an env file, and add the TOML below for production"
+    "/work/billing/secretspec.toml declares no keys yet; declare them with secretspec add, and add the TOML below for production"
   ],
   "ok": false
 }

@@ -52,7 +52,6 @@ import {
   revokeWhen,
   saveIdRow,
   writeRows,
-  pullRows,
   shown,
   apartNote,
   oldStays,
@@ -63,6 +62,7 @@ import {
 import { routineWrites } from "./routine-check";
 import { revokeOnly, resetHeld, neverSaved } from "./unfinished-rotation";
 import { pairChecks } from "./pair-checks";
+import { readerRows, unreadNote } from "./readers";
 
 export async function rotateLocked(job: Job): Promise<number> {
   const { key, entry, spec, owner, deps, out } = job;
@@ -264,6 +264,7 @@ export async function rotateLocked(job: Job): Promise<number> {
   const current = check.gone === undefined ? (known ?? null) : null;
   const steps = planNewValue(input, read.ids);
   const pairSteps = pairInput ? planNewValue(pairInput, read.pair?.ids ?? null) : [];
+  const readers = await readerRows(job);
   say("\nPlan");
   showPlan(out, [
     ...(orphan
@@ -283,7 +284,7 @@ export async function rotateLocked(job: Job): Promise<number> {
     ),
     ...(job.pair ? [saveIdRow(job, job.pair)] : []),
     ...writeRows(job, steps, pairSteps),
-    ...pullRows(job),
+    ...readers,
     !issuer.revoke
       ? row("=", issuer.describe(), "nothing to revoke: the new value replaces the old one")
       : check.gone === undefined
@@ -291,6 +292,8 @@ export async function rotateLocked(job: Job): Promise<number> {
         : row("=", issuer.describe(), `nothing to revoke: ${check.gone}`),
   ]);
   showRemoved(out, ready.removed);
+  const unread = unreadNote(job, readers);
+  if (unread !== null) say(`\n${unread}`);
   apartNote(job, checked);
   const needsApproval =
     reset !== null || [...steps, ...pairSteps].some((step) => step.approval !== null);

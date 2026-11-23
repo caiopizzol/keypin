@@ -362,15 +362,44 @@ publish = [{ to = "github-actions", repo = "acme/billing" }]
     run.disk.contents.delete(MAP_FILE);
     expect(await cli(["check"], run.deps)).toBe(1);
     expect(run.stdout.text).toContain(
-      "Create secretspec.toml\n  There's no secretspec.toml in /work/billing or any folder above it.\n    keypin init\n",
+      "Create secretspec.toml\n  There's no secretspec.toml in /work/billing or any folder above it.\n    secretspec init\n",
     );
   });
 
-  test("an unregistered project gets a note, not a problem", async () => {
+  test("an unregistered project joins keypin status's list, once", async () => {
     const run = setup();
     run.disk.contents.set(REGISTRY, registryWith());
     expect(await cli(["check"], run.deps)).toBe(0);
-    expect(run.stdout.text).toContain("Note: /work/billing isn't registered");
+    expect(run.stderr.text).toContain("keypin status now lists /work/billing");
+    expect(run.disk.contents.get(REGISTRY)).toContain('"/work/billing"');
+    const again = run.stderr.text.length;
+    expect(await cli(["check"], run.deps)).toBe(0);
+    expect(run.stderr.text.slice(again)).not.toContain("now lists");
+  });
+
+  test("a registry keypin can't write is a warning; check still reports", async () => {
+    const run = setup();
+    run.disk.contents.set(REGISTRY, registryWith());
+    const write = run.disk.files.write.bind(run.disk.files);
+    run.disk.files.write = async (path, text) => {
+      if (path.startsWith("/home/me/.config/keypin/")) throw new Error("read-only file system");
+      return write(path, text);
+    };
+    expect(await cli(["check", "--json"], run.deps)).toBe(0);
+    expect(run.stderr.text).toContain(
+      "keypin status can't list /work/billing: read-only file system",
+    );
+    const report: unknown = JSON.parse(run.stdout.text);
+    assert(isRecord(report));
+    expect(report.registered).toBe(false);
+  });
+
+  test("no map anywhere above the folder registers nothing", async () => {
+    const run = setup();
+    run.disk.contents.delete(MAP_FILE);
+    run.disk.contents.set(REGISTRY, registryWith());
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(run.disk.contents.get(REGISTRY)).not.toContain('"/work/billing"');
   });
 
   test("the --json shape", async () => {

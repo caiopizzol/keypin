@@ -102,6 +102,21 @@ function setup(
 }
 
 describe("keypin publish", () => {
+  test("a registry keypin can't write is a warning; publish still runs", async () => {
+    const run = setup({ terminal: "yes" });
+    const { files } = run.disk;
+    const write = files.write.bind(files);
+    files.write = async (path, text) => {
+      if (path.startsWith("/home/me/.config/keypin/")) throw new Error("read-only file system");
+      return write(path, text);
+    };
+    expect(await cli(["publish", "STRIPE_API_KEY"], run.deps)).toBe(0);
+    expect(run.delivered(SENTINEL).length).toBeGreaterThan(0);
+    expect(run.stderr.text).toContain(
+      "keypin status can't list /work/billing: read-only file system",
+    );
+  });
+
   test("a state file keypin can't save stops publish before any destination changes", async () => {
     const run = setup({ terminal: "yes" });
     const { files } = run.disk;
@@ -174,13 +189,10 @@ describe("keypin publish", () => {
     );
   });
 
-  test("the approval command drops --plan, but keeps one after the -- separator", () => {
+  test("the approval command drops --plan", () => {
     const { deps } = setup();
     expect(rerun(deps, "publish", ["API_TOKEN", "--plan", "--yes"])).toContain(
       "main.ts publish API_TOKEN --yes",
-    );
-    expect(rerun(deps, "import", ["--vault", "v", "--plan", "--", "--plan"])).toContain(
-      "main.ts import --vault v -- --plan",
     );
   });
 
@@ -213,7 +225,7 @@ describe("keypin publish", () => {
     expect(again.stderr.text).toMatch(
       /\+ GitHub {6}acme\/billing environment production {2}first write +needs approval/,
     );
-    expect(again.stderr.text).toContain(`- ${GITHUB}: not in the map any more`);
+    expect(again.stderr.text).toContain(`- ${GITHUB}: not in secretspec.toml any more`);
     expect(again.log.filter((l) => l.startsWith("write"))).toEqual([
       `write ${environment} STRIPE_API_KEY (${SENTINEL.length} chars)`,
     ]);
@@ -368,7 +380,7 @@ describe("keypin publish", () => {
     );
     const next = setup({ disk: first.disk });
     expect(await cli(["publish", "STRIPE_API_KEY"], next.deps)).toBe(0);
-    expect(next.stderr.text).toContain(`- ${GITHUB}: not in the map any more`);
+    expect(next.stderr.text).toContain(`- ${GITHUB}: not in secretspec.toml any more`);
     expect(next.log).toEqual([`check ${WORKER_PLACE}`]);
   });
 
@@ -1015,7 +1027,7 @@ describe("two projects that map the same variable and environment", () => {
 
     const web = publisher(disk, "web");
     expect(await cli(["publish", "API_TOKEN"], web.deps)).toBe(0);
-    expect(web.stderr.text).not.toContain("not in the map any more");
+    expect(web.stderr.text).not.toContain("not in secretspec.toml any more");
     const state = await loadState(disk.files, STATE, vaults);
     expect(state.receipts.map((r) => [r.destinationId, r.mapFile])).toEqual([
       ["github-actions:acme/billing:API_TOKEN", "/work/billing/secretspec.toml"],
@@ -1028,7 +1040,7 @@ describe("two projects that map the same variable and environment", () => {
     expect(again.log.filter((l) => l.startsWith("write"))).toEqual([
       expect.stringContaining("acme/billing-ops"),
     ]);
-    expect(again.stderr.text).not.toContain("not in the map any more");
+    expect(again.stderr.text).not.toContain("not in secretspec.toml any more");
   });
 });
 
@@ -1322,64 +1334,5 @@ describe("keypin publish --all", () => {
     expect(again.writes()).toEqual([]);
     expect(again.stderr.text).toContain("Nothing to write");
     expect(again.disk.contents.get(STATE)).toBe(saved);
-  });
-});
-
-describe("keypin publish, for a key CI pulls from the vault", () => {
-  const PULL = `pull = [{ by = "github-actions", repo = "acme/jobs" }]`;
-  const pulledOther = () =>
-    memoryFiles({
-      "/work/billing/secretspec.toml": ALL_MAP.replace(
-        'publish = [{ to = "github-actions", repo = "acme/other" }]',
-        PULL,
-      ),
-    });
-
-  test("a key only pulled has nothing to publish, reads nothing, and exits 0", async () => {
-    const run = setupAll({ terminal: "yes", disk: pulledOther() });
-    expect(await cli(["publish", "OTHER_KEY"], run.deps)).toBe(0);
-    expect(run.stderr.text).toContain(
-      "GitHub Actions acme/jobs reads OTHER_KEY (prod) from the vault at job time, so there's nothing to publish.",
-    );
-    expect(run.log).toEqual([]);
-    expect(run.calls).toEqual([]);
-  });
-
-  test("--all skips a key only pulled, and publishes the rest", async () => {
-    const run = setupAll({ terminal: "yes", disk: pulledOther() });
-    expect(await cli(["publish", "--all"], run.deps)).toBe(0);
-    expect(run.stderr.text).toContain(
-      "Not published, pulled from the vault at job time: OTHER_KEY",
-    );
-    expect(run.writes()).toEqual([
-      `write ${WORKER_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
-      `write ${GITHUB_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
-    ]);
-  });
-
-  test("--all with only pulled keys has nothing to publish, and exits 0", async () => {
-    const map = `[project]\nname = "billing"\nrevision = "1.0"\n\n[providers]\nvault = "onepassword://my.1password.com@Private"\n\n[defaults]\nproviders = ["vault"]\n\n[profiles.prod]\nOTHER_KEY = { description = "OTHER_KEY", ref = { item = "billing other key", field = "password" } }\n\n[tool.keypin.prod.OTHER_KEY]\n${PULL}\n`;
-    const run = setupAll({
-      terminal: "yes",
-      disk: memoryFiles({ "/work/billing/secretspec.toml": map }),
-    });
-    expect(await cli(["publish", "--all"], run.deps)).toBe(0);
-    expect(run.calls).toEqual([]);
-  });
-
-  test("a key that is also pulled publishes only to its destinations", async () => {
-    const map = BILLING_MAP.replace(
-      '{ to = "github-actions", repo = "acme/billing" },\n]',
-      `{ to = "github-actions", repo = "acme/billing" },\n]\n${PULL}`,
-    );
-    const run = setup({
-      terminal: "yes",
-      disk: memoryFiles({ "/work/billing/secretspec.toml": map }),
-    });
-    expect(await cli(["publish", "STRIPE_API_KEY"], run.deps)).toBe(0);
-    expect(run.log.filter((l) => l.startsWith("write"))).toEqual([
-      `write ${WORKER_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
-      `write ${GITHUB_PLACE} STRIPE_API_KEY (${SENTINEL.length} chars)`,
-    ]);
   });
 });

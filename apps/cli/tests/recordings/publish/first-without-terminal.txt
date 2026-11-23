@@ -40,6 +40,7 @@ check github-actions:acme/billing
 --- stdout ---
 
 --- stderr ---
+ok     keypin status now lists /work/billing
 
 STRIPE_API_KEY prod  from op://Private/billing stripe api key/password in 1Password account my.1password.com
 ok     Cloudflare  billing-worker  as me@example.com, account 11111111111111111111111111111111
@@ -51,3 +52,12 @@ Needs approval:
 Stopped before reading the value: this publish needs approval, and --yes can't give it. Nothing was read and nothing was written.
 To approve, run this in a terminal:
   cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts publish STRIPE_API_KEY
+
+--- wrote /home/me/.config/keypin/registry.json ---
+{
+  "version": 1,
+  "projects": [
+    "/work/billing"
+  ],
+  "shared": []
+}

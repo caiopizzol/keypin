@@ -1,8 +1,7 @@
 import type { Environment, KeyRef } from "../contracts";
-import { checkId, type DestinationRules, placeId, type PublishTarget } from "../destination";
+import { type DestinationRules, placeId, type PublishTarget } from "../destination";
 import { idKeyOf, type IssuerRules, type IssuerReader, type IssuerSpec } from "../issuer";
 import type { VaultRules } from "../login";
-import { pullKindOf, type PullKinds, pullPlace, type PullReader } from "../pull";
 import { isRecord } from "../record";
 import { parseReference, sameItem, vaultName } from "../reference";
 import { periodDays } from "../days";
@@ -16,14 +15,13 @@ import {
   optionalString,
 } from "./table";
 
-export const TOOL_FIELDS: readonly string[] = ["rotate_every", "publish", "pull", "issuer"];
+export const TOOL_FIELDS: readonly string[] = ["rotate_every", "publish", "issuer"];
 
 export interface MapContext {
   environments: readonly Environment[];
   kinds: readonly DestinationRules[];
   issuers: readonly IssuerRules[];
   vaults: readonly VaultRules[];
-  pulls: PullKinds;
 }
 
 export interface ToolEntry {
@@ -90,7 +88,6 @@ export function validateTool(
     refused.add(target.to);
     err(`publish[${publishedAt[index]}]: ${target.to} can't take this key, because ${why}`);
   });
-  const pull = readers(raw.pull, publish, publishedAt, context, err);
   const issuer =
     raw.issuer === undefined
       ? undefined
@@ -99,76 +96,12 @@ export function validateTool(
   if (issuer && why !== undefined)
     err(`issuer: ${issuer.kind} can't rotate this key, because ${why}`);
   if (failed) return undefined;
-  if (!issuer) return { entry: { ref, publish, pull }, rotateEvery };
+  if (!issuer) return { entry: { ref, publish }, rotateEvery };
   const idKey = idKeyOf(context.issuers, issuer);
   return {
-    entry: idKey === null ? { ref, publish, pull, issuer } : { ref, publish, pull, issuer, idKey },
+    entry: idKey === null ? { ref, publish, issuer } : { ref, publish, issuer, idKey },
     rotateEvery,
   };
-}
-
-function readers(
-  raw: unknown,
-  publish: readonly PublishTarget[],
-  publishedAt: readonly number[],
-  { kinds, pulls }: MapContext,
-  fail: (message: string) => void,
-): PullReader[] {
-  const found: PullReader[] = [];
-  if (raw === undefined) return found;
-  if (!Array.isArray(raw)) {
-    fail(`field "pull" must be a list`);
-    return found;
-  }
-  const firstAt = new Map<string, number>();
-  raw.forEach((each: unknown, i: number) => {
-    const reader = pullReader(each, pulls, (m) => fail(`pull[${i}]: ${m}`));
-    if (!reader) return;
-    const place = pullPlace(reader, pulls);
-    const same = firstAt.get(place);
-    const pushed = publish.findIndex((target) => checkId(target, kinds) === place);
-    if (same !== undefined) fail(`pull[${i}]: the same place as pull[${same}]`);
-    else if (pushed !== -1)
-      fail(
-        `pull[${i}]: publish[${publishedAt[pushed]}] also writes the key to ${pullKindOf(pulls, reader.by).describe(reader)}; keep one of them. To pull it instead, delete that publish entry, and delete the copy publish wrote there`,
-      );
-    else {
-      firstAt.set(place, i);
-      found.push(reader);
-    }
-  });
-  return found;
-}
-
-function pullReader(
-  raw: unknown,
-  pulls: PullKinds,
-  fail: (message: string) => void,
-): PullReader | undefined {
-  if (!isRecord(raw)) {
-    fail("must be a table");
-    return undefined;
-  }
-  const by = requiredString(raw, "by", fail);
-  if (by === undefined) return undefined;
-  const kind = pulls.find((k) => k.kind === by);
-  if (!kind) {
-    fail(
-      `field "by" must be one of: ${pulls
-        .map((k) => k.kind)
-        .toSorted()
-        .join(", ")}`,
-    );
-    return undefined;
-  }
-  let failed = false;
-  const err = (message: string) => {
-    failed = true;
-    fail(message);
-  };
-  const reader = kind.parse(tableReader(raw, ["by"], kind.kind, err));
-  if (reader === undefined && !failed) err(`the "${kind.kind}" pull couldn't read this table`);
-  return failed ? undefined : reader;
 }
 
 function validateIssuer(

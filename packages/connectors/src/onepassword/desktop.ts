@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { SignInFailed } from "@keypin/core";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
+import { withDefaultAccount } from "./default-account";
 import { type Connect, desktopConnect as sdkConnect } from "./sdk";
 
 const DESKTOP_APP_MISSING = "the 1Password desktop app isn't installed";
@@ -64,4 +65,4 @@ export function requireDesktopApp(
   };
 }
 
-export const desktopConnect: Connect = requireDesktopApp(sdkConnect);
+export const desktopConnect: Connect = requireDesktopApp(withDefaultAccount(sdkConnect));

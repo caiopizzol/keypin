@@ -67,26 +67,8 @@ async function spawn(command: string[], env: Record<string, string>, cwd = folde
   return { stdout, stderr, code };
 }
 
-const ECHO = ["run", "--", "sh", "-c", 'echo "${FAKE_X:-unset}"'];
-const ENV = ["run", "--", "env"];
-const SHELL_OWN = new Set(["PWD", "SHLVL", "OLDPWD", "_"]);
-const RUNNER_OWN = /^(npm_.+|NODE)$/;
-const INHERITED = Object.fromEntries(
-  ["self", "link", "keypin", "os", "arch", "cpu", "cpus", "loader", "binary"].map((name) => [
-    name,
-    `caller's ${name}`,
-  ]),
-);
+const STATUS = ["status"];
 const BUN_REFUSES_PRELOAD = 'error: Script not found "x"\n';
-
-function environment(stdout: string): Map<string, string> {
-  return new Map(
-    stdout
-      .split("\n")
-      .filter((line) => line.includes("="))
-      .map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]),
-  );
-}
 
 async function checkKeypin(
   label: string,
@@ -114,44 +96,13 @@ async function checkKeypin(
     status.stdout + status.stderr,
   );
 
-  const leak = await run(ECHO);
-  expect(
-    `${label}: keypin run doesn't pass the folder's .env`,
-    leak.code === 0 && leak.stdout === "unset\n",
-    `exit ${leak.code}, stdout ${JSON.stringify(leak.stdout)}, stderr ${leak.stderr}`,
-  );
-
-  const names = await run(ENV, INHERITED);
-  const passed = environment(names.stdout);
-  const given = new Set([
-    ...Object.keys(BASE_ENV),
-    ...Object.keys(extra),
-    ...Object.keys(INHERITED),
-  ]);
-  const added = [...passed.keys()]
-    .filter((name) => !given.has(name) && !SHELL_OWN.has(name))
-    .filter((name) => !(runner && RUNNER_OWN.test(name)));
-  const changed = Object.entries(INHERITED)
-    .filter(([name, value]) => passed.get(name) !== value)
-    .map(([name]) => name);
-  expect(
-    `${label}: keypin run passes only the environment it was given`,
-    names.code === 0 && added.length === 0,
-    `exit ${names.code}, added ${added.join(", ")}, stderr ${names.stderr}`,
-  );
-  expect(
-    `${label}: keypin run passes the caller's exported names unchanged`,
-    names.code === 0 && changed.length === 0,
-    `exit ${names.code}, changed ${changed.join(", ")}, stderr ${names.stderr}`,
-  );
-
   for (const [name, value] of [
     ["BUN_OPTIONS", "--env-file=.env"],
     ["BUN_OPTIONS", "--preload ./preload.js"],
     ["BUN_INSPECT", "127.0.0.1:0"],
     ["BUN_INSPECT_CONNECT_TO", "unix:///nowhere"],
   ] as const) {
-    const refused = await run(ECHO, { [name]: value });
+    const refused = await run(STATUS, { [name]: value });
     const ownRefusal =
       refused.code === 1 && refused.stderr.includes(`keypin can't run with ${name} set`);
     const bunRefusal =
@@ -294,7 +245,7 @@ async function checkInstalled() {
     const modules = join(npmPrefix, "lib/node_modules");
     for (const installed of [modules, join(modules, "keypin/node_modules")])
       await rm(join(installed, platformPackage(host)), { recursive: true, force: true });
-    const missing = await spawn([join(npmPrefix, "bin/keypin"), ...ECHO], BASE_ENV);
+    const missing = await spawn([join(npmPrefix, "bin/keypin"), ...STATUS], BASE_ENV);
     expect(
       "without the platform package, keypin says which package is missing",
       missing.code === 1 &&
@@ -338,10 +289,6 @@ try {
   await writeFile(
     join(folder, "mark.js"),
     'import { writeFileSync } from "node:fs";\nwriteFileSync(new URL("./preloaded", import.meta.url), "");\n',
-  );
-  await writeFile(
-    join(folder, "secretspec.toml"),
-    '[project]\nname = "check-binary"\nrevision = "1.0"\n\n[profiles.default]\n',
   );
 
   const bytes = Buffer.from(await Bun.file(keypin).arrayBuffer());

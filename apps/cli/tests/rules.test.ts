@@ -3,10 +3,9 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   destinations as destinationRules,
   issuers as issuerRules,
-  pulls as pullRules,
   vaults as vaultRules,
 } from "@keypin/connectors/rules";
-import { destinations, issuers, pulls, vaults } from "../src/start";
+import { destinations, issuers, vaults } from "../src/start";
 
 const RULES = fileURLToPath(new URL("../../../packages/connectors/src/rules.ts", import.meta.url));
 const PURE = new Set(["@keypin/core", "smol-toml"]);
@@ -48,10 +47,6 @@ describe("the rules half of every kind", () => {
       destinationRules.map((kind) => kind.kind),
     );
     expect(destinations).toMatchObject(destinationRules);
-  });
-
-  test("the CLI pulls with the rules pulls", () => {
-    expect(pulls).toEqual(pullRules);
   });
 
   test("a browser build of the rules imports no Node module or SDK", async () => {

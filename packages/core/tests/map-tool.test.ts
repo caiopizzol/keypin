@@ -1,6 +1,6 @@
 import { assert, describe, expect, test } from "vite-plus/test";
 import { type IssuerKind, type IssuerSpec, readSecretspec } from "../src/index";
-import { ISSUERS, KINDS, MAP_FILE, PULLS, VAULT_KINDS } from "./fixtures";
+import { ISSUERS, KINDS, MAP_FILE, VAULT_KINDS } from "./fixtures";
 import { errorsOf, HEAD, read } from "./secretspec";
 
 const PROFILES = `${HEAD}
@@ -28,7 +28,7 @@ describe("[tool.keypin]", () => {
       ["API_KEY", ["default", "production"]],
       ["RESEND_API_KEY", ["production"]],
     ]);
-    expect(result.map.keys[0]?.environments.production).toMatchObject({ publish: [], pull: [] });
+    expect(result.map.keys[0]?.environments.production).toMatchObject({ publish: [] });
   });
 
   test("an inherited key takes settings in the profile that inherits it", () => {
@@ -64,7 +64,7 @@ describe("[tool.keypin]", () => {
     [
       "a key's settings that aren't a table",
       `${PROFILES}\n[tool.keypin.production]\nRESEND_API_KEY = "90d"\n`,
-      `${where()}must be a table with "rotate_every", "publish", "pull", "issuer"`,
+      `${where()}must be a table with "rotate_every", "publish", "issuer"`,
     ],
     [
       "a profile's settings that aren't a table",
@@ -78,7 +78,6 @@ describe("[tool.keypin]", () => {
   test.each([
     ["rotate_every", `"90d"`],
     ["publish", `[${GITHUB}]`],
-    ["pull", "[]"],
     ["issuer", `{ kind = "resend" }`],
   ])("refuses %s inside a secret's entry", (setting, value) => {
     const text = `${HEAD}\n[profiles.production]\nAPI_KEY = { description = "API key", ${setting} = ${value} }\n`;
@@ -173,23 +172,9 @@ describe("publish", () => {
 });
 
 describe("pull", () => {
-  test("lists the CI jobs that read the key from the vault", () => {
-    const result = read(
-      tool(`pull = [{ by = "github-actions", repo = "acme/web", environment = "production" }]`),
-    );
-    assert(result.ok, JSON.stringify(result));
-    expect(result.map.keys[1]?.environments.production?.pull).toEqual([
-      { by: "github-actions", repo: "acme/web", environment: "production" },
-    ]);
-  });
-
-  test("refuses a place that both pulls the key and gets a copy published", () => {
-    expect(
-      errorsOf(
-        tool(`publish = [${GITHUB}]\npull = [{ by = "github-actions", repo = "acme/web" }]`),
-      ),
-    ).toEqual([
-      `${where()}pull[0]: publish[0] also writes the key to acme/web; keep one of them. To pull it instead, delete that publish entry, and delete the copy publish wrote there`,
+  test("is an unknown field now that secretspec run reads keys at job time", () => {
+    expect(errorsOf(tool(`pull = [{ by = "github-actions", repo = "acme/web" }]`))).toEqual([
+      `${where()}unknown field "pull"`,
     ]);
   });
 });
@@ -252,7 +237,7 @@ describe("issuer", () => {
       },
       claims: () => ["the account"],
     };
-    const result = readSecretspec(text, MAP_FILE, KINDS, [...ISSUERS, claims], VAULT_KINDS, PULLS);
+    const result = readSecretspec(text, MAP_FILE, KINDS, [...ISSUERS, claims], VAULT_KINDS);
     assert(!result.ok);
     expect(result.errors).toEqual([
       `${MAP_FILE}: [tool.keypin.production.RESEND_API_KEY] issuer: [tool.keypin.production.API_KEY] also rotates the account, so rotating either key breaks the other. Change one issuer so they share nothing, or remove one`,
@@ -293,7 +278,7 @@ issuer = { kind = "paired", admin = "op://Acme/admin/credential", key_id = "${ke
 ${idTool}
 `;
   const parse = (text: string) =>
-    readSecretspec(text, MAP_FILE, KINDS, [...ISSUERS, paired], VAULT_KINDS, PULLS);
+    readSecretspec(text, MAP_FILE, KINDS, [...ISSUERS, paired], VAULT_KINDS);
   const errors = (text: string) => {
     const result = parse(text);
     assert(!result.ok, "expected the file to be refused");

@@ -44,6 +44,7 @@ export interface Report {
   production: Gaps["production"];
   local: Gaps["local"];
   add: string | null;
+  providers: string | null;
   unknown: Unknown[];
   prerequisites: Login[];
   notes: string[];
@@ -52,4 +53,4 @@ export interface Report {
 }
 
 export const ITEM_NOTE =
-  "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields";
+  "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin publish --plan reads the fields";

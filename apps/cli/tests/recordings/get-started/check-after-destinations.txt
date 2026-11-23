@@ -5,8 +5,10 @@ exit 1
 false
 
 --- calls vault ---
-ids billing default database url
-ids billing default resend api key
+ids secretspec/billing/default/DATABASE_URL
+ids secretspec/billing/production/DATABASE_URL
+ids secretspec/billing/default/RESEND_API_KEY
+ids secretspec/billing/production/RESEND_API_KEY
 ids secretspec/billing/production/STRIPE_API_KEY
 
 --- calls destination ---
@@ -28,5 +30,5 @@ billing /work/billing · read 0 env files, 1 wrangler config, 1 workflow; GitHub
     keypin publish RESEND_API_KEY
 
 --- stderr ---
-ok     Looked up 3 items in 1Password account my.1password.com, not the values
+ok     Looked up 5 items in 1Password's default account, not the values
 ok     Checked 2 accounts

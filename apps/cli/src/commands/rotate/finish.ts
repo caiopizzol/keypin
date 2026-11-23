@@ -20,7 +20,6 @@ import {
   revokeWhen,
   saveIdRow,
   writeRows,
-  pullRows,
   shown,
   apartNote,
   reached,
@@ -55,7 +54,6 @@ export async function resume(
   showPlan(out, [
     ...(pair && unsavedId ? [saveIdRow(job, pair)] : []),
     ...writeRows(job, steps, pairSteps),
-    ...pullRows(job),
     ...(old === null
       ? []
       : [
@@ -158,7 +156,7 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
   ];
   if (behind.length) {
     out.line(
-      "Not in the map any more, so keypin didn't write them; they may still use the old key:",
+      "Not in secretspec.toml any more, so keypin didn't write them; they may still use the old key:",
     );
     showRemoved(out, behind);
   }
@@ -184,7 +182,7 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
   }
   if (job.approve && !deps.isTerminal && behind.length) {
     out.line(
-      `Stopped: something no longer in the map may still use the old key ${shown(issuer, old)}, so keypin won't revoke it without a terminal. Nothing was revoked. Once nothing uses it, run this in a terminal:\n  ${commandLine(deps, "rotate", asked)}`,
+      `Stopped: something no longer in secretspec.toml may still use the old key ${shown(issuer, old)}, so keypin won't revoke it without a terminal. Nothing was revoked. Once nothing uses it, run this in a terminal:\n  ${commandLine(deps, "rotate", asked)}`,
     );
     return 1;
   }

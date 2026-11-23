@@ -1,4 +1,4 @@
-import { type Fix, type KeyRef, sentence } from "@keypin/core";
+import { type Fix, type KeyRef, type ProviderLines, sentence } from "@keypin/core";
 import { MAP_FILE } from "../../project";
 import { type Report } from "./report";
 
@@ -19,20 +19,21 @@ export const ORDER = {
   map: 1,
   tracked: 2,
   environments: 3,
-  import: 4,
-  item: 5,
-  add: 6,
-  edit: 7,
-  account: 8,
-  publish: 9,
-  last: 10,
+  providers: 4,
+  import: 5,
+  item: 6,
+  add: 7,
+  edit: 8,
+  account: 9,
+  publish: 10,
+  last: 11,
 } as const;
 
 export function plan(
   report: Report,
   found: Step[],
   fixes: Fix[],
-  addsPin: boolean,
+  providers: ProviderLines | null,
   empty: string | null,
 ): Step[] {
   const steps: Step[] = [];
@@ -65,36 +66,40 @@ export function plan(
       [
         `${sentence(fix.why)} ${sentence(fix.at).slice(0, -1)}:`,
         `  ${fix.line}`,
-        "keypin run uses default, or the first profile; keypin publish uses production, or the last.",
+        "keypin publish uses production, or the last profile.",
       ],
     );
   const imports = of("import").filter((fix) => !report.ok || report.problems.includes(fix.text));
   if (imports.length) {
     const files = [...new Set(imports.map((fix) => fix.file))];
-    const vault = imports[0]?.vault ?? "";
     all(
       ORDER.import,
-      `Move ${files.length === 1 ? `${files[0]}'s` : "env-file"} keys into ${vault}`,
+      `Move ${files.length === 1 ? `${files[0]}'s` : "env-file"} keys into your vault`,
       imports,
       [
         ...imports.flatMap((fix) => [
           sentence(fix.why),
-          `  keypin import ${fix.file} ${fix.names.join(" ")}${fix.options}`,
+          ...fix.commands.map((command) => `  ${command}`),
           ...(fix.caveat ? [sentence(fix.caveat)] : []),
         ]),
-        "Leave out a name that isn't a key; it stays in the file.",
+        "Leave out a name that isn't a key: secretspec import copies only declared names, and the file stays.",
       ],
     );
   }
   const add = of("add");
   const imported = new Set(imports.flatMap((fix) => fix.names));
-  const overlaps = imports.length > 0 && (addsPin || add.some((fix) => imported.has(fix.key)));
+  const overlaps = imports.length > 0 && add.some((fix) => imported.has(fix.key));
+  if (providers && (imports.length || report.add !== null)) steps.push(providersStep(providers));
   if (report.add !== null)
     all(
       ORDER.add,
       `Add the production keys to ${MAP_FILE}`,
       add,
-      [...add.map((fix) => sentence(fix.why)), ...(overlaps ? [AFTER_IMPORT] : []), PASTE],
+      [
+        ...add.map((fix) => sentence(fix.why)),
+        ...(overlaps ? [AFTER_IMPORT] : []),
+        pasteOrAdd(report.add),
+      ],
       report.add,
     );
   const edits = of("edit");
@@ -125,7 +130,7 @@ export function plan(
       steps.push({
         order: ORDER.map,
         title: "Map a key",
-        body: [`${report.map} declares no keys yet.`, "  keypin import --help"],
+        body: [`${report.map} declares no keys yet.`, "  secretspec add --help"],
         covers: [empty],
       });
   }
@@ -141,8 +146,29 @@ export function plan(
   return steps.sort((a, b) => a.order - b.order);
 }
 
-export const PASTE =
-  "Replace each <...> with the real value; keypin rejects a map that still has one:";
+export function providersStep({ toml, existing }: ProviderLines): Step {
+  return {
+    order: ORDER.providers,
+    title: `Name the vault in ${MAP_FILE}`,
+    body: [
+      `A secret's provider in ${MAP_FILE} names its vault, so secretspec, CI and the console find it there.`,
+      ...(existing.length
+        ? [`${MAP_FILE} already has ${existing.join(" and ")}; add the lines under it.`]
+        : []),
+      pasteOrAdd(toml),
+    ],
+    toml,
+    covers: [],
+  };
+}
 
-export const AFTER_IMPORT =
-  "If you ran the import above, run keypin check again for this TOML instead; the import wrote some of these tables.";
+function pasteOrAdd(toml: string): string {
+  return /<[^<>]*>/.test(toml) ? PASTE : ADD;
+}
+
+export const PASTE =
+  "Replace each <...> with the real value; keypin rejects a secretspec.toml that still has one:";
+
+export const ADD = `Add this at the end of ${MAP_FILE}:`;
+
+export const AFTER_IMPORT = `If you ran the commands above, run keypin check again for this TOML instead; secretspec add changes ${MAP_FILE}.`;

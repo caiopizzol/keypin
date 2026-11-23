@@ -55,30 +55,15 @@ describe("main", () => {
     expect(text.split("\n")[0]).toBe(`#!/usr/bin/env -S bun ${NO_ENV_FILE}`);
   });
 
-  test("keypin run doesn't pass a value from the folder's .env", async () => {
-    const run = await keypin(
-      [NO_ENV_FILE],
-      ["run", "--", "sh", "-c", 'echo "${FROM_DOTENV:-unset}"'],
-    );
-    expect(run.code).toBe(0);
-    expect(run.stdout).toBe("unset\n");
-  });
-
   test("Bun started without the flag is refused before anything runs", async () => {
-    const run = await keypin([], ["run", "--", "sh", "-c", 'echo "${FROM_DOTENV:-unset}"']);
+    const run = await keypin([], ["status"]);
     expect(run.code).toBe(1);
     expect(run.stdout).toBe("");
     expect(run.stderr).toContain(`keypin needs Bun started with ${NO_ENV_FILE}`);
   });
 
   test("an --env-file in BUN_OPTIONS is refused before anything runs", async () => {
-    const run = await keypin(
-      [NO_ENV_FILE],
-      ["run", "--", "sh", "-c", 'echo "${FROM_DOTENV:-unset}"'],
-      {
-        BUN_OPTIONS: "--env-file=.env",
-      },
-    );
+    const run = await keypin([NO_ENV_FILE], ["status"], { BUN_OPTIONS: "--env-file=.env" });
     expect(run.code).toBe(1);
     expect(run.stdout).toBe("");
     expect(run.stderr).toContain("keypin can't run with Bun's --env-file");

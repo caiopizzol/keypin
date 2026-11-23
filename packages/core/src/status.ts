@@ -3,7 +3,6 @@ import { destinationId, type DestinationKinds, receiptSecretKey, secretKey } fro
 import { envFlag, type KeyEntry, type MapResult, pairedWith, publishEnvironment } from "./map";
 import { latestPerSecret } from "./plan";
 import type { VaultKinds } from "./login";
-import type { PullReader } from "./pull";
 import { sameRef, vaultKindOf } from "./reference";
 import type { Registry } from "./registry";
 import { ownedBy } from "./state";
@@ -53,7 +52,6 @@ export interface StatusRow {
   issuer: string | null;
   rotatesWith?: KeyId;
   destinations: DestinationRow[];
-  pull: PullReader[];
 }
 
 export interface StatusInput {
@@ -103,7 +101,7 @@ export function buildStatus(input: StatusInput): Status {
         kind: "no-keys",
         severity: "problem",
         project,
-        message: `${result.map.file} maps no keys yet (it's empty, or still the keypin init template); run keypin check in ${project} for what to add`,
+        message: `${result.map.file} declares no keys yet; run keypin check in ${project} for what to add`,
       });
       continue;
     }
@@ -210,7 +208,6 @@ export function buildStatus(input: StatusInput): Status {
           issuer: entry.issuer?.kind ?? null,
           ...(holder ? { rotatesWith: holder.name } : {}),
           destinations,
-          pull: entry.pull,
         });
       }
     }

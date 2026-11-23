@@ -21,9 +21,6 @@ jobs:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 --- file secretspec.toml ---
-# secretspec.toml: this project's secrets, by name and place, never values.
-# keypin's settings for each key go in [tool.keypin.<profile>.<KEY>].
-
 [project]
 name = "billing"
 revision = "1.0"
@@ -32,29 +29,24 @@ revision = "1.0"
 
 [profiles.production]
 
-[defaults]
-providers = ["onepassword://my.1password.com@Private"]
+[providers]
+onepassword = "onepassword://my.1password.com@Private"
 
+[defaults]
+providers = ["onepassword"]
 [profiles.production.STRIPE_API_KEY]
-description = "STRIPE_API_KEY"
+description = "Used by .github/workflows/deploy.yml"
 
 [tool.keypin.production.STRIPE_API_KEY]
 rotate_every = "90d"
-
-[[tool.keypin.production.STRIPE_API_KEY.publish]]
-to = "github-actions"
-repo = "acme/billing"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 
 [profiles.production.RESEND_API_KEY]
-description = "RESEND_API_KEY"
+description = "Used by wrangler.toml"
 
 [tool.keypin.production.RESEND_API_KEY]
 rotate_every = "90d"
-
-[[tool.keypin.production.RESEND_API_KEY.publish]]
-to = "cloudflare-worker"
-account = "11111111111111111111111111111111"
-worker = "billing-worker"
+publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" }]
 
 --- file wrangler.toml ---
 name = "billing-worker"
@@ -216,6 +208,7 @@ check cloudflare-worker:billing-worker
     }
   ],
   "add": null,
+  "providers": null,
   "unknown": [],
   "prerequisites": [
     {
@@ -225,11 +218,11 @@ check cloudflare-worker:billing-worker
     }
   ],
   "notes": [
-    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields",
-    ".env sets DATABASE_URL, which secretspec.toml doesn't declare; a plain setting can stay, and for a key run keypin import .env NAME... --vault <vault>"
+    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin publish --plan reads the fields",
+    ".env sets DATABASE_URL, which secretspec.toml doesn't declare; a plain setting can stay, and for a key run SECRETSPEC_PROFILE=default secretspec add NAME, then SECRETSPEC_PROFILE=default secretspec import dotenv:.env"
   ],
   "problems": [
-    ".env sets RESEND_API_KEY, which secretspec.toml declares, but not in profile default; for a key run keypin import .env RESEND_API_KEY --vault <vault>"
+    ".env sets RESEND_API_KEY, which secretspec.toml declares, but not in profile default; for a key run SECRETSPEC_PROFILE=default secretspec add RESEND_API_KEY, then SECRETSPEC_PROFILE=default secretspec import dotenv:.env"
   ],
   "ok": false
 }

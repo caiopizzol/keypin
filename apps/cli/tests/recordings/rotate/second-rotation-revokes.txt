@@ -1,6 +1,15 @@
 $ keypin rotate RESEND_API_KEY
 exit 0
 
+--- file /home/me/.config/keypin/registry.json ---
+{
+  "version": 1,
+  "projects": [
+    "/work/billing"
+  ],
+  "shared": []
+}
+
 --- file /home/me/.local/state/keypin/state.json ---
 {
   "version": 5,
@@ -158,7 +167,7 @@ ok     1Password  op://Private/mailer resend key/credential  saved, rotated 2026
 ok     Cloudflare  mailer       wrote RESEND_API_KEY
 ok     GitHub      acme/mailer  wrote RESEND_API_KEY
 
-Rotated RESEND_API_KEY (prod): the new key is in 1Password and the 2 destinations in the map.
+Rotated RESEND_API_KEY (prod): the new key is in 1Password and the 2 destinations in secretspec.toml.
 The old key key-1 still works. Revoke it once nothing uses it.
 ok     Resend  revoked key-1
 

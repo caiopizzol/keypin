@@ -2,6 +2,7 @@ import type { Environment } from "../contracts";
 import type { PublishTarget } from "../destination";
 import type { Discovered } from "../discovery";
 import type { EnvFileKind } from "../dotenv";
+import type { ProviderLines } from "./providers";
 
 export interface ProjectScan {
   envFiles: { path: string; kind: EnvFileKind; names: string[]; tracked: boolean | null }[];
@@ -32,10 +33,10 @@ export type Fix =
       kind: "import";
       text: string;
       why: string;
-      vault: string;
       file: string;
+      profile: Environment;
       names: string[];
-      options: string;
+      commands: string[];
       caveat: string | null;
     }
   | { kind: "add"; text: string; why: string; key: string }
@@ -46,7 +47,7 @@ export interface Gaps {
   production: Need[];
   local: LocalFile[];
   add: string | null;
-  addsPin: boolean;
+  providers: ProviderLines | null;
   problems: string[];
   notes: string[];
   fixes: Fix[];

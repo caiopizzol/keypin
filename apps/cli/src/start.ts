@@ -33,9 +33,7 @@ import {
   ghToken,
   githubActions,
   githubIdToken,
-  githubPull,
   listRepoSecrets,
-  maskInLog,
   sshHostname,
 } from "@keypin/connectors/github";
 import { gitlabGroup, gitlabProject } from "@keypin/connectors/gitlab";
@@ -116,7 +114,6 @@ export const vaults = [
   secretsManagerVault,
   onePasswordVault,
 ];
-export const pulls = [githubPull];
 export const signInNames = signInVariables([...vaults, ...destinations]);
 
 export function destination(target: PublishTarget, publisher: Publisher): Destination {
@@ -301,7 +298,6 @@ export function realDeps(): Deps {
     destination,
     issuers,
     issuer,
-    pulls,
     workerSignIn,
     ghLogin: async (login) => {
       if (!Bun.which("gh")) return "not installed";
@@ -317,7 +313,6 @@ export function realDeps(): Deps {
       process.stdout.write(`::warning title=${title}::${text}\n`);
       return true;
     },
-    maskInLog: (values) => maskInLog(process.env, values, process.stderr),
     styled: {
       stdout: isStyled(process.stdout.isTTY, process.env),
       stderr: isStyled(process.stderr.isTTY, process.env),

@@ -68,7 +68,7 @@ export const netlifyProjectRules: DestinationRules<NetlifyTarget> = {
       );
     if (context === "dev")
       read.fail(
-        `field "context" can't be "dev": Netlify keeps local development values readable to the team. Run keypin run -- netlify dev instead`,
+        `field "context" can't be "dev": Netlify keeps local development values readable to the team. Run secretspec run -- netlify dev instead`,
       );
     else if (context !== undefined && !CONTEXTS.includes(context))
       read.fail(`field "context" must be one of ${CONTEXTS.join(", ")}`);

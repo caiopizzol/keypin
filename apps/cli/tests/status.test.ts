@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import { stripVTControlCharacters } from "node:util";
 import { cli } from "../src/cli";
 import type { Deps } from "../src/deps";
-import { template } from "../src/commands/init";
+
 import {
   fakeDeps,
   fakeVault,
@@ -13,10 +13,11 @@ import {
   registryWith,
   WEB_MAP,
   STATE,
+  newSecretspec,
 } from "./fakes";
 import { changes, recording } from "./recording";
 
-const TEMPLATE = template("billing");
+const TEMPLATE = newSecretspec("billing");
 
 async function record(
   name: string,
@@ -185,7 +186,7 @@ describe("keypin status", () => {
     expect(stdout.text).toContain("  /work/web/secretspec.toml: ");
   });
 
-  test("a project still on the init template, or with no keys, is a problem that points at check", async () => {
+  test("a project with no keys yet is a problem that points at check", async () => {
     for (const map of [
       TEMPLATE,
       `[project]\nname = "billing"\nrevision = "1.0"\n\n[profiles.dev]\n\n[profiles.prod]\n`,
@@ -197,7 +198,7 @@ describe("keypin status", () => {
       const { deps, stdout, stderr } = fakeDeps({ disk: files });
       expect(await cli(["status"], deps)).toBe(1);
       expect(stdout.text).toContain(
-        "  /work/billing/secretspec.toml maps no keys yet (it's empty, or still the keypin init template); run keypin check in /work/billing for what to add",
+        "  /work/billing/secretspec.toml declares no keys yet; run keypin check in /work/billing for what to add",
       );
       expect(stderr.text).toBe("");
     }
@@ -356,23 +357,6 @@ rotate_every = "never"
     expect(stdout.text).toContain(
       "  web SESSION_SECRET (prod): is due 2026-11-15 (rotated 2026-05-19, every 180d)\n    Run keypin rotate SESSION_SECRET in /work/web.\n",
     );
-  });
-
-  test("a key CI pulls lists its readers apart from destinations, and a due one names only the rotate", async () => {
-    const issuer = `issuer = { kind = "resend", admin = "op://Private/resend admin/password", permission = "full_access" }`;
-    const pull = `pull = [{ by = "github-actions", repo = "acme/web" }, { by = "github-actions", repo = "acme/web", environment = "production" }]`;
-    const run = fakeDeps({
-      disk: memoryFiles({
-        [REGISTRY]: registryWith("/work/web"),
-        "/work/web/secretspec.toml": WEB_MAP.replace(/publish = \[.*\]/, `${pull}\n${issuer}`),
-      }),
-      backend: fakeVault({
-        metadata: { ...METADATA, "web prod session secret": { rotated: "2026-05-01" } },
-      }).vault,
-    });
-    const given = { "rotated dates": { "web prod session secret": { rotated: "2026-05-01" } } };
-    expect(await record("pulled", ["status"], run, { given })).toBe(1);
-    expect(run.stdout.text).not.toContain("not published");
   });
 
   test("a 1Password service account is told to run keypin rotate too", async () => {

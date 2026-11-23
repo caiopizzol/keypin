@@ -48,18 +48,6 @@ describe("the leak check", () => {
       expect.arrayContaining(["universal-access-token-sentinel", "infisical-token-sentinel"]),
     );
   });
-
-  test(
-    "flags a run that prints a quoted .env value",
-    async () => {
-      const result = await drive({
-        scenario: "quoted-env",
-        args: ["run", "--", "cat", ".env"],
-      });
-      expect(result.leaks).toEqual(["review-secret-sentinel"]);
-    },
-    SLOW,
-  );
 });
 
 describe("keypin in a real terminal", () => {
@@ -377,7 +365,7 @@ describe("keypin in a real terminal", () => {
     async () => {
       const result = await drive({
         scenario: "slow-1password",
-        args: ["run", "--", "true"],
+        args: ["check"],
         cols: 60,
       });
       expect(result.exit).toBe(0);
@@ -403,23 +391,6 @@ describe("keypin in a real terminal", () => {
       expect(result.screen).toContain(
         "Note: individual 1Password accounts share the sign-in address my.1password.com",
       );
-      clean(result);
-    },
-    SLOW,
-  );
-
-  test(
-    "with a service account, import saves the new item to 1Password",
-    async () => {
-      const result = await drive({
-        scenario: "service-account",
-        args: ["import", ".env", "RESEND_API_KEY", "--vault", "Deploy", "--yes"],
-      });
-      expect(result.exit).toBe(0);
-      expect(result.effects).toEqual([
-        "1password create my.1password.com/Deploy/billing dev resend api key (18 chars)",
-      ]);
-      expect(result.screen).not.toContain("desktop app");
       clean(result);
     },
     SLOW,
@@ -484,11 +455,11 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
-    "on CI with only OP_SERVICE_ACCOUNT_TOKEN set, run says to set KEYPIN_1PASSWORD",
+    "on CI with only OP_SERVICE_ACCOUNT_TOKEN set, publish says to set KEYPIN_1PASSWORD",
     async () => {
       const result = await drive({
         scenario: "no-1password-app",
-        args: ["run", "--", "true"],
+        args: ["publish", "STRIPE_KEY", "--plan"],
         env: { OP_SERVICE_ACCOUNT_TOKEN: FAKE_TOKEN },
       });
       expect(result.exit).toBe(1);
@@ -517,31 +488,22 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
-    "import shows its plan, asks [y/N], creates the item, and maps the key",
+    "check in an empty repository says to run secretspec init, and lists nothing",
     async () => {
-      const result = await drive({
-        scenario: "env-file",
-        args: ["import", ".env", "RESEND_API_KEY", "--vault", "Private"],
-        answers: ["y"],
-      });
-      expect(result.exit).toBe(0);
-      expect(result.screen).toContain("Create 1 item in 1Password? [y/N] y");
-      expect(result.effects).toEqual([
-        "1password create my.1password.com/Private/billing dev resend api key (18 chars)",
-      ]);
-      expect(result.files["secretspec.toml"]).toContain("[profiles.dev.RESEND_API_KEY]");
+      const result = await drive({ scenario: "fresh", args: ["check"] });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain("  secretspec init");
+      expect(result.files[".config/keypin/registry.json"]).toBeUndefined();
       clean(result);
     },
     SLOW,
   );
 
   test(
-    "init in an empty repository writes the template, registers it, and says what's next",
+    "check in a project keypin hasn't seen lists it in keypin status",
     async () => {
-      const result = await drive({ scenario: "fresh", args: ["init"] });
-      expect(result.exit).toBe(0);
-      expect(result.screen).toContain("✓ wrote <sandbox>/billing/secretspec.toml");
-      expect(result.screen).toContain("Next: keypin check");
+      const result = await drive({ scenario: "unregistered", args: ["check"] });
+      expect(result.screen).toContain("✓ keypin status now lists <sandbox>/billing");
       expect(result.files[".config/keypin/registry.json"]).toContain("<sandbox>/billing");
       clean(result);
     },
@@ -1444,10 +1406,10 @@ describe("keypin rotate in a real terminal", () => {
       });
       expect(result.exit).toBe(0);
       const gone =
-        "- github-actions:acme/mailer:RESEND_API_KEY: not in the map any more (last got 5f85700cd2d85825 at 2026-08-01T12:00:00.000Z). keypin doesn't delete it.";
+        "- github-actions:acme/mailer:RESEND_API_KEY: not in secretspec.toml any more (last got 5f85700cd2d85825 at 2026-08-01T12:00:00.000Z). keypin doesn't delete it.";
       expect(result.screen.split(gone)).toHaveLength(3);
       expect(result.screen).toContain(
-        "the new key is in 1Password and the destination in the map.\nNot in the map any more, so keypin didn't write them; they may still use the old key:",
+        "the new key is in 1Password and the destination in secretspec.toml.\nNot in secretspec.toml any more, so keypin didn't write them; they may still use the old key:",
       );
       expect(result.screen.lastIndexOf(gone)).toBeLessThan(
         result.screen.indexOf("Revoke the old key at Resend?"),

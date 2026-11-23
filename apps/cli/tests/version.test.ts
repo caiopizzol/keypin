@@ -30,33 +30,12 @@ describe("help", () => {
     for (const args of [
       ["publish", "--help"],
       ["status", "-h"],
-      ["run", "--help", "--", "sh"],
+      ["check", "--help"],
     ]) {
       const { deps, stdout, stderr } = fakeDeps();
       expect(await cli(args, deps)).toBe(0);
       expect(stdout.text).toBe(USAGE);
       expect(stderr.text).toBe("");
     }
-  });
-
-  test("--help after -- belongs to the command keypin run starts", async () => {
-    const launched: string[][] = [];
-    const { deps } = fakeDeps({
-      deps: {
-        cwd: "/work/billing",
-        files: {
-          read: async () => `[project]\nname = "billing"\nrevision = "1.0"\n\n[profiles.default]\n`,
-          write: async () => {},
-          rename: async () => {},
-          remove: async () => {},
-        },
-        launch: (command) => {
-          launched.push(command);
-          return { exited: Promise.resolve(0), kill: () => {} };
-        },
-      },
-    });
-    expect(await cli(["run", "--", "npm", "--help"], deps)).toBe(0);
-    expect(launched).toEqual([["npm", "--help"]]);
   });
 });

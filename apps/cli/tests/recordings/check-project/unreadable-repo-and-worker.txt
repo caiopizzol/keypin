@@ -214,6 +214,7 @@ check github-actions:acme/billing
   ],
   "local": [],
   "add": null,
+  "providers": null,
   "unknown": [
     {
       "what": "the secrets of the Worker billing-worker",
@@ -232,7 +233,7 @@ check github-actions:acme/billing
     }
   ],
   "notes": [
-    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields"
+    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin publish --plan reads the fields"
   ],
   "problems": [],
   "ok": true

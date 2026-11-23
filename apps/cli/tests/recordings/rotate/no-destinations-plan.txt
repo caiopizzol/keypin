@@ -1,29 +1,6 @@
 $ keypin rotate RESEND_API_KEY --plan
 exit 3
 
---- file /home/me/.local/state/keypin/state.json ---
-{
-  "version": 5,
-  "receipts": [],
-  "issued": [
-    {
-      "keyId": "RESEND_API_KEY",
-      "environment": "prod",
-      "mapFile": "/work/billing/secretspec.toml",
-      "issuer": "resend",
-      "id": "key-1",
-      "generation": "66b4730b863ddbcb",
-      "at": "2026-11-09T12:00:00.000Z",
-      "old": {
-        "id": null,
-        "generation": "9819eb49e959be60",
-        "revoked": false
-      }
-    }
-  ],
-  "operations": []
-}
-
 --- file /work/billing/secretspec.toml ---
 
 [project]
@@ -41,20 +18,16 @@ RESEND_API_KEY = { description = "RESEND_API_KEY", ref = { item = "mailer resend
 
 [tool.keypin.prod.RESEND_API_KEY]
 rotate_every = "90d"
-pull = [{ by = "github-actions", repo = "acme/jobs", environment = "production" }]
 issuer = { kind = "resend", admin = "op://Private/resend admin key/credential", permission = "sending_access" }
 
 --- given answers ---
-[
-  "y",
-  "y"
-]
+[]
 
 --- given terminal ---
 true
 
 --- calls issuer ---
-check key-1
+check none
 
 --- calls vault ---
 read mailer resend key
@@ -72,10 +45,11 @@ ok     Read the key and the admin key op://Private/resend admin key/credential
 ok     Resend  the admin key lists 2 API keys
 
 Plan
-  + Resend                                           create a new key
-  ~ 1Password                                        save it to op://Private/mailer resend key/credential, rotated today
-  = GitHub Actions acme/jobs environment production  reads the new key from the vault at job time
-  - Resend                                           revoke the old key key-1, after a second y
+  + Resend     create a new key
+  ~ 1Password  save it to op://Private/mailer resend key/credential, rotated today
+  - Resend     the old key stays: keypin doesn't know its ID
+
+secretspec.toml publishes RESEND_API_KEY (prod) nowhere, and no workflow in this repo runs secretspec run for prod. Check what uses it before you revoke the old key.
 
 This plan is routine: --yes can approve it.
 Nothing was written: --plan only shows the plan.

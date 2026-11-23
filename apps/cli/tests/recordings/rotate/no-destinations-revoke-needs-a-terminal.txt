@@ -1,0 +1,129 @@
+$ keypin rotate RESEND_API_KEY --yes
+exit 3
+
+--- file /home/me/.config/keypin/registry.json ---
+{
+  "version": 1,
+  "projects": [
+    "/work/billing"
+  ],
+  "shared": []
+}
+
+--- file /home/me/.local/state/keypin/state.json ---
+{
+  "version": 5,
+  "receipts": [],
+  "issued": [
+    {
+      "keyId": "RESEND_API_KEY",
+      "environment": "prod",
+      "mapFile": "/work/billing/secretspec.toml",
+      "issuer": "resend",
+      "id": "key-1",
+      "generation": "66b4730b863ddbcb",
+      "at": "2026-11-09T12:00:00.000Z",
+      "old": {
+        "id": null,
+        "generation": "9819eb49e959be60",
+        "revoked": false
+      }
+    }
+  ],
+  "operations": []
+}
+
+--- file /work/billing/.github/workflows/deploy.yml ---
+on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: secretspec run --profile prod -- ./deploy.sh
+
+--- file /work/billing/secretspec.toml ---
+
+[project]
+name = "billing"
+revision = "1.0"
+
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+RESEND_API_KEY = { description = "RESEND_API_KEY", ref = { item = "mailer resend key", field = "credential" } }
+
+[tool.keypin.prod.RESEND_API_KEY]
+rotate_every = "90d"
+issuer = { kind = "resend", admin = "op://Private/resend admin key/credential", permission = "sending_access" }
+
+--- given answers ---
+[]
+
+--- given terminal ---
+false
+
+--- calls issuer ---
+check key-1
+create RESEND_API_KEY prod 2026-11-09 12:00:00 a1b2c3 -> key-2
+
+--- calls vault ---
+ids mailer resend key
+read mailer resend key
+read resend admin key
+save mailer resend key
+ids mailer resend key
+
+--- calls destination ---
+
+--- calls asked ---
+
+--- stdout ---
+
+--- stderr ---
+RESEND_API_KEY prod  from op://Private/mailer resend key/credential in 1Password account my.1password.com
+ok     Looked up 1 item ID in 1Password account my.1password.com, not the values
+ok     Read the key and the admin key op://Private/resend admin key/credential
+ok     Resend  the admin key lists 2 API keys
+
+Plan
+  + Resend                        create a new key
+  ~ 1Password                     save it to op://Private/mailer resend key/credential, rotated today
+  = .github/workflows/deploy.yml  runs secretspec run --profile prod
+  - Resend                        revoke the old key key-1, after a second y
+
+secretspec.toml publishes RESEND_API_KEY (prod) nowhere. The workflows above run secretspec run for prod, so they may read it. Check what uses it before you revoke the old key.
+
+ok     Resend  created RESEND_API_KEY prod 2026-11-09 12:00:00 a1b2c3 (key-2)
+ok     1Password  op://Private/mailer resend key/credential  saved, rotated 2026-11-09
+
+Rotated RESEND_API_KEY (prod): the new key is in 1Password.
+The old key key-1 still works. Revoking it needs a y in a terminal.
+To revoke it later, run this in a terminal:
+  cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts rotate RESEND_API_KEY
+
+--- wrote /home/me/.local/state/keypin/state.json ---
+{
+  "version": 5,
+  "receipts": [],
+  "issued": [
+    {
+      "keyId": "RESEND_API_KEY",
+      "environment": "prod",
+      "mapFile": "/work/billing/secretspec.toml",
+      "issuer": "resend",
+      "id": "key-2",
+      "generation": "125d4c57b7c978a4",
+      "at": "2026-11-09T12:00:00.000Z",
+      "old": {
+        "id": "key-1",
+        "generation": "66b4730b863ddbcb",
+        "revoked": false
+      }
+    }
+  ],
+  "operations": []
+}

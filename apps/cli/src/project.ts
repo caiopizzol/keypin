@@ -16,7 +16,7 @@ export async function findMap(deps: Deps): Promise<KeysMap> {
   const found = await locateMap(deps.files, deps.cwd);
   if (!found) {
     throw new Error(
-      `no ${MAP_FILE} in ${deps.cwd} or any folder above it; run "keypin init" first`,
+      `no ${MAP_FILE} in ${deps.cwd} or any folder above it; create one with secretspec init`,
     );
   }
   const result = readMap(deps, found);
@@ -25,17 +25,10 @@ export async function findMap(deps: Deps): Promise<KeysMap> {
 }
 
 export function readMap(
-  deps: Pick<Deps, "destinations" | "issuers" | "vaults" | "pulls">,
+  deps: Pick<Deps, "destinations" | "issuers" | "vaults">,
   found: { file: string; text: string },
 ): MapResult {
-  return readSecretspec(
-    found.text,
-    found.file,
-    deps.destinations,
-    deps.issuers,
-    deps.vaults,
-    deps.pulls,
-  );
+  return readSecretspec(found.text, found.file, deps.destinations, deps.issuers, deps.vaults);
 }
 
 export async function locateMap(

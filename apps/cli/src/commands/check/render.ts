@@ -21,9 +21,11 @@ export function render(
     lines.push(
       steps.length === 1 ? "1 thing to do:" : `${steps.length} things to do, in this order:`,
     );
+    const last = steps.findLastIndex((step) => step.toml !== undefined);
     steps.forEach((step, i) => {
       lines.push(bold(`${i + 1} ${step.title}`), ...step.body.map((line) => `  ${line}`));
-      if (step.toml !== undefined) lines.push("", step.toml.trimEnd(), "", `  ${THEN}`);
+      if (step.toml !== undefined) lines.push("", step.toml.trimEnd(), "");
+      if (i === last) lines.push(`  ${THEN}`);
     });
   } else {
     const keys = new Set(report.keys.map((row) => row.key)).size;

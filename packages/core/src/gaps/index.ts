@@ -1,4 +1,4 @@
-import { DEFAULT_ENVIRONMENTS } from "../contracts";
+import { DEFAULT_ENVIRONMENTS, type Environment } from "../contracts";
 import type { Needs, Place } from "../discovery";
 import type { VaultKinds } from "../login";
 import {
@@ -12,11 +12,13 @@ import {
 import { envFileSuffix } from "../dotenv";
 import { type Found, mappedIn, proposedIn } from "./places";
 import type { Fix, Gaps, LocalFile, ProjectScan } from "./report";
-import { creating, tomlToAdd } from "./toml-to-add";
+import { providerLines } from "./providers";
+import { tomlToAdd } from "./toml-to-add";
 
 const PUBLISH_PROFILE = "production";
 
 export type { Fix, Gaps, LocalFile, Need, ProjectScan } from "./report";
+export { providerLines, type ProviderLines } from "./providers";
 
 export function findGaps(
   scan: ProjectScan,
@@ -24,9 +26,6 @@ export function findGaps(
   vaults: VaultKinds,
 ): Gaps {
   const keys = map?.map ?? null;
-  const creates = vaults.find((vault) => vault.newKeys);
-  if (!creates?.newKeys) throw new Error("keypin has no vault kind that creates new keys");
-  const newKeys = creating(creates, creates.newKeys);
   const listed = keys?.environments ?? DEFAULT_ENVIRONMENTS;
   const environment = publishEnvironment({ environments: listed });
   const notes: string[] = [];
@@ -70,12 +69,15 @@ export function findGaps(
 
   const view = {
     publishEnvironment: environment,
-    runEnvironment: runEnvironment({ environments: listed }),
     publishes: (name: string, place: Place) =>
       (keys?.keys ?? []).some(
         (k) => place.matches(k.name, name) && mappedIn(keys, k, place) !== null,
       ),
     ignores: (name: string) => ignoring(name) !== undefined,
+    declares: (name: string, profile: Environment) =>
+      (keys?.keys ?? []).some(
+        (k) => k.name.toUpperCase() === name.toUpperCase() && k.environments[profile] !== undefined,
+      ),
   };
   const after: NonNullable<Needs["notesAfter"]>[] = [];
   const conflicts: string[] = [];
@@ -91,7 +93,7 @@ export function findGaps(
     found.place.onlyFrom ? mappedIn(keys, found.key, found.place, []) : null;
   const missing = needs.filter((n) => n.need.mapped === null && elsewhere(n) === null);
   const mapText = map?.text ?? "";
-  const add = tomlToAdd(missing, keys, environment, mapText, newKeys);
+  const add = tomlToAdd(missing, keys, environment, mapText);
 
   const problems: string[] = [...conflicts];
   const fixes: Fix[] = [];
@@ -166,15 +168,15 @@ export function findGaps(
     if (file.kind !== "set") continue;
     const suffix = envFileSuffix(file.path.split("/").at(-1) ?? "");
     const env = suffix !== undefined && environments.includes(suffix) ? suffix : run;
-    const flag = envFlag(env, run);
+    const using = `SECRETSPEC_PROFILE=${env} `;
     const caveat =
       suffix !== undefined &&
       !environments.includes(suffix) &&
       isEnvironmentName(suffix) &&
       !/^(local|dev|development)$/.test(suffix)
-        ? `maps them as ${run}; if they're the values of another profile, add it to secretspec.toml and add --profile <name>`
+        ? `declare them in ${run}; if they're the values of another profile, add it to secretspec.toml and set SECRETSPEC_PROFILE=<name>`
         : null;
-    const other = caveat === null ? "" : `, which ${caveat}`;
+    const other = caveat === null ? "" : `; these commands ${caveat}`;
     const names = file.names.filter(isVariableName);
     const key = (name: string) => keys?.keys.find((k) => k.name === name);
     const unmapped = names.filter((name) => ignoring(name) === undefined && !key(name));
@@ -189,23 +191,25 @@ export function findGaps(
         text: `${file.path} is tracked by git, so its values may be committed`,
         file: file.path,
       });
-    const importing = (why: string, names: string[], account: string) => ({
+    const importing = (why: string, names: string[]) => ({
       kind: "import" as const,
       why,
-      vault: newKeys.vault,
       file: file.path,
+      profile: env,
       names,
-      options: `${flag} ${newKeys.options}${account}`,
-      caveat: caveat && `That command ${caveat}`,
+      commands: [
+        ...names.map((name) => `${using}secretspec add ${name}`),
+        `${using}secretspec import dotenv:${file.path}`,
+      ],
+      caveat: caveat && `These commands ${caveat}`,
     });
     if (unmapped.length && byHand !== undefined) {
       const sets = `${file.path} sets ${unmapped.join(", ")}, which secretspec.toml doesn't declare`;
       notes.push(`${sets}; a plain setting can stay, and for a key ${byHand}`);
     } else if (unmapped.length) {
-      const account = newKeys.hasAccount(keys) ? "" : newKeys.pinOptions;
       const sets = `${file.path} sets ${unmapped.join(", ")}, which secretspec.toml doesn't declare`;
-      const found = importing(sets, unmapped, account);
-      const text = `${sets}; a plain setting can stay, and for a key run keypin import ${file.path} NAME...${found.options}${other}`;
+      const found = importing(sets, unmapped);
+      const text = `${sets}; a plain setting can stay, and for a key run ${using}secretspec add NAME, then ${using}secretspec import dotenv:${file.path}${other}`;
       notes.push(text);
       fixes.push({ ...found, text });
     }
@@ -214,11 +218,8 @@ export function findGaps(
       fix({ kind: "edit", text: `${why}; for a key ${byHand}` });
     } else if (elsewhere.length) {
       const why = `${file.path} sets ${elsewhere.join(", ")}, which secretspec.toml declares, but not in profile ${env}`;
-      const found = importing(why, elsewhere, "");
-      fix({
-        ...found,
-        text: `${why}; for a key run keypin import ${file.path} ${elsewhere.join(" ")}${found.options}${other}`,
-      });
+      const found = importing(why, elsewhere);
+      fix({ ...found, text: `${why}; for a key run ${found.commands.join(", then ")}${other}` });
     }
   }
 
@@ -229,7 +230,14 @@ export function findGaps(
     production: needs.map((n) => n.need),
     local,
     add: add.text,
-    addsPin: add.pinned,
+    providers: providerLines(
+      mapText,
+      [
+        ...add.declares,
+        ...fixes.flatMap((found) => (found.kind === "import" ? [found.profile] : [])),
+      ],
+      vaults,
+    ),
     problems,
     notes,
     fixes,

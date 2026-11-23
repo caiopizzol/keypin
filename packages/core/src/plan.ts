@@ -141,7 +141,7 @@ export function planNewValue(input: PlanInput, ids: ItemIds | null): PlanStep[] 
 function judge(input: PlanInput, ids: ItemIds | null) {
   const { key, environment, kinds } = input;
   const entry = key.environments[environment];
-  if (!entry) throw new Error(`key "${key.name}" has no ${environment} entry in the map`);
+  if (!entry) throw new Error(`key "${key.name}" has no ${environment} entry in secretspec.toml`);
   const newest = latestPerSecret(input.receipts, kinds);
   const latest = new Map(newest.map((r) => [receiptSecretKey(r, kinds), r]));
   const owner = ownerOf(input);

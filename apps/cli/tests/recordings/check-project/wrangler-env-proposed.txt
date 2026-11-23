@@ -127,7 +127,8 @@ ids billing dev resend api key
     }
   ],
   "local": [],
-  "add": "[profiles.prod.RESEND_API_KEY]\ndescription = \"RESEND_API_KEY\"\n\n[[tool.keypin.prod.RESEND_API_KEY.publish]]\nto = \"cloudflare-worker\"\naccount = \"11111111111111111111111111111111\"\nworker = \"billing-worker\"\n\n[profiles.staging.RESEND_API_KEY]\ndescription = \"RESEND_API_KEY\"\n\n[[tool.keypin.staging.RESEND_API_KEY.publish]]\nto = \"cloudflare-worker\"\naccount = \"11111111111111111111111111111111\"\nworker = \"billing-worker-staging\"\n",
+  "add": "[profiles.prod.RESEND_API_KEY]\ndescription = \"Used by wrangler.toml\"\n\n[tool.keypin.prod.RESEND_API_KEY]\npublish = [{ to = \"cloudflare-worker\", account = \"11111111111111111111111111111111\", worker = \"billing-worker\" }]\n\n[profiles.staging.RESEND_API_KEY]\ndescription = \"Used by wrangler.toml\"\n\n[tool.keypin.staging.RESEND_API_KEY]\npublish = [{ to = \"cloudflare-worker\", account = \"11111111111111111111111111111111\", worker = \"billing-worker-staging\" }]\n",
+  "providers": null,
   "unknown": [],
   "prerequisites": [
     {
@@ -137,7 +138,7 @@ ids billing dev resend api key
     }
   ],
   "notes": [
-    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin run and keypin publish --plan read the fields"
+    "items are looked up in each vault's item list, which holds no values, so no field is checked; keypin publish --plan reads the fields"
   ],
   "problems": [
     "secretspec.toml has no profile for the wrangler env staging; add to secretspec.toml, above [profiles.prod] so keypin publish keeps using it: [profiles.staging]",

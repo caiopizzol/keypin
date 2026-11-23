@@ -93,10 +93,6 @@ export function pairedKeys(
         err(
           `[tool.keypin.${environment}.${name}] publishes to different destinations; list the same destinations for both keys`,
         );
-      else if (entry.pull.length || pair.pull.length)
-        err(
-          `pulling a key and its key_id isn't supported yet: a job could read the new secret with the old ID between their two vault saves. Publish both keys instead of pulling them`,
-        );
       if (!owners.has(name)) owners.set(name, key.name);
     }
   }

@@ -38,14 +38,6 @@ export {
   targetOf,
 } from "./destination";
 export {
-  type PullKind,
-  type PullKinds,
-  pullKindOf,
-  pullName,
-  pullPlace,
-  type PullReader,
-} from "./pull";
-export {
   connectIssuer,
   type IssuerKind,
   type IssuerKinds,
@@ -143,6 +135,7 @@ export {
   type Discovery,
   type FolderListing,
   type FoundNeed,
+  type JobReader,
   type MapView,
   type Needs,
   type OnlyFrom,
@@ -150,7 +143,6 @@ export {
   type ProjectEntry,
   type ProjectFiles,
   type ProjectReader,
-  type Pulled,
   type Scanned,
   type Slot,
   type StoreRead,
@@ -169,7 +161,16 @@ export {
   type VaultRules,
   type VaultUse,
 } from "./login";
-export { findGaps, type Fix, type Gaps, type LocalFile, type Need, type ProjectScan } from "./gaps";
+export {
+  findGaps,
+  providerLines,
+  type Fix,
+  type Gaps,
+  type LocalFile,
+  type Need,
+  type ProjectScan,
+  type ProviderLines,
+} from "./gaps";
 export { OIDC_TOKEN_REQUEST, signInVariables, withoutSignIn } from "./env";
 export { hideSecrets } from "./hide";
 export { shellWord } from "./shell";

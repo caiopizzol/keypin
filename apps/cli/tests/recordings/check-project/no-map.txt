@@ -107,7 +107,8 @@ github acme/billing as null
       "elsewhere": []
     }
   ],
-  "add": "[defaults]\nproviders = [\"onepassword://<1Password sign-in address>@<vault>\"]\n\n[profiles.production.STRIPE_API_KEY]\ndescription = \"STRIPE_API_KEY\"\n\n[tool.keypin.production.STRIPE_API_KEY]\nrotate_every = \"90d\"\n\n[[tool.keypin.production.STRIPE_API_KEY.publish]]\nto = \"github-actions\"\nrepo = \"acme/billing\"\n\n[profiles.production.RESEND_API_KEY]\ndescription = \"RESEND_API_KEY\"\n\n[tool.keypin.production.RESEND_API_KEY]\nrotate_every = \"90d\"\n\n[[tool.keypin.production.RESEND_API_KEY.publish]]\nto = \"cloudflare-worker\"\naccount = \"11111111111111111111111111111111\"\nworker = \"billing-worker\"\n",
+  "add": "[profiles.production.STRIPE_API_KEY]\ndescription = \"Used by .github/workflows/deploy.yml\"\n\n[tool.keypin.production.STRIPE_API_KEY]\nrotate_every = \"90d\"\npublish = [{ to = \"github-actions\", repo = \"acme/billing\" }]\n\n[profiles.production.RESEND_API_KEY]\ndescription = \"Used by wrangler.toml\"\n\n[tool.keypin.production.RESEND_API_KEY]\nrotate_every = \"90d\"\npublish = [{ to = \"cloudflare-worker\", account = \"11111111111111111111111111111111\", worker = \"billing-worker\" }]\n",
+  "providers": "[providers]\nonepassword = \"onepassword://<vault>\"\n\n[defaults]\nproviders = [\"onepassword\"]\n",
   "unknown": [],
   "prerequisites": [
     {
@@ -122,10 +123,10 @@ github acme/billing as null
     }
   ],
   "notes": [
-    ".env sets DATABASE_URL, RESEND_API_KEY, which secretspec.toml doesn't declare; a plain setting can stay, and for a key run keypin import .env NAME... --vault <vault> --account <1Password sign-in address>"
+    ".env sets DATABASE_URL, RESEND_API_KEY, which secretspec.toml doesn't declare; a plain setting can stay, and for a key run SECRETSPEC_PROFILE=default secretspec add NAME, then SECRETSPEC_PROFILE=default secretspec import dotenv:.env"
   ],
   "problems": [
-    "no secretspec.toml in /work/billing or any folder above it; run keypin init, then keypin check again",
+    "no secretspec.toml in /work/billing or any folder above it; run secretspec init, then keypin check again",
     "STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there. Add the TOML below",
     "RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and secretspec.toml doesn't publish it there. Add the TOML below"
   ],

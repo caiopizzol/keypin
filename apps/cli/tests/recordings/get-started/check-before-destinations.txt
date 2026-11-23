@@ -5,8 +5,10 @@ exit 1
 false
 
 --- calls vault ---
-ids billing default database url
-ids billing default resend api key
+ids secretspec/billing/default/DATABASE_URL
+ids secretspec/billing/production/DATABASE_URL
+ids secretspec/billing/default/RESEND_API_KEY
+ids secretspec/billing/production/RESEND_API_KEY
 
 --- calls destination ---
 
@@ -14,31 +16,33 @@ ids billing default resend api key
 
 --- stdout ---
 billing /work/billing · read 0 env files, 1 wrangler config, 1 workflow; GitHub acme/billing
-2 things to do, in this order:
+4 things to do, in this order:
 1 Sign in to Cloudflare
     wrangler login
   Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
-2 Add the production keys to secretspec.toml
+2 Fix the vault item op://Private/secretspec/billing/production/DATABASE_URL/value
+  No item "secretspec/billing/production/DATABASE_URL".
+  Used by DATABASE_URL (production).
+3 Fix the vault item op://Private/secretspec/billing/production/RESEND_API_KEY/value
+  No item "secretspec/billing/production/RESEND_API_KEY".
+  Used by RESEND_API_KEY (production).
+4 Add the production keys to secretspec.toml
   STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there.
   RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and secretspec.toml doesn't publish it there.
-  Replace each <...> with the real value; keypin rejects a map that still has one:
+  Add this at the end of secretspec.toml:
 
 [profiles.production.STRIPE_API_KEY]
-description = "STRIPE_API_KEY"
+description = "Used by .github/workflows/deploy.yml"
 
 [tool.keypin.production.STRIPE_API_KEY]
 rotate_every = "90d"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 
-[[tool.keypin.production.STRIPE_API_KEY.publish]]
-to = "github-actions"
-repo = "acme/billing"
-
-[[tool.keypin.production.RESEND_API_KEY.publish]]
-to = "cloudflare-worker"
-account = "11111111111111111111111111111111"
-worker = "billing-worker"
+[tool.keypin.production.RESEND_API_KEY]
+rotate_every = "90d"
+publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" }]
 
   Then run keypin check again.
 
 --- stderr ---
-ok     Looked up 2 items in 1Password account my.1password.com, not the values
+FAILED Couldn't look up 2 of 4 items in 1Password's default account, not the values

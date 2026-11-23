@@ -119,34 +119,29 @@ billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub
 1 Sign in to Cloudflare
     wrangler login
   Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
-2 Move .env's keys into 1Password
+2 Move .env's keys into your vault
   .env sets PORT, which secretspec.toml doesn't declare.
-    keypin import .env PORT --vault <vault>
-  Leave out a name that isn't a key; it stays in the file.
+    SECRETSPEC_PROFILE=dev secretspec add PORT
+    SECRETSPEC_PROFILE=dev secretspec import dotenv:.env
+  Leave out a name that isn't a key: secretspec import copies only declared names, and the file stays.
 3 Add the production keys to secretspec.toml
   OPENAI_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there.
   ANTHROPIC_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there.
-  Replace each <...> with the real value; keypin rejects a map that still has one:
+  Add this at the end of secretspec.toml:
 
 [profiles.prod.OPENAI_API_KEY]
-description = "OPENAI_API_KEY"
+description = "Used by .github/workflows/deploy.yml"
 
 [tool.keypin.prod.OPENAI_API_KEY]
 rotate_every = "90d"
-
-[[tool.keypin.prod.OPENAI_API_KEY.publish]]
-to = "github-actions"
-repo = "acme/billing"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 
 [profiles.prod.ANTHROPIC_API_KEY]
-description = "ANTHROPIC_API_KEY"
+description = "Used by .github/workflows/deploy.yml"
 
 [tool.keypin.prod.ANTHROPIC_API_KEY]
 rotate_every = "90d"
-
-[[tool.keypin.prod.ANTHROPIC_API_KEY.publish]]
-to = "github-actions"
-repo = "acme/billing"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
 
   Then run keypin check again.
 

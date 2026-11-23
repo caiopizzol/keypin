@@ -2,6 +2,6 @@ $ keypin status
 exit 0
 
 --- stdout ---
-No projects registered. Run "keypin init" in a project folder.
+No projects registered. Run keypin check in a project folder to add it.
 
 --- stderr ---

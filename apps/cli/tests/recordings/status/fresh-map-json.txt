@@ -84,8 +84,7 @@ publish = [{ to = "cloudflare-worker", account = "111111111111111111111111111111
       "rotateEvery": "365d",
       "due": "2027-10-23",
       "issuer": null,
-      "destinations": [],
-      "pull": []
+      "destinations": []
     },
     {
       "project": "/work/billing",
@@ -116,8 +115,7 @@ publish = [{ to = "cloudflare-worker", account = "111111111111111111111111111111
           "receipt": null,
           "stale": null
         }
-      ],
-      "pull": []
+      ]
     },
     {
       "project": "/work/web",
@@ -135,8 +133,7 @@ publish = [{ to = "cloudflare-worker", account = "111111111111111111111111111111
       "rotateEvery": "180d",
       "due": "2027-05-08",
       "issuer": null,
-      "destinations": [],
-      "pull": []
+      "destinations": []
     },
     {
       "project": "/work/web",
@@ -161,8 +158,7 @@ publish = [{ to = "cloudflare-worker", account = "111111111111111111111111111111
           "receipt": null,
           "stale": null
         }
-      ],
-      "pull": []
+      ]
     }
   ],
   "problems": [

@@ -4,11 +4,11 @@ import {
   envFileKind,
   envNames,
   type FolderListing,
+  type JobReader,
   messageOf,
   type ProjectFiles,
   type ProjectReader,
   type ProjectScan,
-  type Pulled,
 } from "@keypin/core";
 import type { Deps } from "./deps";
 import { errorCode } from "./errors";
@@ -55,11 +55,7 @@ export interface ScanResult {
   unknowns: Unknown[];
 }
 
-export async function scanProject(
-  deps: Deps,
-  root: string,
-  pulled: readonly Pulled[],
-): Promise<ScanResult> {
+export async function scanProject(deps: Deps, root: string): Promise<ScanResult> {
   const unknowns: Unknown[] = [];
   const kinds = deps.destinations.flatMap((kind) =>
     kind.discovery ? [{ kind: kind.kind, discovery: kind.discovery }] : [],
@@ -85,7 +81,6 @@ export async function scanProject(
   const reader = (found: readonly string[]): ProjectReader => ({
     root,
     found,
-    pulled,
     read: (path) => readSource(deps, root, path, unknowns),
     list: (folder) => listing(deps, folder),
     unknown: (what, reason) => unknowns.push({ what, reason }),
@@ -117,6 +112,20 @@ export async function scanProject(
     nested: found.nested,
     unknowns,
   };
+}
+
+export async function jobReaders(deps: Deps, root: string, profile: string): Promise<JobReader[]> {
+  const reader: ProjectReader = {
+    root,
+    found: [],
+    read: (path) => readSource(deps, root, path, []),
+    list: (folder) => listing(deps, folder),
+    unknown: () => undefined,
+  };
+  const found: JobReader[] = [];
+  for (const { discovery } of deps.destinations)
+    if (discovery?.readers) found.push(...(await discovery.readers(reader, deps, profile)));
+  return found;
 }
 
 function merged(reports: { kind: string; report: Readonly<Record<string, unknown>> }[]) {

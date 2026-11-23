@@ -19,7 +19,7 @@ import { infisicalRef } from "@keypin/connectors/infisical";
 import { fakeSignIn } from "@keypin/connectors/cloudflare/testing";
 import { day } from "@keypin/core/testing";
 import type { Deps, FolderEntry, Launch, Lock } from "../src/deps";
-import { destinations, issuers, pulls, vaults } from "../src/start";
+import { destinations, issuers, vaults } from "../src/start";
 
 export const SENTINEL = "sentinel-value-7f3a9c2e1d";
 
@@ -311,7 +311,6 @@ export function fakeDeps(setup: FakeSetup = {}) {
   const stdout = output();
   const stderr = output();
   const warnings: string[] = [];
-  const masked: string[] = [];
   const backend = setup.backend ?? fakeVault().vault;
   const deps: Deps = {
     cwd: "/work/billing",
@@ -359,7 +358,6 @@ export function fakeDeps(setup: FakeSetup = {}) {
     destinations,
     issuers,
     vaults,
-    pulls,
     destination: () => {
       throw new Error("this test publishes nothing");
     },
@@ -374,10 +372,6 @@ export function fakeDeps(setup: FakeSetup = {}) {
       warnings.push(`${title}: ${text}`);
       return true;
     },
-    maskInLog: async (values) => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      masked.push(...values);
-    },
     styled: { stdout: false, stderr: false },
     columns: () => 80,
     ask: async () => {
@@ -385,7 +379,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
     },
     ...setup.deps,
   };
-  return { deps, disk, stdout, stderr, warnings, masked };
+  return { deps, disk, stdout, stderr, warnings };
 }
 
 function listMemoryFolder(disk: ReturnType<typeof memoryFiles>, path: string): FolderEntry[] {
@@ -486,4 +480,15 @@ function memoryLock(disk: ReturnType<typeof memoryFiles>): Lock {
     };
     return { held: true, lock: { release } };
   };
+}
+
+export function newSecretspec(project: string): string {
+  return `[project]
+name = ${JSON.stringify(project)}
+revision = "1.0"
+
+[profiles.default]
+
+[profiles.production]
+`;
 }

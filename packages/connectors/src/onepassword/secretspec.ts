@@ -2,7 +2,7 @@ import type { SecretspecAt } from "@keypin/core";
 import type { OnePasswordRef } from "./reference";
 
 const URI = /^onepassword(\+[^:]*)?:\/\/(.*)$/is;
-const SHAPE = "onepassword://<sign-in address>@<vault>";
+const SHAPE = "onepassword://<vault>, or onepassword://<sign-in address>@<vault>";
 const REF_FIELDS = ["item", "field", "section", "vault"];
 
 export const CONVENTION_FIELD = "value";
@@ -16,10 +16,11 @@ export function locate({ uri, project, profile, key, ref }: SecretspecAt): OnePa
   if (place.includes("/"))
     return `uses ${uri}, which names more than a vault; write ${SHAPE}, and name the item with ref = { item = "..." }`;
   const at = place.indexOf("@");
-  const account = decoded(place.slice(0, at));
+  const given = at === -1 ? "" : place.slice(0, at);
+  const account = decoded(given);
   const named = decoded(place.slice(at + 1));
-  if (at === -1 || !account || !named)
-    return `uses ${uri}, which doesn't name the 1Password account; write ${SHAPE}, with the sign-in address at the top left of the 1Password app (such as my.1password.com) or the account ID`;
+  if (!named || (given && !account))
+    return `uses ${uri}, which doesn't name a 1Password vault; write ${SHAPE}`;
   if (ref === null)
     return convention(named, `secretspec/${project}/${profile}/${key}`, null, account);
   const unknown = Object.keys(ref).find((field) => !REF_FIELDS.includes(field));

@@ -1,21 +1,22 @@
 import { describe, expect, test } from "vite-plus/test";
 import { cli } from "../src/cli";
-import { template } from "../src/commands/init";
-import {
-  fakeDeps,
-  fakeDestinations,
-  fakeLauncher,
-  fakeVault,
-  leaks,
-  memoryFiles,
-  SENTINEL,
-} from "./fakes";
+import { fakeDeps, fakeDestinations, fakeVault, leaks, memoryFiles, SENTINEL } from "./fakes";
 import { changes, recording } from "./recording";
 
 const ROOT = "/work/billing";
 const MAP = `${ROOT}/secretspec.toml`;
 
+const DECLARED = `[project]
+name = "billing"
+revision = "1.0"
+
+[profiles.default]
+
+[profiles.production]
+`;
+
 const PROJECT: Record<string, string> = {
+  [MAP]: DECLARED,
   [`${ROOT}/.env`]: `DATABASE_URL=${SENTINEL}-database\nRESEND_API_KEY=${SENTINEL}-resend\n`,
   [`${ROOT}/wrangler.toml`]: `name = "billing-worker"
 account_id = "11111111111111111111111111111111"
@@ -42,12 +43,12 @@ const GIT: Record<string, string> = {
 function journey() {
   const disk = memoryFiles(PROJECT);
   for (const folder of [`${ROOT}/.github`, `${ROOT}/.github/workflows`]) disk.folders.add(folder);
-  const vault = fakeVault({
-    items: [],
-    values: { "secretspec/billing/production/STRIPE_API_KEY": `${SENTINEL}-stripe` },
-  });
+  const values: Record<string, string> = {
+    "secretspec/billing/default/DATABASE_URL": `${SENTINEL}-database`,
+    "secretspec/billing/default/RESEND_API_KEY": `${SENTINEL}-resend`,
+  };
+  const vault = fakeVault({ items: [], values });
   const destinations = fakeDestinations();
-  const launcher = fakeLauncher();
 
   const step = async (name: string, args: string[], terminal = false) => {
     const asked: string[] = [];
@@ -63,8 +64,6 @@ function journey() {
         githubSecrets: async () => ({ ok: true, secrets: [] }),
         workerSecrets: async () => ({ ok: true, secrets: [] }),
         destination: destinations.build,
-        launch: launcher.launch,
-        onSignals: launcher.onSignals,
         isTerminal: terminal,
         ask: async (question) => {
           asked.push(question);
@@ -93,46 +92,60 @@ function journey() {
     return { exit, stdout: fake.stdout.text };
   };
 
-  return { disk, launcher, destinations, step };
+  return { disk, values, destinations, step };
 }
 
 function tomlToAdd(stdout: string): string {
-  const toml = /keypin rejects a map that still has one:\n\n([\s\S]*?)\n\n {2}Then run/.exec(
-    stdout,
-  )?.[1];
+  const toml = /:\n\n(\[[\s\S]*?)\n\n {2}Then run/.exec(stdout)?.[1];
   if (toml === undefined) throw new Error("check printed no TOML to add");
   return toml;
 }
 
-describe("the Get started pages, one project from init to publish", () => {
-  test("each step's output is recorded, and the TOML check prints pastes into the map", async () => {
-    const { disk, launcher, destinations, step } = journey();
+function secretspecAddAndImport(disk: ReturnType<typeof memoryFiles>) {
+  const declared = DECLARED.replace(
+    "[profiles.default]\n",
+    `[profiles.default]
+DATABASE_URL = { description = "DATABASE_URL" }
+RESEND_API_KEY = { description = "RESEND_API_KEY" }
+`,
+  );
+  disk.contents.set(
+    MAP,
+    `${declared}
+[providers]
+onepassword = "onepassword://Private"
 
-    expect((await step("init", ["init"])).exit).toBe(0);
-    expect(disk.contents.get(MAP)).toBe(template("billing"));
-    expect((await step("check-after-init", ["check"])).exit).toBe(1);
+[defaults]
+providers = ["onepassword"]
+`,
+  );
+}
 
-    const local = ["import", ".env", "DATABASE_URL", "RESEND_API_KEY", "--vault", "Private"];
-    const account = ["--account", "my.1password.com"];
-    expect((await step("import", [...local, ...account], true)).exit).toBe(0);
+function secretspecSetProduction(values: Record<string, string>) {
+  for (const key of ["STRIPE_API_KEY", "RESEND_API_KEY", "DATABASE_URL"])
+    values[`secretspec/billing/production/${key}`] = `${SENTINEL}-prod-${key}`;
+}
+
+describe("the Get started pages, one project from secretspec init to publish", () => {
+  test("each step's output is recorded, and the TOML check prints pastes into secretspec.toml", async () => {
+    const { disk, values, destinations, step } = journey();
+
+    expect((await step("check-first", ["check"])).exit).toBe(1);
+
+    secretspecAddAndImport(disk);
     disk.contents.delete(`${ROOT}/.env`);
-
-    expect((await step("run", ["run", "--", "npm", "run", "dev"])).exit).toBe(0);
-    expect(launcher.launches[0]?.env).toMatchObject({
-      DATABASE_URL: `${SENTINEL}-database`,
-      RESEND_API_KEY: `${SENTINEL}-resend`,
-    });
 
     const before = await step("check-before-destinations", ["check"]);
     expect(before.exit).toBe(1);
     const add = tomlToAdd(before.stdout);
     expect(add).not.toContain("<");
     disk.contents.set(MAP, `${disk.contents.get(MAP)}\n${add}\n`);
+    secretspecSetProduction(values);
 
     expect((await step("check-after-destinations", ["check"])).exit).toBe(1);
     expect((await step("publish-plan", ["publish", "STRIPE_API_KEY", "--plan"])).exit).toBe(3);
     expect((await step("publish", ["publish", "STRIPE_API_KEY"], true)).exit).toBe(0);
-    expect(destinations.delivered(`${SENTINEL}-stripe`)).toEqual([
+    expect(destinations.delivered(`${SENTINEL}-prod-STRIPE_API_KEY`)).toEqual([
       "github-actions:acme/billing STRIPE_API_KEY",
     ]);
   });

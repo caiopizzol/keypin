@@ -206,6 +206,74 @@ function setup(options: Setup = {}) {
   return { ...fake, disk, vault, issuer, destinations, asked, run, record, writes, leaked, state };
 }
 
+const NO_DESTINATIONS = MAP.replace(/publish = \[[\s\S]*?\n\]\n/, "");
+
+const DEPLOY = `on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: secretspec run --profile prod -- ./deploy.sh
+`;
+
+function noDestinations(workflow?: string) {
+  const disk = memoryFiles({ "/work/billing/secretspec.toml": NO_DESTINATIONS });
+  if (workflow !== undefined) {
+    disk.contents.set("/work/billing/.github/workflows/deploy.yml", workflow);
+    for (const folder of ["/work/billing/.github", "/work/billing/.github/workflows"])
+      disk.folders.add(folder);
+  }
+  return disk;
+}
+
+describe("keypin rotate, for a key no destination takes", () => {
+  test("the plan says no workflow runs secretspec run for the profile, so check before revoking", async () => {
+    const run = setup({ disk: noDestinations() });
+    expect(NO_DESTINATIONS).not.toContain("publish");
+    expect(await run.record("no-destinations-plan", "--plan")).toBe(3);
+    expect(run.stderr.text).toContain(
+      "secretspec.toml publishes RESEND_API_KEY (prod) nowhere, and no workflow in this repo runs secretspec run for prod. Check what uses it before you revoke the old key.",
+    );
+  });
+
+  test("the plan lists the workflow that runs secretspec run for the profile, and still asks to check", async () => {
+    const run = setup({ disk: noDestinations(DEPLOY) });
+    expect(await run.record("no-destinations-read-at-job-time", "--plan")).toBe(3);
+    expect(run.stderr.text).toMatch(
+      /= \.github\/workflows\/deploy\.yml +runs secretspec run --profile prod\n/,
+    );
+    expect(run.stderr.text).toContain(
+      "secretspec.toml publishes RESEND_API_KEY (prod) nowhere. The workflows above run secretspec run for prod, so they may read it. Check what uses it before you revoke the old key.",
+    );
+  });
+
+  test("a workflow that runs another profile isn't listed", async () => {
+    const run = setup({ disk: noDestinations(DEPLOY.replace("--profile prod", "--profile dev")) });
+    expect(await run.run("--plan")).toBe(3);
+    expect(run.stderr.text).not.toContain("runs secretspec run --profile");
+    expect(run.stderr.text).toContain("Check what uses it before you revoke the old key.");
+  });
+
+  test("creates and saves the new key, writes nowhere, and without a terminal leaves the revoke for one", async () => {
+    const first = setup({ disk: noDestinations(DEPLOY), answers: ["y"] });
+    expect(await first.run()).toBe(0);
+    expect(first.vault.values.get("mailer resend key")).toBe(NEW(1));
+    expect(first.vault.rotated).toEqual(["2026-11-09"]);
+    expect(first.writes()).toEqual([]);
+
+    const ci = setup({ disk: first.disk, vault: first.vault, terminal: false });
+    expect(await ci.record("no-destinations-revoke-needs-a-terminal", "--yes")).toBe(
+      NEEDS_APPROVAL,
+    );
+    expect(ci.vault.values.get("mailer resend key")).toBe(NEW(2));
+    expect(ci.stderr.text).toContain(
+      "The old key key-1 still works. Revoking it needs a y in a terminal.",
+    );
+    expect(ci.issuer.log.some((line) => line.startsWith("revoke"))).toBe(false);
+    expect(ci.leaked()).toBe(false);
+  });
+});
+
 describe("keypin rotate", () => {
   test("creates, saves, publishes, then revokes the old key after a second y", async () => {
     const before = setup({ answers: ["y", "y"] });
@@ -603,10 +671,10 @@ describe("keypin rotate", () => {
     const run = setup({ disk: first.disk, vault: first.vault, answers: ["y", "n"] });
     expect(await run.run()).toBe(0);
     expect(run.writes()).toEqual([`write ${WORKER} RESEND_API_KEY (${NEW(2).length} chars)`]);
-    const gone = `- ${GITHUB}:RESEND_API_KEY: not in the map any more (last got ${await generationOf(new Secret(NEW(1)))}`;
+    const gone = `- ${GITHUB}:RESEND_API_KEY: not in secretspec.toml any more (last got ${await generationOf(new Secret(NEW(1)))}`;
     expect(run.stderr.text.split(gone)).toHaveLength(3);
     expect(run.stderr.text).toContain(
-      "Rotated RESEND_API_KEY (prod): the new key is in 1Password and the destination in the map.\nNot in the map any more, so keypin didn't write them; they may still use the old key:\n",
+      "Rotated RESEND_API_KEY (prod): the new key is in 1Password and the destination in secretspec.toml.\nNot in secretspec.toml any more, so keypin didn't write them; they may still use the old key:\n",
     );
     expect(run.stderr.text).not.toContain("every destination");
     expect(run.stderr.text.indexOf(gone, run.stderr.text.indexOf("Rotated"))).toBeLessThan(
@@ -971,166 +1039,5 @@ describe("keypin rotate --discard", () => {
       expect(await cli(["rotate", "--discard", ...args], run.deps)).toBe(2);
       expect(run.stderr.text).toContain("--discard takes one key");
     }
-  });
-});
-
-describe("keypin rotate, for a key CI pulls from the vault", () => {
-  const READER = `{ by = "github-actions", repo = "acme/jobs", environment = "production" }`;
-  const pulled = (map: string) =>
-    memoryFiles({
-      "/work/billing/secretspec.toml": map.replace(/publish = \[[^\]]*\]/, `pull = [${READER}]`),
-    });
-  const mixed = () =>
-    memoryFiles({
-      "/work/billing/secretspec.toml": MAP.replace(
-        "\nissuer = ",
-        `\npull = [${READER}]\nissuer = `,
-      ),
-    });
-
-  test("--yes won't reset a key keypin saved once the vault holds the key it replaced again", async () => {
-    const first = setup({ disk: pulled(MAP), resetsOld: true, answers: ["y"] });
-    expect(await first.run()).toBe(0);
-    first.vault.values.set("mailer resend key", OLD);
-    const run = setup({ disk: first.disk, vault: first.vault, resetsOld: true, terminal: false });
-    expect(await run.run("--yes")).toBe(1);
-    expect(run.stderr.text).toContain(
-      "Stopped: Resend makes a new key by resetting key key-1, which keypin saved on 2026-11-09T12:00:00.000Z before 1Password went back to the key it replaced, and something may still use it. --yes can't approve that. To rotate anyway, run this in a terminal:\n  cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts rotate RESEND_API_KEY\nNothing was created.",
-    );
-    expect(run.issuer.log).toEqual(["check none"]);
-  });
-
-  test("--yes won't reset a key whose save keypin couldn't confirm", async () => {
-    const first = setup({ disk: pulled(MAP), resetsOld: true, answers: ["y"] });
-    expect(await first.run()).toBe(0);
-    const unsaved = writableVault({ "mailer resend key": NEW(1), "resend admin key": ADMIN }, true);
-    const failing = setup({
-      disk: first.disk,
-      vault: unsaved,
-      made: first.vault.made,
-      resetsOld: true,
-      answers: ["y"],
-    });
-    expect(await failing.run()).toBe(1);
-    const run = setup({ disk: first.disk, vault: first.vault, resetsOld: true, terminal: false });
-    expect(await run.run("--yes")).toBe(1);
-    expect(run.stderr.text).toContain(
-      "Stopped: Resend makes a new key by resetting key key-2, which keypin may have saved to 1Password on",
-    );
-    expect(run.stderr.text).toContain("--yes can't approve that.");
-    expect(run.issuer.log.some((line) => line.startsWith("create "))).toBe(false);
-  });
-
-  test("--check and --plan say the same reset needs a terminal, and create nothing", async () => {
-    const first = setup({ disk: pulled(MAP), resetsOld: true, answers: ["y"] });
-    expect(await first.run()).toBe(0);
-    const unsaved = writableVault({ "mailer resend key": NEW(1), "resend admin key": ADMIN }, true);
-    const failing = setup({
-      disk: first.disk,
-      vault: unsaved,
-      made: first.vault.made,
-      resetsOld: true,
-      answers: ["y"],
-    });
-    expect(await failing.run()).toBe(1);
-    const check = setup({ disk: first.disk, vault: first.vault, resetsOld: true, terminal: false });
-    expect(await cli(["rotate", "--check"], check.deps), check.stderr.text).toBe(1);
-    expect(check.stderr.text).toContain("Stopped: Resend makes a new key by resetting key key-2");
-    expect(check.stderr.text).not.toContain("is ready for keypin rotate --due");
-    const plan = setup({ disk: first.disk, vault: first.vault, resetsOld: true, terminal: false });
-    expect(await plan.run("--plan")).toBe(NEEDS_APPROVAL);
-    expect(plan.stderr.text).toContain(
-      "This plan needs approval in a terminal; --yes can't give it.",
-    );
-    for (const run of [check, plan])
-      expect(run.issuer.log.some((line) => line.startsWith("create "))).toBe(false);
-  });
-
-  test("--plan --yes on that reset suggests a terminal command without --yes", async () => {
-    const first = setup({ disk: pulled(MAP), resetsOld: true, answers: ["y"] });
-    expect(await first.run()).toBe(0);
-    const unsaved = writableVault({ "mailer resend key": NEW(1), "resend admin key": ADMIN }, true);
-    const failing = setup({
-      disk: first.disk,
-      vault: unsaved,
-      made: first.vault.made,
-      resetsOld: true,
-      answers: ["y"],
-    });
-    expect(await failing.run()).toBe(1);
-    const plan = setup({ disk: first.disk, vault: first.vault, resetsOld: true, terminal: false });
-    expect(await plan.run("--plan", "--yes")).toBe(NEEDS_APPROVAL);
-    const suggested = plan.stderr.text.split("To approve, run this in a terminal:\n")[1] ?? "";
-    expect(suggested).toContain("rotate RESEND_API_KEY");
-    expect(suggested).not.toContain("--yes");
-    expect(suggested).not.toContain("--plan");
-  });
-
-  test("saves the new key to the vault, writes nowhere, and revokes the old key after a second y", async () => {
-    const first = setup({ disk: pulled(MAP), answers: ["y"] });
-    expect(await first.run()).toBe(0);
-    const again = setup({ disk: first.disk, vault: first.vault, answers: ["y", "y"] });
-    expect(await again.record("pulled", "--plan")).toBe(NEEDS_APPROVAL);
-    expect(await again.run()).toBe(0);
-    expect(again.asked).toEqual([
-      "Rotate RESEND_API_KEY? [y/N] ",
-      "Revoke the old key at Resend? [y/N] ",
-    ]);
-    expect(again.issuer.log).toEqual([
-      "check key-1",
-      "check key-1",
-      "create RESEND_API_KEY prod 2026-11-09 12:00:00 a1b2c3 -> key-2",
-      "revoke key-1",
-    ]);
-    expect(again.destinations.log).toEqual([]);
-    expect(again.vault.values.get("mailer resend key")).toBe(NEW(2));
-    expect(again.stderr.text).toContain(
-      "Rotated RESEND_API_KEY (prod): the new key is in 1Password. GitHub Actions acme/jobs environment production reads it from there at job time.",
-    );
-    expect(again.leaked()).toBe(false);
-  });
-
-  test("the plan for a rotation waiting to revoke still lists the jobs that pull the key", async () => {
-    const first = setup({ disk: pulled(MAP), answers: ["y"] });
-    expect(await first.run()).toBe(0);
-    const waiting = setup({ disk: first.disk, vault: first.vault, answers: ["y", "n"] });
-    expect(await waiting.run()).toBe(0);
-    const plan = setup({ disk: first.disk, vault: first.vault });
-    expect(await plan.run("--plan")).toBe(NEEDS_APPROVAL);
-    expect(plan.stderr.text).toContain("Resuming: keypin created key key-2");
-    expect(plan.stderr.text).toMatch(
-      /GitHub Actions acme\/jobs environment production +reads the new key from the vault at job time/,
-    );
-  });
-
-  test("without a terminal, --yes saves the new key but never revokes", async () => {
-    const first = setup({ disk: pulled(MAP), answers: ["y"] });
-    expect(await first.run()).toBe(0);
-    const due = setup({ disk: first.disk, vault: first.vault, terminal: false });
-    expect(await due.run("--yes")).toBe(NEEDS_APPROVAL);
-    expect(due.vault.values.get("mailer resend key")).toBe(NEW(2));
-    expect(due.issuer.log.some((l) => l.startsWith("revoke"))).toBe(false);
-    expect(due.stderr.text).toContain(
-      "The old key key-1 still works. Revoking it needs a y in a terminal.",
-    );
-  });
-
-  test("a key with destinations too revokes nothing until every destination has the new key", async () => {
-    const failing = setup({ disk: mixed(), failWrite: [GITHUB], answers: ["y", "y"] });
-    expect(await failing.run()).toBe(1);
-    const resumed = setup({ disk: failing.disk, vault: failing.vault, answers: ["y", "y"] });
-    expect(await resumed.run()).toBe(0);
-    expect(resumed.writes()).toEqual([`write ${GITHUB} RESEND_API_KEY (${NEW(1).length} chars)`]);
-    expect(resumed.stderr.text).toContain(
-      "the new key is in 1Password and the 2 destinations in the map. GitHub Actions acme/jobs environment production reads it from there at job time.",
-    );
-  });
-
-  test("a key nothing reads says to add a destination or a pull entry", async () => {
-    const run = setup({ disk: pulled(MAP.replace(/publish = \[[^\]]*\]\n/, "")) });
-    expect(await run.run()).toBe(1);
-    expect(run.stderr.text).toContain(
-      "the map lists no destinations or pull entries for RESEND_API_KEY (prod); add them first, so the new key reaches what uses it",
-    );
   });
 });

@@ -1094,11 +1094,6 @@ export const scenarios: Record<string, Scenario> = {
       ],
     },
   },
-  "env-file": {
-    ...ready,
-    about: "ready, plus a .env with a key secretspec.toml doesn't map, to import",
-    files: { ...ready.files, ".env": "RESEND_API_KEY=verify-resend-2f7c\nPORT=3000\n" },
-  },
   "ignored-keys": {
     ...ready,
     about:
@@ -1116,14 +1111,6 @@ jobs:
           OPENAI_API_KEY: \${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: \${{ secrets.ANTHROPIC_API_KEY }}
 `,
-    },
-  },
-  "quoted-env": {
-    ...ready,
-    about: "ready, plus a .env whose value is quoted and has an inline comment, for the leak check",
-    files: {
-      ...ready.files,
-      ".env": 'RESEND_API_KEY="review-secret-sentinel" # test fixture\n',
     },
   },
   "slow-1password": {
@@ -1573,6 +1560,11 @@ jobs:
     ...elevenlabs,
     about: "elevenlabs, but ElevenLabs disabled the vault's key after it leaked",
     elevenlabs: { keys: [{ ...ELEVENLABS_KEY, disabled: true }] },
+  },
+  unregistered: {
+    ...ready,
+    about: "ready, but keypin hasn't run in it, so keypin status doesn't list it",
+    registered: false,
   },
   fresh: {
     ...ready,

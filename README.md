@@ -8,7 +8,7 @@
 <h1 align="center">keypin</h1>
 
 <p align="center">
-  Key syncs and rotation for the vault you already use.
+  Rotate a key everywhere it's used.
 </p>
 
 <p align="center">
@@ -23,12 +23,12 @@
 
 ## What is keypin?
 
-keypin rotates your keys at their provider and publishes them to your CI and hosting. It is not a vault: it reads
-the one you already have, and reads a value only while a command needs it.
+When a key has to change, keypin replaces it at the provider and everywhere it's used, across all your projects.
+`keypin rotate` makes the new key, publishes it to each destination in the project's `secretspec.toml`, and revokes
+the old one only after you approve. `keypin status` shows what's due in every project.
 
-A project declares its keys in [secretspec](https://secretspec.dev)'s `secretspec.toml`: names and vaults, never
-values. secretspec runs your app with them; keypin's part, under `[tool.keypin]`, says where each key goes and when
-it's due.
+[secretspec](https://secretspec.dev) says which keys a project needs and runs it with them. keypin keeps those keys
+fresh everywhere, from settings under `[tool.keypin]` in the same file. Values stay in your vault.
 
 | Rotation                          | Destinations       | Vaults              |
 | --------------------------------- | ------------------ | ------------------- |
@@ -77,11 +77,11 @@ show a plan and wait for you to answer `y`.
 ## Commands
 
 ```sh
-keypin check [folder]                    # report one project; writes nothing
-keypin publish <VARIABLE> | --all        # write production keys to their destinations
 keypin rotate <VARIABLE>                 # replace a key at its provider, then publish it
 keypin rotate --due                      # rotate every key that is due
 keypin status                            # every project's keys, and when each is due for rotation
+keypin publish <VARIABLE> | --all        # write production keys to their destinations
+keypin check [folder]                    # report one project; writes nothing
 keypin unregister [folder]               # stop listing a project
 ```
 
@@ -100,16 +100,16 @@ npx skills add caiopizzol/keypin -g    # all your projects
 
 ## Docs
 
-- [How it works](https://github.com/caiopizzol/keypin/blob/main/docs/introduction/how-it-works.md): your vault,
-  `secretspec.toml` and where keys go
-- [secretspec.toml](https://github.com/caiopizzol/keypin/blob/main/docs/reference/secretspec-toml.md): profiles,
-  providers and `[tool.keypin]`
-- [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/guides/publishing.md): destinations, approvals,
-  `--plan` and reading keys in CI
+- [How it works](https://github.com/caiopizzol/keypin/blob/main/docs/introduction/how-it-works.md): the provider,
+  your vault, `secretspec.toml` and where keys go
 - [Rotating a key](https://github.com/caiopizzol/keypin/blob/main/docs/guides/rotating-a-key.md): each issuer, and
   rotating by hand
 - [Scheduled rotation](https://github.com/caiopizzol/keypin/blob/main/docs/guides/scheduled-rotation.md): rotating
   keys in your GitHub Actions
+- [Publishing](https://github.com/caiopizzol/keypin/blob/main/docs/guides/publishing.md): destinations, approvals,
+  `--plan` and reading keys in CI
+- [secretspec.toml](https://github.com/caiopizzol/keypin/blob/main/docs/reference/secretspec-toml.md): profiles,
+  providers and `[tool.keypin]`
 - [Vaults](https://github.com/caiopizzol/keypin/blob/main/docs/README.md#vaults): each vault's provider, sign-in and
   rotated date
 - [Troubleshooting](https://github.com/caiopizzol/keypin/blob/main/docs/reference/troubleshooting.md): `wrangler dev`

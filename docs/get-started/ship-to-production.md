@@ -71,6 +71,9 @@ Some hosts use a new value only after a redeploy; see [Publishing](../guides/pub
 
 ## Next
 
-- `keypin status` shows when each key is due for rotation.
-- [Rotating a key](../guides/rotating-a-key.md) replaces a key at its provider and publishes the new one.
+Each key is now in your vault and at every destination, so keypin can replace it everywhere at once:
+
+- [Rotating a key](../guides/rotating-a-key.md) makes a new key at its provider, publishes it, and revokes the old
+  one after you approve.
+- `keypin status` shows when each key is due, in every project.
 - [Scheduled rotation](../guides/scheduled-rotation.md) rotates keys in your GitHub Actions.

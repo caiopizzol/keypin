@@ -140,6 +140,12 @@ describe("the workflows a vault-only rotation lists", () => {
     expect(await readers("apps/web", deploy(self + inFolder("apps/web")))).toEqual([]);
   });
 
+  test("a folder in another repository checked out beside this repo isn't listed", async () => {
+    const self = checkout("path: repo");
+    const beside = checkout("repository: acme/tools\npath: vendor/tools");
+    expect(await readers("apps/web", deploy(self + beside + inFolder("vendor/tools")))).toEqual([]);
+  });
+
   test("a folder inside another repository checked out within this repo is listed, saying keypin can't tell", async () => {
     const self = checkout("path: repo");
     const nested = checkout("repository: acme/tools\npath: repo/apps/web/tools");

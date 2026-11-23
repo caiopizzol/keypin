@@ -71,7 +71,8 @@ async function repoFolder(
   if (mine.length > 1 || only.path === null) return null;
   const folder = run.folder;
   const within = (path: string) => folder === path || folder.startsWith(`${path}/`);
-  if (others.some((path) => path.length > (only.path ?? "").length && within(path))) return null;
+  const nested = (path: string) => !only.path || path.startsWith(`${only.path}/`);
+  if (others.some((path) => nested(path) && within(path))) return null;
   if (!only.path) return run.folder;
   if (run.folder === only.path) return "";
   return run.folder.startsWith(`${only.path}/`) ? run.folder.slice(only.path.length + 1) : false;

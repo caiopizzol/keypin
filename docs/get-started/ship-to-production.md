@@ -15,11 +15,15 @@ laptop never needs the production value to run the app.
   ```
 
   It creates the item `billing prod resend api key` and adds a `[keys.RESEND_API_KEY.prod]` table at the end of
-  `keypin.toml`. Delete the file afterwards, as it tells you.
+  `keypin.toml`. Then remove the lines its message names, and delete the file only if it says nothing else is set
+  in it.
 
-- **Only in GitHub or Cloudflare**, like `STRIPE_API_KEY` here: neither keypin nor you can read a secret back from
-  them. Make a new key at the provider, put it in a vault item, such as `billing prod stripe api key`, and copy its
-  reference. In 1Password, open the field's menu and select **Copy Secret Reference**.
+- **A new key**, like `STRIPE_API_KEY` here, which the workflow uses and `acme/billing` doesn't have yet: make it at
+  the provider, put it in a vault item, such as `billing prod stripe api key`, and copy its reference. In 1Password,
+  open the field's menu and select **Copy Secret Reference**.
+
+- **Only in GitHub or Cloudflare:** neither keypin nor you can read a secret back from them, so make a new key at
+  the provider, the same way.
 
 ## Add the destinations
 

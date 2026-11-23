@@ -175,6 +175,62 @@ export const ready: Scenario = {
   places: {},
 };
 
+const vaultMap = (provider: string, dev: string, prod: string) => `[project]
+name = "billing"
+revision = "1.0"
+
+[providers]
+${provider}
+
+[profiles.dev]
+STRIPE_KEY = { description = "STRIPE_KEY"${dev} }
+
+[profiles.prod]
+STRIPE_KEY = { description = "STRIPE_KEY"${prod} }
+
+[tool.keypin.dev.STRIPE_KEY]
+rotate_every = "90d"
+
+[tool.keypin.prod.STRIPE_KEY]
+rotate_every = "90d"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
+`;
+
+export const INFISICAL_PROJECT = "7e2f1a4c-0b1d-4c8e-9f00-1234567890ab";
+
+const infisical: Scenario = {
+  ...ready,
+  about:
+    "ready, but secretspec.toml reads from a fake Infisical project, signed in as a machine identity",
+  files: {
+    ...ready.files,
+    "secretspec.toml": vaultMap(
+      `infisical = "infisical://app.infisical.com/${INFISICAL_PROJECT}"\n\n[defaults]\nproviders = ["infisical"]`,
+      "",
+      ', ref = { item = "/STRIPE_KEY" }',
+    ),
+  },
+  onePassword: { accounts: {} },
+  infisical: {
+    projectIds: { billing: INFISICAL_PROJECT },
+    projects: {
+      billing: {
+        dev: {
+          "/secretspec/billing/dev/STRIPE_KEY": {
+            value: "verify-dev-stripe-6b1e",
+            rotated: day(-30),
+          },
+        },
+        prod: { STRIPE_KEY: { value: "verify-prod-stripe-9d4a", rotated: day(-85) } },
+      },
+    },
+  },
+  env: {
+    INFISICAL_UNIVERSAL_AUTH_CLIENT_ID: "verify-client-id",
+    INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET: "verify-client-secret-3e7a",
+  },
+};
+
 const RESEND_MAP = `[project]
 name = "billing"
 revision = "1.0"
@@ -1050,6 +1106,17 @@ export const scenarios: Record<string, Scenario> = {
     twilio: { keys: [{ ...TWILIO_KEY, type: "main" }] },
   },
   ready,
+  infisical,
+  "infisical-token": {
+    ...infisical,
+    about: "infisical, but signed in with a machine identity's access token in INFISICAL_TOKEN",
+    infisical: {
+      projects: {},
+      ...infisical.infisical,
+      accessToken: "verify-access-token-8c3f",
+    },
+    env: { INFISICAL_TOKEN: "verify-access-token-8c3f" },
+  },
   paired,
   sendgrid,
   atlas,

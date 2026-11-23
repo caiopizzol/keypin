@@ -9,7 +9,7 @@ import {
   NO_CREDENTIALS,
   NO_JOB_TOKEN,
 } from "./credentials";
-import { type InfisicalRef, type InfisicalReference, SCHEME } from "./reference";
+import type { InfisicalRef, InfisicalReference } from "./reference";
 import { infisicalVaultRules } from "./rules";
 
 export interface InfisicalHost {
@@ -22,15 +22,13 @@ function fixFor(failures: readonly SignInReason[], { env }: InfisicalHost): stri
   const oidc = credentials !== null && "identityId" in credentials;
   if (failures.some((reason) => reason.kind === "no-credentials"))
     return oidc ? NO_JOB_TOKEN : `${NO_CREDENTIALS} (docs/integrations/vaults/infisical.md)`;
-  if (failures.some((reason) => reason.kind === "wrong-account"))
-    return "use a machine identity from the organization secretspec.toml names under [infisical]; keypin can't read from a sub-organization";
   if (oidc)
-    return `check ${IDENTITY_ID}, the machine identity's OIDC Auth settings and the url under [infisical] in secretspec.toml (docs/integrations/vaults/infisical.md)`;
+    return `check ${IDENTITY_ID}, the machine identity's OIDC Auth settings and the host in your infisical:// provider in secretspec.toml (docs/integrations/vaults/infisical.md)`;
   const variables =
     credentials && "variable" in credentials
       ? credentials.variable
       : `${CLIENT_ID}, ${CLIENT_SECRET}`;
-  return `check ${variables} and the url under [infisical] in secretspec.toml`;
+  return `check ${variables} and the host in your infisical:// provider in secretspec.toml`;
 }
 
 function signedInWith({ env }: InfisicalHost): string | null {
@@ -56,7 +54,7 @@ export const infisicalVault: VaultKind<InfisicalHost, InfisicalRef, InfisicalRef
       Object.values(key.environments).flatMap((entry) => (entry ? [entry.ref] : [])),
     );
     return refs.length > 0 && refs.every((ref) => ref.kind === "infisical")
-      ? `add the secrets in Infisical and map them with ${SCHEME} references (docs/integrations/vaults/infisical.md)`
+      ? "declare the secrets in secretspec.toml, then save each value in Infisical with secretspec set (docs/integrations/vaults/infisical.md)"
       : undefined;
   },
   itemNotes(refs, host) {

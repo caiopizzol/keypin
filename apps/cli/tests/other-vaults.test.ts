@@ -12,7 +12,6 @@ STRIPE_API_KEY = { description = "Stripe", providers = ["${uri}"] }
 
 describe("vaults keypin doesn't read from secretspec.toml yet", () => {
   test.each([
-    ["Infisical", "infisical://app.infisical.com"],
     ["Doppler", "doppler://billing"],
     ["Bitwarden", "bws://"],
     ["AWS Secrets Manager", "awssm://us-east-1"],

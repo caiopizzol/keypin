@@ -280,7 +280,7 @@ const INFISICAL = join(sandbox, "infisical.json");
 const infisical = infisicalBackend(
   credentialsFrom(process.env),
   infisicalFetch(
-    run.infisical ?? { organization: "", projects: {} },
+    run.infisical ?? { projects: {} },
     fileStore(
       () => (existsSync(INFISICAL) ? readFileSync(INFISICAL, "utf8") : null),
       (text) => writeFileSync(INFISICAL, text),

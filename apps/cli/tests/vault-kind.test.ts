@@ -163,7 +163,7 @@ describe("a vault kind defined outside keypin", () => {
     );
     expect(run.stdout.text).toContain(`[profiles.dev] B: uses toy://, which names no toy box`);
     expect(run.stdout.text).toContain(
-      `[profiles.dev] C: uses vault://x, and keypin reads only 1Password and Toy from secretspec.toml`,
+      `[profiles.dev] C: uses vault://x, and keypin reads only Infisical, 1Password and Toy from secretspec.toml`,
     );
   });
 

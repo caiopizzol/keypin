@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import { type Drive, drive } from "./drive";
-import { FAKE_TOKEN, ready, valuesOf } from "./scenarios";
+import { FAKE_TOKEN, INFISICAL_PROJECT, ready, valuesOf } from "./scenarios";
 
 const SLOW = 30_000;
 const FINISHED = /^[✓✗] /;
@@ -516,6 +516,62 @@ describe("keypin in a real terminal", () => {
       const result = await drive({ scenario: "ready", args: ["chek"] });
       expect(result.exit).toBe(2);
       expect(result.screen).toContain('unknown command "chek". Did you mean check?');
+    },
+    SLOW,
+  );
+
+  test(
+    "with Infisical, check, status and publish read from the provider's project and leak nothing",
+    async () => {
+      const where = "Infisical at https://app.infisical.com";
+      const check = await drive({ scenario: "infisical", args: ["check"] });
+      expect(check.exit).toBe(0);
+      expect(check.screen).toContain(`Looked up 2 items in ${where}, not the values`);
+      const status = await drive({ scenario: "infisical", args: ["status"] });
+      expect(status.screen).toContain(`✓ Read 2 rotated dates from ${where}, not the values`);
+      expect(status.screen).toContain("STRIPE_KEY  prod  due in 5 days");
+      const publish = await drive({
+        scenario: "infisical",
+        args: ["publish", "STRIPE_KEY"],
+        answers: ["y"],
+      });
+      expect(publish.exit).toBe(0);
+      expect(publish.screen).toContain(
+        `from infisical://${INFISICAL_PROJECT}/prod/STRIPE_KEY in ${where}`,
+      );
+      expect(publish.effects).toEqual([
+        "destination write github-actions:acme/billing STRIPE_KEY (23 chars)",
+      ]);
+      for (const result of [check, status, publish]) {
+        expect(result.screen).not.toContain("1Password");
+        clean(result);
+      }
+    },
+    SLOW,
+  );
+
+  test(
+    "with an Infisical access token, check names it and never shows it",
+    async () => {
+      const check = await drive({ scenario: "infisical-token", args: ["check"] });
+      expect(check.exit).toBe(0);
+      expect(check.screen).toContain(
+        "Note: keypin signs in to Infisical with the access token in INFISICAL_TOKEN",
+      );
+      clean(check);
+    },
+    SLOW,
+  );
+
+  test(
+    "with Infisical, check needs no 1Password token, though KEYPIN_1PASSWORD=service-account",
+    async () => {
+      const env = { KEYPIN_1PASSWORD: "service-account" };
+      const check = await drive({ scenario: "infisical", args: ["check"], env });
+      expect(check.exit).toBe(0);
+      expect(check.screen).toContain("Everything checks out.");
+      expect(check.screen).not.toContain("OP_SERVICE_ACCOUNT_TOKEN");
+      clean(check);
     },
     SLOW,
   );

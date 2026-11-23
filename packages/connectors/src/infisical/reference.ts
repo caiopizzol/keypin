@@ -1,23 +1,21 @@
-import { isRecord, type TableReader } from "@keypin/core";
+import { isRecord } from "@keypin/core";
 
 export type InfisicalRef = {
   kind: "infisical";
   url: string;
-  organization: string;
   project: string;
   environment: string;
   path: string;
   name: string;
 };
 
-export type InfisicalReference = Omit<InfisicalRef, "url" | "organization">;
+export type InfisicalReference = Omit<InfisicalRef, "url">;
 
-export type InfisicalPin = Pick<InfisicalRef, "url" | "organization">;
+export type InfisicalPlace = Pick<InfisicalRef, "url">;
 
 export type InfisicalScope = Omit<InfisicalRef, "name">;
 
 export const SCHEME = "infisical://";
-const INFISICAL_CLOUD = "https://app.infisical.com";
 
 export function parse(rest: string): InfisicalReference | string {
   const parts = rest.split("/");
@@ -34,74 +32,37 @@ export function format(ref: InfisicalReference): string {
   return `${SCHEME}${[ref.project, ref.environment, ...folders, ref.name].join("/")}`;
 }
 
-export function account(place: InfisicalPin): string {
-  return `Infisical organization ${place.organization} at ${place.url}`;
+export function account(place: InfisicalPlace): string {
+  return `Infisical at ${place.url}`;
 }
 
 export function describe(ref: InfisicalRef): string {
   return `${format(ref)} (${account(ref)})`;
 }
 
-export function readPin(read: TableReader): InfisicalPin | undefined {
-  read.only(["url", "organization"]);
-  const url = read.filledIn(
-    read.optional("url"),
-    "url",
-    "your Infisical address, such as https://eu.infisical.com",
-  );
-  const organization = read.filledIn(
-    read.required("organization"),
-    "organization",
-    "your Infisical organization's slug, from its settings page",
-  );
-  const origin = url === undefined ? INFISICAL_CLOUD : httpsOrigin(url);
-  if (origin === null) {
-    read.fail(
-      `field "url" must be an https:// address such as https://eu.infisical.com, with no path`,
-    );
-    return undefined;
-  }
-  if (organization === undefined) return undefined;
-  return { url: origin, organization };
-}
-
-function httpsOrigin(text: string): string | null {
-  if (!/^https:\/\/[^/?#\\]+\/?$/.test(text)) return null;
-  try {
-    const url = new URL(text);
-    return url.protocol === "https:" && url.pathname === "/" && !url.username && !url.password
-      ? url.origin
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 export function decode(value: unknown): InfisicalRef | null {
   if (!isRecord(value) || value.kind !== "infisical") return null;
-  const { url, organization, project, environment, path, name } = value;
+  const { url, project, environment, path, name } = value;
   if (
     typeof url !== "string" ||
-    typeof organization !== "string" ||
     typeof project !== "string" ||
     typeof environment !== "string" ||
     typeof path !== "string" ||
     typeof name !== "string"
   )
     return null;
-  return { kind: "infisical", url, organization, project, environment, path, name };
+  return { kind: "infisical", url, project, environment, path, name };
 }
 
 export function decodeScope(value: unknown): InfisicalScope | null {
   if (!isRecord(value) || value.kind !== "infisical") return null;
-  const { url, organization, project, environment, path } = value;
+  const { url, project, environment, path } = value;
   if (
     typeof url !== "string" ||
-    typeof organization !== "string" ||
     typeof project !== "string" ||
     typeof environment !== "string" ||
     typeof path !== "string"
   )
     return null;
-  return { kind: "infisical", url, organization, project, environment, path };
+  return { kind: "infisical", url, project, environment, path };
 }

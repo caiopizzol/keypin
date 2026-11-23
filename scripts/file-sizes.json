@@ -4,7 +4,7 @@
     "why": "dopplerBackend is one closure: sign-in, sessions, reads and writes share its credentials, fetch, sessions and strict state, so splitting it means threading that state through every helper."
   },
   "packages/connectors/src/infisical/backend.ts": {
-    "lines": 476,
+    "lines": 458,
     "why": "infisicalBackend is one closure: requests, sign-in, token revoke and sessions share its fetch, sleep, warn and strict state, so splitting it means threading that state through every helper."
   }
 }

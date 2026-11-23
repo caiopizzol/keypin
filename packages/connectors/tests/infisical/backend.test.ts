@@ -19,7 +19,6 @@ const TOKEN = "access-token-sentinel-4b8f";
 const REF: InfisicalRef = {
   kind: "infisical",
   url: URL,
-  organization: "acme",
   project: "billing",
   environment: "prod",
   path: "/",
@@ -37,7 +36,6 @@ interface Call {
 function fakeInfisical(
   options: {
     secrets?: Record<string, FakeSecret>;
-    organization?: string;
     login?: number;
     accessToken?: string;
     userToken?: string;
@@ -51,7 +49,6 @@ function fakeInfisical(
 ) {
   const store = memoryStore();
   const fake: FakeInfisical = {
-    organization: options.organization ?? "acme",
     projects: { billing: { prod: {}, dev: {} } },
     projectIds: { billing: PROJECT_ID },
     ...(options.login ? { refuseLogin: options.login } : {}),
@@ -96,20 +93,19 @@ const STRIPE: FakeSecret = {
 };
 
 describe("signing in", () => {
-  test("logs in with Universal Auth once, checks the organization, and resolves the project slug once", async () => {
+  test("logs in with Universal Auth once, and resolves the project slug once", async () => {
     const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": STRIPE } });
     const vault = infisicalBackend(CREDENTIALS, fake.fetch);
     expect((await vault.read(REF)).equals(new Secret(SENTINEL))).toBe(true);
     await vault.read(REF);
     expect(fake.calls.map((c) => `${c.method} ${c.path}`)).toEqual([
       "POST /api/v1/auth/universal-auth/login",
-      "GET /api/v1/identities/details",
       "GET /api/v1/projects/slug/billing",
       "GET /api/v4/secrets/STRIPE_KEY",
       "GET /api/v4/secrets/STRIPE_KEY",
     ]);
     expect(fake.calls[0]?.body).toEqual({ clientId: "client-id-1", clientSecret: CLIENT_SECRET });
-    expect(fake.calls[3]?.query).toMatchObject({
+    expect(fake.calls[2]?.query).toMatchObject({
       projectId: PROJECT_ID,
       environment: "prod",
       secretPath: "/",
@@ -146,7 +142,7 @@ describe("signing in", () => {
 
   test("no credentials name the variables to set", async () => {
     await expect(infisicalBackend(null, fakeInfisical().fetch).read(REF)).rejects.toThrow(
-      "Infisical organization acme at https://app.infisical.com: sign-in failed: set INFISICAL_UNIVERSAL_AUTH_CLIENT_ID and INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET to a machine identity's Universal Auth client ID and secret, or INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN or INFISICAL_TOKEN to a machine identity's access token",
+      "Infisical at https://app.infisical.com: sign-in failed: set INFISICAL_UNIVERSAL_AUTH_CLIENT_ID and INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET to a machine identity's Universal Auth client ID and secret, or INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN or INFISICAL_TOKEN to a machine identity's access token",
     );
   });
 
@@ -161,25 +157,15 @@ describe("signing in", () => {
     expect(String(error)).not.toContain(CLIENT_SECRET);
   });
 
-  test("an identity from another organization is refused before any secret is read", async () => {
-    const fake = fakeInfisical({ organization: "other", secrets: { "prod:/:STRIPE_KEY": STRIPE } });
-    await expect(infisicalBackend(CREDENTIALS, fake.fetch).read(REF)).rejects.toThrow(
-      "sign-in failed: the machine identity belongs to the organization other, but secretspec.toml names acme; keypin reads only from top-level organizations, not sub-organizations",
-    );
-    expect(fake.calls.some((c) => c.path.startsWith("/api/v4"))).toBe(false);
-  });
-
-  test("an identity whose organization Infisical can't name is told to use a top-level one", async () => {
-    const fake = fakeInfisical();
+  test("keypin checks no organization: any identity the server lets in reads", async () => {
+    const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": STRIPE } });
     const fetch: Fetch = (url, init) =>
       url.endsWith("/api/v1/identities/details")
         ? Promise.resolve(
             new Response(JSON.stringify({ message: "internal error" }), { status: 500 }),
           )
         : fake.fetch(url, init);
-    await expect(infisicalBackend(CREDENTIALS, fetch).read(REF)).rejects.toThrow(
-      "couldn't read the machine identity's organization (Infisical returned HTTP 500: internal error); a machine identity created in a sub-organization has none keypin can check, so use one from the top-level organization",
-    );
+    expect((await infisicalBackend(CREDENTIALS, fetch).read(REF)).reveal()).toBe(SENTINEL);
   });
 
   test("an unknown project names the slug", async () => {
@@ -188,7 +174,7 @@ describe("signing in", () => {
     ).rejects.toThrow(`no project with the slug "nope", or the machine identity isn't a member`);
   });
 
-  test("an access token signs in without a login request, and still checks the organization", async () => {
+  test("an access token signs in without a login request, after checking it's a machine identity's", async () => {
     const fake = fakeInfisical({ accessToken: TOKEN, secrets: { "prod:/:STRIPE_KEY": STRIPE } });
     const vault = infisicalBackend({ token: TOKEN, variable: "INFISICAL_TOKEN" }, fake.fetch);
     expect((await vault.read(REF)).equals(new Secret(SENTINEL))).toBe(true);
@@ -198,10 +184,6 @@ describe("signing in", () => {
       "GET /api/v4/secrets/STRIPE_KEY",
     ]);
     expect(fake.calls.every((c) => c.auth === `Bearer ${TOKEN}`)).toBe(true);
-    const other = fakeInfisical({ accessToken: TOKEN, organization: "other" });
-    await expect(
-      infisicalBackend({ token: TOKEN, variable: "INFISICAL_TOKEN" }, other.fetch).read(REF),
-    ).rejects.toThrow("the machine identity belongs to the organization other");
   });
 
   test("a user's token is told to use a machine identity's, without the token", async () => {
@@ -280,7 +262,7 @@ describe("reading", () => {
   test("a missing secret, a hidden value, and a bad rotated date are clear errors", async () => {
     const missing = infisicalBackend(CREDENTIALS, fakeInfisical().fetch);
     await expect(missing.read(REF)).rejects.toThrow(
-      "infisical://billing/prod/STRIPE_KEY (Infisical organization acme at https://app.infisical.com): Infisical returned HTTP 404: Secret with name 'STRIPE_KEY' not found",
+      "infisical://billing/prod/STRIPE_KEY (Infisical at https://app.infisical.com): Infisical returned HTTP 404: Secret with name 'STRIPE_KEY' not found",
     );
     const hidden = fakeInfisical({ hidden: true, secrets: { "prod:/:STRIPE_KEY": STRIPE } });
     await expect(infisicalBackend(CREDENTIALS, hidden.fetch).read(REF)).rejects.toThrow(
@@ -312,15 +294,17 @@ describe("reading", () => {
       ["/api/v1/identities/details", "sign-in failed: "],
       ["/api/v4/secrets", ""],
     ];
+    const token = { token: TOKEN, variable: "INFISICAL_TOKEN" };
     for (const [route, stage] of stages) {
       const fake = fakeInfisical({
+        accessToken: TOKEN,
         missingRoutes: [route],
         secrets: { "prod:/:STRIPE_KEY": STRIPE },
       });
-      await expect(infisicalBackend(CREDENTIALS, fake.fetch).read(REF)).rejects.toThrow(
-        `Infisical organization acme at https://app.infisical.com: ${stage}the server has no GET ${route}`,
+      await expect(infisicalBackend(token, fake.fetch).read(REF)).rejects.toThrow(
+        `Infisical at https://app.infisical.com: ${stage}the server has no GET ${route}`,
       );
-      await expect(infisicalBackend(CREDENTIALS, fake.fetch).read(REF)).rejects.toThrow(
+      await expect(infisicalBackend(token, fake.fetch).read(REF)).rejects.toThrow(
         "it may be older than keypin supports; keypin needs Infisical from September 2025 or later",
       );
     }
@@ -336,7 +320,7 @@ describe("reading", () => {
       .catch((e: unknown) => e);
     assert(error instanceof Error);
     expect(error.message).toContain(
-      "sign-in failed: the server has no POST /api/v1/auth/universal-auth/login; check that url in secretspec.toml points to the Infisical server itself, with no path",
+      "sign-in failed: the server has no POST /api/v1/auth/universal-auth/login; check that the host in your infisical:// provider in secretspec.toml is the Infisical server",
     );
     expect(error.message).not.toContain("older than keypin supports");
   });
@@ -373,15 +357,13 @@ describe("reading", () => {
 
   test("a rate limit or a missing route while signing in is a failed sign-in", async () => {
     const limited = fakeInfisical({ rateLimited: { times: 2, retryAfter: 3 } });
-    const missing = fakeInfisical({ missingRoutes: ["/api/v1/identities/details"] });
+    const missing = fakeInfisical({ missingRoutes: ["/api/v1/auth/universal-auth/login"] });
     for (const fake of [limited, missing]) {
       const error = await infisicalBackend(CREDENTIALS, fake.fetch, { sleep: async () => {} })
         .read(REF)
         .catch((e: unknown) => e);
       expect(error).toBeInstanceOf(SignInFailed);
-      expect(String(error)).toContain(
-        "Infisical organization acme at https://app.infisical.com: sign-in failed: ",
-      );
+      expect(String(error)).toContain("Infisical at https://app.infisical.com: sign-in failed: ");
     }
   });
 
@@ -389,7 +371,7 @@ describe("reading", () => {
     const fake = fakeInfisical({ secrets: { "prod:/:STRIPE_KEY": { ...STRIPE, value: "" } } });
     const vault = infisicalBackend(CREDENTIALS, fake.fetch);
     const empty =
-      "infisical://billing/prod/STRIPE_KEY (Infisical organization acme at https://app.infisical.com): the value is empty";
+      "infisical://billing/prod/STRIPE_KEY (Infisical at https://app.infisical.com): the value is empty";
     await expect(vault.read(REF)).rejects.toThrow(empty);
     await expect(vault.readItem(REF)).rejects.toThrow(empty);
   });
@@ -653,7 +635,6 @@ test("list names the secrets of a project, environment and path, without values"
   const items = await infisicalBackend(CREDENTIALS, fake.fetch).list({
     kind: "infisical",
     url: URL,
-    organization: "acme",
     project: "billing",
     environment: "prod",
     path: "/",

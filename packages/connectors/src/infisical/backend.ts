@@ -28,7 +28,7 @@ import {
   decode,
   decodeScope,
   describe as describeRef,
-  type InfisicalPin as Place,
+  type InfisicalPlace as Place,
   type InfisicalRef,
   type InfisicalScope as Scope,
 } from "./reference";
@@ -112,7 +112,7 @@ export function infisicalBackend(
     if (response.status === 404 && body.error === "Not Found")
       throw fail(
         options.always
-          ? `the server has no ${method} ${path}; check that url in secretspec.toml points to the Infisical server itself, with no path`
+          ? `the server has no ${method} ${path}; check that the host in your infisical:// provider in secretspec.toml is the Infisical server`
           : `the server has no ${method} ${path}, so it may be older than keypin supports; keypin needs Infisical from September 2025 or later`,
       );
     if (response.status === 429)
@@ -132,40 +132,22 @@ export function infisicalBackend(
       throw new SignInFailed(`${where}: sign-in failed: ${credentials.problem}`, { kind: "other" });
     const minted = "identityId" in credentials;
     const token = await accessToken(place, credentials);
-    try {
-      await checkIdentity(place, token, credentials);
-    } catch (error) {
-      if (minted) await revoke(place, token);
-      throw error;
-    }
+    if ("variable" in credentials) await checkToken(place, token, credentials.variable);
     return { place, token, minted, projects: new Map() };
   }
 
-  async function checkIdentity(place: Place, token: string, credentials: Credentials) {
+  async function checkToken(place: Place, token: string, variable: string) {
     const where = account(place);
     const details = await request(place, "GET", "/api/v1/identities/details", {
       token,
       signIn: true,
     });
-    if ("variable" in credentials && (details.status === 401 || details.status === 403))
+    if (details.status === 401 || details.status === 403)
       throw new SignInFailed(
         details.status === 401
-          ? `${where}: sign-in failed: Infisical refused the access token in ${credentials.variable} (HTTP 401); it may have expired, so get a new one`
-          : `${where}: sign-in failed: the access token in ${credentials.variable} isn't a machine identity's; use a machine identity's access token`,
+          ? `${where}: sign-in failed: Infisical refused the access token in ${variable} (HTTP 401); it may have expired, so get a new one`
+          : `${where}: sign-in failed: the access token in ${variable} isn't a machine identity's; use a machine identity's access token`,
         { kind: "other" },
-      );
-    const identity = details.body.identityDetails;
-    const organization =
-      isRecord(identity) && isRecord(identity.organization) ? identity.organization.slug : null;
-    if (details.status !== 200 || typeof organization !== "string")
-      throw new SignInFailed(
-        `${where}: sign-in failed: couldn't read the machine identity's organization (${problem(details)}); a machine identity created in a sub-organization has none keypin can check, so use one from the top-level organization`,
-        { kind: "other" },
-      );
-    if (organization !== place.organization)
-      throw new SignInFailed(
-        `${where}: sign-in failed: the machine identity belongs to the organization ${organization}, but secretspec.toml names ${place.organization}; keypin reads only from top-level organizations, not sub-organizations`,
-        { kind: "wrong-account", pinned: place.organization, actual: organization },
       );
   }
 
@@ -196,7 +178,7 @@ export function infisicalBackend(
       new SignInFailed(`${account(place)}: sign-in failed: ${why}`, { kind });
     if (!CLOUD.includes(place.url) && originOf(given.confirmedUrl) !== place.url)
       throw failed(
-        `keypin sends GitHub's OIDC token only to Infisical Cloud, and secretspec.toml's url is ${place.url}; if that server is yours, set ${CONFIRMED_URL}=${place.url} in the job`,
+        `keypin sends GitHub's OIDC token only to Infisical Cloud, and your infisical:// provider in secretspec.toml names ${place.url}; if that server is yours, set ${CONFIRMED_URL}=${place.url} in the job`,
       );
     const idToken =
       options.idToken ??

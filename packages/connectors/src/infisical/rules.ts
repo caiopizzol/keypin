@@ -8,6 +8,7 @@ import {
   parse,
   SCHEME,
 } from "./reference";
+import { locate } from "./secretspec";
 
 export const infisicalVaultRules: VaultRules<InfisicalRef, InfisicalReference> = {
   kind: "infisical",
@@ -24,5 +25,5 @@ export const infisicalVaultRules: VaultRules<InfisicalRef, InfisicalReference> =
     a.path === b.path &&
     a.name === b.name,
   stored: decode,
-  secretspec: { provider: "infisical" },
+  secretspec: { provider: "infisical", locate },
 };

@@ -3,14 +3,13 @@ import { vaultContract } from "@keypin/core/testing";
 import { infisicalBackend } from "../../src/infisical/index";
 import { type FakeInfisical, infisicalFetch, memoryStore } from "../../src/infisical/testing";
 
-const PLACE = { url: "https://app.infisical.com", organization: "acme", project: "billing" };
+const PLACE = { url: "https://app.infisical.com", project: "billing" };
 
 for (const path of ["/", "/payments/stripe"]) {
   describe(`the vault contract, secret path ${path}`, () => {
     vaultContract((sentinel) => {
       const key = path === "/" ? "STRIPE_KEY" : `${path}/STRIPE_KEY`;
       const fake: FakeInfisical = {
-        organization: "acme",
         projects: { billing: { prod: { [key]: { value: sentinel, rotated: "2026-10-01" } } } },
       };
       const store = memoryStore();

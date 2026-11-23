@@ -186,6 +186,22 @@ describe("signing in", () => {
     expect(fake.calls.every((c) => c.auth === `Bearer ${TOKEN}`)).toBe(true);
   });
 
+  test("an access token Infisical couldn't check reads nothing", async () => {
+    const fake = fakeInfisical({ accessToken: TOKEN, secrets: { "prod:/:STRIPE_KEY": STRIPE } });
+    const fetch: Fetch = (url, init) =>
+      url.endsWith("/api/v1/identities/details")
+        ? Promise.resolve(
+            new Response(JSON.stringify({ message: "internal error" }), { status: 500 }),
+          )
+        : fake.fetch(url, init);
+    const error = await infisicalBackend({ token: TOKEN, variable: "INFISICAL_TOKEN" }, fetch)
+      .read(REF)
+      .catch((e: unknown) => e);
+    assert(error instanceof SignInFailed, String(error));
+    expect(error.message).toContain("couldn't check the access token in INFISICAL_TOKEN");
+    expect(fake.calls.some((c) => c.path.startsWith("/api/v4"))).toBe(false);
+  });
+
   test("a user's token is told to use a machine identity's, without the token", async () => {
     const fake = fakeInfisical({ userToken: TOKEN });
     const error = await infisicalBackend({ token: TOKEN, variable: "INFISICAL_TOKEN" }, fake.fetch)

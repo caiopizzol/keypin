@@ -142,11 +142,13 @@ export function infisicalBackend(
       token,
       signIn: true,
     });
-    if (details.status === 401 || details.status === 403)
+    const why: Record<number, string> = {
+      401: `Infisical refused the access token in ${variable} (HTTP 401); it may have expired, so get a new one`,
+      403: `the access token in ${variable} isn't a machine identity's; use a machine identity's access token`,
+    };
+    if (details.status !== 200)
       throw new SignInFailed(
-        details.status === 401
-          ? `${where}: sign-in failed: Infisical refused the access token in ${variable} (HTTP 401); it may have expired, so get a new one`
-          : `${where}: sign-in failed: the access token in ${variable} isn't a machine identity's; use a machine identity's access token`,
+        `${where}: sign-in failed: ${why[details.status] ?? `couldn't check the access token in ${variable} (${problem(details)})`}`,
         { kind: "other" },
       );
   }

@@ -26,8 +26,8 @@ function status(rotation: Rotation | null, overrides: Partial<StatusInput> = {})
   const map: MapResult = {
     ok: true,
     map: {
-      file: `${PROJECT}/keypin.toml`,
-      pins: { "1password": "my.1password.com" },
+      file: `${PROJECT}/secretspec.toml`,
+      project: "billing",
       environments: ["dev", "prod"],
       ignore: [],
       keys: [{ ...KEY, rotateEvery }],
@@ -99,7 +99,10 @@ describe("receipts in status follow the destination, like publish", () => {
     const result = status(rotation, {
       receipts: [
         receipt(WORKER, "aaaaaaaaaaaaaaaa"),
-        receipt(GITHUB, "bbbbbbbbbbbbbbbb", { mapFile: "/work/web/keypin.toml", source: other }),
+        receipt(GITHUB, "bbbbbbbbbbbbbbbb", {
+          mapFile: "/work/web/secretspec.toml",
+          source: other,
+        }),
       ],
     });
     expect(result.problems.filter((p) => p.kind === "missing-receipt")).toMatchObject([
@@ -137,8 +140,8 @@ describe("status", () => {
     const map: MapResult = {
       ok: true,
       map: {
-        file: `${PROJECT}/keypin.toml`,
-        pins: {},
+        file: `${PROJECT}/secretspec.toml`,
+        project: "billing",
         environments: ["prod"],
         ignore: [],
         keys: [issued],
@@ -209,8 +212,8 @@ describe("status", () => {
     const map: MapResult = {
       ok: true,
       map: {
-        file: "keypin.toml",
-        pins: { "1password": "my.1password.com" },
+        file: "secretspec.toml",
+        project: "billing",
         environments: ["dev", "prod"],
         ignore: [],
         keys: [{ ...KEY, rotateEvery: null }],
@@ -222,7 +225,7 @@ describe("status", () => {
     );
     expect(result.problems.find((p) => p.kind === "bad-rotation-period")).toMatchObject({
       severity: "problem",
-      message: `${KEY.name} (prod): keypin.toml has no rotate_every for this key; add one, such as "90d", or "never"`,
+      message: `${KEY.name} (prod): secretspec.toml has no rotate_every for this key; add one, such as "90d", or "never"`,
     });
   });
 
@@ -239,12 +242,12 @@ describe("status", () => {
     expect(result.rows[0]?.destinations.map((d) => d.receipt)).toEqual([null, null]);
   });
 
-  test("a never-published environment that isn't the default names --env", () => {
+  test("a never-published environment that isn't the default names --profile", () => {
     const map: MapResult = {
       ok: true,
       map: {
-        file: `${PROJECT}/keypin.toml`,
-        pins: { "1password": "my.1password.com" },
+        file: `${PROJECT}/secretspec.toml`,
+        project: "billing",
         environments: ["dev", "prod", "staging"],
         ignore: [],
         keys: [KEY],
@@ -255,7 +258,7 @@ describe("status", () => {
       { receipts: [], maps: new Map([[PROJECT, map]]) },
     );
     expect(result.problems.map((p) => p.message)).toEqual([
-      `${KEY.name} (prod): not published yet to ${WORKER}, ${GITHUB}; run keypin publish ${KEY.name} --env prod`,
+      `${KEY.name} (prod): not published yet to ${WORKER}, ${GITHUB}; run keypin publish ${KEY.name} --profile prod`,
     ]);
   });
 
@@ -288,7 +291,10 @@ describe("status", () => {
       { rotated: day("2026-11-09"), rotateEvery: "365d" },
       {
         receipts: [
-          receipt(WORKER, "bbbbbbbbbbbbbbbb", { mapFile: "/work/web/keypin.toml", source: other }),
+          receipt(WORKER, "bbbbbbbbbbbbbbbb", {
+            mapFile: "/work/web/secretspec.toml",
+            source: other,
+          }),
         ],
       },
     );
@@ -323,14 +329,14 @@ describe("status", () => {
       vaults: VAULT_KINDS,
       registry: { version: 1, projects: ["/work/a", "/work/b", "/work/c"] },
       maps: new Map<string, MapResult>([
-        ["/work/b", { ok: false, errors: ["/work/b/keypin.toml: missing field"] }],
+        ["/work/b", { ok: false, errors: ["/work/b/secretspec.toml: missing field"] }],
         [
           "/work/c",
           {
             ok: true,
             map: {
-              file: "/work/c/keypin.toml",
-              pins: {},
+              file: "/work/c/secretspec.toml",
+              project: "billing",
               environments: ["dev", "prod"],
               ignore: [],
               keys: [],

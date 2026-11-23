@@ -4,9 +4,9 @@ import { idKeyOf, type IssuerRules, type IssuerReader, type IssuerSpec } from ".
 import type { VaultRules } from "../login";
 import { pullKindOf, type PullKinds, pullPlace, type PullReader } from "../pull";
 import { isRecord } from "../record";
-import { parseReference, referenceSchemes, sameItem } from "../reference";
+import { parseReference, sameItem, vaultName } from "../reference";
 import { periodDays } from "../days";
-import { type EnvEntry, type KeyEntry, type VaultPins, VARIABLE_NAME } from "./keys-map";
+import { type EnvEntry, type KeyEntry, VARIABLE_NAME } from "./keys-map";
 import {
   type Table,
   PLACEHOLDER,
@@ -16,14 +16,9 @@ import {
   optionalString,
 } from "./table";
 
-const KEY_FIELDS: readonly string[] = ["rotate_every"];
-
-const REMOVED_KEY_FIELDS: readonly string[] = ["owner", "consumers"];
-
-export const OLD_FORMAT = "see docs/reference/keypin-toml.md for the current format";
+export const TOOL_FIELDS: readonly string[] = ["rotate_every", "publish", "pull", "issuer"];
 
 export interface MapContext {
-  pins: VaultPins;
   environments: readonly Environment[];
   kinds: readonly DestinationRules[];
   issuers: readonly IssuerRules[];
@@ -31,71 +26,12 @@ export interface MapContext {
   pulls: PullKinds;
 }
 
-export function validateKey(
-  id: string,
-  raw: unknown,
-  context: MapContext,
-  fail: (where: string, message: string) => void,
-): KeyEntry | undefined {
-  const environmentNames = context.environments;
-  let failures = 0;
-  const err = (where: string, message: string) => {
-    failures++;
-    fail(where, message);
-  };
-  if (!VARIABLE_NAME.test(id))
-    err(
-      "",
-      "the table name is the variable your program reads: letters, digits and _, not starting with a digit",
-    );
-  if (!isRecord(raw)) {
-    err("", "must be a table");
-    return undefined;
-  }
-  unknownFields(raw, [...KEY_FIELDS, ...environmentNames], (field) =>
-    err(
-      "",
-      field === "env"
-        ? `field "env" is from keypin 0.4; name the table after the variable, such as [keys.API_TOKEN] (${OLD_FORMAT})`
-        : REMOVED_KEY_FIELDS.includes(field)
-          ? `field "${field}" is no longer used; delete it`
-          : `unknown field "${field}"; environments are ${environmentNames.map((n) => `"${n}"`).join(", ")}`,
-    ),
-  );
-  const rotateEvery = rotation(
-    optionalString(raw, "rotate_every", (m) => err("", m)),
-    (m) => err("", m),
-  );
-
-  const environments: Record<Environment, EnvEntry> = {};
-  Reflect.setPrototypeOf(environments, null);
-  const declared = environmentNames.filter((name) => Object.hasOwn(raw, name));
-  for (const name of declared) {
-    const entry = validateEnv(raw[name], context, (m) => err(` ${name}`, m));
-    if (entry) environments[name] = entry;
-  }
-  for (const [name, entry] of Object.entries(environments)) {
-    const refused = new Set<string>();
-    entry.publish.forEach((target, index) => {
-      const why = context.kinds.find((k) => k.kind === target.to)?.refuses?.(id);
-      if (why === undefined || refused.has(target.to)) return;
-      refused.add(target.to);
-      err(` ${name}`, `publish[${index}]: ${target.to} can't take this key, because ${why}`);
-    });
-    const issuer = entry.issuer?.kind;
-    const why = context.issuers.find((k) => k.kind === issuer)?.refuses?.(id);
-    if (why !== undefined)
-      err(` ${name}`, `issuer: ${issuer} can't rotate this key, because ${why}`);
-  }
-  if (!declared.length) {
-    err("", `needs at least one of ${environmentNames.map((n) => `"${n}"`).join(", ")}`);
-  }
-
-  if (failures) return undefined;
-  return { name: id, rotateEvery, environments };
+export interface ToolEntry {
+  entry: EnvEntry;
+  rotateEvery: string | undefined;
 }
 
-function rotation(
+export function rotation(
   text: string | undefined,
   fail: (message: string) => void,
 ): KeyEntry["rotateEvery"] {
@@ -106,15 +42,16 @@ function rotation(
   return null;
 }
 
-function validateEnv(
-  given: unknown,
+export function validateTool(
+  id: string,
+  raw: unknown,
+  ref: KeyRef,
   context: MapContext,
   fail: (message: string) => void,
-): EnvEntry | undefined {
+): ToolEntry | undefined {
   const { kinds } = context;
-  const raw = typeof given === "string" ? { from: given } : given;
   if (!isRecord(raw)) {
-    fail(`must be an ${referenceSchemes(context.vaults)} reference, or a table with "from"`);
+    fail(`must be a table with ${TOOL_FIELDS.map((f) => `"${f}"`).join(", ")}`);
     return undefined;
   }
   let failed = false;
@@ -122,16 +59,9 @@ function validateEnv(
     failed = true;
     fail(message);
   };
-  unknownFields(raw, ["from", "publish", "pull", "issuer"], (field) =>
-    err(
-      field === "vault" || field === "item"
-        ? `"vault" and "item" are from keypin 0.4; use from = "op://<vault>/<item>/<field>" (${OLD_FORMAT})`
-        : field === "rotate" || field === "issue"
-          ? `the "${field}" section is from an older keypin; delete it. To let keypin rotate the key, add an "issuer" table instead (${OLD_FORMAT})`
-          : `unknown field "${field}"`,
-    ),
-  );
-  const ref = reference(raw, "from", context, err);
+  unknownFields(raw, TOOL_FIELDS, (field) => err(`unknown field "${field}"`));
+  const rotateEvery = optionalString(raw, "rotate_every", err);
+  rotation(rotateEvery, err);
 
   const publish: PublishTarget[] = [];
   const publishedAt: number[] = [];
@@ -153,15 +83,28 @@ function validateEnv(
       });
     }
   }
+  const refused = new Set<string>();
+  publish.forEach((target, index) => {
+    const why = kinds.find((k) => k.kind === target.to)?.refuses?.(id);
+    if (why === undefined || refused.has(target.to)) return;
+    refused.add(target.to);
+    err(`publish[${publishedAt[index]}]: ${target.to} can't take this key, because ${why}`);
+  });
   const pull = readers(raw.pull, publish, publishedAt, context, err);
   const issuer =
-    raw.issuer === undefined || !ref
+    raw.issuer === undefined
       ? undefined
       : validateIssuer(raw.issuer, ref, context, (m) => err(`issuer: ${m}`));
-  if (failed || !ref) return undefined;
-  if (!issuer) return { ref, publish, pull };
+  const why = context.issuers.find((k) => k.kind === issuer?.kind)?.refuses?.(id);
+  if (issuer && why !== undefined)
+    err(`issuer: ${issuer.kind} can't rotate this key, because ${why}`);
+  if (failed) return undefined;
+  if (!issuer) return { entry: { ref, publish, pull }, rotateEvery };
   const idKey = idKeyOf(context.issuers, issuer);
-  return idKey === null ? { ref, publish, pull, issuer } : { ref, publish, pull, issuer, idKey };
+  return {
+    entry: idKey === null ? { ref, publish, pull, issuer } : { ref, publish, pull, issuer, idKey },
+    rotateEvery,
+  };
 }
 
 function readers(
@@ -254,7 +197,7 @@ function validateIssuer(
   const reader: IssuerReader = {
     ...tableReader(raw, found.admin === false ? ["kind"] : ["kind", "admin"], kind, err),
     admin() {
-      const admin = reference(raw, "admin", context, err);
+      const admin = adminReference(raw, own, context, err);
       if (!admin || !sameItem(admin, own, vaults)) return admin;
       err(`field "admin" names the key's own item; the admin key needs its own item`);
       return undefined;
@@ -262,7 +205,7 @@ function validateIssuer(
     idKey() {
       const name = requiredString(raw, "key_id", err);
       if (name === undefined || VARIABLE_NAME.test(name)) return name;
-      err(`field "key_id" must name a key in this map, such as "API_KEY_ID"`);
+      err(`field "key_id" must name a key in secretspec.toml, such as "API_KEY_ID"`);
       return undefined;
     },
   };
@@ -271,17 +214,17 @@ function validateIssuer(
   return failed ? undefined : spec;
 }
 
-function reference(
+function adminReference(
   table: Table,
-  field: string,
-  { pins, vaults }: MapContext,
+  own: KeyRef,
+  { vaults }: MapContext,
   fail: (message: string) => void,
 ): KeyRef | undefined {
-  const text = requiredString(table, field, fail);
+  const text = requiredString(table, "admin", fail);
   if (text === undefined) return undefined;
   const parsed = parseReference(text, vaults);
   if (typeof parsed === "string") {
-    fail(`field "${field}" ${parsed}`);
+    fail(`field "admin" ${parsed}`);
     return undefined;
   }
   const { vault, reference: found } = parsed;
@@ -292,16 +235,17 @@ function reference(
     .map(([part]) => part);
   if (parts.length) {
     fail(
-      `field "${field}" has a <...> placeholder for its ${parts.join(" and ")}: replace it with ${vault.placeholder}`,
+      `field "admin" has a <...> placeholder for its ${parts.join(" and ")}: replace it with ${vault.placeholder}`,
     );
     return undefined;
   }
-  const pin = pins[vault.kind];
-  if (pin === undefined) {
-    fail(`field "${field}" ${vault.needsPin}`);
+  if (vault.kind !== own.kind) {
+    fail(
+      `field "admin" is in ${vault.name}, and the key is in ${vaultName(own, vaults)}; keypin reads the admin key from the key's own vault account`,
+    );
     return undefined;
   }
-  return vault.pinned(found, pin);
+  return vault.pinned(found, own);
 }
 
 function destination(
@@ -309,12 +253,6 @@ function destination(
   kinds: readonly DestinationRules[],
   fail: (message: string) => void,
 ): PublishTarget | undefined {
-  if (typeof raw === "string") {
-    fail(
-      `names a shared target, which is no longer supported; write the destination inline, such as { to = "github-actions", repo = "owner/name" } (${OLD_FORMAT})`,
-    );
-    return undefined;
-  }
   if (!isRecord(raw)) {
     fail("must be a table");
     return undefined;

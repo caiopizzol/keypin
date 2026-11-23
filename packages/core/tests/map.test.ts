@@ -1,1504 +1,358 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import {
-  type DestinationKind,
-  type DestinationRules,
-  type IssuerKind,
-  type IssuerRules,
-  type IssuerSpec,
-  parseMap,
-  type VaultRules,
-} from "../src/index";
-import { ISSUERS, KINDS, MAP_FILE, PULLS, VALID_MAP, VAULT_KINDS } from "./fixtures";
+import { publishEnvironment, runEnvironment } from "../src/index";
+import { MAP_FILE } from "./fixtures";
+import { errorsOf, HEAD, read } from "./secretspec";
 
-const VAULTS = `
-[1password]
-account = "my.1password.com"
-`;
-
-function errorsOf(text: string): string[] {
-  const result = parseMap(text, MAP_FILE, KINDS, ISSUERS, VAULT_KINDS);
-  if (result.ok) throw new Error("expected the map to be rejected");
-  return result.errors;
+function refOf(text: string, name: string, profile: string) {
+  const result = read(text);
+  assert(result.ok, JSON.stringify(result));
+  return result.map.keys.find((key) => key.name === name)?.environments[profile]?.ref;
 }
 
-describe("a valid map", () => {
-  test("a map saved with a byte order mark parses the same", () => {
-    expect(parseMap(`\uFEFF${VALID_MAP}`, MAP_FILE, KINDS, ISSUERS, VAULT_KINDS)).toEqual(
-      parseMap(VALID_MAP, MAP_FILE, KINDS, ISSUERS, VAULT_KINDS),
-    );
-  });
+const item = (title: string, more: Record<string, unknown> = {}) => ({
+  kind: "1password",
+  account: "my.1password.com",
+  vault: "Acme",
+  item: title,
+  section: null,
+  ...more,
+});
 
-  test("the design's example parses into typed entries", () => {
-    const result = parseMap(VALID_MAP, MAP_FILE, KINDS, ISSUERS, VAULT_KINDS);
-    expect(result).toEqual({
-      ok: true,
-      map: {
-        file: MAP_FILE,
-        pins: { "1password": "my.1password.com" },
-        environments: ["dev", "prod"],
-        ignore: [],
-        keys: [
-          {
-            name: "SESSION_SECRET",
-            rotateEvery: { text: "180d", days: 180 },
-            environments: {
-              dev: {
-                ref: {
-                  kind: "1password",
-                  account: "my.1password.com",
-                  vault: "Private",
-                  item: "web dev session secret",
-                  section: null,
-                  field: "password",
-                },
-                publish: [],
-                pull: [],
-              },
-              prod: {
-                ref: {
-                  kind: "1password",
-                  account: "my.1password.com",
-                  vault: "Private",
-                  item: "web prod session secret",
-                  section: null,
-                  field: "password",
-                },
-                publish: [
-                  {
-                    to: "cloudflare-worker",
-                    account: "11111111111111111111111111111111",
-                    worker: "web",
-                  },
-                  { to: "github-actions", repo: "acme/web", account: "acme" },
-                ],
-                pull: [],
+describe("the plan's example", () => {
+  const EXAMPLE = `${HEAD}
+[profiles.default]
+STRIPE_KEY = { description = "Stripe test key" }
+
+[profiles.production]
+RESEND_API_KEY = { description = "Resend", ref = { item = "resend key", field = "credential" } }
+
+[tool.keypin]
+ignore = ["KEYPIN_GITHUB_TOKEN", "OP_SERVICE_ACCOUNT_TOKEN"]
+
+[tool.keypin.production.RESEND_API_KEY]
+rotate_every = "90d"
+publish = [{ to = "github-actions", repo = "acme/web" }]
+issuer = { kind = "resend", admin = "op://Acme/resend admin/credential", permission = "sending_access" }
+`;
+
+  test("reads profiles in file order, every secret's place, and keypin's settings", () => {
+    const result = read(EXAMPLE);
+    assert(result.ok, JSON.stringify(result));
+    expect(result.map).toEqual({
+      file: MAP_FILE,
+      project: "web",
+      environments: ["default", "production"],
+      ignore: ["KEYPIN_GITHUB_TOKEN", "OP_SERVICE_ACCOUNT_TOKEN"],
+      keys: [
+        {
+          name: "STRIPE_KEY",
+          rotateEvery: null,
+          environments: {
+            default: {
+              ref: item("secretspec/web/default/STRIPE_KEY", {
+                field: "value",
+                fallback: "password",
+              }),
+              publish: [],
+              pull: [],
+            },
+            production: {
+              ref: item("secretspec/web/production/STRIPE_KEY", {
+                field: "value",
+                fallback: "password",
+              }),
+              publish: [],
+              pull: [],
+            },
+          },
+        },
+        {
+          name: "RESEND_API_KEY",
+          rotateEvery: { text: "90d", days: 90 },
+          environments: {
+            production: {
+              ref: item("resend key", { field: "credential" }),
+              publish: [{ to: "github-actions", repo: "acme/web", account: "acme" }],
+              pull: [],
+              issuer: {
+                kind: "resend",
+                admin: item("resend admin", { field: "credential" }),
+                permission: "sending_access",
               },
             },
           },
-        ],
-      },
-    });
-  });
-
-  test("tables instead of inline tables, and no rotate_every", () => {
-    const result = parseMap(
-      `${VAULTS}
-[keys.STRIPE_API_KEY]
-
-[keys.STRIPE_API_KEY.prod]
-from = "op://Private/billing stripe api key/password"
-
-[[keys.STRIPE_API_KEY.prod.publish]]
-to = "github-actions"
-repo = "acme/billing"
-`,
-      MAP_FILE,
-      KINDS,
-      ISSUERS,
-      VAULT_KINDS,
-    );
-    if (!result.ok) throw new Error(result.errors.join("\n"));
-    const [key] = result.map.keys;
-    expect(key?.rotateEvery).toBeNull();
-    expect(key?.environments.dev).toBeUndefined();
-    expect(key?.environments.prod?.publish).toEqual([
-      { to: "github-actions", repo: "acme/billing", account: "acme" },
-    ]);
-  });
-
-  test("an empty map has no keys", () => {
-    expect(parseMap("", MAP_FILE, KINDS, ISSUERS, VAULT_KINDS)).toEqual({
-      ok: true,
-      map: { file: MAP_FILE, pins: {}, environments: ["dev", "prod"], ignore: [], keys: [] },
-    });
-  });
-
-  test("declared environments replace dev and prod", () => {
-    const result = parseMap(
-      `environments = ["local", "staging", "production"]\n${VAULTS}[keys.A]\nlocal = "op://Private/l/password"\nstaging = "op://Private/s/password"\n`,
-      MAP_FILE,
-      KINDS,
-      ISSUERS,
-      VAULT_KINDS,
-    );
-    assert(result.ok, JSON.stringify(result));
-    expect(result.map.environments).toEqual(["local", "staging", "production"]);
-    expect(Object.keys(result.map.keys[0]?.environments ?? {})).toEqual(["local", "staging"]);
-    expect(
-      errorsOf(
-        `environments = ["local", "production"]\n${VAULTS}[keys.A]\ndev = "op://Private/i/password"\n`,
-      ),
-    ).toEqual([
-      `${MAP_FILE}: key "A": unknown field "dev"; environments are "local", "production"`,
-      `${MAP_FILE}: key "A": needs at least one of "local", "production"`,
-    ]);
-  });
-
-  test("an environment named like an object property is read only from the key", () => {
-    const result = parseMap(
-      `environments = ["constructor", "prod"]\n${VAULTS}[keys.A]\nprod = "op://Private/p/password"\n`,
-      MAP_FILE,
-      KINDS,
-      ISSUERS,
-      VAULT_KINDS,
-    );
-    assert(result.ok, JSON.stringify(result));
-    expect(Object.keys(result.map.keys[0]?.environments ?? {})).toEqual(["prod"]);
-    expect(result.map.keys[0]?.environments.constructor).toBeUndefined();
-  });
-
-  test.each([
-    [
-      `environments = []`,
-      `"environments" must be a list of names, such as ["dev", "staging", "prod"]`,
-    ],
-    [
-      `environments = "prod"`,
-      `"environments" must be a list of names, such as ["dev", "staging", "prod"]`,
-    ],
-    [
-      `environments = ["Prod"]`,
-      `environment "Prod": a name starts with a lowercase letter and uses only lowercase letters, digits and dashes`,
-    ],
-    [
-      `environments = ["rotate_every"]`,
-      `environment "rotate_every": a name starts with a lowercase letter and uses only lowercase letters, digits and dashes`,
-    ],
-    [`environments = ["dev", "dev"]`, `environment "dev" is listed twice`],
-  ])("%s is rejected", (line, message) => {
-    expect(errorsOf(`${line}\n`)).toEqual([`${MAP_FILE}: ${message}`]);
-  });
-});
-
-describe("ignore", () => {
-  test("lists variable names that check leaves alone", () => {
-    const result = parseMap(
-      `ignore = ["OPENAI_API_KEY", "anthropic_api_key"]\n`,
-      MAP_FILE,
-      KINDS,
-      ISSUERS,
-      VAULT_KINDS,
-    );
-    assert(result.ok, JSON.stringify(result));
-    expect(result.map.ignore).toEqual(["OPENAI_API_KEY", "anthropic_api_key"]);
-  });
-
-  test.each([
-    [
-      `ignore = "OPENAI_API_KEY"`,
-      `"ignore" must be a list of variable names, such as ["OPENAI_API_KEY"]`,
-    ],
-    [`ignore = [1]`, `"ignore" must be a list of variable names, such as ["OPENAI_API_KEY"]`],
-    [
-      `ignore = ["1PASSWORD"]`,
-      `ignore "1PASSWORD": a variable name uses letters, digits and _, not starting with a digit`,
-    ],
-    [`ignore = ["A", "A"]`, `ignore "A" is listed twice`],
-    [`ignore = ["A", "a"]`, `ignore "a" is listed twice`],
-    [
-      `ignore = ["A"]\n${VAULTS}[keys.A]\ndev = "op://Private/a/password"`,
-      `ignore "A" is also [keys.A]; remove it from one of them`,
-    ],
-    [
-      `ignore = ["a"]\n${VAULTS}[keys.A]\ndev = "op://Private/a/password"`,
-      `ignore "a" is also [keys.A]; remove it from one of them`,
-    ],
-  ])("%s is rejected", (text, message) => {
-    expect(errorsOf(`${text}\n`)).toEqual([`${MAP_FILE}: ${message}`]);
-  });
-});
-
-describe("missing fields", () => {
-  const base = {};
-  const key = (fields: Record<string, string>) =>
-    `${VAULTS}\n[keys.A]\n${Object.entries(fields)
-      .map(([name, value]) => `${name} = ${value}`)
-      .join("\n")}\n`;
-
-  test.each([
-    ["an environment", key(base), `key "A": needs at least one of "dev", "prod"`],
-    ["from", key({ ...base, prod: "{ publish = [] }" }), `key "A" prod: missing field "from"`],
-    [
-      "worker",
-      key({
-        ...base,
-        prod: '{ from = "op://Private/i/password", publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111" }] }',
-      }),
-      `key "A" prod: publish[0]: missing field "worker"`,
-    ],
-    [
-      "a Worker's account",
-      key({
-        ...base,
-        prod: '{ from = "op://Private/i/password", publish = [{ to = "cloudflare-worker", worker = "w" }] }',
-      }),
-      `key "A" prod: publish[0]: missing field "account"`,
-    ],
-    [
-      "repo",
-      key({
-        ...base,
-        prod: '{ from = "op://Private/i/password", publish = [{ to = "github-actions" }] }',
-      }),
-      `key "A" prod: publish[0]: missing field "repo"`,
-    ],
-    [
-      "to",
-      key({ ...base, prod: '{ from = "op://Private/i/password", publish = [{ repo = "a/b" }] }' }),
-      `key "A" prod: publish[0]: missing field "to"`,
-    ],
-  ])("%s", (_, text, message) => {
-    expect(errorsOf(text)).toContain(`${MAP_FILE}: ${message}`);
-  });
-
-  test("the 1Password account", () => {
-    expect(errorsOf(`[1password]\n`)).toEqual([
-      `${MAP_FILE}: [1password]: missing field "account"`,
-    ]);
-    expect(errorsOf(`[keys.A]\ndev = "op://v/i/password"\n`)).toEqual([
-      `${MAP_FILE}: key "A" dev: field "from" needs your 1Password account: add [1password] with account = "..."`,
-    ]);
-  });
-});
-
-describe("unknown fields are errors that name the file, the key and the field", () => {
-  test.each([
-    ["top level", `owner = "x"\n`, `unknown top-level field "owner"`],
-    [
-      "1password",
-      `[1password]\naccount = "a"\ntoken = "x"\n`,
-      `[1password]: unknown field "token"`,
-    ],
-    [
-      "the old vault table",
-      `[vaults.personal]\naccount = "a"\nvault = "v"\n`,
-      `[vaults] is from keypin 0.4; use [1password] and op:// references (see docs/reference/keypin-toml.md for the current format)`,
-    ],
-    [
-      "the old vault and item fields",
-      `${VAULTS}[keys.A]\ndev = { from = "op://v/i/password", item = "i" }\n`,
-      `key "A" dev: "vault" and "item" are from keypin 0.4; use from = "op://<vault>/<item>/<field>" (see docs/reference/keypin-toml.md for the current format)`,
-    ],
-    [
-      "key",
-      `${VAULTS}[keys.A]\nrotate = "90d"\ndev = "op://Private/i/password"\n`,
-      `key "A": unknown field "rotate"; environments are "dev", "prod"`,
-    ],
-    [
-      "environment name",
-      `${VAULTS}[keys.A]\ndev = "op://Private/i/password"\nstaging = "op://Private/i/password"\n`,
-      `key "A": unknown field "staging"; environments are "dev", "prod"`,
-    ],
-    [
-      "environment",
-      `${VAULTS}[keys.A]\ndev = { from = "op://Private/i/password", value = "x" }\n`,
-      `key "A" dev: unknown field "value"`,
-    ],
-    [
-      "Worker target",
-      `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "w", repo = "x/y" }] }\n`,
-      `key "A" prod: publish[0]: unknown field "repo" for cloudflare-worker`,
-    ],
-    [
-      "GitHub target",
-      `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [{ to = "github-actions", repo = "x/y", worker = "w" }] }\n`,
-      `key "A" prod: publish[0]: unknown field "worker" for github-actions`,
-    ],
-  ])("%s", (_, text, message) => {
-    expect(errorsOf(text)).toEqual([`${MAP_FILE}: ${message}`]);
-  });
-
-  test("a keypin 0.6 github-actions account says the map pins only the repo", () => {
-    const old = `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [{ to = "github-actions", repo = "acme/billing", account = "alice" }] }\n`;
-    const hint = `field "account" is from keypin 0.6; the map pins only repo = "owner/name", and each machine publishes as its own GitHub login (git config github.account, else the active gh login). Delete it (see docs/reference/keypin-toml.md for the current format)`;
-    expect(errorsOf(old)).toEqual([`${MAP_FILE}: key "A" prod: publish[0]: ${hint}`]);
-  });
-
-  test("a github-actions destination pins the repo's owner as its account", () => {
-    const result = parseMap(
-      `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [{ to = "github-actions", repo = "Acme/billing" }] }\n`,
-      MAP_FILE,
-      KINDS,
-      ISSUERS,
-      VAULT_KINDS,
-    );
-    if (!result.ok) throw new Error(result.errors.join("\n"));
-    expect(result.map.keys[0]?.environments.prod?.publish).toEqual([
-      { to: "github-actions", repo: "Acme/billing", account: "Acme" },
-    ]);
-  });
-
-  test("a github-actions destination may name an environment, a different place from the repo", () => {
-    const repo = `{ to = "github-actions", repo = "acme/billing" }`;
-    const env = `{ to = "github-actions", repo = "acme/billing", environment = "production" }`;
-    const result = parseMap(
-      `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [${repo}, ${env}] }\n`,
-      MAP_FILE,
-      KINDS,
-      ISSUERS,
-      VAULT_KINDS,
-    );
-    if (!result.ok) throw new Error(result.errors.join("\n"));
-    expect(result.map.keys[0]?.environments.prod?.publish).toEqual([
-      { to: "github-actions", repo: "acme/billing", account: "acme" },
-      { to: "github-actions", repo: "acme/billing", account: "acme", environment: "production" },
-    ]);
-    const twice = `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [${env}, ${env.replace("production", "Production")}] }\n`;
-    expect(errorsOf(twice)).toEqual([
-      `${MAP_FILE}: key "A" prod publish[1]: writes the same destination secret as key "A" prod publish[0]`,
-    ]);
-  });
-
-  test("a GitHub environment must be a filled-in name", () => {
-    const target = (value: string) =>
-      `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [{ to = "github-actions", repo = "a/b", environment = ${value} }] }\n`;
-    expect(errorsOf(target('""'))).toEqual([
-      `${MAP_FILE}: key "A" prod: publish[0]: field "environment" must be a non-empty string`,
-    ]);
-    expect(errorsOf(target('"<environment>"'))).toEqual([
-      `${MAP_FILE}: key "A" prod: publish[0]: field "environment" is a <...> placeholder: replace it with the name of a GitHub environment of the repository, such as production`,
-    ]);
-    expect(errorsOf(target(`"${"e".repeat(256)}"`))).toEqual([
-      `${MAP_FILE}: key "A" prod: publish[0]: field "environment" must be a GitHub environment name, at most 255 characters and not . or ..`,
-    ]);
-    for (const dots of ['"."', '".."'])
-      expect(errorsOf(target(dots))).toEqual([
-        `${MAP_FILE}: key "A" prod: publish[0]: field "environment" must be a GitHub environment name, at most 255 characters and not . or ..`,
-      ]);
-  });
-
-  test("a keypin 0.4 key with env says to name the table after the variable", () => {
-    expect(errorsOf(`${VAULTS}[keys.A]\nenv = "A"\ndev = "op://Private/i/password"\n`)).toEqual([
-      `${MAP_FILE}: key "A": field "env" is from keypin 0.4; name the table after the variable, such as [keys.API_TOKEN] (see docs/reference/keypin-toml.md for the current format)`,
-    ]);
-  });
-
-  test("a removed field says to delete it", () => {
-    expect(
-      errorsOf(`${VAULTS}[keys.A]\nowner = "o"\nconsumers = []\ndev = "op://Private/i/password"\n`),
-    ).toEqual([
-      `${MAP_FILE}: key "A": field "owner" is no longer used; delete it`,
-      `${MAP_FILE}: key "A": field "consumers" is no longer used; delete it`,
-    ]);
-  });
-});
-
-describe("wrong kinds and values", () => {
-  test.each([
-    [
-      "destination",
-      `{ to = "dotenv", path = ".env" }`,
-      `key "A" prod: publish[0]: field "to" must be one of: cloudflare-worker, github-actions`,
-    ],
-    [
-      "repo without an owner",
-      `{ to = "github-actions", repo = "billing" }`,
-      `key "A" prod: publish[0]: field "repo" must be "owner/name"`,
-    ],
-    [
-      "duplicate destination",
-      `{ to = "github-actions", repo = "a/b" }, { to = "github-actions", repo = "a/b" }`,
-      `key "A" prod: publish[1]: the same destination as publish[0]`,
-    ],
-    [
-      "non-string field",
-      `{ to = "cloudflare-worker", account = 7, worker = "w" }`,
-      `key "A" prod: publish[0]: field "account" must be a non-empty string`,
-    ],
-  ])("%s", (_, targets, message) => {
-    const text = `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [${targets}] }\n`;
-    expect(errorsOf(text)).toEqual([`${MAP_FILE}: ${message}`]);
-  });
-
-  test("a reference names the vault, item, optional section and field", () => {
-    const result = parseMap(
-      `${VAULTS}[keys.A]\ndev = "op://App Secrets/stripe/credential"\nprod = { from = "op://Shared/stripe live/api/secret key" }\n`,
-      MAP_FILE,
-      KINDS,
-      ISSUERS,
-      VAULT_KINDS,
-    );
-    assert(result.ok, JSON.stringify(result));
-    const { dev, prod } = result.map.keys[0]?.environments ?? {};
-    expect(dev?.ref).toMatchObject({
-      vault: "App Secrets",
-      item: "stripe",
-      section: null,
-      field: "credential",
-    });
-    expect(prod?.ref).toMatchObject({
-      vault: "Shared",
-      item: "stripe live",
-      section: "api",
-      field: "secret key",
-    });
-  });
-
-  test.each([
-    ["Private/i/password", "must start with op:// or infisical://"],
-    [
-      "op://Private/i",
-      "must be op://<vault>/<item>/<field> or op://<vault>/<item>/<section>/<field>",
-    ],
-    [
-      "op://Private/i/a/b/c",
-      "must be op://<vault>/<item>/<field> or op://<vault>/<item>/<section>/<field>",
-    ],
-    [
-      "op://Private//password",
-      "must be op://<vault>/<item>/<field> or op://<vault>/<item>/<section>/<field>",
-    ],
-    [
-      "op://Private/i/one-time password?attribute=otp",
-      `can't have the query "?attribute=otp"; keypin reads the field's value as stored`,
-    ],
-    [
-      "op://Private/ssh/private key?ssh-format=openssh",
-      `can't have the query "?ssh-format=openssh"; keypin reads the field's value as stored`,
-    ],
-    [
-      "op://Private/i/password?attribute=otp\\n",
-      `can't have the query "?attribute=otp\\n"; keypin reads the field's value as stored`,
-    ],
-    [
-      "op://Private/i/password#\\nx",
-      `can't have the query "#\\nx"; keypin reads the field's value as stored`,
-    ],
-    [
-      "op://Private/i/password?\\u001b[31mred",
-      `can't have the query "?\\u001b[31mred"; keypin reads the field's value as stored`,
-    ],
-  ])("the reference %s is refused", (reference, message) => {
-    expect(errorsOf(`${VAULTS}[keys.A]\ndev = "${reference}"\n`)).toEqual([
-      `${MAP_FILE}: key "A" dev: field "from" ${message}`,
-    ]);
-  });
-
-  test("a bad rotate_every, env name and key ID", () => {
-    expect(
-      errorsOf(`${VAULTS}[keys.MY-KEY]\nrotate_every = "soon"\ndev = "op://Private/i/password"\n`),
-    ).toEqual([
-      `${MAP_FILE}: keys[0]: the table name is the variable your program reads: letters, digits and _, not starting with a digit`,
-      `${MAP_FILE}: keys[0]: field "rotate_every" must be <n>d, <n>w, <n>m or never`,
-    ]);
-  });
-
-  test("a GITHUB_ name can't go to github-actions, in any case", () => {
-    for (const env of ["GITHUB_TOKEN", "github_app_key"]) {
-      expect(
-        errorsOf(
-          `${VAULTS}[keys.${env}]\ndev = "op://Private/i/password"\nprod = { from = "op://Private/i/password", publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "w" }, { to = "github-actions", repo = "a/b" }] }\n`,
-        ),
-      ).toEqual([
-        `${MAP_FILE}: key "${env}" prod: publish[1]: github-actions can't take this key, because GitHub reserves secret names that start with GITHUB_`,
-      ]);
-    }
-  });
-
-  test("a GITHUB_ name is fine anywhere else", () => {
-    const result = parseMap(
-      `${VAULTS}[keys.GITHUB_TOKEN]\ndev = "op://Private/i/password"\nprod = { from = "op://Private/i/password", publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "w" }] }\n`,
-      MAP_FILE,
-      KINDS,
-      ISSUERS,
-      VAULT_KINDS,
-    );
-    expect(result.ok).toBe(true);
-  });
-
-  test("a duplicate names the first valid entry it repeats, by its place in the map", () => {
-    const worker = (name: string) =>
-      `{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "${name}" }`;
-    const prod = (targets: string[]) =>
-      `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [${targets.join(", ")}] }\n`;
-    expect(errorsOf(prod([worker("x"), worker("x"), worker("y"), worker("y")]))).toEqual([
-      `${MAP_FILE}: key "A" prod: publish[1]: the same destination as publish[0]`,
-      `${MAP_FILE}: key "A" prod: publish[3]: the same destination as publish[2]`,
-    ]);
-    expect(errorsOf(prod(["{}", worker("x"), worker("x")]))).toEqual([
-      `${MAP_FILE}: key "A" prod: publish[0]: missing field "to"`,
-      `${MAP_FILE}: key "A" prod: publish[2]: the same destination as publish[1]`,
-    ]);
-  });
-
-  test("one destination secret can't belong to two keys, or to a key's dev and prod", () => {
-    const repo = `{ to = "github-actions", repo = "acme/billing" }`;
-    const twoKeys = `${VAULTS}[keys.API_TOKEN]\nprod = { from = "op://Private/a/password", publish = [${repo}] }\n[keys.api_token]\nprod = { from = "op://Private/b/password", publish = [${repo}] }\n`;
-    expect(errorsOf(twoKeys)).toEqual([
-      `${MAP_FILE}: key "api_token" prod publish[0]: writes the same destination secret as key "API_TOKEN" prod publish[0]`,
-    ]);
-    const devAndProd = `${VAULTS}[keys.DEPLOY_TOKEN]\ndev = { from = "op://Private/b/password", publish = [${repo}] }\nprod = { from = "op://Private/a/password", publish = [${repo}] }\n`;
-    expect(errorsOf(devAndProd)).toEqual([
-      `${MAP_FILE}: key "DEPLOY_TOKEN" prod publish[0]: writes the same destination secret as key "DEPLOY_TOKEN" dev publish[0]`,
-    ]);
-  });
-
-  test("a Worker's account is a Cloudflare account ID", () => {
-    expect(
-      errorsOf(
-        `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [{ to = "cloudflare-worker", account = "me@example.com", worker = "w" }] }\n`,
-      ),
-    ).toEqual([
-      `${MAP_FILE}: key "A" prod: publish[0]: field "account" must be a Cloudflare account ID (32 hex characters)`,
-    ]);
-  });
-
-  test("a GitHub repo compares without case, like GitHub", () => {
-    const target = (repo: string) => `{ to = "github-actions", repo = "${repo}" }`;
-    expect(
-      errorsOf(
-        `${VAULTS}[keys.TOKEN]\nprod = { from = "op://Private/a/password", publish = [${target("acme/billing")}] }\n[keys.token]\nprod = { from = "op://Private/b/password", publish = [${target("Acme/Billing")}] }\n`,
-      ),
-    ).toEqual([
-      `${MAP_FILE}: key "token" prod publish[0]: writes the same destination secret as key "TOKEN" prod publish[0]`,
-    ]);
-  });
-
-  test("the same Worker and secret name in two Cloudflare accounts are two secrets", () => {
-    const worker = (account: string) =>
-      `{ to = "cloudflare-worker", account = "${account.repeat(8)}", worker = "api" }`;
-    const result = parseMap(
-      `${VAULTS}[keys.TOKEN]\ndev = { from = "op://Private/d/password", publish = [${worker("aaaa")}] }\nprod = { from = "op://Private/p/password", publish = [${worker("bbbb")}] }\n`,
-      MAP_FILE,
-      KINDS,
-      ISSUERS,
-      VAULT_KINDS,
-    );
-    expect(result.ok).toBe(true);
-  });
-
-  test("the same secret name in two Workers, or another case of a Worker secret, is fine", () => {
-    const worker = (name: string) =>
-      `{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "${name}" }`;
-    const result = parseMap(
-      `${VAULTS}[keys.TOKEN]\ndev = { from = "op://Private/a/password", publish = [${worker("one")}] }\nprod = { from = "op://Private/b/password", publish = [${worker("two")}] }\n[keys.token]\nprod = { from = "op://Private/c/password", publish = [${worker("one")}] }\n`,
-      MAP_FILE,
-      KINDS,
-      ISSUERS,
-      VAULT_KINDS,
-    );
-    expect(result.ok).toBe(true);
-  });
-
-  test("publish must be a list", () => {
-    expect(
-      errorsOf(
-        `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = { to = "github-actions", repo = "a/b" } }\n`,
-      ),
-    ).toEqual([`${MAP_FILE}: key "A" prod: field "publish" must be a list`]);
-  });
-
-  test("invalid TOML names the file", () => {
-    const [error] = errorsOf(`env = "A"\nenv = "B"\n`);
-    expect(error).toMatch(new RegExp(`^${MAP_FILE}: not valid TOML: `));
-  });
-
-  test("no error quotes the text it found, so a value pasted by mistake stays out of the output", () => {
-    const pasted = "sentinel-pasted-value-5555";
-    const target = (fields: string) =>
-      `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", publish = [${fields}] }\n`;
-    const texts = [
-      `API_KEY=${pasted}\n`,
-      `k = ${pasted}\n`,
-      `k = { a = ${pasted} }\n`,
-      `k = [${pasted}]\n`,
-      `k = 1${pasted}\n`,
-      `k = "\\q${pasted}"\n`,
-      `k = 'it''s ${pasted}'\n`,
-      `k = \u00e9${pasted}\n`,
-      `k = "\u0001${pasted}"\n`,
-      `k = \u0002${pasted}\n`,
-      `${VAULTS}[keys.${pasted}]\ndev = "op://Private/i/password"\n`,
-      `${VAULTS}[keys.A]\nrotate_every = "${pasted}"\ndev = "op://Private/i/password"\n`,
-      `${VAULTS}[keys.A]\ndev = "${pasted}"\n`,
-      `${VAULTS}[keys.A]\ndev = "op://${pasted}"\n`,
-      `[1password]\naccount = 7\n`,
-      target(`{ to = "${pasted}" }`),
-      target(`{ to = "github-actions", repo = "${pasted}" }`),
-      target(
-        `{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "${pasted}" }, { to = "cloudflare-worker", account = "22222222222222222222222222222222", worker = "${pasted}" }`,
-      ),
-    ];
-    for (const text of texts) {
-      const errors = errorsOf(text);
-      expect(errors.length).toBeGreaterThan(0);
-      expect(errors.join("\n")).not.toContain(pasted);
-      expect(errors.join("\n")).not.toContain("sentinel");
-      expect(errors.join("\n")).not.toMatch(/0x[0-9a-f]{2}/i);
-    }
-  });
-
-  test("a TOML error keeps what went wrong and drops the quoted text", () => {
-    expect(errorsOf(`API_KEY=sentinel-x\n`)).toEqual([
-      `${MAP_FILE}: not valid TOML: Expected a value, and strings must be quoted`,
-    ]);
-    expect(errorsOf(`[a]\nb = 1\n[a]\n`)).toEqual([
-      `${MAP_FILE}: not valid TOML: Trying to redefine an already defined table or value`,
-    ]);
-    expect(errorsOf(`k = \u00e9x\n`)).toEqual([
-      `${MAP_FILE}: not valid TOML: Expected a value, and strings must be quoted`,
-    ]);
-    expect(errorsOf(`k = "\u0001x"\n`)).toEqual([
-      `${MAP_FILE}: not valid TOML: Control characters are not allowed in strings`,
-    ]);
-    expect(errorsOf(`k = "a" b\n`)).toEqual([
-      `${MAP_FILE}: not valid TOML: Each key-value declaration must be followed by an end-of-line`,
-    ]);
-  });
-
-  test("every error is reported, not just the first", () => {
-    expect(errorsOf(`${VAULTS}[keys.A]\nrotate = "1d"\n\n[keys.b-c]\n`)).toHaveLength(4);
-  });
-});
-
-describe("a rotate section, from an older keypin", () => {
-  const mapWith = (section: string) => `${VAULTS}
-[keys.CLOUDFLARE_API_TOKEN]
-rotate_every = "90d"
-
-[keys.CLOUDFLARE_API_TOKEN.prod]
-from = "op://Private/site deploy token/password"
-
-[keys.CLOUDFLARE_API_TOKEN.prod.${section}]
-provider = "cloudflare-account-token"
-account = "e48c9afabc4ff0cda321d0cf69b8943f"
-admin = "op://Private/shared cloudflare token admin/password"
-`;
-  const gone = (section: string) =>
-    `${MAP_FILE}: key "CLOUDFLARE_API_TOKEN" prod: the "${section}" section is from an older keypin; delete it. To let keypin rotate the key, add an "issuer" table instead (see docs/reference/keypin-toml.md for the current format)`;
-
-  test("says to delete it and points to issuer", () => {
-    expect(errorsOf(mapWith("rotate"))).toEqual([gone("rotate")]);
-  });
-
-  test("the keypin 0.5 issue section says the same", () => {
-    expect(errorsOf(mapWith("issue"))).toEqual([gone("issue")]);
-  });
-
-  test("rotate_every and the key still parse once the section is deleted", () => {
-    const result = parseMap(
-      mapWith("rotate").replace(/\n\[keys\.CLOUDFLARE_API_TOKEN\.prod\.rotate\][^]*$/, "\n"),
-      MAP_FILE,
-      KINDS,
-      ISSUERS,
-      VAULT_KINDS,
-    );
-    assert(result.ok, JSON.stringify(result));
-    expect(result.map.keys[0]).toMatchObject({
-      name: "CLOUDFLARE_API_TOKEN",
-      rotateEvery: { text: "90d", days: 90 },
-    });
-    const ref: unknown = expect.objectContaining({ item: "site deploy token" });
-    expect(result.map.keys[0]?.environments.prod).toEqual({ ref, publish: [], pull: [] });
-  });
-});
-
-describe("issuer", () => {
-  const mapWith = (issuer: string) => `${VAULTS}
-[keys.RESEND_API_KEY.prod]
-from = "op://Private/billing resend key/credential"
-
-[keys.RESEND_API_KEY.prod.issuer]
-${issuer}
-`;
-  const KIND = `kind = "resend"\nadmin = "op://Private/resend admin key/credential"`;
-  const where = `${MAP_FILE}: key "RESEND_API_KEY" prod: issuer: `;
-
-  test("a resend issuer names its admin key's reference and the new key's permission", () => {
-    const result = parseMap(
-      mapWith(`${KIND}\npermission = "sending_access"`),
-      MAP_FILE,
-      KINDS,
-      ISSUERS,
-      VAULT_KINDS,
-    );
-    assert(result.ok, JSON.stringify(result));
-    expect(result.map.keys[0]?.environments.prod?.issuer).toEqual({
-      kind: "resend",
-      admin: {
-        kind: "1password",
-        account: "my.1password.com",
-        vault: "Private",
-        item: "resend admin key",
-        section: null,
-        field: "credential",
-      },
-      permission: "sending_access",
-    });
-  });
-
-  test("an inline table works the same, with a domain for a sending key", () => {
-    const text = `${VAULTS}
-[keys.RESEND_API_KEY]
-prod = { from = "op://Private/billing resend key/credential", issuer = { kind = "resend", admin = "op://Private/resend admin key/credential", permission = "sending_access", domain_id = "d-1" } }
-`;
-    const result = parseMap(text, MAP_FILE, KINDS, ISSUERS, VAULT_KINDS);
-    assert(result.ok, JSON.stringify(result));
-    expect(result.map.keys[0]?.environments.prod?.issuer).toMatchObject({
-      permission: "sending_access",
-      domainId: "d-1",
-    });
-  });
-
-  test("an environment without an issuer has none", () => {
-    const result = parseMap(VALID_MAP, MAP_FILE, KINDS, ISSUERS, VAULT_KINDS);
-    assert(result.ok);
-    expect(result.map.keys[0]?.environments.prod).not.toHaveProperty("issuer");
-  });
-
-  test("a missing kind, admin or permission", () => {
-    expect(errorsOf(mapWith(`admin = "op://Private/a/credential"`))).toEqual([
-      `${where}missing field "kind"`,
-    ]);
-    expect(errorsOf(mapWith(`kind = "resend"`))).toEqual([
-      `${where}missing field "admin"`,
-      `${where}missing field "permission"`,
-    ]);
-  });
-
-  test("an unknown kind, permission or field", () => {
-    expect(errorsOf(mapWith(`kind = "openai"`))).toEqual([
-      `${where}field "kind" must be one of: resend`,
-    ]);
-    expect(errorsOf(mapWith(`${KIND}\npermission = "admin"\nname = "x"`))).toEqual([
-      `${where}unknown field "name" for resend`,
-      `${where}field "permission" must be one of: full_access, sending_access, as the key has at Resend`,
-    ]);
-  });
-
-  test("a domain only with sending_access", () => {
-    expect(errorsOf(mapWith(`${KIND}\npermission = "full_access"\ndomain_id = "d-1"`))).toEqual([
-      `${where}field "domain_id" works only with permission = "sending_access"`,
-    ]);
-  });
-
-  test("a domain_id left as a <...> placeholder", () => {
-    expect(
-      errorsOf(mapWith(`${KIND}\npermission = "sending_access"\ndomain_id = "<domain id>"`)),
-    ).toEqual([
-      `${where}field "domain_id" is a <...> placeholder: replace it with the Resend domain ID`,
-    ]);
-  });
-
-  test("the admin key can't be the key's own item", () => {
-    const own = `kind = "resend"\nadmin = "op://Private/billing resend key/password"\npermission = "full_access"`;
-    expect(errorsOf(mapWith(own))).toEqual([
-      `${where}field "admin" names the key's own item; the admin key needs its own item`,
-    ]);
-  });
-
-  test("a bad admin reference, and an issuer that isn't a table", () => {
-    expect(
-      errorsOf(mapWith(`kind = "resend"\nadmin = "Private/a"\npermission = "full_access"`)),
-    ).toEqual([`${where}field "admin" must start with op:// or infisical://`]);
-    const text = `${VAULTS}[keys.A]\nprod = { from = "op://Private/i/password", issuer = "resend" }\n`;
-    expect(errorsOf(text)).toEqual([`${MAP_FILE}: key "A" prod: issuer: must be a table`]);
-  });
-});
-
-describe("an issuer kind without an admin key", () => {
-  const plain: IssuerKind = {
-    kind: "plain",
-    admin: false,
-    parse(read) {
-      read.only([]);
-      return { kind: "plain" };
-    },
-    refuses: (name) => (name === "LEGACY_SECRET" ? "the app reads its old value" : undefined),
-    connect: () => {
-      throw new Error("never connected");
-    },
-  };
-  const parse = (name: string, issuer: string) =>
-    parseMap(
-      `${VAULTS}[keys.${name}]\nprod = { from = "op://Private/i/password", issuer = { ${issuer} } }\n`,
-      MAP_FILE,
-      KINDS,
-      [...ISSUERS, plain],
-      VAULT_KINDS,
-    );
-
-  test("parses without admin, and treats admin as an unknown field", () => {
-    const result = parse("SESSION_SECRET", `kind = "plain"`);
-    assert(result.ok, JSON.stringify(result));
-    expect(result.map.keys[0]?.environments.prod?.issuer).toEqual({ kind: "plain" });
-    const admin = parse("SESSION_SECRET", `kind = "plain", admin = "op://Private/a/password"`);
-    assert(!admin.ok, "admin was accepted");
-    expect(admin.errors).toEqual([
-      `${MAP_FILE}: key "SESSION_SECRET" prod: issuer: unknown field "admin" for plain`,
-    ]);
-  });
-
-  test("a key the kind refuses by name is rejected with the kind's reason", () => {
-    const result = parse("LEGACY_SECRET", `kind = "plain"`);
-    assert(!result.ok, "the refused key was accepted");
-    expect(result.errors).toEqual([
-      `${MAP_FILE}: key "LEGACY_SECRET" prod: issuer: plain can't rotate this key, because the app reads its old value`,
-    ]);
-  });
-});
-
-describe("shared targets from keypin 0.6", () => {
-  const CI = `[targets.ci]\nto = "github-actions"\nrepo = "acme/api"\n`;
-  const withPublish = (targets: string, publish: string) =>
-    `${VAULTS}${targets}\n[keys.API_TOKEN]\nprod = { from = "op://Private/i/password", publish = [${publish}] }\n`;
-  const TARGETS = `${MAP_FILE}: shared [targets] are no longer supported; write each destination inline under [[keys.<VARIABLE>.<env>.publish]] (see docs/reference/keypin-toml.md for the current format)`;
-  const NAMED = (i: number) =>
-    `${MAP_FILE}: key "API_TOKEN" prod: publish[${i}]: names a shared target, which is no longer supported; write the destination inline, such as { to = "github-actions", repo = "owner/name" } (see docs/reference/keypin-toml.md for the current format)`;
-
-  test("a map with [targets] and a publish entry that names one says to write it inline", () => {
-    expect(errorsOf(withPublish(CI, `"ci"`))).toEqual([TARGETS, NAMED(0)]);
-  });
-
-  test("a publish entry that names a target fails even without [targets]", () => {
-    expect(errorsOf(withPublish("", `{ to = "github-actions", repo = "acme/web" }, "ci"`))).toEqual(
-      [NAMED(1)],
-    );
-  });
-
-  test("[targets] fails whatever it holds", () => {
-    expect(errorsOf(`targets = ["ci"]\n${VAULTS}`)).toEqual([TARGETS]);
-  });
-
-  test("a publish entry that is neither a table nor a string must be a table", () => {
-    expect(errorsOf(withPublish("", `7`))).toEqual([
-      `${MAP_FILE}: key "API_TOKEN" prod: publish[0]: must be a table`,
-    ]);
-  });
-
-  test("the error never quotes the name it found", () => {
-    const pasted = "sentinel-pasted-value-5555";
-    const errors = errorsOf(
-      withPublish(`[targets."${pasted}"]\nto = "github-actions"\nrepo = "a/b"\n`, `"${pasted}"`),
-    ).join("\n");
-    expect(errors).not.toContain(pasted);
-    expect(errors.toLowerCase()).not.toContain("sentinel");
-  });
-});
-
-describe("<...> placeholders", () => {
-  const CF = "11111111111111111111111111111111";
-  const REFERENCE_HINT =
-    "replace it with the field's secret reference (in 1Password, open the field's menu and select Copy Secret Reference)";
-  const withPublish = (publish: string) =>
-    `${VAULTS}[keys.API_TOKEN]\nprod = { from = "op://Private/i/password", publish = [${publish}] }\n`;
-
-  test("the 1Password account", () => {
-    expect(
-      errorsOf(
-        `[1password]\naccount = "<your 1Password account>"\n[keys.API_TOKEN]\ndev = "op://Private/i/password"\n`,
-      ),
-    ).toEqual([
-      `${MAP_FILE}: [1password]: field "account" is a <...> placeholder: replace it with your 1Password account's sign-in address (such as my.1password.com, at the top left of the 1Password app) or its account ID`,
-    ]);
-  });
-
-  test.each([
-    ["vault", `op://<your vault>/i/password`],
-    ["item", `op://Private/<item>/password`],
-    ["section", `op://Private/i/<section>/password`],
-    ["field", `op://Private/i/<field>`],
-    ["vault and item", `op://<vault>/<item>/password`],
-  ])("a reference's %s", (parts, ref) => {
-    expect(errorsOf(`${VAULTS}[keys.API_TOKEN]\ndev = "${ref}"\n`)).toEqual([
-      `${MAP_FILE}: key "API_TOKEN" dev: field "from" has a <...> placeholder for its ${parts}: ${REFERENCE_HINT}`,
-    ]);
-  });
-
-  test("a reference in a table's from", () => {
-    expect(
-      errorsOf(`${VAULTS}[keys.API_TOKEN.prod]\nfrom = "op://Private/<your item>/password"\n`),
-    ).toEqual([
-      `${MAP_FILE}: key "API_TOKEN" prod: field "from" has a <...> placeholder for its item: ${REFERENCE_HINT}`,
-    ]);
-  });
-
-  test("a GitHub repo", () => {
-    expect(errorsOf(withPublish(`{ to = "github-actions", repo = "<owner>/<repo>" }`))).toEqual([
-      `${MAP_FILE}: key "API_TOKEN" prod: publish[0]: field "repo" is a <...> placeholder: replace it with the GitHub repository as "owner/name", such as "acme/billing"`,
-    ]);
-  });
-
-  test("a Cloudflare account", () => {
-    expect(
-      errorsOf(
-        withPublish(
-          `{ to = "cloudflare-worker", account = "<Cloudflare account ID>", worker = "api" }`,
-        ),
-      ),
-    ).toEqual([
-      `${MAP_FILE}: key "API_TOKEN" prod: publish[0]: field "account" is a <...> placeholder: replace it with the Cloudflare account ID the Worker belongs to (32 hex characters; wrangler whoami lists it)`,
-    ]);
-  });
-
-  test("a Cloudflare Worker", () => {
-    expect(
-      errorsOf(
-        withPublish(`{ to = "cloudflare-worker", account = "${CF}", worker = "<worker name>" }`),
-      ),
-    ).toEqual([
-      `${MAP_FILE}: key "API_TOKEN" prod: publish[0]: field "worker" is a <...> placeholder: replace it with the Worker's name, the "name" in its wrangler config`,
-    ]);
-  });
-
-  test("every placeholder is its own error", () => {
-    const errors = errorsOf(`[1password]
-account = "<account>"
-
-[keys.A]
-dev = "op://<vault>/a/password"
-
-[keys.A.prod]
-from = "op://Private/<item>/password"
-
-[[keys.A.prod.publish]]
-to = "github-actions"
-repo = "<owner/repo>"
-
-[[keys.A.prod.publish]]
-to = "cloudflare-worker"
-account = "<account ID>"
-worker = "<worker>"
-`);
-    expect(errors.map((e) => e.replace(/ is a .*| has a .*/, ""))).toEqual([
-      `${MAP_FILE}: [1password]: field "account"`,
-      `${MAP_FILE}: key "A" dev: field "from"`,
-      `${MAP_FILE}: key "A" prod: field "from"`,
-      `${MAP_FILE}: key "A" prod: publish[0]: field "repo"`,
-      `${MAP_FILE}: key "A" prod: publish[1]: field "account"`,
-      `${MAP_FILE}: key "A" prod: publish[1]: field "worker"`,
-    ]);
-  });
-
-  test("angle brackets that aren't a placeholder still parse", () => {
-    const result = parseMap(
-      `${VAULTS}[keys.A]\ndev = "op://Private/a > b/password"\nprod = { from = "op://Private/c/password", publish = [{ to = "cloudflare-worker", account = "${CF}", worker = "w<1" }] }\n`,
-      MAP_FILE,
-      KINDS,
-      ISSUERS,
-      VAULT_KINDS,
-    );
-    assert(result.ok, JSON.stringify(result));
-  });
-});
-
-describe("Infisical references", () => {
-  const PIN = `[infisical]\norganization = "acme"\n`;
-
-  test("a reference names the project, environment, folders and secret, and takes the pin", () => {
-    const result = parseMap(
-      `${PIN}[keys.STRIPE_KEY]\ndev = "infisical://billing/dev/STRIPE_KEY"\nprod = "infisical://billing/prod/payments/stripe/STRIPE_KEY"\n`,
-      MAP_FILE,
-      KINDS,
-      ISSUERS,
-      VAULT_KINDS,
-    );
-    assert(result.ok);
-    const [key] = result.map.keys;
-    expect(result.map.pins.infisical).toEqual({
-      url: "https://app.infisical.com",
-      organization: "acme",
-    });
-    expect(key?.environments.dev?.ref).toEqual({
-      kind: "infisical",
-      url: "https://app.infisical.com",
-      organization: "acme",
-      project: "billing",
-      environment: "dev",
-      path: "/",
-      name: "STRIPE_KEY",
-    });
-    expect(key?.environments.prod?.ref).toMatchObject({
-      environment: "prod",
-      path: "/payments/stripe",
-      name: "STRIPE_KEY",
-    });
-  });
-
-  test("a self-hosted address is kept without its trailing slash", () => {
-    const result = parseMap(
-      `[infisical]\nurl = "https://vault.acme.dev/"\norganization = "acme"\n[keys.A]\ndev = "infisical://p/dev/A"\n`,
-      MAP_FILE,
-      KINDS,
-      ISSUERS,
-      VAULT_KINDS,
-    );
-    assert(result.ok);
-    expect(result.map.keys[0]?.environments.dev?.ref).toMatchObject({
-      url: "https://vault.acme.dev",
-    });
-  });
-
-  test("a map can read from 1Password and Infisical at once", () => {
-    const result = parseMap(
-      `${VAULTS}${PIN}[keys.A]\ndev = "op://Private/a/password"\nprod = "infisical://p/prod/A"\n`,
-      MAP_FILE,
-      KINDS,
-      ISSUERS,
-      VAULT_KINDS,
-    );
-    assert(result.ok);
-    expect(result.map.keys[0]?.environments.dev?.ref.kind).toBe("1password");
-    expect(result.map.keys[0]?.environments.prod?.ref.kind).toBe("infisical");
-  });
-
-  test.each([
-    [
-      `[keys.A]\ndev = "infisical://p/dev/A"\n`,
-      `key "A" dev: field "from" needs your Infisical organization: add [infisical] with organization = "..."`,
-    ],
-    [`[infisical]\nurl = "https://x.dev"\n`, `[infisical]: missing field "organization"`],
-    [
-      `[infisical]\nurl = "https://x.dev/api"\norganization = "acme"\n`,
-      `[infisical]: field "url" must be an https:// address such as https://eu.infisical.com, with no path`,
-    ],
-    [
-      `[infisical]\nurl = "http://x.dev"\norganization = "acme"\n`,
-      `[infisical]: field "url" must be an https:// address such as https://eu.infisical.com, with no path`,
-    ],
-    ...[
-      "https://vault.example:bad",
-      "https://vault.example\\\\api",
-      "https://user:pw@vault.example",
-    ].map((url): [string, string] => [
-      `[infisical]\nurl = "${url}"\norganization = "acme"\n`,
-      `[infisical]: field "url" must be an https:// address such as https://eu.infisical.com, with no path`,
-    ]),
-    [`[infisical]\norganization = "acme"\ntoken = "x"\n`, `[infisical]: unknown field "token"`],
-    [
-      `${PIN}[keys.A]\ndev = "infisical://p/A"\n`,
-      `key "A" dev: field "from" must be infisical://<project>/<environment>/<SECRET_NAME>, with any folders before the name`,
-    ],
-    [
-      `${PIN}[keys.A]\ndev = "infisical://<project>/dev/A"\n`,
-      `key "A" dev: field "from" has a <...> placeholder for its project: replace it with the project's slug, the environment's slug, and the secret's name`,
-    ],
-  ])("%s is refused", (text, message) => {
-    expect(errorsOf(text)).toEqual([`${MAP_FILE}: ${message}`]);
-  });
-});
-
-describe("a kind that reads nothing without saying why", () => {
-  const silentIssuer: IssuerKind = {
-    kind: "silent",
-    parse: () => undefined,
-    connect: () => {
-      throw new Error("never connected");
-    },
-  };
-  const never = (): never => {
-    throw new Error("never called");
-  };
-  const silentDestination: DestinationKind = {
-    kind: "silent",
-    label: "Silent",
-    parse: () => undefined,
-    id: never,
-    secretId: never,
-    checkId: never,
-    fromId: () => undefined,
-    describe: never,
-    named: never,
-    where: never,
-    login: never,
-    connect: never,
-  };
-
-  test("an issuer that returns nothing rejects the map instead of dropping the issuer", () => {
-    const text = `${VAULTS}
-[keys.API_KEY.prod]
-from = "op://Private/api key/credential"
-
-[keys.API_KEY.prod.issuer]
-kind = "silent"
-`;
-    const result = parseMap(text, MAP_FILE, KINDS, [...ISSUERS, silentIssuer], VAULT_KINDS);
-    assert(!result.ok, "the map was accepted without its issuer");
-    expect(result.errors).toEqual([
-      `${MAP_FILE}: key "API_KEY" prod: issuer: the "silent" issuer couldn't read this table`,
-    ]);
-  });
-
-  test("a destination that returns nothing rejects the map instead of dropping the destination", () => {
-    const text = `${VAULTS}
-[keys.API_KEY]
-prod = { from = "op://Private/api key/credential", publish = [{ to = "silent" }] }
-`;
-    const result = parseMap(text, MAP_FILE, [...KINDS, silentDestination], ISSUERS, VAULT_KINDS);
-    assert(!result.ok, "the map was accepted without its destination");
-    expect(result.errors).toEqual([
-      `${MAP_FILE}: key "API_KEY" prod: publish[0]: the "silent" destination couldn't read this table`,
-    ]);
-  });
-});
-
-describe("issuers that claim the same thing", () => {
-  const pool: IssuerKind<IssuerSpec & { kind: "pool"; slot: string }> = {
-    kind: "pool",
-    parse: (read) => {
-      const admin = read.admin();
-      const slot = read.required("slot");
-      return admin && slot ? { kind: "pool", admin, slot } : undefined;
-    },
-    connect: () => {
-      throw new Error("never connected");
-    },
-    claims: (spec) => [`slot ${spec.slot}`],
-  };
-  const parse = (dev: string, prod: string) =>
-    parseMap(
-      `${VAULTS}
-[keys.A]
-dev = { from = "op://Private/a dev/password", issuer = { kind = "pool", admin = "op://Private/admin/password", slot = "${dev}" } }
-
-[keys.B]
-prod = { from = "op://Private/b prod/password", issuer = { kind = "pool", admin = "op://Private/admin/password", slot = "${prod}" } }
-`,
-      MAP_FILE,
-      KINDS,
-      [pool],
-      VAULT_KINDS,
-    );
-
-  test("are refused across keys and environments, naming both", () => {
-    const result = parse("1", "1");
-    assert(!result.ok);
-    expect(result.errors).toEqual([
-      `${MAP_FILE}: key "B" prod issuer: key "A" dev also rotates slot 1, so rotating either key breaks the other. Change one issuer so they share nothing, or remove one`,
-    ]);
-  });
-
-  test("pass when their claims differ", () => {
-    expect(parse("1", "2").ok).toBe(true);
-  });
-});
-
-describe("an issuer whose key's ID is another key", () => {
-  const paired: IssuerKind<IssuerSpec & { kind: "paired"; keyId: string }> = {
-    kind: "paired",
-    parse: (read) => {
-      read.only(["key_id"]);
-      const admin = read.admin();
-      const keyId = read.idKey();
-      return admin && keyId ? { kind: "paired", admin, keyId } : undefined;
-    },
-    connect: () => {
-      throw new Error("never connected");
-    },
-    idKey: (spec) => spec.keyId,
-  };
-  const WORKER_TARGET = `{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "api" }`;
-  const map = (keyId: string, id: string, extra = "") => `${VAULTS}
-[keys.SECRET.prod]
-from = "op://Private/secret/credential"
-publish = [${WORKER_TARGET}]
-issuer = { kind = "paired", admin = "op://Private/admin/credential", key_id = "${keyId}" }
-${extra}
-[keys.KEY_ID]
-prod = ${id}
-`;
-  const ID = `{ from = "op://Private/key id/credential", publish = [${WORKER_TARGET}] }`;
-  const parse = (text: string) =>
-    parseMap(text, MAP_FILE, KINDS, [...ISSUERS, paired], VAULT_KINDS, PULLS);
-  const errors = (text: string) => {
-    const result = parse(text);
-    assert(!result.ok, "expected the map to be rejected");
-    return result.errors;
-  };
-  const where = `${MAP_FILE}: key "SECRET" prod issuer: `;
-
-  test("names the ID key on the entry, and other issuers' entries have none", () => {
-    const result = parse(map("KEY_ID", ID));
-    assert(result.ok);
-    expect(result.map.keys[0]?.environments.prod?.idKey).toBe("KEY_ID");
-    expect(result.map.keys[1]?.environments.prod).not.toHaveProperty("idKey");
-  });
-
-  test.each([
-    [
-      "the key itself",
-      map("SECRET", ID),
-      `field "key_id" names the key itself; name the key that holds its ID`,
-    ],
-    [
-      "a key with no entry in that environment",
-      map("KEY_ID", ID).replace("[keys.KEY_ID]\nprod", "[keys.KEY_ID]\ndev"),
-      `field "key_id" names "KEY_ID", which has no prod entry; add [keys.KEY_ID.prod]`,
-    ],
-    [
-      "a key that reads the secret's field",
-      map("KEY_ID", ID.replace("key id", "secret")),
-      `"KEY_ID" prod reads the same field as this key or its admin key; give the ID its own field`,
-    ],
-    [
-      "a key that reads the admin key's field",
-      map("KEY_ID", ID.replace("key id", "admin")),
-      `"KEY_ID" prod reads the same field as this key or its admin key; give the ID its own field`,
-    ],
-    [
-      "a key published elsewhere",
-      map("KEY_ID", ID.replace('worker = "api"', 'worker = "web"')),
-      `"KEY_ID" prod publishes to different destinations; list the same destinations for both keys`,
-    ],
-    [
-      "a key published to fewer places",
-      map("KEY_ID", `{ from = "op://Private/key id/credential" }`),
-      `"KEY_ID" prod publishes to different destinations; list the same destinations for both keys`,
-    ],
-    [
-      "a key with its own issuer",
-      map(
-        "KEY_ID",
-        `{ from = "op://Private/key id/credential", publish = [${WORKER_TARGET}], issuer = { kind = "paired", admin = "op://Private/admin 2/credential", key_id = "SECRET" } }`,
-      ),
-      `"KEY_ID" prod has its own issuer; a key_id is rotated with its key, so remove one`,
-    ],
-  ])("refuses %s", (_, text, message) => {
-    expect(errors(text)).toContain(`${where}${message}`);
-  });
-
-  describe("refuses a pull on either key of the pair", () => {
-    const PULL = `pull = [{ by = "github-actions", repo = "acme/api" }]`;
-    const pulledId = ID.replace("] }", `], ${PULL} }`);
-    test.each([
-      ["the key", map("KEY_ID", ID, PULL)],
-      ["its key_id", map("KEY_ID", pulledId)],
-      ["both", map("KEY_ID", pulledId, PULL)],
-    ])("%s", (_, text) => {
-      expect(errors(text)).toEqual([
-        `${where}pulling a key and its key_id isn't supported yet: a job could read the new secret with the old ID between their two vault saves. Publish both keys instead of pulling them`,
-      ]);
-    });
-  });
-
-  test("refuses two keys that name the same ID key", () => {
-    const other = `
-[keys.OTHER.prod]
-from = "op://Private/other/credential"
-publish = [${WORKER_TARGET}]
-issuer = { kind = "paired", admin = "op://Private/admin/credential", key_id = "KEY_ID" }
-`;
-    expect(errors(map("KEY_ID", ID, other))).toEqual([
-      `${MAP_FILE}: key "OTHER" prod issuer: key "SECRET" prod also names "KEY_ID" as its key_id; each key needs its own`,
-    ]);
-  });
-
-  test("refuses a key_id that isn't a variable name", () => {
-    expect(errors(map("not a name", ID))).toEqual([
-      `${MAP_FILE}: key "SECRET" prod: issuer: field "key_id" must name a key in this map, such as "API_KEY_ID"`,
-    ]);
-  });
-});
-
-describe("pull", () => {
-  const map = (env: string) => `${VAULTS}[keys.API_TOKEN]\nprod = ${env}\n`;
-  const pulled = (...readers: string[]) =>
-    map(`{ from = "op://Private/api token/password", pull = [${readers.join(", ")}] }`);
-  const parse = (text: string) => parseMap(text, MAP_FILE, KINDS, ISSUERS, VAULT_KINDS, PULLS);
-  const errors = (text: string) => {
-    const result = parse(text);
-    assert(!result.ok, "expected the map to be rejected");
-    return result.errors;
-  };
-  const where = `${MAP_FILE}: key "API_TOKEN" prod: `;
-
-  test("lists the CI jobs that read the key from the vault, apart from its destinations", () => {
-    const result = parse(
-      `${VAULTS}
-[keys.API_TOKEN.prod]
-from = "op://Private/api token/password"
-
-[[keys.API_TOKEN.prod.pull]]
-by = "github-actions"
-repo = "acme/web"
-
-[[keys.API_TOKEN.prod.pull]]
-by = "github-actions"
-repo = "acme/web"
-environment = "production"
-`,
-    );
-    assert(result.ok, result.ok ? "" : result.errors.join("\n"));
-    expect(result.map.keys[0]?.environments.prod).toMatchObject({
-      publish: [],
-      pull: [
-        { by: "github-actions", repo: "acme/web" },
-        { by: "github-actions", repo: "acme/web", environment: "production" },
+        },
       ],
     });
   });
 
-  test("an entry without pull has none", () => {
-    const result = parse(map(`"op://Private/api token/password"`));
+  test("run uses default and publish uses production", () => {
+    const result = read(EXAMPLE);
     assert(result.ok);
-    expect(result.map.keys[0]?.environments.prod?.pull).toEqual([]);
+    expect([runEnvironment(result.map), publishEnvironment(result.map)]).toEqual([
+      "default",
+      "production",
+    ]);
+  });
+
+  test("without them, run uses the first profile and publish the last", () => {
+    const result = read(`${HEAD}\n[profiles.dev]\n\n[profiles.staging]\n\n[profiles.live]\n`);
+    assert(result.ok);
+    expect([runEnvironment(result.map), publishEnvironment(result.map)]).toEqual(["dev", "live"]);
+  });
+
+  test("a file saved with a byte order mark reads the same", () => {
+    expect(read(`﻿${EXAMPLE}`)).toEqual(read(EXAMPLE));
+  });
+});
+
+describe("profiles", () => {
+  test("a profile inherits default's secrets, and its own entry overrides field by field", () => {
+    const text = `${HEAD}
+[profiles.default]
+A = { description = "a", ref = { item = "shared a" } }
+B = { description = "b" }
+
+[profiles.production]
+A = { description = "a in production" }
+`;
+    expect(refOf(text, "A", "production")).toEqual(
+      item("shared a", { field: "value", fallback: "password" }),
+    );
+    expect(refOf(text, "B", "production")?.item).toBe("secretspec/web/production/B");
+  });
+
+  test("an own ref replaces the inherited one", () => {
+    const text = `${HEAD}
+[profiles.default]
+A = { description = "a", ref = { item = "dev a", field = "password" } }
+
+[profiles.production]
+A = { ref = { item = "live a", field = "credential" } }
+`;
+    expect(refOf(text, "A", "default")?.item).toBe("dev a");
+    expect(refOf(text, "A", "production")).toEqual(item("live a", { field: "credential" }));
+  });
+
+  test("inherit = false leaves default's secrets out", () => {
+    const text = `${HEAD}
+[profiles.default]
+A = { description = "a" }
+
+[profiles.deploy.defaults]
+inherit = false
+
+[profiles.deploy]
+B = { description = "b" }
+`;
+    const result = read(text);
+    assert(result.ok);
+    expect(result.map.keys.map((key) => [key.name, Object.keys(key.environments)])).toEqual([
+      ["A", ["default"]],
+      ["B", ["deploy"]],
+    ]);
+  });
+
+  test("a secret derived from others has no vault item, so keypin leaves it out", () => {
+    const text = `${HEAD}
+[profiles.default]
+DB_PASSWORD = { description = "password" }
+DATABASE_URL = { description = "url", composed = "postgres://app:\${DB_PASSWORD}@db/app" }
+`;
+    const result = read(text);
+    assert(result.ok);
+    expect(result.map.keys.map((key) => key.name)).toEqual(["DB_PASSWORD"]);
+    expect(errorsOf(`${text}\n[tool.keypin.default.DATABASE_URL]\nrotate_every = "90d"\n`)).toEqual(
+      [
+        `${MAP_FILE}: [tool.keypin.default.DATABASE_URL]: DATABASE_URL is derived from other secrets, so no vault holds it for keypin to publish or rotate`,
+      ],
+    );
   });
 
   test.each([
     [
-      "an unknown reader",
-      `{ by = "circleci", repo = "acme/web" }`,
-      `pull[0]: field "by" must be one of: github-actions`,
-    ],
-    ["no reader", `{ repo = "acme/web" }`, `pull[0]: missing field "by"`],
-    [
-      "a destination's to",
-      `{ to = "github-actions", repo = "acme/web" }`,
-      `pull[0]: missing field "by"`,
+      "no [project] name",
+      `[profiles.default]\n`,
+      `${MAP_FILE}: [project] needs name, such as name = "web"`,
     ],
     [
-      "an unknown field",
-      `{ by = "github-actions", repo = "acme/web", worker = "w" }`,
-      `pull[0]: unknown field "worker" for github-actions`,
+      "extends",
+      `[project]\nname = "web"\nrevision = "1.0"\nextends = ["../shared"]\n\n[profiles.default]\n`,
+      `${MAP_FILE}: [project]: keypin doesn't read extends yet; declare the secrets in this file`,
     ],
     [
-      "a repo that isn't owner/name",
-      `{ by = "github-actions", repo = "acme" }`,
-      `pull[0]: field "repo" must be "owner/name"`,
+      "no profile",
+      `[project]\nname = "web"\nrevision = "1.0"\n`,
+      `${MAP_FILE}: needs a profile, such as [profiles.default]`,
     ],
     [
-      "a placeholder repo",
-      `{ by = "github-actions", repo = "<owner>/<repo>" }`,
-      `pull[0]: field "repo" is a <...> placeholder: replace it with the GitHub repository as "owner/name", such as "acme/billing"`,
+      "a profile name keypin can't use",
+      `${HEAD}\n[profiles.Prod]\n`,
+      `${MAP_FILE}: [profiles.Prod]: keypin needs a profile name that starts with a lowercase letter and uses only lowercase letters, digits and dashes`,
     ],
     [
-      "an environment named ..",
-      `{ by = "github-actions", repo = "acme/web", environment = ".." }`,
-      `pull[0]: field "environment" must be a GitHub environment name, at most 255 characters and not . or ..`,
+      "a secret that isn't a table",
+      `${HEAD}\n[profiles.default]\nA = "op://Acme/a/password"\n`,
+      `${MAP_FILE}: [profiles.default] A: must be a table, such as { description = "..." }`,
     ],
-    ["a string", `"acme/web"`, `pull[0]: must be a table`],
-  ])("refuses %s", (_, reader, message) => {
-    expect(errors(pulled(reader))).toEqual([`${where}${message}`]);
+    [
+      "invalid TOML",
+      `${HEAD}\n[profiles.default\n`,
+      `${MAP_FILE}: not valid TOML: Illegal character in key`,
+    ],
+  ])("refuses %s", (_, text, error) => {
+    expect(errorsOf(text)).toEqual([error]);
   });
 
-  test("must be a list", () => {
-    expect(
-      errors(
-        map(
-          `{ from = "op://Private/api token/password", pull = { by = "github-actions", repo = "acme/web" } }`,
-        ),
-      ),
-    ).toEqual([`${where}field "pull" must be a list`]);
-  });
-
-  test("refuses the same place twice, compared without case like GitHub", () => {
-    expect(
-      errors(
-        pulled(
-          `{ by = "github-actions", repo = "acme/web", environment = "production" }`,
-          `{ by = "github-actions", repo = "Acme/Web", environment = "Production" }`,
-        ),
-      ),
-    ).toEqual([`${where}pull[1]: the same place as pull[0]`]);
-  });
-
-  test("refuses a place that both pulls the key and gets a copy published", () => {
-    const both = map(
-      `{ from = "op://Private/api token/password", publish = [{ to = "github-actions", repo = "acme/web", environment = "production" }], pull = [{ by = "github-actions", repo = "Acme/web", environment = "PRODUCTION" }] }`,
-    );
-    expect(errors(both)).toEqual([
-      `${where}pull[0]: publish[0] also writes the key to Acme/web environment PRODUCTION; keep one of them. To pull it instead, delete that publish entry, and delete the copy publish wrote there`,
-    ]);
-  });
-
-  test("names the conflicting publish entry by its place in the file", () => {
-    const skipped = map(
-      `{ from = "op://Private/api token/password", publish = [{ to = "github-actions" }, { to = "github-actions", repo = "acme/other" }, { to = "github-actions", repo = "acme/web" }], pull = [{ by = "github-actions", repo = "acme/web" }] }`,
-    );
-    expect(errors(skipped)).toContain(
-      `${where}pull[0]: publish[2] also writes the key to acme/web; keep one of them. To pull it instead, delete that publish entry, and delete the copy publish wrote there`,
-    );
-  });
-
-  test("a repo's secrets and one of its environments are different places", () => {
-    const result = parse(
-      map(
-        `{ from = "op://Private/api token/password", publish = [{ to = "github-actions", repo = "acme/web" }], pull = [{ by = "github-actions", repo = "acme/web", environment = "production" }] }`,
-      ),
-    );
-    expect(result.ok).toBe(true);
-  });
-
-  test("two keys may be pulled by the same job", () => {
-    const reader = `pull = [{ by = "github-actions", repo = "acme/web" }]`;
-    const result = parse(
-      `${VAULTS}[keys.A]\nprod = { from = "op://Private/a/password", ${reader} }\n[keys.B]\nprod = { from = "op://Private/b/password", ${reader} }\n`,
-    );
-    expect(result.ok).toBe(true);
+  test("a TOML error drops the text it found, so a pasted value stays out of the output", () => {
+    const pasted = "sk_live_sentinel_51H";
+    const [error = ""] = errorsOf(`${HEAD}\n[profiles.default]\nA = ${pasted}\n`);
+    expect(error).not.toContain(pasted);
   });
 });
 
-describe("the parse half of each kind", () => {
-  const place: DestinationRules<{ to: "place"; account: string; name: string }> = {
-    kind: "place",
-    label: "Place",
-    parse: (read) => {
-      read.only(["name"]);
-      const name = read.required("name");
-      return name === undefined ? undefined : { to: "place", account: "", name };
-    },
-    id: (target) => target.name,
-    secretId: (target, secretName) => `${target.name}:${secretName}`,
-    checkId: (target) => target.name,
-    fromId: (name) => ({ to: "place", account: "", name }),
-    describe: (target) => target.name,
-    named: (target) => target.name,
-    refuses: (secretName) => (secretName.startsWith("PLACE_") ? "it's reserved" : undefined),
-  };
-  const counter: IssuerRules<{ kind: "counter" }> = {
-    kind: "counter",
-    admin: false,
-    parse: (read) => {
-      read.only([]);
-      return { kind: "counter" };
-    },
-  };
-  const box: VaultRules<
-    { kind: "box"; account: string; name: string },
-    { kind: "box"; name: string },
-    string
-  > = {
-    kind: "box",
-    name: "Box",
-    scheme: "box://",
-    placeholder: "the secret's name",
-    needsPin: `needs your Box account: add [box] with account = "..."`,
-    readPin: (read) => {
-      read.only(["account"]);
-      return read.required("account");
-    },
-    parse: (rest) => (rest ? { kind: "box", name: rest } : "must be box://<name>"),
-    pinned: (reference, account) => ({ ...reference, account }),
-    format: (ref) => `box://${ref.name}`,
-    account: (ref) => ref.account,
-    sameItem: (a, b) => a.name === b.name,
-    stored: () => null,
-  };
-  const BOX = `[box]\naccount = "acme"\n`;
-  const parse = (body: string) => parseMap(`${BOX}${body}`, MAP_FILE, [place], [counter], [box]);
+describe("where a secret lives", () => {
+  const secret = (entry: string, extra = "") =>
+    `${HEAD}${extra}\n[profiles.production]\nA = { description = "a"${entry} }\n`;
 
-  test("reads a map with kinds that can't connect", () => {
-    const result = parse(
-      `[keys.API_KEY.prod]\nfrom = "box://api"\nissuer = { kind = "counter" }\npublish = [{ to = "place", name = "web" }]\n`,
-    );
-    assert(result.ok);
-    expect(result.map.keys[0]?.environments.prod).toMatchObject({
-      ref: { kind: "box", account: "acme", name: "api" },
-      issuer: { kind: "counter" },
-      publish: [{ to: "place", account: "", name: "web" }],
+  test("the secret's providers come first, then the profile's, then the project's", () => {
+    const providers = `\n[providers.ops]\nuri = "onepassword://ops.1password.com@Ops"\n`;
+    expect(refOf(secret(`, providers = ["ops"]`, providers), "A", "production")).toMatchObject({
+      account: "ops.1password.com",
+      vault: "Ops",
     });
+    const profile = `\n[profiles.production.defaults]\nproviders = ["onepassword://team.1password.com@Team"]\n`;
+    expect(refOf(`${secret("")}${profile}`, "A", "production")).toMatchObject({
+      account: "team.1password.com",
+      vault: "Team",
+    });
+    expect(refOf(secret(""), "A", "production")).toMatchObject({ vault: "Acme" });
   });
 
-  test("still refuses what the rules refuse", () => {
+  test("keypin reads the first provider of the chain", () => {
     expect(
-      parse(
-        `[keys.PLACE_KEY.prod]\nfrom = "box://api"\npublish = [{ to = "place", name = "web" }]\n`,
+      refOf(
+        secret(`, providers = ["acme", "onepassword://x.1password.com@Other"]`),
+        "A",
+        "production",
       ),
-    ).toEqual({
-      ok: false,
-      errors: [
-        `${MAP_FILE}: key "PLACE_KEY" prod: publish[0]: place can't take this key, because it's reserved`,
-      ],
-    });
+    ).toMatchObject({ vault: "Acme" });
+  });
+
+  test.each([
+    [
+      "an alias defined only in a user's own config",
+      secret(`, providers = ["mine"]`),
+      `provider "mine" isn't under [providers] in secretspec.toml, so CI and the console can't find its vault; define it there`,
+    ],
+    [
+      "no provider at all",
+      `[project]\nname = "web"\nrevision = "1.0"\n\n[profiles.production]\nA = { description = "a" }\n`,
+      `names no provider in secretspec.toml, so CI and the console can't find its vault; add providers = ["..."] to it, or set [defaults] providers`,
+    ],
+    [
+      "a provider keypin can't read",
+      secret(`, providers = ["keyring://"]`),
+      `uses keyring://, and keypin reads only 1Password from secretspec.toml`,
+    ],
+    [
+      "a vault keypin reads, but not from secretspec.toml yet",
+      secret(`, providers = ["infisical://app.infisical.com"]`),
+      `uses infisical://app.infisical.com; keypin doesn't read Infisical from secretspec.toml yet`,
+    ],
+    [
+      "refs",
+      secret(`, refs = { acme = { item = "a" } }`),
+      `keypin doesn't read refs yet; give the secret one ref = { item = "..." }`,
+    ],
+    [
+      "an alias with a ref template, for a secret without its own ref",
+      `${HEAD.replace(
+        `acme = "onepassword://my.1password.com@Acme"`,
+        `acme = { uri = "onepassword://my.1password.com@Acme", ref = { item = "{project} {key}" } }`,
+      )}\n[profiles.production]\nA = { description = "a" }\n`,
+      `provider "acme" has a ref template, and keypin doesn't read ref templates yet; give the secret its own ref`,
+    ],
+  ])("refuses %s", (_, text, error) => {
+    expect(errorsOf(text)).toEqual([`${MAP_FILE}: [profiles.production] A: ${error}`]);
+  });
+
+  test("a secret's own ref wins over its alias's ref template, as in secretspec", () => {
+    const text = `${HEAD.replace(
+      `acme = "onepassword://my.1password.com@Acme"`,
+      `acme = { uri = "onepassword://my.1password.com@Acme", ref = { item = "{key}" } }`,
+    )}\n[profiles.production]\nA = { description = "a", ref = { item = "own a", field = "password" } }\n`;
+    expect(refOf(text, "A", "production")?.item).toBe("own a");
+  });
+});
+
+describe("1Password", () => {
+  const at = (uri: string, ref = "") =>
+    `[project]\nname = "web"\nrevision = "1.0"\n\n[profiles.production]\nA = { description = "a", providers = [${JSON.stringify(uri)}]${ref} }\n`;
+  const one = (text: string) => {
+    const [error = ""] = errorsOf(text);
+    return error.replace(`${MAP_FILE}: [profiles.production] A: `, "");
+  };
+
+  test("without ref, reads secretspec's item for the profile, field value then password", () => {
+    expect(refOf(at("onepassword://my.1password.com@Acme"), "A", "production")).toEqual(
+      item("secretspec/web/production/A", { field: "value", fallback: "password" }),
+    );
+  });
+
+  test("a ref names the item, and optionally its field, section and vault", () => {
+    const uri = "onepassword://my.1password.com@Acme";
+    expect(refOf(at(uri, `, ref = { item = "db" }`), "A", "production")).toEqual(
+      item("db", { field: "value", fallback: "password" }),
+    );
+    expect(
+      refOf(
+        at(uri, `, ref = { vault = "Infra", item = "db", section = "live", field = "url" }`),
+        "A",
+        "production",
+      ),
+    ).toEqual(item("db", { vault: "Infra", section: "live", field: "url" }));
+  });
+
+  test("an item title may hold /, and the URI may be percent-encoded", () => {
+    expect(
+      refOf(
+        at("onepassword://my.1password.com@Team%20Keys", `, ref = { item = "a/b/c" }`),
+        "A",
+        "production",
+      ),
+    ).toMatchObject({ vault: "Team Keys", item: "a/b/c" });
+  });
+
+  test.each([
+    ["onepassword://Acme", "doesn't name the 1Password account"],
+    ["onepassword://my.1password.com@", "doesn't name the 1Password account"],
+    ["onepassword://", "doesn't name the 1Password account"],
+    ["onepassword://my.1password.com@Acme/item/field", "names more than a vault"],
+    ["onepassword+token://Acme", "keypin doesn't read onepassword+token:// providers yet"],
+  ])("refuses %s", (uri, problem) => {
+    expect(one(at(uri))).toContain(problem);
+  });
+
+  test("the account message says what to write", () => {
+    expect(one(at("onepassword://Acme"))).toBe(
+      `uses onepassword://Acme, which doesn't name the 1Password account; write onepassword://<sign-in address>@<vault>, with the sign-in address at the top left of the 1Password app (such as my.1password.com) or the account ID`,
+    );
+  });
+
+  test.each([
+    [`, ref = { field = "x" }`, `field "ref" needs item, the 1Password item's title or ID`],
+    [
+      `, ref = { item = "a", label = "x" }`,
+      `field "ref" has the unknown field "label"; a 1Password ref has item, field, section and vault`,
+    ],
+    [`, ref = { item = "a", section = "s" }`, `field "ref" names a section, so it needs field too`],
+    [
+      `, ref = { item = "a", field = "" }`,
+      `field "ref" holds item, field, section and vault as non-empty strings`,
+    ],
+    [`, ref = "op://Acme/a/password"`, `field "ref" must be a table, such as { item = "..." }`],
+  ])("refuses the ref %s", (ref, problem) => {
+    expect(one(at("onepassword://my.1password.com@Acme", ref))).toBe(problem);
   });
 });

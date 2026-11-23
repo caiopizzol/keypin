@@ -1,4 +1,4 @@
-import { type MapResult, parseMap } from "@keypin/core";
+import { type MapResult, readSecretspec, SECRETSPEC_FILE } from "@keypin/core";
 import { destinations, issuers, pulls, vaults } from "@keypin/connectors/rules";
 
 const own = {
@@ -8,6 +8,6 @@ const own = {
   pulls: pulls.map((kind) => ({ ...kind })),
 };
 
-export function loadMap(text: string, file = "keypin.toml"): MapResult {
-  return parseMap(text, file, own.destinations, own.issuers, own.vaults, own.pulls);
+export function loadMap(text: string, file = SECRETSPEC_FILE): MapResult {
+  return readSecretspec(text, file, own.destinations, own.issuers, own.vaults, own.pulls);
 }

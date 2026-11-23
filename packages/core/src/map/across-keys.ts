@@ -15,7 +15,7 @@ export function sharedDestinations(
   for (const key of keys) {
     for (const environment of environments) {
       key.environments[environment]?.publish.forEach((target, i) => {
-        const where = `key "${key.name}" ${environment} publish[${i}]`;
+        const where = `[tool.keypin.${environment}.${key.name}] publish[${i}]`;
         const secret = secretKey(target, key.name, kinds);
         const owner = owners.get(secret);
         if (owner === undefined) owners.set(secret, where);
@@ -36,7 +36,7 @@ export function sharedClaims(
     for (const environment of environments) {
       const spec = key.environments[environment]?.issuer;
       if (!spec) continue;
-      const where = `key "${key.name}" ${environment}`;
+      const where = `[tool.keypin.${environment}.${key.name}]`;
       const claims = issuers.find((k) => k.kind === spec.kind)?.claims?.(spec) ?? [];
       const id = (claim: string) => `${spec.kind}:${claim}`;
       const shared = claims.find((claim) => owners.has(id(claim)));
@@ -64,33 +64,34 @@ export function pairedKeys(
       const entry = key.environments[environment];
       const name = entry?.idKey;
       if (!entry?.issuer || name === undefined) continue;
-      const err = (message: string) => fail(`key "${key.name}" ${environment} issuer: `, message);
+      const err = (message: string) =>
+        fail(`[tool.keypin.${environment}.${key.name}] issuer: `, message);
       const pair = keys.find((k) => k.name === name)?.environments[environment];
       const owner = owners.get(name);
       if (name === key.name)
         err(`field "key_id" names the key itself; name the key that holds its ID`);
       else if (!pair)
         err(
-          `field "key_id" names "${name}", which has no ${environment} entry; add [keys.${name}.${environment}]`,
+          `field "key_id" names "${name}", which isn't a secret of [profiles.${environment}]; declare it there`,
         );
       else if (owner !== undefined)
         err(
-          `key "${owner}" ${environment} also names "${name}" as its key_id; each key needs its own`,
+          `[tool.keypin.${environment}.${owner}] also names "${name}" as its key_id; each key needs its own`,
         );
       else if (pair.issuer)
         err(
-          `"${name}" ${environment} has its own issuer; a key_id is rotated with its key, so remove one`,
+          `[tool.keypin.${environment}.${name}] has its own issuer; a key_id is rotated with its key, so remove one`,
         );
       else if (
         sameRef(pair.ref, entry.ref, vaults) ||
         (entry.issuer.admin !== undefined && sameRef(pair.ref, entry.issuer.admin, vaults))
       )
         err(
-          `"${name}" ${environment} reads the same field as this key or its admin key; give the ID its own field`,
+          `"${name}" in [profiles.${environment}] reads the same field as this key or its admin key; give the ID its own field`,
         );
       else if (!sameSet(places(pair), places(entry)))
         err(
-          `"${name}" ${environment} publishes to different destinations; list the same destinations for both keys`,
+          `[tool.keypin.${environment}.${name}] publishes to different destinations; list the same destinations for both keys`,
         );
       else if (entry.pull.length || pair.pull.length)
         err(

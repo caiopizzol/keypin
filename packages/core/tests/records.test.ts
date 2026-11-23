@@ -19,7 +19,7 @@ import { fakeFiles, GITHUB, KEY, KEY_MAP, KINDS, receipt, VAULT_KINDS, WORKER } 
 const STATE = "/state/keypin/state.json";
 const REGISTRY = "/config/keypin/registry.json";
 const OWNER = { keyId: KEY.name, environment: "prod", mapFile: KEY_MAP };
-const WEB_MAP = "/work/web/keypin.toml";
+const WEB_MAP = "/work/web/secretspec.toml";
 
 describe("state", () => {
   test("a missing file is an empty state", async () => {

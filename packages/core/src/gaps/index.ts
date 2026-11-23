@@ -12,7 +12,9 @@ import {
 import { envFileSuffix } from "../dotenv";
 import { type Found, mappedIn, proposedIn } from "./places";
 import type { Fix, Gaps, LocalFile, ProjectScan } from "./report";
-import { creating, hasEnvironments, tomlToAdd } from "./toml-to-add";
+import { creating, tomlToAdd } from "./toml-to-add";
+
+const PUBLISH_PROFILE = "production";
 
 export type { Fix, Gaps, LocalFile, Need, ProjectScan } from "./report";
 
@@ -88,7 +90,8 @@ export function findGaps(
   const elsewhere = (found: Found) =>
     found.place.onlyFrom ? mappedIn(keys, found.key, found.place, []) : null;
   const missing = needs.filter((n) => n.need.mapped === null && elsewhere(n) === null);
-  const add = tomlToAdd(missing, keys, environment, map?.text ?? "", newKeys, vaults);
+  const mapText = map?.text ?? "";
+  const add = tomlToAdd(missing, keys, environment, mapText, newKeys);
 
   const problems: string[] = [...conflicts];
   const fixes: Fix[] = [];
@@ -102,18 +105,16 @@ export function findGaps(
   const unlisted = [...new Set(outside.map(({ place }) => proposedIn(place, environment)))];
   const source = outside[0]?.place.onlyFrom?.source;
   if (unlisted.length && source !== undefined) {
-    const order =
-      listed.length > 1
-        ? [...listed.slice(0, -1), ...unlisted, environment]
-        : [...listed, ...unlisted];
-    const line = `environments = ${JSON.stringify(order).replaceAll(",", ", ")}`;
-    const at = hasEnvironments(map?.text ?? "")
-      ? "replace the environments line in keypin.toml with"
-      : "add at the top of keypin.toml";
-    const why = `keypin.toml has no environment for the ${source}${unlisted.length > 1 ? "s" : ""} ${unlisted.join(" and ")}`;
+    const tables = unlisted.map((name) => `[profiles.${name}]`);
+    const line = tables.join("\n  ");
+    const last = environment === listed.at(-1) && environment !== PUBLISH_PROFILE;
+    const at = last
+      ? `add to secretspec.toml, above [profiles.${environment}] so keypin publish keeps using it`
+      : "add to secretspec.toml";
+    const why = `secretspec.toml has no profile for the ${source}${unlisted.length > 1 ? "s" : ""} ${unlisted.join(" and ")}`;
     fix({
       kind: "environments",
-      text: `${why}; ${at}: ${line} (keypin run uses the first, keypin publish the last)`,
+      text: `${why}; ${at}: ${tables.join(", ")}`,
       why,
       at,
       line,
@@ -127,12 +128,12 @@ export function findGaps(
     const only = place.onlyFrom;
     if (other !== null && only && n.mapped === null) {
       const why = `${n.name}: ${uses}`;
-      const edit = `keypin.toml publishes it to ${place.label} from ${other}, but that ${only.thing} is the ${only.source} ${only.environments.join(" and ")}, so it would get the ${other} value; move that publish entry to ${only.environments.join(" or ")}`;
+      const edit = `secretspec.toml publishes it to ${place.label} from ${other}, but that ${only.thing} is the ${only.source} ${only.environments.join(" and ")}, so it would get the ${other} value; move that publish entry to ${only.environments.join(" or ")}`;
       fix({ kind: "edit", text: `${why}; ${edit}` });
       continue;
     }
     if (n.mapped !== null) {
-      const why = `${n.name}: keypin.toml publishes it to ${place.label}, which doesn't have it yet`;
+      const why = `${n.name}: secretspec.toml publishes it to ${place.label}, which doesn't have it yet`;
       const name = key?.name ?? n.name;
       const command = `keypin publish ${name}${envFlag(n.mapped, environment)}`;
       fix({ kind: "publish", text: `${why}; run ${command}`, key: name, why, command });
@@ -140,10 +141,10 @@ export function findGaps(
     }
     const held =
       n.holds === true
-        ? `${place.label} has it, but keypin.toml doesn't publish it there`
+        ? `${place.label} has it, but secretspec.toml doesn't publish it there`
         : n.holds === false
-          ? `${place.label} doesn't have it${place.aside?.(n.name) ?? ""}, and keypin.toml doesn't publish it there`
-          : `keypin.toml doesn't publish it to ${place.label}`;
+          ? `${place.label} doesn't have it${place.aside?.(n.name) ?? ""}, and secretspec.toml doesn't publish it there`
+          : `secretspec.toml doesn't publish it to ${place.label}`;
     const why = `${n.name}: ${uses}; ${held}`;
     const edit = add.edits.get(`${n.name} ${place.id}`);
     fix(
@@ -171,7 +172,7 @@ export function findGaps(
       !environments.includes(suffix) &&
       isEnvironmentName(suffix) &&
       !/^(local|dev|development)$/.test(suffix)
-        ? `maps them as ${run}; if they're the values of another environment, list it in environments and add --env <name>`
+        ? `maps them as ${run}; if they're the values of another profile, add it to secretspec.toml and add --profile <name>`
         : null;
     const other = caveat === null ? "" : `, which ${caveat}`;
     const names = file.names.filter(isVariableName);
@@ -198,21 +199,21 @@ export function findGaps(
       caveat: caveat && `That command ${caveat}`,
     });
     if (unmapped.length && byHand !== undefined) {
-      const sets = `${file.path} sets ${unmapped.join(", ")}, which keypin.toml doesn't map`;
+      const sets = `${file.path} sets ${unmapped.join(", ")}, which secretspec.toml doesn't declare`;
       notes.push(`${sets}; a plain setting can stay, and for a key ${byHand}`);
     } else if (unmapped.length) {
-      const account = newKeys.pinned(keys) ? "" : newKeys.pinOptions;
-      const sets = `${file.path} sets ${unmapped.join(", ")}, which keypin.toml doesn't map`;
+      const account = newKeys.hasAccount(keys) ? "" : newKeys.pinOptions;
+      const sets = `${file.path} sets ${unmapped.join(", ")}, which secretspec.toml doesn't declare`;
       const found = importing(sets, unmapped, account);
       const text = `${sets}; a plain setting can stay, and for a key run keypin import ${file.path} NAME...${found.options}${other}`;
       notes.push(text);
       fixes.push({ ...found, text });
     }
     if (elsewhere.length && byHand !== undefined) {
-      const why = `${file.path} sets ${elsewhere.join(", ")}, which keypin.toml maps with no ${env} entry`;
+      const why = `${file.path} sets ${elsewhere.join(", ")}, which secretspec.toml declares, but not in profile ${env}`;
       fix({ kind: "edit", text: `${why}; for a key ${byHand}` });
     } else if (elsewhere.length) {
-      const why = `${file.path} sets ${elsewhere.join(", ")}, which keypin.toml maps with no ${env} entry`;
+      const why = `${file.path} sets ${elsewhere.join(", ")}, which secretspec.toml declares, but not in profile ${env}`;
       const found = importing(why, elsewhere, "");
       fix({
         ...found,
@@ -222,7 +223,7 @@ export function findGaps(
   }
 
   if (ignore.length)
-    notes.push(`keypin.toml ignores ${ignore.length} ${ignore.length === 1 ? "key" : "keys"}`);
+    notes.push(`secretspec.toml ignores ${ignore.length} ${ignore.length === 1 ? "key" : "keys"}`);
 
   return {
     production: needs.map((n) => n.need),

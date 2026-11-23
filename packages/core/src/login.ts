@@ -1,5 +1,4 @@
 import type { KeyRef, SignInReason } from "./contracts";
-import type { TableReader } from "./destination";
 import type { KeysMap } from "./map";
 
 export type PrerequisiteStatus =
@@ -35,20 +34,31 @@ export interface VaultUse {
 }
 
 export interface NewKeys {
-  readonly reference: string;
-  readonly pin: Readonly<Record<string, string>>;
+  readonly provider: string;
   readonly options: string;
+  readonly account: string;
 }
 
-export interface VaultRules<R extends KeyRef = KeyRef, U extends KeyRef = KeyRef, P = unknown> {
+export interface SecretspecAt {
+  readonly uri: string;
+  readonly project: string;
+  readonly profile: string;
+  readonly key: string;
+  readonly ref: Readonly<Record<string, unknown>> | null;
+}
+
+export interface SecretspecProvider<R extends KeyRef = KeyRef> {
+  readonly provider: string;
+  locate?(at: SecretspecAt): R | string;
+}
+
+export interface VaultRules<R extends KeyRef = KeyRef, U extends KeyRef = KeyRef> {
   readonly kind: R["kind"];
   readonly name: string;
   readonly scheme: string;
   readonly placeholder: string;
-  readonly needsPin: string;
-  readPin(read: TableReader): P | undefined;
   parse(rest: string): U | string;
-  pinned(reference: U, pin: P): R;
+  pinned(reference: U, like: R): R;
   format(ref: R): string;
   account(ref: R): string;
   accounts?(refs: readonly R[]): readonly string[];
@@ -56,14 +66,14 @@ export interface VaultRules<R extends KeyRef = KeyRef, U extends KeyRef = KeyRef
   sameField?(a: R, b: R): boolean;
   stored(value: Readonly<Record<string, unknown>>): R | null;
   readonly newKeys?: NewKeys;
+  readonly secretspec?: SecretspecProvider<R>;
 }
 
 export interface VaultKind<
   H = unknown,
   R extends KeyRef = KeyRef,
   U extends KeyRef = KeyRef,
-  P = unknown,
-> extends VaultRules<R, U, P> {
+> extends VaultRules<R, U> {
   readonly newValueByHand: string;
   readonly addRotatedDate: string;
   readonly keepsRotated?: false;

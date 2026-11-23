@@ -5,7 +5,8 @@ This page puts your production keys in your vault, maps where they go, and publi
 ## Put each prod value in your vault
 
 - **From a file:** `keypin import .env.production RESEND_API_KEY --env prod --vault Private` adds
-  `[keys.RESEND_API_KEY.prod]` to the map. Then remove the lines its message names.
+  `[keys.RESEND_API_KEY.prod]` to the map. Then follow its message: remove the lines it names, or delete the file
+  when it says so.
 - **A new key**, like `STRIPE_API_KEY` here: create it at the provider, save it in a vault item, and copy its
   reference. In 1Password, open the field's menu and select **Copy Secret Reference**.
 
@@ -57,7 +58,8 @@ Plan  generation e24c133a66cb5e4d
 
 The plan shows the account keypin reached at each destination and every write; `--plan` writes nothing. To publish,
 run it again without `--plan` and answer `y`. A first write, a changed account or a changed vault item always needs
-that `y` in a terminal. `keypin publish --all` publishes every key with one plan.
+that `y` in a terminal. `keypin publish --all` publishes every key with a destination in that environment, with one
+plan.
 
 Some hosts use a new value only after a redeploy; see [Publishing](../guides/publishing.md).
 

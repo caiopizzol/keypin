@@ -65,8 +65,8 @@ Give a key an `issuer`, such as Resend, Neon or OpenAI, and `keypin rotate` crea
 saves it to your vault and publishes it. Its plan says whether keypin revokes the old key after a second `y`, or
 leaves it for you to delete, as on a first Resend rotation. See [Rotating a key](../guides/rotating-a-key.md).
 
-`keypin status` shows which keys are due, and [Scheduled rotation](../guides/scheduled-rotation.md) rotates them in
-GitHub Actions.
+`keypin status` shows which keys are due. [Scheduled rotation](../guides/scheduled-rotation.md) rotates them on a
+schedule, for keys in 1Password published to GitHub Actions.
 
 ## keypin asks first
 

@@ -64,6 +64,8 @@ export interface VaultRules<R extends KeyRef = KeyRef, U extends KeyRef = KeyRef
   accounts?(refs: readonly R[]): readonly string[];
   sameItem(a: R, b: R): boolean;
   sameField?(a: R, b: R): boolean;
+  mayShareField?(a: R, b: R): boolean;
+  describe?(ref: R): string;
   stored(value: Readonly<Record<string, unknown>>): R | null;
   readonly newKeys?: NewKeys;
   readonly secretspec?: SecretspecProvider<R>;

@@ -1,7 +1,7 @@
 import type { Environment, KeyId } from "../contracts";
 import { type DestinationRules, placeId, secretKey } from "../destination";
 import type { IssuerRules } from "../issuer";
-import { sameRef } from "../reference";
+import { mayShareField } from "../reference";
 import type { EnvEntry, KeyEntry } from "./keys-map";
 import type { MapContext } from "./key";
 
@@ -83,11 +83,11 @@ export function pairedKeys(
           `[tool.keypin.${environment}.${name}] has its own issuer; a key_id is rotated with its key, so remove one`,
         );
       else if (
-        sameRef(pair.ref, entry.ref, vaults) ||
-        (entry.issuer.admin !== undefined && sameRef(pair.ref, entry.issuer.admin, vaults))
+        mayShareField(pair.ref, entry.ref, vaults) ||
+        (entry.issuer.admin !== undefined && mayShareField(pair.ref, entry.issuer.admin, vaults))
       )
         err(
-          `"${name}" in [profiles.${environment}] reads the same field as this key or its admin key; give the ID its own field`,
+          `"${name}" in [profiles.${environment}] can read the same field as this key or its admin key; give the ID its own field`,
         );
       else if (!sameSet(places(pair), places(entry)))
         err(

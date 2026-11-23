@@ -166,6 +166,9 @@ describe("the vault references keypin saves in state.json never change", () => {
 
     const again = setup({ [STATE]: saved }, "-new");
     await cli(["publish", "CONVENTION_KEY"], again.deps);
-    expect(again.stderr.text).toContain("was last published from");
+    const source = `op://Private/${CONVENTION_ITEM}/value`;
+    expect(again.stderr.text).toContain(
+      `was last published from ${source} (1Password account my.1password.com), and now from ${source} (value, then password) (1Password account my.1password.com)`,
+    );
   });
 });

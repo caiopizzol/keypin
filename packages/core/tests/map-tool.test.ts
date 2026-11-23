@@ -274,10 +274,16 @@ describe("an issuer whose key's ID is another key", () => {
     },
     idKey: (spec) => spec.keyId,
   };
-  const map = (keyId: string, idItem = "key id", idTool = `publish = [${WORKER}]`) => `${HEAD}
+  const map = (
+    keyId: string,
+    idItem = "key id",
+    idTool = `publish = [${WORKER}]`,
+    secretRef = `{ item = "secret", field = "credential" }`,
+    idRef = `{ item = "${idItem}", field = "credential" }`,
+  ) => `${HEAD}
 [profiles.production]
-SECRET = { description = "secret", ref = { item = "secret", field = "credential" } }
-KEY_ID = { description = "its ID", ref = { item = "${idItem}", field = "credential" } }
+SECRET = { description = "secret", ref = ${secretRef} }
+KEY_ID = { description = "its ID", ref = ${idRef} }
 
 [tool.keypin.production.SECRET]
 publish = [${WORKER}]
@@ -316,8 +322,13 @@ ${idTool}
     [
       "a key that reads the secret's field",
       map("KEY_ID", "secret"),
-      `"KEY_ID" in [profiles.production] reads the same field as this key or its admin key; give the ID its own field`,
+      `"KEY_ID" in [profiles.production] can read the same field as this key or its admin key; give the ID its own field`,
     ],
+    ...["value", "password"].map((field) => [
+      `a key that names "${field}" on an item the secret reads without naming a field`,
+      map("KEY_ID", "", undefined, `{ item = "pair" }`, `{ item = "pair", field = "${field}" }`),
+      `"KEY_ID" in [profiles.production] can read the same field as this key or its admin key; give the ID its own field`,
+    ]),
     [
       "a key published elsewhere",
       map("KEY_ID", "key id", `publish = [${GITHUB}]`),
@@ -325,6 +336,17 @@ ${idTool}
     ],
   ])("refuses %s", (_, text, message) => {
     expect(errors(text)).toContain(`${at}${message}`);
+  });
+
+  test("accepts an ID in another field of the item the secret reads without naming a field", () => {
+    const text = map(
+      "KEY_ID",
+      "",
+      undefined,
+      `{ item = "pair" }`,
+      `{ item = "pair", field = "id" }`,
+    );
+    expect(parse(text).ok).toBe(true);
   });
 
   test("refuses a key_id that isn't a variable name", () => {

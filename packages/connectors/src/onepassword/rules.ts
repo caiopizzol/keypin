@@ -11,6 +11,9 @@ import {
   sameName,
 } from "./reference";
 
+const readable = (ref: OnePasswordRef) =>
+  ref.fallback === undefined ? [ref.field] : [ref.field, ref.fallback];
+
 export const onePasswordVaultRules: VaultRules<OnePasswordRef, OnePasswordReference> = {
   kind: "1password",
   name: "1Password",
@@ -29,6 +32,13 @@ export const onePasswordVaultRules: VaultRules<OnePasswordRef, OnePasswordRefere
     sameName(a.section, b.section) &&
     sameName(a.field, b.field) &&
     sameName(a.fallback ?? null, b.fallback ?? null),
+  mayShareField: (a, b) =>
+    sameName(a.section, b.section) &&
+    readable(a).some((field) => readable(b).some((other) => sameName(field, other))),
+  describe: (ref) =>
+    ref.fallback === undefined
+      ? format(ref)
+      : `${format(ref)} (${ref.field}, then ${ref.fallback})`,
   stored: decode,
   newKeys: {
     provider: "onepassword://<1Password sign-in address>@<vault>",

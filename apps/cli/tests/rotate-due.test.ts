@@ -548,6 +548,21 @@ describe("keypin rotate --due checks the credentials it runs with, on days nothi
     expect(w.effects).toEqual([]);
   });
 
+  test("an expiry at or before now is unknown: it warns and never fails", async () => {
+    for (const expires of ["2026-11-09 12:00:00 UTC", "2026-11-01 09:00:00 UTC"]) {
+      const w = await idle(expires);
+      const run = ci(w);
+      expect(await run.run("--due")).toBe(0);
+      expect(run.warnings).toEqual([
+        `A credential's expiry is unknown: GitHub acme/mailer: keypin couldn't read when the GitHub token for the active gh login expires. The login works, but the expiry it reported (${new Date(expires.replace(" UTC", "Z").replace(" ", "T")).toISOString()}) isn't in the future.`,
+      ]);
+      const check = ci(w);
+      await check.run("--check");
+      expect(check.warnings).toEqual(run.warnings);
+      expect(check.stderr.text).not.toContain("FAILED GitHub");
+    }
+  });
+
   test("a token GitHub refuses fails the run", async () => {
     const w = await idle();
     w.gh.revoked = true;

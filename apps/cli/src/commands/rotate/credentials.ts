@@ -23,7 +23,7 @@ import type { Context } from "./job";
 
 type Covered = { keyId: string; entry: EnvEntry; due: Day };
 type Level = "ok" | "warn" | "fail";
-type Report = (level: Level, text: string) => void;
+type Report = (level: Level, text: string, title?: string) => void;
 
 export async function checkCredentials(
   context: Context,
@@ -31,16 +31,17 @@ export async function checkCredentials(
   dates: (ref: KeyRef) => VaultMetadata | null,
 ): Promise<number> {
   const covered = coveredKeys(context, choices, dates);
-  const lines: { level: Level; text: string }[] = [];
-  const report: Report = (level, text) => lines.push({ level, text });
+  const lines: { level: Level; text: string; title: string }[] = [];
+  const report: Report = (level, text, title = "A credential expires soon") =>
+    lines.push({ level, text, title });
   await destinationLogins(context, covered, report);
   await issuerAdmins(context, covered, report);
   const { out, deps } = context;
   if (lines.length) out.line("\nCredentials");
-  for (const { level, text } of lines) {
+  for (const { level, text, title } of lines) {
     if (level === "ok") out.line(`  ${text}`);
     if (level === "fail") out.line(`${out.mark(false)} ${text}`);
-    if (level === "warn" && !deps.warnRunner("A credential expires soon", text)) out.warn(text);
+    if (level === "warn" && !deps.warnRunner(title, text)) out.warn(text);
   }
   return lines.some((line) => line.level === "fail") ? 1 : 0;
 }
@@ -83,7 +84,7 @@ async function destinationLogins(
           `${where}: ${check.reason}, so a rotation in ${environment} would stop.${fix}`,
         );
       }
-      if (check.expires) judged(deps.now(), check.expires, null, report, where);
+      if (check.expires) loginExpiry(deps.now(), check.expires, report, where);
     } catch (error) {
       report("fail", `${where}: ${messageOf(error)}`);
     }
@@ -114,6 +115,15 @@ async function issuerAdmins(
       report("fail", `${name}: couldn't check the issuer's admin key: ${messageOf(error)}`);
     }
   }
+}
+
+function loginExpiry(now: Date, expires: Expiry, report: Report, where: string): void {
+  if (Date.parse(expires.at) > now.getTime()) return judged(now, expires, null, report, where);
+  report(
+    "warn",
+    `${where}: keypin couldn't read when ${expires.credential} expires. The login works, but the expiry it reported (${expires.at}) isn't in the future.`,
+    "A credential's expiry is unknown",
+  );
 }
 
 function judged(

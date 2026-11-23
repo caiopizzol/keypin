@@ -11,8 +11,9 @@ Actions; for another vault, see [Other vaults](#other-vaults).
    [Service accounts](service-accounts.md) says, and point `[providers]` and each `admin` reference in
    `secretspec.toml` at it. In a shared vault, this repository's token would reach other projects' keys.
 2. In Settings → Environments, create the environment `rotation`, and limit its deployment branches to the default
-   branch. A private repository on GitHub Free has no environment secrets: delete `environment:` from the workflow,
-   and save the secrets below as repo secrets.
+   branch. A private repository on GitHub Free has no environment secrets. There, use repo secrets: delete
+   `environment:` from the workflow, `--env rotation` from the command below, and `environment = "rotation"` from
+   step 7's publish targets.
 3. Create a service account with write access to that vault, and save its token as the secret
    `OP_SERVICE_ACCOUNT_TOKEN` in `rotation`. 1Password shows the token only once; this saves it without printing it:
 
@@ -36,7 +37,8 @@ Actions; for another vault, see [Other vaults](#other-vaults).
    rule requiring a pull request or a status check rejects. Keep the branch free of such a rule, or give
    `KEYPIN_GITHUB_TOKEN` Contents write from an account that may bypass it, pass it to checkout as `token:`, and add
    `paths-ignore: [".keypin/**"]` to your `on: push` workflows. Anyone with that token can then push code there.
-7. `keypin check` asks for the workflow's two secrets. [Ignore](../reference/secretspec-toml.md#toolkeypin) them:
+7. `keypin check` asks for the workflow's two secrets. The simple way is to
+   [ignore](../reference/secretspec-toml.md#toolkeypin) them:
 
    ```toml
    [tool.keypin]
@@ -44,17 +46,24 @@ Actions; for another vault, see [Other vaults](#other-vaults).
    ```
 
    Or declare them in a profile no app runs with, so `keypin publish --all --profile rotation` writes them and
-   `keypin status` shows when they're due. In step 3, pipe the token to `secretspec set OP_SERVICE_ACCOUNT_TOKEN
-   --profile rotation`, and give each item a [rotated date](../integrations/vaults/1password.md#rotated-date).
-   Without a `production` profile, put this one above the last, which `publish` and `rotate` use.
+   `keypin status` shows when they're due. `inherit = false` keeps other profiles' keys out of it, not their vault:
+   keep these two in a vault the service account can't read, through a provider of their own (`bootstrap` below,
+   added to your `[providers]`), or it can read `KEYPIN_GITHUB_TOKEN`. In step 3, pipe the token to
+   `secretspec set OP_SERVICE_ACCOUNT_TOKEN --profile rotation`, and give each item a
+   [rotated date](../integrations/vaults/1password.md#rotated-date). Without a `production` profile, put this one
+   above the last, which `publish` and `rotate` use.
 
    ```toml
+   [providers]
+   bootstrap = "onepassword://Bootstrap"
+   
    [profiles.rotation]
    KEYPIN_GITHUB_TOKEN = { description = "GitHub token for scheduled rotation" }
    OP_SERVICE_ACCOUNT_TOKEN = { description = "1Password service account for scheduled rotation" }
    
    [profiles.rotation.defaults]
    inherit = false
+   providers = ["bootstrap"]
    
    [tool.keypin.rotation.KEYPIN_GITHUB_TOKEN]
    rotate_every = "80d" # before the token expires
@@ -145,8 +154,9 @@ With Infisical or AWS Secrets Manager, the job signs in to the vault with GitHub
 vault token. Set up the identity or role on the vault's page
 ([Infisical](../integrations/vaults/infisical.md#signing-in-from-github-actions),
 [AWS Secrets Manager](../integrations/vaults/aws-secrets-manager.md#signing-in-from-github-actions)), with write
-access to the keys and their admin keys. In the workflow, add `id-token: write` under `permissions`, and set
-`KEYPIN_INFISICAL_IDENTITY_ID` or `KEYPIN_AWS_ROLE_ARN` in place of `KEYPIN_1PASSWORD` and
+access to the keys and their admin keys. Because the job sets `environment: rotation`, its OIDC subject ends in
+`:environment:rotation`, not the branch, so trust that subject. In the workflow, add `id-token: write` under
+`permissions`, and set `KEYPIN_INFISICAL_IDENTITY_ID` or `KEYPIN_AWS_ROLE_ARN` in place of `KEYPIN_1PASSWORD` and
 `OP_SERVICE_ACCOUNT_TOKEN`, which then needn't be ignored. With Bitwarden Secrets Manager, save `BWS_ACCESS_TOKEN` as
 an Actions secret, set it in their place, and ignore it instead.
 
@@ -161,7 +171,7 @@ still sign in to Doppler with [OIDC](../integrations/vaults/doppler.md#signing-i
 `rotate --due` rotates each key that is due and has an `issuer`, and says why it skips the others. Without a
 terminal, `--yes` approves only routine writes, as in [publishing](publishing.md#steps). It exits 0 when no one needs
 to act, even while an old key waits for approval; 3 while a key is due and its old key still waits, every run until
-someone approves; and 1 when something failed, or a key's rotated date is missing or couldn't be read.
+someone approves (`--check` too); and 1 when something failed, or a key's rotated date is missing or couldn't be read.
 
 Every run also checks the credentials it uses, on days nothing is due too. It warns when the GitHub token expires in
 under 14 days and fails under 7, and fails when a Cloudflare admin token expires within 7 days of the key's next due

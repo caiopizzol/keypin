@@ -27,7 +27,8 @@ keypin never signs in with `CLOUDFLARE_API_TOKEN`: that stays a key `secretspec.
 
 Each secretspec profile has its own vault items, so importing `.env` fills only `default`. When `keypin check` says
 `No item` for a key in another profile, such as `production`, it prints the command that saves it:
-`SECRETSPEC_PROFILE=production secretspec import dotenv:<file>`, or `secretspec set <KEY> --profile production`.
+`SECRETSPEC_PROFILE=production secretspec import dotenv:.env.production` when that file sets the key, otherwise
+`secretspec set <KEY> --profile production`.
 
 ## The service account no longer exists
 

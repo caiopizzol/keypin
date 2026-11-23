@@ -70,7 +70,9 @@ keypin rotate RESEND_API_KEY    # make a new key at the provider, save it to you
 ```
 
 [Get started](https://github.com/caiopizzol/keypin/blob/main/docs/get-started/your-first-project.md) walks through
-each step. `publish` and `rotate` show a plan and wait for you to answer `y`.
+each step. `rotate` needs the key's
+[issuer](https://github.com/caiopizzol/keypin/blob/main/docs/guides/rotating-a-key.md) first. `publish` and `rotate`
+show a plan and wait for you to answer `y`.
 
 ## Commands
 

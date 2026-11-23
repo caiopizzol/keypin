@@ -56,10 +56,10 @@ async function progressOf(
     }
     const holds = await vaultGeneration(context, key, entry, state, check);
     if (holds !== null && holds !== issued.generation && holds !== issued.old.generation) continue;
-    const pulledOnly = entry.publish.length === 0;
-    const rolledBack = pulledOnly && holds === issued.old.generation && !issued.unsaved;
+    const vaultOnly = entry.publish.length === 0;
+    const rolledBack = vaultOnly && holds === issued.old.generation && !issued.unsaved;
     if (rolledBack) continue;
-    const neverSaved = pulledOnly && holds !== issued.generation && issued.unsaved === true;
+    const neverSaved = vaultOnly && holds !== issued.generation && issued.unsaved === true;
     progress.set(key.name, { kind: neverSaved ? "unfinished" : kind, since, revokes });
   }
   return (keyId: string): Progress => progress.get(keyId) ?? null;
@@ -179,7 +179,7 @@ export async function checkDue(context: Context, path: string): Promise<number> 
   const picked = choices.filter(checks);
   if (!picked.length) {
     out.line(
-      `\nNothing to check: no key in ${environment} has an issuer, destinations or pull entries, and rotate_every. See docs/reference/secretspec-toml.md.`,
+      `\nNothing to check: no key in ${environment} has an issuer, destinations and rotate_every. See docs/reference/secretspec-toml.md.`,
     );
     return 1;
   }

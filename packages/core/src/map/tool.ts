@@ -29,7 +29,7 @@ export function readTool(raw: unknown, profiles: Profiles, context: MapContext, 
     return key;
   };
   for (const { profile, name, ref } of profiles.declared)
-    keyOf(name).environments[profile] = { ref, publish: [], pull: [] };
+    keyOf(name).environments[profile] = { ref, publish: [] };
 
   const schedules = new Map<string, { text: string; at: string }>();
   for (const [profile, entries] of Object.entries(tool)) {

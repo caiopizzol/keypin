@@ -8,8 +8,6 @@ import {
   type KeyRef,
   type KeysMap,
   type PublishTarget,
-  pullPlace,
-  type PullReader,
   secretKey,
   sentence,
   vaultAccounts,
@@ -25,22 +23,6 @@ import { distinctRefs, refKey } from "../../vault";
 import { type CheckedItem, type DestinationResult, type Report, ITEM_NOTE } from "./report";
 import { prerequisites, loginLine, checkItem, checkDestination } from "./lookups";
 import { type Step, ORDER, plan } from "./steps";
-
-function publishedAt(map: KeysMap, name: string, reader: PullReader, deps: Deps): string[] {
-  const place = pullPlace(reader, deps.pulls);
-  const secret = (target: PublishTarget, key: string) => secretKey(target, key, deps.destinations);
-  return map.keys.flatMap((other) =>
-    map.environments.flatMap((environment) =>
-      other.environments[environment]?.publish.some(
-        (target) =>
-          checkId(target, deps.destinations) === place &&
-          secret(target, other.name) === secret(target, name),
-      )
-        ? [other.name === name ? environment : `${other.name} (${environment})`]
-        : [],
-    ),
-  );
-}
 
 export async function build(
   folder: string,
@@ -67,19 +49,7 @@ export async function build(
     : [];
   const signIn = mapSignIn(deps, mapped);
   const root = found ? dirname(found.file) : folder;
-  const pulled = parsed?.ok
-    ? parsed.map.keys.flatMap((key) =>
-        parsed.map.environments.flatMap((environment) =>
-          (key.environments[environment]?.pull ?? []).map((reader) => ({
-            key: key.name,
-            environment,
-            reader,
-            publishedIn: publishedAt(parsed.map, key.name, reader, deps),
-          })),
-        ),
-      )
-    : [];
-  const scanned = await scanProject(deps, root, pulled);
+  const scanned = await scanProject(deps, root);
   const head = {
     folder: root,
     map: found?.file ?? null,

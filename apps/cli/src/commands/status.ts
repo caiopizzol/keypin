@@ -13,8 +13,6 @@ import {
   type MapResult,
   messageOf,
   publishEnvironment,
-  pullName,
-  type PullKinds,
   loadRotationFile,
   rotationRecord,
   type Status,
@@ -95,13 +93,11 @@ export async function status(args: string[], deps: Deps): Promise<number> {
         today,
         home: deps.home,
         kinds: deps.destinations,
-        pulls: deps.pulls,
         vaults: deps.vaults,
         out,
         publish: command("publish"),
         rotate: command("rotate"),
-        rotates: (row) =>
-          row.issuer !== null && (row.destinations.length > 0 || row.pull.length > 0),
+        rotates: (row) => row.issuer !== null && row.destinations.length > 0,
       }),
     );
   }
@@ -203,7 +199,6 @@ interface Context {
   today: string;
   home: string;
   kinds: DestinationKinds;
-  pulls: PullKinds;
   vaults: VaultKinds;
   out: Output;
   publish: (row: StatusRow) => string;
@@ -230,7 +225,6 @@ function render(result: Status, projects: readonly string[], context: Context): 
     result.rows.forEach((row, i) => {
       if (row.project !== project) return;
       lines.push(`  ${(cells[i] ?? []).join("  ")}`.trimEnd());
-      if (row.pull.length) lines.push(`    ${out.dim(pulledBy(row, context))}`);
     });
   }
 
@@ -262,11 +256,6 @@ function message(problem: Problem, result: Status, context: Context): string {
     .filter(({ destinationId, receipt }) => !receipt && !unknown(destinationId))
     .map(({ destinationId, account }) => placeName(destinationId, account, context.kinds));
   return `${row.keyId} (${row.environment}): not published yet to ${names.join(", ")}; run ${context.publish(row)}`;
-}
-
-function pulledBy(row: StatusRow, { pulls }: Context): string {
-  const readers = row.pull.map((reader) => pullName(reader, pulls)).join(", ");
-  return `${readers} ${row.pull.length === 1 ? "reads" : "read"} it from the vault at job time`;
 }
 
 function placeName(id: string, account: string, kinds: DestinationKinds): string {

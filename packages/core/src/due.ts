@@ -37,7 +37,7 @@ export function dueKeys(input: {
       return skip(
         `its ID is the key ${entry.idKey}; rotate the two with keypin rotate ${key.name}`,
       );
-    if (!reaches(entry)) return skip("no destination or pull entry for the new key");
+    if (!reaches(entry)) return skip("no destination for the new key");
     const progress = input.progress(key.name);
     if (progress?.kind === "waiting")
       return [

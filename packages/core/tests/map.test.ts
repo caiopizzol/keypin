@@ -54,7 +54,6 @@ issuer = { kind = "resend", admin = "op://Acme/resend admin/credential", permiss
                 fallback: "password",
               }),
               publish: [],
-              pull: [],
             },
             production: {
               ref: item("secretspec/web/production/STRIPE_KEY", {
@@ -62,7 +61,6 @@ issuer = { kind = "resend", admin = "op://Acme/resend admin/credential", permiss
                 fallback: "password",
               }),
               publish: [],
-              pull: [],
             },
           },
         },
@@ -73,7 +71,6 @@ issuer = { kind = "resend", admin = "op://Acme/resend admin/credential", permiss
             production: {
               ref: item("resend key", { field: "credential" }),
               publish: [{ to: "github-actions", repo: "acme/web", account: "acme" }],
-              pull: [],
               issuer: {
                 kind: "resend",
                 admin: item("resend admin", { field: "credential" }),

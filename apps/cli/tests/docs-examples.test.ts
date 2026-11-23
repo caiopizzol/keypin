@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, test } from "vite-plus/test";
 import { readSecretspec } from "@keypin/core";
-import { destinations, issuers, pulls, vaults } from "../src/start";
+import { destinations, issuers, vaults } from "../src/start";
 
 const ROOT = join(import.meta.dirname, "../../..");
 const FILES = [
@@ -29,7 +29,7 @@ describe("secretspec.toml examples in the docs", () => {
   });
 
   test.each(examples)("$name reads", ({ name, toml }) => {
-    const parsed = readSecretspec(toml, name, destinations, issuers, vaults, pulls);
+    const parsed = readSecretspec(toml, name, destinations, issuers, vaults);
     expect(parsed.ok ? [] : parsed.errors).toEqual([]);
   });
 });

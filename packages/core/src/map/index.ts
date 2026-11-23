@@ -2,7 +2,6 @@ import { parse as parseToml, TomlError } from "smol-toml";
 import type { DestinationRules } from "../destination";
 import type { IssuerRules } from "../issuer";
 import type { VaultRules } from "../login";
-import type { PullKinds } from "../pull";
 import { isRecord } from "../record";
 import type { MapResult } from "./keys-map";
 import { sharedDestinations, sharedClaims, pairedKeys } from "./across-keys";
@@ -30,7 +29,6 @@ export function readSecretspec(
   kinds: readonly DestinationRules[],
   issuers: readonly IssuerRules[],
   vaults: readonly VaultRules[],
-  pulls: PullKinds = [],
 ): MapResult {
   let data: unknown;
   try {
@@ -44,7 +42,7 @@ export function readSecretspec(
   const profiles = readProfiles(data, vaults, fail);
   if (!profiles) return { ok: false, errors };
   const { environments, project } = profiles;
-  const context = { environments, kinds, issuers, vaults, pulls };
+  const context = { environments, kinds, issuers, vaults };
   const tool = isRecord(data.tool) ? data.tool.keypin : undefined;
   const { keys, ignore } = readTool(tool, profiles, context, fail);
   sharedDestinations(keys, environments, kinds, fail);

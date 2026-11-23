@@ -25,17 +25,10 @@ export async function findMap(deps: Deps): Promise<KeysMap> {
 }
 
 export function readMap(
-  deps: Pick<Deps, "destinations" | "issuers" | "vaults" | "pulls">,
+  deps: Pick<Deps, "destinations" | "issuers" | "vaults">,
   found: { file: string; text: string },
 ): MapResult {
-  return readSecretspec(
-    found.text,
-    found.file,
-    deps.destinations,
-    deps.issuers,
-    deps.vaults,
-    deps.pulls,
-  );
+  return readSecretspec(found.text, found.file, deps.destinations, deps.issuers, deps.vaults);
 }
 
 export async function locateMap(

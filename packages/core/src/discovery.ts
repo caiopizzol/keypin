@@ -1,6 +1,5 @@
 import type { Environment } from "./contracts";
 import type { PublishTarget } from "./destination";
-import type { PullReader } from "./pull";
 
 export interface ProjectEntry {
   readonly name: string;
@@ -15,17 +14,9 @@ export type StoreRead =
   | { ok: true; secrets: { name: string; updatedAt: string | null }[] }
   | { ok: false; reason: string };
 
-export interface Pulled {
-  readonly key: string;
-  readonly environment: Environment;
-  readonly reader: PullReader;
-  readonly publishedIn: readonly Environment[];
-}
-
 export interface ProjectReader {
   readonly root: string;
   readonly found: readonly string[];
-  readonly pulled: readonly Pulled[];
   read(path: string): Promise<string | null>;
   list(folder: string): Promise<FolderListing>;
   unknown(what: string, reason: string): void;
@@ -66,9 +57,9 @@ export interface FoundNeed {
 
 export interface MapView {
   readonly publishEnvironment: Environment;
-  readonly runEnvironment: Environment;
   publishes(name: string, place: Place): boolean;
   ignores(name: string): boolean;
+  declares(name: string, profile: Environment): boolean;
 }
 
 export interface Needs {

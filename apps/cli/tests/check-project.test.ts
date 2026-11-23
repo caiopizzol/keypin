@@ -2099,384 +2099,50 @@ describe("keypin check on Cloudflare cases", () => {
   });
 });
 
-describe("keypin check, for a key CI pulls from the vault", () => {
-  const PULLED = `${MAPPED}
-
+describe("keypin check, for a workflow that runs secretspec run", () => {
+  const STRIPE = `${MAPPED}
 [profiles.prod.STRIPE_API_KEY]
 description = "STRIPE_API_KEY"
 ref = { item = "billing prod stripe api key", field = "password" }
-
-[tool.keypin.prod.STRIPE_API_KEY]
-rotate_every = "90d"
-pull = [{ by = "github-actions", repo = "acme/billing" }]
 `;
-  const OIDC = `
-on: push
-permissions:
-  id-token: write
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - run: keypin run --profile prod --only STRIPE_API_KEY -- ./deploy.sh
-`;
-  const project = (workflow: string, map = PULLED) => ({
-    [MAP]: map,
+  const project = (workflow: string) => ({
+    [MAP]: STRIPE,
     [`${ROOT}/.env`]: null,
     [`${ROOT}/wrangler.toml`]: null,
     [`${ROOT}/.github/workflows/deploy.yml`]: workflow,
   });
-  const COPY: StoreRead = { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] };
-
-  test("a copy left in the repo is a problem, even when no workflow uses a secret", async () => {
-    const run = setup({ files: project(OIDC), github: COPY });
-    expect(await run.record("pulled-copy-left", ["check"])).toBe(1);
-    expect(run.calls).toContain("github acme/billing as null");
-  });
-
-  test("a workflow that still uses the secret is a problem, and check proposes no publish entry", async () => {
-    const run = setup({
-      files: project(PROJECT[`${ROOT}/.github/workflows/deploy.yml`] ?? ""),
-      github: COPY,
-    });
-    expect(await run.record("pulled-secret-still-used", ["check"])).toBe(1);
-    expect(run.stdout.text).not.toContain("[[tool.keypin.prod.STRIPE_API_KEY.publish]]");
-  });
-
-  test("a job that pulls the key, and no copy left, checks out", async () => {
-    const run = setup({ files: project(OIDC) });
-    expect(await cli(["check"], run.deps)).toBe(0);
-    expect(run.stdout.text).toContain("Everything checks out.");
-    expect(run.stdout.text).not.toContain("Note: STRIPE_API_KEY");
-  });
-
-  test("an unreadable repo is not checked, and nothing is reported about the copy", async () => {
-    const run = setup({ files: project(OIDC), github: { ok: false, reason: "HTTP 404" } });
-    await cli(["check", "--json"], run.deps);
-    const data = json(run.stdout.text);
-    expect(data.unknown).toEqual([
-      { what: "the Actions secrets of acme/billing", reason: "as the active gh login: HTTP 404" },
-    ]);
-    expect(JSON.stringify(data.problems)).not.toContain("STRIPE_API_KEY");
-  });
-
-  test("a pull entry for an environment covers only that environment's jobs", async () => {
-    const map = PULLED.replace(
-      'repo = "acme/billing" }',
-      'repo = "acme/billing", environment = "production" }',
-    );
-    const workflow = `
+  const job = (command: string, env = "") => `
 on: push
 jobs:
   deploy:
-    environment: production
-    steps:
-      - run: echo \${{ secrets.STRIPE_API_KEY }}
-  test:
-    steps:
-      - run: echo \${{ secrets.STRIPE_API_KEY }}
-`;
-    const run = setup({
-      files: project(workflow, map),
-      deps: {
-        githubSecrets: async (_repo, _login, environment) =>
-          environment === "production" ? COPY : { ok: true, secrets: [] },
-      },
-    });
-    await cli(["check", "--json"], run.deps);
-    const data = json(run.stdout.text);
-    expect(data.problems).toEqual(
-      expect.arrayContaining([
-        "STRIPE_API_KEY: secretspec.toml says jobs in acme/billing environment production pull it from the vault at job time, but .github/workflows/deploy.yml still uses secrets.STRIPE_API_KEY and acme/billing environment production still has it as an Actions secret; read it with keypin run --profile prod --only STRIPE_API_KEY -- <command> instead, then delete the Actions secret: gh secret delete STRIPE_API_KEY --repo acme/billing --env production",
-      ]),
-    );
-    expect(data.production).toEqual([
-      expect.objectContaining({ name: "STRIPE_API_KEY", place: "acme/billing", mapped: null }),
-    ]);
-  });
-
-  test("a copy the map also publishes from another environment is a conflict, not a copy to delete", async () => {
-    const map = `${PULLED}
-[profiles.dev.STRIPE_API_KEY]
-description = "Stripe"
-ref = { item = "billing dev stripe api key", field = "password" }
-
-[tool.keypin.dev.STRIPE_API_KEY]
-publish = [{ to = "github-actions", repo = "acme/billing" }]
-`;
-    const run = setup({ files: project(OIDC, map), github: COPY });
-    await cli(["check", "--json"], run.deps);
-    const problems = JSON.stringify(json(run.stdout.text).problems);
-    expect(problems).toContain(
-      "STRIPE_API_KEY: secretspec.toml says jobs in acme/billing pull it from the vault at job time, but also publishes it there for dev; keep the pull entry or the publish entry, not both",
-    );
-    expect(problems).not.toContain("gh secret delete");
-  });
-
-  test("a copy another map key publishes under a differently cased name is a conflict, not a copy to delete", async () => {
-    const map = `${PULLED}
-[profiles.dev.stripe_api_key]
-description = "Stripe"
-ref = { item = "billing dev stripe api key", field = "password" }
-
-[tool.keypin.dev.stripe_api_key]
-publish = [{ to = "github-actions", repo = "acme/billing" }]
-`;
-    const run = setup({ files: project(OIDC, map), github: COPY });
-    await cli(["check", "--json"], run.deps);
-    const problems = JSON.stringify(json(run.stdout.text).problems);
-    expect(problems).toContain(
-      "STRIPE_API_KEY: secretspec.toml says jobs in acme/billing pull it from the vault at job time, but also publishes it there for stripe_api_key (dev); keep the pull entry or the publish entry, not both",
-    );
-    expect(problems).not.toContain("gh secret delete");
-  });
-
-  test("a copy in the repo isn't called safe to delete when a workflow names its secrets by an expression", async () => {
-    const workflow = `${OIDC}      - run: echo \${{ secrets[vars.SELECTED_SECRET] }}
-`;
-    const run = setup({ files: project(workflow), github: COPY });
-    await cli(["check", "--json"], run.deps);
-    const data = json(run.stdout.text);
-    expect(data.unknown).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ what: "every secret .github/workflows/deploy.yml uses" }),
-      ]),
-    );
-    expect(data.problems).toEqual(
-      expect.arrayContaining([
-        "STRIPE_API_KEY: secretspec.toml says jobs in acme/billing pull it from the vault at job time, but acme/billing still has it as an Actions secret; check can't tell which secrets every workflow of acme/billing uses, so it can't tell whether one still uses secrets.STRIPE_API_KEY; once none does, delete the Actions secret: gh secret delete STRIPE_API_KEY --repo acme/billing",
-      ]),
-    );
-  });
-
-  test("a copy in a repo whose workflows check can't read isn't called safe to delete", async () => {
-    const map = PULLED.replace('repo = "acme/billing" }', 'repo = "acme/jobs" }');
-    const run = setup({ files: project(OIDC, map), github: COPY });
-    await cli(["check", "--json"], run.deps);
-    expect(json(run.stdout.text).problems).toEqual(
-      expect.arrayContaining([
-        "STRIPE_API_KEY: secretspec.toml says jobs in acme/jobs pull it from the vault at job time, but acme/jobs still has it as an Actions secret; check can't read the workflows of acme/jobs, so it can't tell whether one still uses secrets.STRIPE_API_KEY; once none does, delete the Actions secret: gh secret delete STRIPE_API_KEY --repo acme/jobs",
-      ]),
-    );
-  });
-
-  test("quotes a GitHub environment name in the delete command", async () => {
-    const map = PULLED.replace(
-      'repo = "acme/billing" }',
-      'repo = "acme/billing", environment = "Production EU" }',
-    );
-    const workflow = OIDC.replace("runs-on: ubuntu-latest", "environment: Production EU");
-    const run = setup({ files: project(workflow, map), github: COPY });
-    await cli(["check", "--json"], run.deps);
-    expect(JSON.stringify(json(run.stdout.text).problems)).toContain(
-      "gh secret delete STRIPE_API_KEY --repo acme/billing --env 'Production EU'",
-    );
-  });
-
-  test("a keypin run for another keypin environment doesn't count as the pull", async () => {
-    const workflow = OIDC.replace("--profile prod", "--profile dev");
-    const run = setup({ files: project(workflow) });
-    await cli(["check", "--json"], run.deps);
-    expect(json(run.stdout.text).notes).toEqual(
-      expect.arrayContaining([
-        'STRIPE_API_KEY: .github/workflows/deploy.yml reads it with keypin run, but secretspec.toml has no pull entry for acme/billing; add [[tool.keypin.dev.STRIPE_API_KEY.pull]] with by = "github-actions", repo = "acme/billing"',
-        "STRIPE_API_KEY: secretspec.toml says jobs in acme/billing pull it, but no workflow there runs keypin run for it",
-      ]),
-    );
-  });
-
-  test("a keypin run whose --profile is an expression may be the pull", async () => {
-    const workflow = OIDC.replace("--profile prod", '--profile "${{ inputs.env }}"');
-    const run = setup({ files: project(workflow) });
-    await cli(["check", "--json"], run.deps);
-    expect(JSON.stringify(json(run.stdout.text).notes ?? [])).not.toContain("STRIPE_API_KEY");
-  });
-
-  test("notes a keypin run with no pull entry, and a pull entry no workflow runs", async () => {
-    const workflow = OIDC.replace("--only STRIPE_API_KEY", "--only RESEND_API_KEY");
-    const map = PULLED.replace(
-      '{ by = "github-actions", repo = "acme/billing" }',
-      '{ by = "github-actions", repo = "acme/billing", environment = "production" }',
-    );
-    const run = setup({ files: project(workflow, map) });
-    await cli(["check", "--json"], run.deps);
-    expect(json(run.stdout.text).notes).toEqual(
-      expect.arrayContaining([
-        'RESEND_API_KEY: .github/workflows/deploy.yml reads it with keypin run, but secretspec.toml has no pull entry for acme/billing; add [[tool.keypin.prod.RESEND_API_KEY.pull]] with by = "github-actions", repo = "acme/billing"',
-        "STRIPE_API_KEY: secretspec.toml says jobs in acme/billing environment production pull it, but no workflow there runs keypin run for it",
-      ]),
-    );
-  });
-});
-
-describe("keypin check, for a job that signs in with OIDC", () => {
-  const WORKFLOW = ".github/workflows/deploy.yml";
-  const job = (
-    top: string,
-    permissions: string,
-    steps = "      - run: keypin run -- ./deploy.sh\n",
-  ) => `
-on: push
-${top}jobs:
-  deploy:
     runs-on: ubuntu-latest
-${permissions}    env:
-      KEYPIN_INFISICAL_IDENTITY_ID: \${{ vars.INFISICAL_IDENTITY_ID }}
-    steps:
-${steps}`;
-  const KEEP = "grant id-token: write on the job (or workflow), keeping the permissions it needs";
-  const ADD_TO_JOB = "add id-token: write to the job's permissions";
-  const missing = (fix: string, path = WORKFLOW) =>
-    `${path}: job deploy sets KEYPIN_INFISICAL_IDENTITY_ID for keypin run, but its permissions don't grant id-token: write; ${fix}`;
-  const notes = async (workflow: string, more: Record<string, string> = {}) => {
-    const files = Object.fromEntries(
-      Object.entries({ [WORKFLOW]: workflow, ...more }).map(([path, text]) => [
-        `${ROOT}/${path}`,
-        text,
-      ]),
-    );
-    const run = setup({ files: { [MAP]: MAPPED, ...files } });
-    await cli(["check", "--json"], run.deps);
-    const data = json(run.stdout.text);
-    const all: unknown = data.notes;
-    assert(Array.isArray(all));
-    return all.map(String).filter((note) => note.includes(": job deploy sets "));
-  };
-
-  test("warns when neither the job nor the workflow sets permissions", async () => {
-    expect(await notes(job("", ""))).toEqual([missing(KEEP)]);
-    const run = setup({ files: { [MAP]: MAPPED, [`${ROOT}/${WORKFLOW}`]: job("", "") } });
-    await cli(["check"], run.deps);
-    expect(run.stdout.text).toContain(`Note: ${missing(KEEP)}`);
-    run.unchanged();
-  });
-
-  test("warns for a job that sets KEYPIN_AWS_ROLE_ARN without id-token: write", async () => {
-    const aws = (permissions: string) =>
-      job("", permissions).replace(
-        "KEYPIN_INFISICAL_IDENTITY_ID: ${{ vars.INFISICAL_IDENTITY_ID }}",
-        "KEYPIN_AWS_ROLE_ARN: arn:aws:iam::123456789012:role/my-role",
-      );
-    expect(await notes(aws(""))).toEqual([
-      missing(KEEP).replace("KEYPIN_INFISICAL_IDENTITY_ID", "KEYPIN_AWS_ROLE_ARN"),
-    ]);
-    expect(await notes(aws("    permissions:\n      id-token: write\n"))).toEqual([]);
-  });
-
-  test("warns for a job that sets the Doppler identity", async () => {
-    const doppler = job("", "").replace(
-      "KEYPIN_INFISICAL_IDENTITY_ID: ${{ vars.INFISICAL_IDENTITY_ID }}",
-      "KEYPIN_DOPPLER_IDENTITY_ID: ${{ vars.DOPPLER_IDENTITY_ID }}",
-    );
-    expect(await notes(doppler)).toEqual([
-      missing(KEEP).replace("KEYPIN_INFISICAL_IDENTITY_ID", "KEYPIN_DOPPLER_IDENTITY_ID"),
-    ]);
-  });
-
-  test("doesn't warn when the job grants id-token: write", async () => {
-    expect(await notes(job("", "    permissions:\n      id-token: write\n"))).toEqual([]);
-    expect(await notes(job("", "    permissions:\n      id-token: read\n"))).toEqual([
-      missing(ADD_TO_JOB),
-    ]);
-  });
-
-  test("warns when the job's permissions replace the workflow's grant", async () => {
-    const workflow = job(
-      "permissions:\n  id-token: write\n",
-      "    permissions:\n      contents: read\n",
-    );
-    expect(await notes(workflow)).toEqual([missing(ADD_TO_JOB)]);
-  });
-
-  test("asks to add id-token: write to the workflow's permissions map the job uses", async () => {
-    expect(await notes(job("permissions:\n  contents: read\n", ""))).toEqual([
-      missing("add id-token: write to the workflow's permissions"),
-    ]);
-  });
-
-  test("doesn't warn for write-all, and warns for read-all or {}", async () => {
-    expect(await notes(job("permissions: write-all\n", ""))).toEqual([]);
-    expect(await notes(job("", "    permissions: write-all\n"))).toEqual([]);
-    expect(await notes(job("permissions: read-all\n", ""))).toEqual([missing(KEEP)]);
-    expect(await notes(job("", "    permissions: {}\n"))).toEqual([missing(ADD_TO_JOB)]);
-  });
-
-  test("doesn't warn when the job sets the identity but doesn't run keypin run", async () => {
-    expect(await notes(job("", "", "      - run: ./deploy.sh\n"))).toEqual([]);
-    expect(await notes(job("", "", "      - run: npx keypin run -- ./deploy.sh\n"))).toEqual([
-      missing(KEEP),
-    ]);
-  });
-
-  test("warns once for a job with several keypin runs", async () => {
-    const steps = "      - run: keypin run -- ./build.sh\n      - run: keypin run -- ./deploy.sh\n";
-    expect(await notes(job("", "", steps))).toEqual([missing(KEEP)]);
-  });
-
-  test("doesn't warn for a step that empties the identity, only for one that keeps it", async () => {
-    const workflow = (steps: string) => `
-on: push
-env:
-  KEYPIN_INFISICAL_IDENTITY_ID: id
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-${steps}`;
-    const emptied = `      - run: keypin run -- ./build.sh
+${env}    steps:
+      - run: ${command}
         env:
-          KEYPIN_INFISICAL_IDENTITY_ID: ""
+          STRIPE_API_KEY: \${{ secrets.STRIPE_API_KEY }}
 `;
-    expect(await notes(workflow(emptied))).toEqual([]);
-    const kept = "      - run: keypin run -- ./deploy.sh\n";
-    expect(await notes(workflow(`${emptied}${kept}`))).toEqual([missing(KEEP)]);
+
+  test("a job's secretspec run reads the key at job time, so check asks to publish nothing", async () => {
+    const run = setup({ files: project(job("secretspec run --profile prod -- ./deploy.sh")) });
+    expect(await run.record("secretspec-run", ["check"])).toBe(0);
+    expect(run.stdout.text).not.toContain("[tool.keypin.prod.STRIPE_API_KEY]");
   });
 
-  test("doesn't warn for a job that calls a reusable workflow", async () => {
-    const workflow = `
-on: push
-env:
-  KEYPIN_INFISICAL_IDENTITY_ID: id
-jobs:
-  deploy:
-    uses: ./.github/workflows/reusable.yml
-    with:
-      run: keypin run -- ./deploy.sh
-`;
-    expect(await notes(workflow)).toEqual([]);
-    const steps = workflow.replace(
-      "    uses: ./.github/workflows/reusable.yml\n    with:\n      run:",
-      "    steps:\n      - run:",
-    );
-    expect(await notes(steps)).toEqual([missing(KEEP)]);
+  test("SECRETSPEC_PROFILE picks the profile, as it does for secretspec", async () => {
+    const env = "    env:\n      SECRETSPEC_PROFILE: prod\n";
+    const run = setup({ files: project(job("secretspec run -- ./deploy.sh", env)) });
+    expect(await cli(["check"], run.deps)).toBe(0);
   });
 
-  test("a called workflow without permissions inherits its caller's, so only an explicit denial warns", async () => {
-    const CALLED = ".github/workflows/reusable.yml";
-    const caller = `
-on: push
-jobs:
-  call:
-    permissions:
-      id-token: write
-      contents: read
-    uses: ./${CALLED}
-`;
-    const called = (top: string) => job(top, "").replace("on: push", "on: workflow_call");
-    expect(await notes(caller, { [CALLED]: called("") })).toEqual([]);
-    expect(await notes(caller, { [CALLED]: called("permissions:\n  contents: read\n") })).toEqual([
-      missing("add id-token: write to the workflow's permissions", CALLED),
-    ]);
-    expect(await notes(caller, { [CALLED]: called("permissions: read-all\n") })).toEqual([
-      missing(KEEP, CALLED),
-    ]);
-    const alsoPushed = (top: string) =>
-      job(top, "").replace("on: push", "on: [push, workflow_call]");
-    expect(await notes(caller, { [CALLED]: alsoPushed("") })).toEqual([
-      missing(KEEP, CALLED).replace(
-        "id-token: write;",
-        "id-token: write when the workflow runs directly rather than through workflow_call;",
-      ),
-    ]);
+  test("a profile that doesn't declare the key, or one check can't read, still asks to publish it", async () => {
+    for (const command of [
+      "secretspec run -- ./deploy.sh",
+      "secretspec run -P dev -- ./deploy.sh",
+      'secretspec run --profile "${{ inputs.profile }}" -- ./deploy.sh',
+    ]) {
+      const run = setup({ files: project(job(command)) });
+      expect(await cli(["check"], run.deps)).toBe(1);
+      expect(run.stdout.text).toContain("[tool.keypin.prod.STRIPE_API_KEY]");
+    }
   });
 });

@@ -7,7 +7,6 @@ import {
   kindOf,
   placeId,
   type PlanStep,
-  pullName,
   vaultName,
   shellWord,
 } from "@keypin/core";
@@ -72,12 +71,6 @@ export function writeRows(job: Job, steps: PlanStep[], pairSteps: PlanStep[]): P
   return rows.map((r, i) => ({ ...r, why: `${both[i]?.name ?? ""}: ${r.why}` }));
 }
 
-export function pullRows({ entry, deps }: Job): PlanRow[] {
-  return entry.pull.map((reader) =>
-    row("=", pullName(reader, deps.pulls), "reads the new key from the vault at job time"),
-  );
-}
-
 export function apartNote({ key, pair, deps, out }: Job, checked: Map<string, Checked>): void {
   if (!pair) return;
   const kinds = deps.destinations;
@@ -99,11 +92,8 @@ export function heldSteps(job: Job, issuer: Issuer, id: string): string {
 export function reached({ entry, deps }: Job): string {
   const vault = vaultName(entry.ref, deps.vaults);
   const listed = entry.publish.length;
-  const readers = entry.pull.map((reader) => pullName(reader, deps.pulls)).join(", ");
-  const pulled = `${readers} ${entry.pull.length === 1 ? "reads" : "read"} it from there at job time.`;
-  if (!listed) return `the new key is in ${vault}. ${pulled}`;
-  const pushed = `the new key is in ${vault} and the ${listed === 1 ? "destination" : `${listed} destinations`} in the map.`;
-  return entry.pull.length ? `${pushed} ${pulled}` : pushed;
+  if (!listed) return `the new key is in ${vault}.`;
+  return `the new key is in ${vault} and the ${listed === 1 ? "destination" : `${listed} destinations`} in the map.`;
 }
 
 export function oldStays({ out }: Job, issuer: Issuer, issued: Issued): void {

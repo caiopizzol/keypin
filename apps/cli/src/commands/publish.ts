@@ -17,7 +17,6 @@ import {
   loadState,
   planPublish,
   publishEnvironment,
-  pullName,
   type Secret,
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
@@ -115,21 +114,10 @@ function jobsFor(request: Request, map: KeysMap, say: (text: string) => void): J
     const entry = key.environments[environment];
     return entry?.publish.length ? [job(key, entry)] : [];
   });
-  const rest = map.keys.filter((key) => !jobs.some((j) => j.key === key));
-  const pulled = rest.filter((key) => key.environments[environment]?.pull.length);
-  const skipped = rest.filter((key) => !pulled.includes(key));
+  const skipped = map.keys.filter((key) => !jobs.some((j) => j.key === key));
   if (skipped.length)
     say(`Not published, no ${environment} destinations: ${skipped.map((k) => k.name).join(", ")}`);
-  if (pulled.length)
-    say(
-      `Not published, pulled from the vault at job time: ${pulled.map((k) => k.name).join(", ")}`,
-    );
   return jobs;
-}
-
-function pulledOnly(key: KeyEntry, entry: EnvEntry, environment: Environment, deps: Deps): string {
-  const readers = entry.pull.map((reader) => pullName(reader, deps.pulls)).join(", ");
-  return `${readers} ${entry.pull.length === 1 ? "reads" : "read"} ${key.name} (${environment}) from the vault at job time, so there's nothing to publish.`;
 }
 
 async function publishLocked(
@@ -145,13 +133,9 @@ async function publishLocked(
   const jobs = jobsFor(request, map, say);
   if (many && !jobs.length) {
     say(`No key in ${map.file} has ${environment} destinations; nothing to publish.`);
-    return map.keys.some((key) => key.environments[environment]?.pull.length) ? 0 : 1;
+    return 1;
   }
   for (const { key, entry } of jobs) {
-    if (entry.pull.length && !entry.publish.length) {
-      say(pulledOnly(key, entry, environment, deps));
-      return 0;
-    }
     if (!entry.publish.length) {
       say(`The map lists no destinations for ${key.name} (${environment}); nothing to publish.`);
       return 1;

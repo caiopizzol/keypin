@@ -1,15 +1,9 @@
-import type { DestinationRules, PullKind, TableReader } from "@keypin/core";
+import type { DestinationRules, TableReader } from "@keypin/core";
 
 export type GitHubTarget = {
   to: "github-actions";
   repo: string;
   account: string;
-  environment?: string;
-};
-
-export type GitHubPull = {
-  by: "github-actions";
-  repo: string;
   environment?: string;
 };
 
@@ -47,19 +41,6 @@ function readPlace(read: TableReader): { repo: string; environment?: string } | 
   if (repo === undefined) return undefined;
   return environment === undefined ? { repo } : { repo, environment };
 }
-
-export const githubPull: PullKind<GitHubPull> = {
-  kind: "github-actions",
-  label: "GitHub Actions",
-  destination: "github-actions",
-  parse(read) {
-    read.only(["repo", "environment"]);
-    const found = readPlace(read);
-    return found && { by: "github-actions", ...found };
-  },
-  id: folded,
-  describe,
-};
 
 export const githubActionsRules: DestinationRules<GitHubTarget> = {
   kind: "github-actions",

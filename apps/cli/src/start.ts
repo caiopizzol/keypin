@@ -33,7 +33,6 @@ import {
   ghToken,
   githubActions,
   githubIdToken,
-  githubPull,
   listRepoSecrets,
   maskInLog,
   sshHostname,
@@ -116,7 +115,6 @@ export const vaults = [
   secretsManagerVault,
   onePasswordVault,
 ];
-export const pulls = [githubPull];
 export const signInNames = signInVariables([...vaults, ...destinations]);
 
 export function destination(target: PublishTarget, publisher: Publisher): Destination {
@@ -301,7 +299,6 @@ export function realDeps(): Deps {
     destination,
     issuers,
     issuer,
-    pulls,
     workerSignIn,
     ghLogin: async (login) => {
       if (!Bun.which("gh")) return "not installed";

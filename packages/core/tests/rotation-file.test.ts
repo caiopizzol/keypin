@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
   dueKeys,
-  dueRefs,
   emptyState,
   type Issued,
   type KeyRef,
@@ -19,7 +18,7 @@ import {
   writeRotationFile,
 } from "../src/index";
 import { day } from "../src/testing/day";
-import { fakeFiles, ISSUERS, KINDS, PULLS, receipt, VAULT_KINDS } from "./fixtures";
+import { fakeFiles, ISSUERS, KINDS, receipt, VAULT_KINDS } from "./fixtures";
 
 const FILE = "/work/mailer/secretspec.toml";
 const TODAY = day("2026-11-09");
@@ -129,7 +128,7 @@ describe("rotate --due picks keys", () => {
       { keyId: "TODAY_KEY", action: "rotate", why: "due today" },
       { keyId: "FRESH_KEY", action: "skip", why: "not due until 2027-01-30", date: "later" },
       { keyId: "BY_HAND", action: "skip", why: "no issuer, so keypin can't make a new key" },
-      { keyId: "NOWHERE", action: "skip", why: "no destination or pull entry for the new key" },
+      { keyId: "NOWHERE", action: "skip", why: "no destination for the new key" },
       {
         keyId: "UNREADABLE",
         action: "skip",
@@ -160,26 +159,6 @@ describe("rotate --due picks keys", () => {
       { keyId: "TODAY_KEY", action: "rotate", why: "due today" },
       { keyId: "FRESH_KEY", action: "finish", why: "finishing the rotation from 2026-11-01" },
     ]);
-  });
-
-  test("a key CI pulls from the vault is rotated like one with a destination", () => {
-    const pulled = `pull = [{ by = "github-actions", repo = "acme/mailer" }]`;
-    const result = readSecretspec(
-      `[project]\nname = "billing"\nrevision = "1.0"\n\n[providers]\nvault = "onepassword://my.1password.com@Private"\n\n[defaults]\nproviders = ["vault"]\n\n[profiles.prod]\nDUE_KEY = { description = "DUE_KEY", ref = { item = "due key", field = "credential" } }\n\n[tool.keypin.prod.DUE_KEY]\nrotate_every = "90d"\n${pulled}\n${RESEND}\n`,
-      FILE,
-      KINDS,
-      ISSUERS,
-      VAULT_KINDS,
-      PULLS,
-    );
-    if (!result.ok) throw new Error(result.errors.join("\n"));
-    const map = result.map;
-    expect(dueRefs(map, "prod")).toEqual([
-      map.keys.find((key) => key.name === "DUE_KEY")?.environments.prod?.ref,
-    ]);
-    expect(
-      dueKeys({ map, environment: "prod", today: TODAY, metadata, progress: () => null }),
-    ).toEqual([{ keyId: "DUE_KEY", action: "rotate", why: "was due 2026-10-30" }]);
   });
 });
 

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test";
-import { destinations, issuers, pulls, vaults } from "@keypin/connectors/rules";
+import { destinations, issuers, vaults } from "@keypin/connectors/rules";
 import { readSecretspec } from "@keypin/core";
 import root from "../../../package.json";
 import { TARBALL } from "../pack";
@@ -26,7 +26,6 @@ providers = ["vault"]
 RESEND_API_KEY = { description = "RESEND_API_KEY", ref = { item = "resend", field = "credential" } }
 
 [tool.keypin.prod.RESEND_API_KEY]
-pull = [{ by = "github-actions", repo = "acme/web" }]
 issuer = { kind = "resend", admin = "op://Private/resend admin/credential", permission = "sending_access" }
 publish = [{ to = "cloudflare-worker", account = "0123456789abcdef0123456789abcdef", worker = "web" }]
 `,
@@ -104,9 +103,8 @@ beforeAll(async () => {
   );
   await writeFile(
     join(consumer, "change.ts"),
-    `import { destinations, issuers, loadMap, pulls, vaults } from "@keypin/rules";
+    `import { destinations, issuers, loadMap, vaults } from "@keypin/rules";
 import { maps } from "./index.ts";
-pulls.pop();
 destinations.length = 0;
 vaults.reverse();
 issuers[0].parse = () => undefined;
@@ -115,8 +113,7 @@ console.log(JSON.stringify(maps.map((text) => loadMap(text))));
   );
   await writeFile(
     join(consumer, "later.ts"),
-    `import { destinations, issuers, pulls, vaults } from "@keypin/rules";
-pulls.pop();
+    `import { destinations, issuers, vaults } from "@keypin/rules";
 destinations.length = 0;
 vaults.reverse();
 issuers[0].parse = () => undefined;
@@ -184,7 +181,7 @@ describe("@keypin/rules", () => {
     const built = await Bun.build({ entrypoints: [join(consumer, "names.ts")], minify: true });
     const code = (await built.outputs[0]?.text()) ?? "";
     expect(code).toContain("prod");
-    for (const { kind } of [...destinations, ...issuers, ...vaults, ...pulls])
+    for (const { kind } of [...destinations, ...issuers, ...vaults])
       expect(code).not.toMatch(new RegExp(`["'\`]${kind}["'\`]`));
     for (const { scheme } of vaults) expect(code).not.toContain(scheme);
   });
@@ -209,7 +206,7 @@ describe("@keypin/rules", () => {
     const printed = run(["bun", "print.ts"], consumer);
     expect(printed.code).toBe(0);
     const expected = MAPS.map((text) =>
-      readSecretspec(text, "secretspec.toml", destinations, issuers, vaults, pulls),
+      readSecretspec(text, "secretspec.toml", destinations, issuers, vaults),
     );
     expect(JSON.parse(printed.output)).toEqual(JSON.parse(JSON.stringify(expected)));
     expect(expected.map((result) => result.ok)).toEqual([true, false]);

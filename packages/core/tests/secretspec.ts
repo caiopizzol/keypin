@@ -1,6 +1,6 @@
 import { assert } from "vite-plus/test";
 import { type MapResult, readSecretspec, type VaultRules } from "../src/index";
-import { ISSUERS, KINDS, MAP_FILE, PULLS, VAULT_KINDS } from "./fixtures";
+import { ISSUERS, KINDS, MAP_FILE, VAULT_KINDS } from "./fixtures";
 
 export const HEAD = `[project]
 name = "web"
@@ -14,7 +14,7 @@ providers = ["acme"]
 `;
 
 export function read(text: string, vaults: readonly VaultRules[] = VAULT_KINDS): MapResult {
-  return readSecretspec(text, MAP_FILE, KINDS, ISSUERS, vaults, PULLS);
+  return readSecretspec(text, MAP_FILE, KINDS, ISSUERS, vaults);
 }
 
 export function errorsOf(text: string): string[] {

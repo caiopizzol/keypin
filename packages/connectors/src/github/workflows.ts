@@ -5,25 +5,15 @@ export interface WorkflowRefs {
   secrets: string[];
   vars: string[];
   environments: string[];
-  uses: { environment: string | null; secrets: string[]; fromCaller: boolean }[];
-  runs: KeypinRun[];
-  jobs: KeypinJob[];
+  uses: SecretUse[];
   hidesUses: boolean;
 }
 
-export interface KeypinJob {
-  name: string;
-  env: string[];
-  idToken: boolean | null;
-  directOnly: boolean;
-  permissions: { at: "job" | "workflow"; map: boolean } | null;
-}
-
-export interface KeypinRun {
+export interface SecretUse {
   environment: string | null;
-  env: string | null;
-  dynamicEnv: boolean;
-  only: string[] | null;
+  secrets: string[];
+  fromCaller: boolean;
+  secretspec: (string | null)[];
 }
 
 export function usesSecrets(workflows: readonly { refs: WorkflowRefs }[]): boolean {
@@ -87,34 +77,22 @@ export function workflowRefs(text: string): WorkflowRefs | null {
   const passedByCaller = onlyWorkflowCall(isRecord(data) ? data.on : undefined);
   const jobs = isRecord(data) && isRecord(data.jobs) ? data.jobs : null;
   const inherited = [...secretsIn(data, jobs, passedByCaller)];
-  const uses: WorkflowRefs["uses"] = [
-    { environment: null, secrets: inherited, fromCaller: passedByCaller },
+  const uses: SecretUse[] = [
+    { environment: null, secrets: inherited, fromCaller: passedByCaller, secretspec: [] },
   ];
-  const runs: KeypinRun[] = [];
-  const keypinJobs: KeypinJob[] = [];
   const top: Record<string, unknown> = isRecord(data) ? data : {};
-  for (const [id, job] of Object.entries(jobs ?? {})) {
+  for (const job of Object.values(jobs ?? {})) {
     const environment = isRecord(job) ? job.environment : undefined;
     const name = isRecord(environment) ? environment.name : environment;
     const named = typeof name === "string" && name.trim() ? name : null;
     if (named !== null) refs.environments.add(named);
-    for (const script of scripts(job))
-      for (const run of keypinRuns(script))
-        runs.push({ environment: named?.trim() ?? null, ...run });
     const secrets = [...secretsIn(job, null, passedByCaller && named === null)];
     if (named?.includes("${{") && stored([...secrets, ...inherited])) refs.hidesUses = true;
-    uses.push({ environment: named?.trim() ?? null, secrets, fromCaller: passedByCaller });
-    if (!isRecord(job) || job.uses !== undefined) continue;
-    const env = keypinEnv(top, job);
-    if (env === null) continue;
-    const at = "permissions" in job ? "job" : "permissions" in top ? "workflow" : null;
-    const permissions = at === "job" ? job.permissions : top.permissions;
-    keypinJobs.push({
-      name: id,
-      env,
-      idToken: at === null && onlyCalled(top.on) ? null : grantsIdToken(permissions),
-      directOnly: at === null && events(top.on).includes("workflow_call"),
-      permissions: at === null ? null : { at, map: isRecord(permissions) },
+    uses.push({
+      environment: named?.trim() ?? null,
+      secrets,
+      fromCaller: passedByCaller,
+      secretspec: isRecord(job) ? secretspecProfiles(top, job) : [],
     });
   }
   return {
@@ -122,73 +100,50 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     vars: [...refs.vars],
     environments: [...refs.environments],
     uses: uses.filter((use) => use.secrets.length),
-    runs,
-    jobs: keypinJobs,
     hidesUses: refs.hidesUses,
   };
 }
 
-function keypinEnv(top: Record<string, unknown>, job: Record<string, unknown>): string[] | null {
+const PROFILE_VARIABLE = "SECRETSPEC_PROFILE";
+const DEFAULT_PROFILE = "default";
+
+function secretspecProfiles(
+  top: Record<string, unknown>,
+  job: Record<string, unknown>,
+): (string | null)[] {
   const steps = Array.isArray(job.steps) ? job.steps.filter(isRecord) : [];
-  const running = steps.filter(
-    (step) => typeof step.run === "string" && keypinRuns(step.run).length > 0,
-  );
-  if (!running.length) return null;
-  const set = new Set<string>();
-  for (const step of running)
-    for (const [name, value] of Object.entries({ ...envOf(top), ...envOf(job), ...envOf(step) }))
-      if (value !== null && value !== undefined && value !== "") set.add(name);
-  return [...set];
+  const found = new Set<string | null>();
+  for (const step of steps) {
+    if (typeof step.run !== "string") continue;
+    const env = { ...envOf(top), ...envOf(job), ...envOf(step) };
+    for (const flag of secretspecRuns(step.run)) found.add(profileOf(flag, env[PROFILE_VARIABLE]));
+  }
+  return [...found];
+}
+
+function profileOf(flag: string | undefined, variable: unknown): string | null {
+  const given = flag ?? (variable === undefined || variable === "" ? DEFAULT_PROFILE : variable);
+  return typeof given === "string" && given && !given.includes("$") ? given : null;
 }
 
 function envOf(scope: Record<string, unknown>): Record<string, unknown> {
   return isRecord(scope.env) ? scope.env : {};
 }
 
-function grantsIdToken(permissions: unknown): boolean {
-  return (
-    permissions === "write-all" || (isRecord(permissions) && permissions["id-token"] === "write")
-  );
-}
+const SECRETSPEC_RUN = /(?:^|[\s;&|(])(?:[\w.-]*\/)*secretspec\s+run(?=\s|$)([^\n]*)/g;
 
-function scripts(job: unknown): string[] {
-  const found: string[] = [];
-  const visit = (value: unknown, key: string | null) => {
-    if (typeof value === "string") {
-      if (key === "run") found.push(value);
-    } else if (Array.isArray(value)) {
-      for (const item of value) visit(item, null);
-    } else if (isRecord(value)) {
-      for (const [k, v] of Object.entries(value)) visit(v, k);
-    }
-  };
-  visit(job, null);
-  return found;
-}
-
-const KEYPIN_RUN = /(?:^|[\s;&|(])(?:[\w.-]*\/)*keypin(?:@[\w.^~-]+)?\s+run(?=\s|$)([^\n]*)/g;
-
-function keypinRuns(script: string): Omit<KeypinRun, "environment">[] {
-  const runs: Omit<KeypinRun, "environment">[] = [];
-  for (const match of script.replace(/\\\r?\n/g, " ").matchAll(KEYPIN_RUN)) {
+function secretspecRuns(script: string): (string | undefined)[] {
+  const runs: (string | undefined)[] = [];
+  for (const match of script.replace(/\\\r?\n/g, " ").matchAll(SECRETSPEC_RUN)) {
     const words = shellWords(match[1] ?? "");
-    let env: string | null = null;
-    let dynamicEnv = false;
-    let only: string[] | null = null;
-    for (let i = 0; i < words.length; i++) {
-      const [flag = "", inline] = (words[i] ?? "").split(/=(.*)/s);
-      if (flag !== "--profile" && flag !== "--only") break;
-      const value = inline ?? words[++i] ?? "";
-      const plain = !value.includes("$");
-      if (flag === "--profile") {
-        env = plain ? value : null;
-        dynamicEnv = !plain;
-      } else if (!plain) {
-        only = null;
-        break;
-      } else only = [...(only ?? []), ...value.split(",").map((name) => name.trim())];
+    let profile: string | undefined;
+    for (let i = 0; i < words.length && words[i] !== "--"; i++) {
+      const word = words[i] ?? "";
+      const [flag = "", inline] = word.startsWith("--") ? word.split(/=(.*)/s) : [word];
+      if (flag === "--profile" || flag === "-P") profile = inline ?? words[++i] ?? "";
+      else if (/^-P./.test(flag)) profile = flag.slice(2);
     }
-    runs.push({ env, dynamicEnv, only });
+    runs.push(profile);
   }
   return runs;
 }
@@ -236,11 +191,6 @@ function events(on: unknown): unknown[] {
 function onlyWorkflowCall(on: unknown): boolean {
   const all = events(on);
   return all.length === 1 && all[0] === "workflow_call";
-}
-
-function onlyCalled(on: unknown): boolean {
-  const triggers = events(on);
-  return triggers.length > 0 && triggers.every((event) => event === "workflow_call");
 }
 
 function expressions(text: string): string[] {

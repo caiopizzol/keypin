@@ -85,7 +85,7 @@ export function jobFor(context: Context, keyId: string, flags: Flags): Omit<Job,
     );
   if (!reaches(entry))
     throw new Error(
-      `the map lists no destinations or pull entries for ${keyId} (${environment}); add them first, so the new key reaches what uses it`,
+      `the map lists no destinations for ${keyId} (${environment}); add them first, so the new key reaches what uses it`,
     );
   const pairKey = map.keys.find((k) => k.name === entry.idKey);
   const pairEntry = pairKey?.environments[environment];

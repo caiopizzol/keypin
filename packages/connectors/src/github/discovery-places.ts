@@ -3,14 +3,6 @@ import type { Repo } from "./discovery-repo";
 
 const REPO_PLACEHOLDER = "<owner>/<repo>";
 
-export function placeOf(repo: string, environment: string | null): string {
-  return `${repo.toLowerCase()}${environment === null ? "" : `/environments/${environment.toLowerCase()}`}`;
-}
-
-export function describePlace(repo: string, environment: string | null): string {
-  return environment === null ? repo : `${repo} environment ${environment}`;
-}
-
 export function githubPlace(
   github: Repo,
   environment: string | null,

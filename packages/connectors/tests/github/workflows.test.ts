@@ -54,10 +54,15 @@ jobs:
 `);
     assert(refs);
     expect(refs.uses).toEqual([
-      { environment: null, secrets: ["TOP_LEVEL"], fromCaller: false },
-      { environment: null, secrets: ["TEST_TOKEN"], fromCaller: false },
-      { environment: "production", secrets: ["API_TOKEN"], fromCaller: false },
-      { environment: "${{ github.ref_name }}", secrets: ["PREVIEW_TOKEN"], fromCaller: false },
+      { environment: null, secrets: ["TOP_LEVEL"], fromCaller: false, secretspec: [] },
+      { environment: null, secrets: ["TEST_TOKEN"], fromCaller: false, secretspec: [] },
+      { environment: "production", secrets: ["API_TOKEN"], fromCaller: false, secretspec: [] },
+      {
+        environment: "${{ github.ref_name }}",
+        secrets: ["PREVIEW_TOKEN"],
+        fromCaller: false,
+        secretspec: [],
+      },
     ]);
     expect(refs.secrets.toSorted()).toEqual([
       "API_TOKEN",
@@ -118,7 +123,7 @@ jobs:
       - run: echo \${{ secrets.DEPLOY_KEY }}
 `);
     expect(refs?.uses).toEqual([
-      { environment: "production", secrets: ["DEPLOY_KEY"], fromCaller: true },
+      { environment: "production", secrets: ["DEPLOY_KEY"], fromCaller: true, secretspec: [] },
     ]);
   });
 
@@ -193,67 +198,68 @@ jobs:
   });
 });
 
-describe("keypin run in a workflow", () => {
-  test("finds each keypin run, the keys it names, and the job's environment", () => {
+describe("secretspec run in a workflow", () => {
+  test("keeps the profile each job's secretspec run reads: --profile, -P, SECRETSPEC_PROFILE or default", () => {
     const refs = workflowRefs(`
 on: push
+env:
+  SECRETSPEC_PROFILE: staging
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - run: npx keypin@0.33.1 run --profile prod --only API_TOKEN,Other -- npm test
+      - run: secretspec run -- npm test
+        env:
+          TOKEN: \${{ secrets.TEST_TOKEN }}
   deploy:
     environment: production
     steps:
       - name: deploy
         run: |
-          keypin run \\
-            --only=DEPLOY_KEY --only "SECOND" -- ./deploy.sh
-      - run: keypin run -- ./all.sh
-      - run: keypin run --only "\${{ inputs.key }}" -- ./one.sh
-      - run: keypin run --profile "\${{ inputs.env }}" -- ./any.sh
-      - run: echo keypin status
+          npx secretspec run \\
+            --profile production -- ./deploy.sh
+        env:
+          DEPLOY_KEY: \${{ secrets.DEPLOY_KEY }}
+      - run: secretspec run -P preview -- ./preview.sh
+      - run: secretspec run -Pqa -- ./qa.sh
+      - run: secretspec run --profile "\${{ inputs.profile }}" -- ./any.sh
+      - run: echo secretspec check
+  plain:
+    env:
+      SECRETSPEC_PROFILE: ""
+    steps:
+      - run: secretspec run --provider env -- ./x.sh --profile ignored
+        env:
+          A: \${{ secrets.A }}
 `);
     assert(refs);
-    expect(refs.runs).toEqual([
-      { environment: null, env: "prod", dynamicEnv: false, only: ["API_TOKEN", "Other"] },
-      { environment: "production", env: null, dynamicEnv: false, only: ["DEPLOY_KEY", "SECOND"] },
-      { environment: "production", env: null, dynamicEnv: false, only: null },
-      { environment: "production", env: null, dynamicEnv: false, only: null },
-      { environment: "production", env: null, dynamicEnv: true, only: null },
+    expect(refs.uses).toEqual([
+      { environment: null, secrets: ["TEST_TOKEN"], fromCaller: false, secretspec: ["staging"] },
+      {
+        environment: "production",
+        secrets: ["DEPLOY_KEY"],
+        fromCaller: false,
+        secretspec: ["production", "preview", "qa", null],
+      },
+      { environment: null, secrets: ["A"], fromCaller: false, secretspec: ["default"] },
     ]);
-    expect(refs.uses).toEqual([]);
   });
 
-  test("reads --profile and --only the way the shell passes them, quotes removed", () => {
+  test("reads --profile the way the shell passes it, quotes removed", () => {
     const refs = workflowRefs(`
 jobs:
   deploy:
     steps:
-      - run: keypin run --profile="prod" --only API_KEY -- ./deploy.sh
-      - run: keypin run --profile 'prod' --only="API_KEY" -- ./deploy.sh
-      - run: keypin run "--profile=prod" --only='API'_KEY -- ./deploy.sh
-      - run: keypin run --profile="$KEYPIN_PROFILE" -- ./deploy.sh
+      - run: secretspec run --profile="prod" -- ./deploy.sh
+      - run: secretspec run --profile 'prod' -- ./deploy.sh
+      - run: secretspec run "--profile=prod" -- ./deploy.sh
+      - run: secretspec run --profile="$PROFILE" -- ./deploy.sh
+        env:
+          KEY: \${{ secrets.KEY }}
 `);
     assert(refs);
-    expect(refs.runs).toEqual([
-      { environment: null, env: "prod", dynamicEnv: false, only: ["API_KEY"] },
-      { environment: null, env: "prod", dynamicEnv: false, only: ["API_KEY"] },
-      { environment: null, env: "prod", dynamicEnv: false, only: ["API_KEY"] },
-      { environment: null, env: null, dynamicEnv: true, only: null },
-    ]);
-  });
-
-  test("keeps a quoted --only list with spaces as one word", () => {
-    const refs = workflowRefs(`
-jobs:
-  deploy:
-    steps:
-      - run: keypin run --only="FIRST, SECOND" --profile="prod" -- ./deploy.sh
-`);
-    assert(refs);
-    expect(refs.runs).toEqual([
-      { environment: null, env: "prod", dynamicEnv: false, only: ["FIRST", "SECOND"] },
+    expect(refs.uses).toEqual([
+      { environment: null, secrets: ["KEY"], fromCaller: false, secretspec: ["prod", null] },
     ]);
   });
 

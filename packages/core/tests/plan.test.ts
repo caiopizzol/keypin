@@ -506,7 +506,6 @@ test("an organization repo published by another login compares the pin, not the 
           field: "password",
         },
         publish: [{ to: "github-actions" as const, repo: "acme/billing", account: "alice" }],
-        pull: [],
       },
     },
   };

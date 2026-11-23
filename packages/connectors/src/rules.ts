@@ -6,7 +6,7 @@ import { convexDeploymentRules } from "./convex/rules";
 import { dopplerVaultRules } from "./doppler/rules";
 import { elevenlabsIssuerRules } from "./elevenlabs/rules";
 import { flyAppRules } from "./fly/rules";
-import { githubActionsRules, githubPull } from "./github/rules";
+import { githubActionsRules } from "./github/rules";
 import { gitlabGroupRules, gitlabProjectRules } from "./gitlab/rules";
 import { googleIssuerRules, googleServiceAccountIssuerRules } from "./google/rules";
 import { infisicalVaultRules } from "./infisical/rules";
@@ -65,8 +65,6 @@ export const destinations = [
   gitlabGroupRules,
 ];
 
-export const pulls = [githubPull];
-
 export const vaults = [
   infisicalVaultRules,
   bitwardenVaultRules,
@@ -104,7 +102,6 @@ export {
   elevenlabsIssuerRules,
   flyAppRules,
   githubActionsRules,
-  githubPull,
   gitlabGroupRules,
   gitlabProjectRules,
   googleIssuerRules,
@@ -145,7 +142,7 @@ export type { OnePasswordRef } from "./onepassword/reference";
 export type { SecretsManagerRef } from "./aws/reference";
 export type { ConvexTarget } from "./convex/rules";
 export type { FlyTarget } from "./fly/rules";
-export type { GitHubPull, GitHubTarget } from "./github/rules";
+export type { GitHubTarget } from "./github/rules";
 export type { GitLabGroupTarget, GitLabProjectTarget } from "./gitlab/rules";
 export type { NetlifyTarget } from "./netlify/rules";
 export type { RailwayTarget } from "./railway/rules";

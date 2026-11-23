@@ -38,14 +38,6 @@ export {
   targetOf,
 } from "./destination";
 export {
-  type PullKind,
-  type PullKinds,
-  pullKindOf,
-  pullName,
-  pullPlace,
-  type PullReader,
-} from "./pull";
-export {
   connectIssuer,
   type IssuerKind,
   type IssuerKinds,
@@ -150,7 +142,6 @@ export {
   type ProjectEntry,
   type ProjectFiles,
   type ProjectReader,
-  type Pulled,
   type Scanned,
   type Slot,
   type StoreRead,

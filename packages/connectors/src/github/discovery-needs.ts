@@ -1,44 +1,31 @@
 import type { FoundNeed, MapView } from "@keypin/core";
 import { githubPlace, literalEnvironment, namesOf } from "./discovery-places";
-import { leftovers, pullNotes, reaches } from "./discovery-pulls";
-import type { PulledAt, Repo, Workflow } from "./discovery-repo";
+import type { Repo, Workflow } from "./discovery-repo";
 
-export function needsOf(
-  github: Repo,
-  workflows: Workflow[],
-  complete: boolean,
-  view: MapView,
-  oidc: readonly string[],
-) {
+export function needsOf(github: Repo, workflows: Workflow[], view: MapView) {
   const declared = new Map<string, Set<string>>();
   const repo = githubPlace(github, null, declared, view);
   const uses = workflows.flatMap((workflow) =>
-    workflow.refs.uses.flatMap(({ environment, secrets, fromCaller }) =>
+    workflow.refs.uses.flatMap(({ environment, secrets, fromCaller, secretspec }) =>
       secrets
         .filter((name) => !name.startsWith("GITHUB_"))
-        .map((name) => ({ name, path: workflow.path, environment, fromCaller })),
+        .map((name) => ({ name, path: workflow.path, environment, fromCaller, secretspec })),
     ),
   );
   const required = uses.filter((use) => !use.fromCaller);
   const needs: FoundNeed[] = [];
   const shared = namesOf(github.organization);
   const fromOrganization = new Map<string, { paths: string[]; environments: string[] }>();
-  const here = github.pulled.filter(
-    (p) => github.repo !== null && p.repo.toLowerCase() === github.repo.toLowerCase(),
-  );
-  const leftover = new Map<PulledAt, string[]>();
+  const readAtJobTime: { name: string; path: string; profile: string }[] = [];
   for (const use of uses) {
     if (view.ignores(use.name)) {
       needs.push({ name: use.name, place: repo, usedBy: use.path });
       continue;
     }
-    const pulled = here.find(
-      (p) => p.pulled.key.toUpperCase() === use.name && reaches(p, use.environment),
-    );
-    if (pulled) {
-      const paths = leftover.get(pulled) ?? [];
-      if (!paths.includes(use.path)) paths.push(use.path);
-      leftover.set(pulled, paths);
+    const profile = use.secretspec.find((p) => p !== null && view.declares(use.name, p));
+    if (profile) {
+      if (!readAtJobTime.some((r) => r.name === use.name && r.path === use.path))
+        readAtJobTime.push({ name: use.name, path: use.path, profile });
       continue;
     }
     const literal = literalEnvironment(use.environment);
@@ -85,10 +72,11 @@ export function needsOf(
   const hidden = workflows.some((w) => w.refs.hidesUses);
   return {
     needs,
-    problems: leftovers(github, leftover, complete),
     notes: [
-      ...pullNotes(github.repo, here, workflows, view),
-      ...oidc,
+      ...readAtJobTime.map(
+        ({ name, path, profile }) =>
+          `${name}: ${path} runs secretspec run, which reads it from the ${profile} profile's vault at job time, so ${repo.label} doesn't need it; the job's secrets.${name} can go`,
+      ),
       ...[...fromOrganization].map(
         ([name, { paths, environments }]) =>
           `${name}: ${paths.join(", ")} uses it; ${repo.label} has it (org secret), which secretspec.toml doesn't publish${
@@ -106,10 +94,7 @@ export function needsOf(
           (name) =>
             !found.some((n) => n.place === repo.id && n.name === name.toUpperCase()) &&
             !view.publishes(name.toUpperCase(), repo) &&
-            !view.ignores(name) &&
-            !here.some(
-              (p) => p.environment === null && p.pulled.key.toUpperCase() === name.toUpperCase(),
-            ),
+            !view.ignores(name),
         );
       return unmapped.length
         ? [

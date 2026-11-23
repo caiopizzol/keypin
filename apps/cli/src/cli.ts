@@ -16,8 +16,9 @@ const COMMAND_USAGE: [string, string][] = [
                            report a project without changing it: each mapped item exists, each
                            login reaches the pinned account, every secret a workflow or Worker
                            needs is published there (with the TOML to add when it isn't), and
-                           every name an env file sets is declared. Lists the project in
-                           keypin status
+                           every name an env file sets is declared. A job that runs secretspec
+                           run reads its profile's keys from the vault, so they needn't be
+                           published there. Lists the project in keypin status
 `,
   ],
   [

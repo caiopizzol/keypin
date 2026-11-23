@@ -20,7 +20,6 @@ import {
   revokeWhen,
   saveIdRow,
   writeRows,
-  pullRows,
   shown,
   apartNote,
   reached,
@@ -55,7 +54,6 @@ export async function resume(
   showPlan(out, [
     ...(pair && unsavedId ? [saveIdRow(job, pair)] : []),
     ...writeRows(job, steps, pairSteps),
-    ...pullRows(job),
     ...(old === null
       ? []
       : [

@@ -8,7 +8,6 @@ import {
   type ProjectFiles,
   type ProjectReader,
   type ProjectScan,
-  type Pulled,
 } from "@keypin/core";
 import type { Deps } from "./deps";
 import { errorCode } from "./errors";
@@ -55,11 +54,7 @@ export interface ScanResult {
   unknowns: Unknown[];
 }
 
-export async function scanProject(
-  deps: Deps,
-  root: string,
-  pulled: readonly Pulled[],
-): Promise<ScanResult> {
+export async function scanProject(deps: Deps, root: string): Promise<ScanResult> {
   const unknowns: Unknown[] = [];
   const kinds = deps.destinations.flatMap((kind) =>
     kind.discovery ? [{ kind: kind.kind, discovery: kind.discovery }] : [],
@@ -85,7 +80,6 @@ export async function scanProject(
   const reader = (found: readonly string[]): ProjectReader => ({
     root,
     found,
-    pulled,
     read: (path) => readSource(deps, root, path, unknowns),
     list: (folder) => listing(deps, folder),
     unknown: (what, reason) => unknowns.push({ what, reason }),

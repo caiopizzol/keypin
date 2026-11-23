@@ -52,7 +52,6 @@ import {
   revokeWhen,
   saveIdRow,
   writeRows,
-  pullRows,
   shown,
   apartNote,
   oldStays,
@@ -283,7 +282,6 @@ export async function rotateLocked(job: Job): Promise<number> {
     ),
     ...(job.pair ? [saveIdRow(job, job.pair)] : []),
     ...writeRows(job, steps, pairSteps),
-    ...pullRows(job),
     !issuer.revoke
       ? row("=", issuer.describe(), "nothing to revoke: the new value replaces the old one")
       : check.gone === undefined

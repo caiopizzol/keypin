@@ -673,7 +673,7 @@ describe("keypin rotate --due after a person replaced a waiting key by hand", ()
     expect(w.effects).toHaveLength(2);
   });
 
-  test("an item replaced under the same reference keeps the old key waiting, and its value isn't read", async () => {
+  test("an item replaced under the same reference keeps the old key waiting, its value isn't read, and --check names the first write it needs", async () => {
     const w = await replacedByHand("2026-08-01");
     w.inner.itemIds.set(ITEM, "id-replaced");
     w.inner.log.length = 0;
@@ -682,7 +682,10 @@ describe("keypin rotate --due after a person replaced a waiting key by hand", ()
     expect(run.stderr.text).toContain(
       "RESEND_API_KEY  wait  rotated 2026-11-09, the old key waits; was due 2026-10-30",
     );
-    expect(await ci(w).run("--check")).toBe(NEEDS_APPROVAL);
+    const check = ci(w);
+    expect(await check.run("--check")).toBe(1);
+    expect(check.stderr.text).toContain("first write to github-actions:acme/mailer:RESEND_API_KEY");
+    expect(check.stderr.text).not.toContain("while its old key waits for approval");
     expect(w.inner.log.filter((line) => line.startsWith("read"))).toEqual([]);
     expect(w.effects).toHaveLength(2);
   });

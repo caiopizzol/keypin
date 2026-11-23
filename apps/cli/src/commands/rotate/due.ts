@@ -40,6 +40,7 @@ async function progressOf(
   const { map, environment, committed, deps } = context;
   const state = restoreIssued(await loadState(deps.files, path, deps.vaults), committed, map);
   const progress = new Map<string, Progress>();
+  const unverified = new Set<string>();
   for (const key of map.keys) {
     if (only !== undefined && key.name !== only) continue;
     const entry = rotates(map, key.name, environment);
@@ -63,9 +64,10 @@ async function progressOf(
     const rolledBack = vaultOnly && holds === issued.old.generation && !issued.unsaved;
     if (rolledBack) continue;
     const neverSaved = vaultOnly && holds !== issued.generation && issued.unsaved === true;
+    if (holds === null) unverified.add(key.name);
     progress.set(key.name, { kind: neverSaved ? "unfinished" : kind, since, revokes });
   }
-  return (keyId: string): Progress => progress.get(keyId) ?? null;
+  return Object.assign((keyId: string): Progress => progress.get(keyId) ?? null, { unverified });
 }
 
 async function vaultGeneration(
@@ -180,12 +182,13 @@ export async function checkDue(context: Context, path: string): Promise<number> 
   const { map, environment, deps, out } = context;
   const metadata = await readDates(deps, dueRefs(map, environment));
   const dated = (ref: KeyRef) => metadata.dates.get(refKey(ref)) ?? null;
+  const progress = await progressOf(context, path, { check: true });
   const choices = dueKeys({
     map,
     environment,
     today: localDay(deps.now()),
     metadata: dated,
-    progress: await progressOf(context, path, { check: true }),
+    progress,
   });
   const checks = (c: DueChoice) => c.action !== "skip" || c.date !== undefined;
   out.line(`\nKeys in ${environment}`);
@@ -219,7 +222,8 @@ export async function checkDue(context: Context, path: string): Promise<number> 
       codes.push(1);
       continue;
     }
-    if (choice.action === "waiting" && choice.blocked !== undefined) {
+    const verified = !progress.unverified.has(choice.keyId);
+    if (choice.action === "waiting" && choice.blocked !== undefined && verified) {
       out.line(`${out.mark(false)} ${blockedText(context, choice)}`);
       waitsNotice(context, choice.keyId);
       codes.push(NEEDS_APPROVAL);

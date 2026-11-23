@@ -60,6 +60,8 @@ keypin reads values from the vault only while a command needs them. secretspec, 
   the user makes a new value at the provider, saves it with `secretspec set` (or in the vault, for a `ref` secretspec
   only reads, such as AWS Secrets Manager's) and sets its rotated date to today; then publish it, and remind them to
   revoke the old one.
+- `keypin rotate --due` exits 3 while a due key's old key waits for approval. Give the user
+  `keypin rotate --approve-revoke NAME` to run in a terminal, or the scheduled workflow's **approve revoke** option.
 
 Details: [How it works](https://github.com/caiopizzol/keypin/blob/main/docs/introduction/how-it-works.md),
 [secretspec.toml](https://github.com/caiopizzol/keypin/blob/main/docs/reference/secretspec-toml.md),

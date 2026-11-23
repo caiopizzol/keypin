@@ -1,5 +1,4 @@
 {
-  "apps/cli/src/cli.ts": 1,
   "apps/cli/src/commands/check/build.ts": 1,
   "apps/cli/src/commands/check/report.ts": 1,
   "apps/cli/src/deps.ts": 2,

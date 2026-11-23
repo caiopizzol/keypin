@@ -13,12 +13,12 @@ const COMMAND_USAGE: [string, string][] = [
   [
     "check",
     `  keypin check [folder] [--json]
-                           report a project without changing it: each mapped item exists, each
-                           login reaches the pinned account, every secret a workflow or Worker
-                           needs is published there (with the TOML to add when it isn't), and
-                           every name an env file sets is declared. A job that runs secretspec
-                           run reads its profile's keys from the vault, so they needn't be
-                           published there. Lists the project in keypin status
+                           report a project without changing it: each secret's vault item exists,
+                           each login works, every secret a workflow or Worker needs is published
+                           there (with the TOML to add when it isn't), and every name an env file
+                           sets is declared. A job that runs secretspec run reads its profile's
+                           keys from the vault, so they needn't be published there. Lists the
+                           project in keypin status
 `,
   ],
   [
@@ -39,7 +39,7 @@ const COMMAND_USAGE: [string, string][] = [
     "rotate",
     `  keypin rotate <VARIABLE> [--profile <name>] [--yes | --plan]
                            replace a key that has an issuer: create a new key at the provider, save
-                           it to 1Password, publish it, then ask before revoking the old key; run it
+                           it to your vault, publish it, then ask before revoking the old key; run it
                            again to continue after a failure or to revoke the old key later; --plan
                            reads the keys, prints the plan and the command to approve it, and changes
                            nothing

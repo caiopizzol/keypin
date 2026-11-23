@@ -469,7 +469,7 @@ test("an environment the key doesn't have is an error", () => {
       generation: NEW,
       ids: null,
     }),
-  ).toThrow('key "STRIPE_API_KEY" has no dev entry in the map');
+  ).toThrow('key "STRIPE_API_KEY" has no dev entry in secretspec.toml');
 });
 
 test("a renamed variable is a new key: every write needs approval, and nothing is deleted", () => {

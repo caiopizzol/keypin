@@ -1,6 +1,6 @@
 import type { Environment, KeyId, KeyRef, VaultMetadata } from "./contracts";
 import { addDays, type Day } from "./days";
-import { type KeysMap, pairedWith, reaches } from "./map";
+import { type KeysMap, pairedWith } from "./map";
 
 export type Progress = { kind: "unfinished" | "waiting"; since: string; revokes: boolean } | null;
 
@@ -12,7 +12,7 @@ export type DueChoice =
 export function dueRefs(map: KeysMap, environment: Environment): KeyRef[] {
   return map.keys.flatMap((key) => {
     const entry = key.environments[environment];
-    return entry?.issuer && reaches(entry) ? [entry.ref] : [];
+    return entry?.issuer ? [entry.ref] : [];
   });
 }
 
@@ -37,7 +37,6 @@ export function dueKeys(input: {
       return skip(
         `its ID is the key ${entry.idKey}; rotate the two with keypin rotate ${key.name}`,
       );
-    if (!reaches(entry)) return skip("no destination for the new key");
     const progress = input.progress(key.name);
     if (progress?.kind === "waiting")
       return [
@@ -47,7 +46,7 @@ export function dueKeys(input: {
       return [
         { keyId: key.name, action: "finish", why: `finishing the rotation from ${progress.since}` },
       ];
-    if (!key.rotateEvery) return skip("no rotate_every in the map");
+    if (!key.rotateEvery) return skip("no rotate_every in secretspec.toml");
     if (key.rotateEvery.days === null) return skip("never rotates");
     const metadata = input.metadata(entry.ref);
     if (!metadata) return skip("the vault's rotated date couldn't be read", "missing");

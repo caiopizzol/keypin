@@ -135,6 +135,7 @@ export {
   type Discovery,
   type FolderListing,
   type FoundNeed,
+  type JobReader,
   type MapView,
   type Needs,
   type OnlyFrom,

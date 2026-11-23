@@ -20,7 +20,7 @@ import {
   type Secret,
 } from "@keypin/core";
 import { type Deps, UsageError } from "../deps";
-import { findMap, pickEnvironment } from "../project";
+import { findMap, MAP_FILE, pickEnvironment } from "../project";
 import { registerProject } from "../register";
 import { approval, signInFor } from "../sign-in";
 import { confirmed, NEEDS_APPROVAL, planOnly, unattendedApproval } from "../approval";
@@ -137,7 +137,7 @@ async function publishLocked(
   }
   for (const { key, entry } of jobs) {
     if (!entry.publish.length) {
-      say(`The map lists no destinations for ${key.name} (${environment}); nothing to publish.`);
+      say(`${MAP_FILE} publishes ${key.name} (${environment}) nowhere; nothing to publish.`);
       return 1;
     }
   }

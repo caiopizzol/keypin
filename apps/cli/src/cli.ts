@@ -56,9 +56,9 @@ const COMMAND_USAGE: [string, string][] = [
   [
     "rotate",
     `  keypin rotate --due [--profile <name>] [--yes]
-                           the same for every key that is due and has an issuer and destinations;
-                           without a terminal it stops before revoking, and the old key waits for
-                           approval. Records the result in .keypin/, never a value
+                           the same for every key that is due and has an issuer; without a
+                           terminal it stops before revoking, and the old key waits for approval.
+                           Records the result in .keypin/, never a value
 `,
   ],
   [

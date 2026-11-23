@@ -14,6 +14,12 @@ export const workflowDiscovery: Discovery<WorkflowHost> = {
     const workflows = await readWorkflows(project, top);
     return { finish: () => lookUp(project, host, top, workflows) };
   },
+  async readers(project, host, profile) {
+    const top = (await host.git(project.root, ["rev-parse", "--show-toplevel"]))?.trim() || null;
+    return (await readWorkflows(project, top))
+      .filter((workflow) => workflow.refs.secretspec.includes(profile))
+      .map((workflow) => ({ file: workflow.path, how: `secretspec run --profile ${profile}` }));
+  },
 };
 
 async function readWorkflows(project: ProjectReader, top: string | null): Promise<Workflow[]> {

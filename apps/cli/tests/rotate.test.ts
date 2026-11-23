@@ -206,6 +206,72 @@ function setup(options: Setup = {}) {
   return { ...fake, disk, vault, issuer, destinations, asked, run, record, writes, leaked, state };
 }
 
+const NO_DESTINATIONS = MAP.replace(/publish = \[[\s\S]*?\n\]\n/, "");
+
+const DEPLOY = `on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: secretspec run --profile prod -- ./deploy.sh
+`;
+
+function noDestinations(workflow?: string) {
+  const disk = memoryFiles({ "/work/billing/secretspec.toml": NO_DESTINATIONS });
+  if (workflow !== undefined) {
+    disk.contents.set("/work/billing/.github/workflows/deploy.yml", workflow);
+    for (const folder of ["/work/billing/.github", "/work/billing/.github/workflows"])
+      disk.folders.add(folder);
+  }
+  return disk;
+}
+
+describe("keypin rotate, for a key no destination takes", () => {
+  test("the plan says nothing in the repo reads it, so check before revoking", async () => {
+    const run = setup({ disk: noDestinations() });
+    expect(NO_DESTINATIONS).not.toContain("publish");
+    expect(await run.record("no-destinations-plan", "--plan")).toBe(3);
+    expect(run.stderr.text).toContain(
+      "secretspec.toml publishes RESEND_API_KEY (prod) nowhere, and nothing in this repo reads it at job time. Check what uses it before you revoke the old key.",
+    );
+  });
+
+  test("the plan names the workflow that reads it at job time", async () => {
+    const run = setup({ disk: noDestinations(DEPLOY) });
+    expect(await run.record("no-destinations-read-at-job-time", "--plan")).toBe(3);
+    expect(run.stderr.text).toMatch(
+      /= \.github\/workflows\/deploy\.yml +reads it at job time \(secretspec run --profile prod\)/,
+    );
+    expect(run.stderr.text).not.toContain("Check what uses it");
+  });
+
+  test("a workflow that runs another profile doesn't read it", async () => {
+    const run = setup({ disk: noDestinations(DEPLOY.replace("--profile prod", "--profile dev")) });
+    expect(await run.run("--plan")).toBe(3);
+    expect(run.stderr.text).not.toContain("reads it at job time (");
+    expect(run.stderr.text).toContain("Check what uses it before you revoke the old key.");
+  });
+
+  test("creates and saves the new key, writes nowhere, and without a terminal leaves the revoke for one", async () => {
+    const first = setup({ disk: noDestinations(DEPLOY), answers: ["y"] });
+    expect(await first.run()).toBe(0);
+    expect(first.vault.values.get("mailer resend key")).toBe(NEW(1));
+    expect(first.vault.rotated).toEqual(["2026-11-09"]);
+    expect(first.writes()).toEqual([]);
+
+    const ci = setup({ disk: first.disk, vault: first.vault, terminal: false });
+    expect(await ci.record("no-destinations-revoke-needs-a-terminal", "--yes")).toBe(
+      NEEDS_APPROVAL,
+    );
+    expect(ci.vault.values.get("mailer resend key")).toBe(NEW(2));
+    expect(ci.stderr.text).toContain(
+      "The old key key-1 still works. Revoking it needs a y in a terminal.",
+    );
+    expect(ci.issuer.log.some((line) => line.startsWith("revoke"))).toBe(false);
+    expect(ci.leaked()).toBe(false);
+  });
+});
+
 describe("keypin rotate", () => {
   test("creates, saves, publishes, then revokes the old key after a second y", async () => {
     const before = setup({ answers: ["y", "y"] });
@@ -603,10 +669,10 @@ describe("keypin rotate", () => {
     const run = setup({ disk: first.disk, vault: first.vault, answers: ["y", "n"] });
     expect(await run.run()).toBe(0);
     expect(run.writes()).toEqual([`write ${WORKER} RESEND_API_KEY (${NEW(2).length} chars)`]);
-    const gone = `- ${GITHUB}:RESEND_API_KEY: not in the map any more (last got ${await generationOf(new Secret(NEW(1)))}`;
+    const gone = `- ${GITHUB}:RESEND_API_KEY: not in secretspec.toml any more (last got ${await generationOf(new Secret(NEW(1)))}`;
     expect(run.stderr.text.split(gone)).toHaveLength(3);
     expect(run.stderr.text).toContain(
-      "Rotated RESEND_API_KEY (prod): the new key is in 1Password and the destination in the map.\nNot in the map any more, so keypin didn't write them; they may still use the old key:\n",
+      "Rotated RESEND_API_KEY (prod): the new key is in 1Password and the destination in secretspec.toml.\nNot in secretspec.toml any more, so keypin didn't write them; they may still use the old key:\n",
     );
     expect(run.stderr.text).not.toContain("every destination");
     expect(run.stderr.text.indexOf(gone, run.stderr.text.indexOf("Rotated"))).toBeLessThan(

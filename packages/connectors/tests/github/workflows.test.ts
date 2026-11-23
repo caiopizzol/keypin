@@ -296,6 +296,18 @@ jobs:
     ]);
   });
 
+  test("lists every profile a secretspec run reads, even in a step that names no secret", () => {
+    const refs = workflowRefs(`
+jobs:
+  deploy:
+    steps:
+      - run: secretspec run --profile production -- ./deploy.sh
+      - run: secretspec run -- npm test
+`);
+    expect(refs?.secretspec).toEqual(["production", "default"]);
+    expect(refs?.uses).toEqual([]);
+  });
+
   test("a secret is read at job time only by the step that runs secretspec run", () => {
     const refs = workflowRefs(`
 jobs:

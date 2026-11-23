@@ -88,7 +88,13 @@ export interface ProjectFiles {
   readonly skip?: readonly string[];
 }
 
+export interface JobReader {
+  readonly file: string;
+  readonly how: string;
+}
+
 export interface Discovery<H = unknown> {
   readonly files: ProjectFiles;
   scan(project: ProjectReader, host: H): Promise<Scanned>;
+  readers?(project: ProjectReader, host: H, profile: Environment): Promise<readonly JobReader[]>;
 }

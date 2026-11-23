@@ -329,7 +329,7 @@ export function publishRows(
 export function showRemoved(out: Output, removed: readonly RemovedDestination[]): void {
   for (const { destinationId: id, lastReceipt: last } of removed) {
     out.line(
-      `  ${out.dim(`- ${id}: not in the map any more (last got ${last.generation} at ${last.at}). keypin doesn't delete it.`)}`,
+      `  ${out.dim(`- ${id}: not in secretspec.toml any more (last got ${last.generation} at ${last.at}). keypin doesn't delete it.`)}`,
     );
   }
 }

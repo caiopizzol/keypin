@@ -10,7 +10,6 @@ import {
   type KeyOwner,
   pairedWith,
   publishEnvironment,
-  reaches,
   type RemovedDestination,
   vaultName,
   vaultKindOf,
@@ -82,10 +81,6 @@ export function jobFor(context: Context, keyId: string, flags: Flags): Omit<Job,
   if (!spec)
     throw new Error(
       `[tool.keypin.${environment}.${keyId}] has no issuer in ${map.file}, so keypin can't make a new key. Add one (see docs/guides/rotating-a-key.md), or rotate it by hand.`,
-    );
-  if (!reaches(entry))
-    throw new Error(
-      `the map lists no destinations for ${keyId} (${environment}); add them first, so the new key reaches what uses it`,
     );
   const pairKey = map.keys.find((k) => k.name === entry.idKey);
   const pairEntry = pairKey?.environments[environment];

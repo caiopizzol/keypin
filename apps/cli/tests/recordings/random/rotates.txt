@@ -57,7 +57,7 @@ ok     random  created AUTH_SECRET prod 2026-11-09 12:00:00 a1b2c3
 ok     1Password  op://Private/app secret/password  saved, rotated 2026-11-09
 ok     GitHub  acme/app  wrote AUTH_SECRET
 
-Rotated AUTH_SECRET (prod): the new key is in 1Password and the destination in the map.
+Rotated AUTH_SECRET (prod): the new key is in 1Password and the destination in secretspec.toml.
 Nothing to revoke: the old value stops working once your apps use the new one.
 
 --- wrote /home/me/.config/keypin/registry.json ---

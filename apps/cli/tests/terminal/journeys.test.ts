@@ -1406,10 +1406,10 @@ describe("keypin rotate in a real terminal", () => {
       });
       expect(result.exit).toBe(0);
       const gone =
-        "- github-actions:acme/mailer:RESEND_API_KEY: not in the map any more (last got 5f85700cd2d85825 at 2026-08-01T12:00:00.000Z). keypin doesn't delete it.";
+        "- github-actions:acme/mailer:RESEND_API_KEY: not in secretspec.toml any more (last got 5f85700cd2d85825 at 2026-08-01T12:00:00.000Z). keypin doesn't delete it.";
       expect(result.screen.split(gone)).toHaveLength(3);
       expect(result.screen).toContain(
-        "the new key is in 1Password and the destination in the map.\nNot in the map any more, so keypin didn't write them; they may still use the old key:",
+        "the new key is in 1Password and the destination in secretspec.toml.\nNot in secretspec.toml any more, so keypin didn't write them; they may still use the old key:",
       );
       expect(result.screen.lastIndexOf(gone)).toBeLessThan(
         result.screen.indexOf("Revoke the old key at Resend?"),

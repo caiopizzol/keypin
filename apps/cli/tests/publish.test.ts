@@ -225,7 +225,7 @@ describe("keypin publish", () => {
     expect(again.stderr.text).toMatch(
       /\+ GitHub {6}acme\/billing environment production {2}first write +needs approval/,
     );
-    expect(again.stderr.text).toContain(`- ${GITHUB}: not in the map any more`);
+    expect(again.stderr.text).toContain(`- ${GITHUB}: not in secretspec.toml any more`);
     expect(again.log.filter((l) => l.startsWith("write"))).toEqual([
       `write ${environment} STRIPE_API_KEY (${SENTINEL.length} chars)`,
     ]);
@@ -380,7 +380,7 @@ describe("keypin publish", () => {
     );
     const next = setup({ disk: first.disk });
     expect(await cli(["publish", "STRIPE_API_KEY"], next.deps)).toBe(0);
-    expect(next.stderr.text).toContain(`- ${GITHUB}: not in the map any more`);
+    expect(next.stderr.text).toContain(`- ${GITHUB}: not in secretspec.toml any more`);
     expect(next.log).toEqual([`check ${WORKER_PLACE}`]);
   });
 
@@ -1027,7 +1027,7 @@ describe("two projects that map the same variable and environment", () => {
 
     const web = publisher(disk, "web");
     expect(await cli(["publish", "API_TOKEN"], web.deps)).toBe(0);
-    expect(web.stderr.text).not.toContain("not in the map any more");
+    expect(web.stderr.text).not.toContain("not in secretspec.toml any more");
     const state = await loadState(disk.files, STATE, vaults);
     expect(state.receipts.map((r) => [r.destinationId, r.mapFile])).toEqual([
       ["github-actions:acme/billing:API_TOKEN", "/work/billing/secretspec.toml"],
@@ -1040,7 +1040,7 @@ describe("two projects that map the same variable and environment", () => {
     expect(again.log.filter((l) => l.startsWith("write"))).toEqual([
       expect.stringContaining("acme/billing-ops"),
     ]);
-    expect(again.stderr.text).not.toContain("not in the map any more");
+    expect(again.stderr.text).not.toContain("not in secretspec.toml any more");
   });
 });
 

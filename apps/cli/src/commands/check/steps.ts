@@ -167,7 +167,7 @@ function pasteOrAdd(toml: string): string {
 }
 
 export const PASTE =
-  "Replace each <...> with the real value; keypin rejects a map that still has one:";
+  "Replace each <...> with the real value; keypin rejects a secretspec.toml that still has one:";
 
 export const ADD = `Add this at the end of ${MAP_FILE}:`;
 

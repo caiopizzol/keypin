@@ -70,7 +70,7 @@ billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub
   keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected.
 4 Name the vault in secretspec.toml
   A secret's provider in secretspec.toml names its vault, so secretspec, CI and the console find it there.
-  Replace each <...> with the real value; keypin rejects a map that still has one:
+  Replace each <...> with the real value; keypin rejects a secretspec.toml that still has one:
 
 [providers]
 onepassword = "onepassword://<vault>"

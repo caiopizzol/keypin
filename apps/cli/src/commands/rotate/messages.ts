@@ -93,7 +93,7 @@ export function reached({ entry, deps }: Job): string {
   const vault = vaultName(entry.ref, deps.vaults);
   const listed = entry.publish.length;
   if (!listed) return `the new key is in ${vault}.`;
-  return `the new key is in ${vault} and the ${listed === 1 ? "destination" : `${listed} destinations`} in the map.`;
+  return `the new key is in ${vault} and the ${listed === 1 ? "destination" : `${listed} destinations`} in secretspec.toml.`;
 }
 
 export function oldStays({ out }: Job, issuer: Issuer, issued: Issued): void {

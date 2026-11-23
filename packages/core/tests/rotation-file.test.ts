@@ -115,7 +115,7 @@ function metadata(ref: KeyRef): VaultMetadata | null {
 }
 
 describe("rotate --due picks keys", () => {
-  test("rotates the keys that are due and have an issuer and a destination, and says why it skips the rest", () => {
+  test("rotates the keys that are due and have an issuer, with or without a destination, and says why it skips the rest", () => {
     const choices = dueKeys({
       map: parsed(),
       environment: "prod",
@@ -128,7 +128,7 @@ describe("rotate --due picks keys", () => {
       { keyId: "TODAY_KEY", action: "rotate", why: "due today" },
       { keyId: "FRESH_KEY", action: "skip", why: "not due until 2027-01-30", date: "later" },
       { keyId: "BY_HAND", action: "skip", why: "no issuer, so keypin can't make a new key" },
-      { keyId: "NOWHERE", action: "skip", why: "no destination for the new key" },
+      { keyId: "NOWHERE", action: "rotate", why: "was due 2026-04-01" },
       {
         keyId: "UNREADABLE",
         action: "skip",

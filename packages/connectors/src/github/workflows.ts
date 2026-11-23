@@ -7,6 +7,7 @@ export interface WorkflowRefs {
   environments: string[];
   uses: SecretUse[];
   hidesUses: boolean;
+  secretspec: (string | null)[];
 }
 
 export interface SecretUse {
@@ -81,6 +82,7 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     { environment: null, secrets: inherited, fromCaller: passedByCaller, secretspec: [] },
   ];
   const top: Record<string, unknown> = isRecord(data) ? data : {};
+  const profiles = new Set<Profile>();
   for (const job of Object.values(jobs ?? {})) {
     const environment = isRecord(job) ? job.environment : undefined;
     const name = isRecord(environment) ? environment.name : environment;
@@ -93,6 +95,7 @@ export function workflowRefs(text: string): WorkflowRefs | null {
       secrets: [...secretsIn(step, null, callerOwned)],
       secretspec: isRecord(job) && isRecord(step) ? secretspecProfiles(top, job, step) : [],
     }));
+    for (const part of parts) for (const profile of part.secretspec) profiles.add(profile);
     const all = [...own, ...parts.flatMap((part) => part.secrets)];
     if (named?.includes("${{") && stored([...all, ...inherited])) refs.hidesUses = true;
     const everyStep = parts.reduce<Profile[]>(
@@ -113,6 +116,7 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     environments: [...refs.environments],
     uses: uses.filter((use) => use.secrets.length),
     hidesUses: refs.hidesUses,
+    secretspec: [...profiles],
   };
 }
 

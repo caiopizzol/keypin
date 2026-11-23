@@ -83,7 +83,7 @@ ok     Cloudflare  api       wrote API_SECRET, API_KEY_ID in one version
 ok     GitHub      acme/api  wrote API_SECRET
 ok     GitHub      acme/api  wrote API_KEY_ID
 
-Rotated API_SECRET (prod): the new key is in 1Password and the 2 destinations in the map.
+Rotated API_SECRET (prod): the new key is in 1Password and the 2 destinations in secretspec.toml.
 The old key AKID-0 still works. Revoke it once nothing uses it.
 ok     Keys  revoked AKID-0
 

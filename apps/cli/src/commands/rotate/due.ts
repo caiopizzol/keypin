@@ -179,7 +179,7 @@ export async function checkDue(context: Context, path: string): Promise<number> 
   const picked = choices.filter(checks);
   if (!picked.length) {
     out.line(
-      `\nNothing to check: no key in ${environment} has an issuer, destinations and rotate_every. See docs/reference/secretspec-toml.md.`,
+      `\nNothing to check: no key in ${environment} has an issuer and rotate_every. See docs/reference/secretspec-toml.md.`,
     );
     return 1;
   }

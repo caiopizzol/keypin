@@ -4,6 +4,7 @@ import {
   envFileKind,
   envNames,
   type FolderListing,
+  type JobReader,
   messageOf,
   type ProjectFiles,
   type ProjectReader,
@@ -111,6 +112,20 @@ export async function scanProject(deps: Deps, root: string): Promise<ScanResult>
     nested: found.nested,
     unknowns,
   };
+}
+
+export async function jobReaders(deps: Deps, root: string, profile: string): Promise<JobReader[]> {
+  const reader: ProjectReader = {
+    root,
+    found: [],
+    read: (path) => readSource(deps, root, path, []),
+    list: (folder) => listing(deps, folder),
+    unknown: () => undefined,
+  };
+  const found: JobReader[] = [];
+  for (const { discovery } of deps.destinations)
+    if (discovery?.readers) found.push(...(await discovery.readers(reader, deps, profile)));
+  return found;
 }
 
 function merged(reports: { kind: string; report: Readonly<Record<string, unknown>> }[]) {

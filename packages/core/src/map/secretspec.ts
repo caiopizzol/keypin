@@ -178,14 +178,10 @@ function locate(
     return undefined;
   }
   const vault = vaults.find((each) => each.secretspec?.provider === scheme);
-  const read = vaults.flatMap((each) => (each.secretspec?.locate ? [each.name] : []));
+  const read = vaults.flatMap((each) => (each.secretspec ? [each.name] : []));
   if (!vault?.secretspec) {
     const names = read.length > 1 ? `${read.slice(0, -1).join(", ")} and ${read.at(-1)}` : read[0];
     fail(`uses ${uri}, and keypin reads only ${names} from ${SECRETSPEC_FILE}`);
-    return undefined;
-  }
-  if (!vault.secretspec.locate) {
-    fail(`uses ${uri}; keypin doesn't read ${vault.name} from ${SECRETSPEC_FILE} yet`);
     return undefined;
   }
   const ref = coordinates(refs);

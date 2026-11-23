@@ -48,7 +48,7 @@ export interface SecretspecAt {
 export interface SecretspecProvider<R extends KeyRef = KeyRef> {
   readonly provider: string;
   readonly refuses?: ReadonlyMap<string, string>;
-  locate?(at: SecretspecAt): R | string;
+  locate(at: SecretspecAt): R | string;
 }
 
 export interface VaultRules<R extends KeyRef = KeyRef, U extends KeyRef = KeyRef> {

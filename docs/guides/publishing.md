@@ -71,7 +71,7 @@ The map says where a key goes, not who writes it, so every teammate publishes fr
   environment must already exist. The two are separate destinations. keypin doesn't publish to GitHub Enterprise
   Server or ghe.com.
 - **Cloudflare:** Worker secrets, with the `wrangler` login or `KEYPIN_CLOUDFLARE_API_TOKEN` (see
-  [Notes](notes.md#signing-in-to-cloudflare)). It must reach the pinned `account`, and the Worker must already
+  [Troubleshooting](../reference/troubleshooting.md#signing-in-to-cloudflare)). It must reach the pinned `account`, and the Worker must already
   exist. Writing a Worker secret deploys a new version of the Worker, so deploy the Worker's latest version first;
   `--all` writes up to 100 of a Worker's keys in one version. keypin doesn't publish to Pages projects or Workers
   for Platforms namespaces.
@@ -140,9 +140,9 @@ keypin never deletes a secret from a destination you remove from the map.
 ## Pulling in CI
 
 A CI job can sign in to your vault and read a key itself, instead of getting a copy from `publish`. `pull` doesn't
-set up that sign-in (see [Service account](service-account.md) for 1Password, and Pulling in GitHub Actions for
-[AWS Secrets Manager](aws-secrets-manager.md#pulling-in-github-actions),
-[Infisical](infisical.md#pulling-in-github-actions) and [Doppler](doppler.md#pulling-in-github-actions)); it lists the job, so
+set up that sign-in (see [Service accounts](service-accounts.md) for 1Password, and Pulling in GitHub Actions for
+[AWS Secrets Manager](../integrations/vaults/aws-secrets-manager.md#pulling-in-github-actions),
+[Infisical](../integrations/vaults/infisical.md#pulling-in-github-actions) and [Doppler](../integrations/vaults/doppler.md#pulling-in-github-actions)); it lists the job, so
 the map still says who reads the key:
 
 ```toml

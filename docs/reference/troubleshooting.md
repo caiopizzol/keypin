@@ -1,4 +1,4 @@
-# Notes
+# Troubleshooting
 
 ## `wrangler dev`
 
@@ -21,10 +21,3 @@ keypin signs in to Cloudflare one of two ways:
   run wrangler, and `keypin run` doesn't pass the variable to a command.
 
 keypin never signs in with `CLOUDFLARE_API_TOKEN`: that stays a key your map can hold.
-
-## Files keypin keeps
-
-- `~/.config/keypin/registry.json`: the registered projects
-- `~/.local/state/keypin/state.json`: publish receipts, and the provider ID of each key `rotate` created
-
-They follow `XDG_CONFIG_HOME` and `XDG_STATE_HOME`, and never hold a value.

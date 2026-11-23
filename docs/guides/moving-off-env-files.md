@@ -1,4 +1,4 @@
-# Import
+# Moving off env files
 
 `keypin import` moves the values in an env file, such as `.env` or `.dev.vars`, into new 1Password items and maps
 each one in `keypin.toml`.
@@ -50,4 +50,4 @@ keypin never changes the env file. It tells you which lines to remove, or to del
 in it. `keypin run` warns while an env file still holds a key it provides.
 
 A `.dev.vars` has to go entirely, because while it exists `wrangler dev` ignores the keys `keypin run` provides.
-Before you delete it, import every secret in it and give each plain setting a new home. See [Notes](notes.md).
+Before you delete it, import every secret in it and give each plain setting a new home. See [`wrangler dev`](../reference/troubleshooting.md#wrangler-dev).

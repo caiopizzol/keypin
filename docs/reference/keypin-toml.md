@@ -1,4 +1,4 @@
-# Configuration
+# keypin.toml
 
 Each project has a `keypin.toml` at its root. It holds names and places, never values. keypin rejects a field it
 doesn't know, and a `<...>` placeholder left in a value.
@@ -23,8 +23,8 @@ repo = "me/my-project"
 
 `account` is the account's sign-in address, such as `my.1password.com`, its name as shown at the top left of the
 1Password app, or its account ID. A team shares one account, and each member signs in to it. For other vaults,
-see [Infisical](infisical.md), [Bitwarden](bitwarden.md), [Doppler](doppler.md) or
-[AWS Secrets Manager](aws-secrets-manager.md).
+see [Infisical](../integrations/vaults/infisical.md), [Bitwarden](../integrations/vaults/bitwarden.md), [Doppler](../integrations/vaults/doppler.md) or
+[AWS Secrets Manager](../integrations/vaults/aws-secrets-manager.md).
 
 ## Keys
 
@@ -37,8 +37,8 @@ Each `[keys.NAME]` table is named after the variable your program reads.
   notes as `notesPlain`; not one-time passwords, files or empty values.
 
 Write an environment as `dev = "op://..."`, or as a `[keys.NAME.prod]` table with `from` when it also has
-[destinations](publishing.md#destinations), [`pull` entries](publishing.md#pulling-in-ci) or an
-[issuer](rotation.md).
+[destinations](../guides/publishing.md#destinations), [`pull` entries](../guides/publishing.md#pulling-in-ci) or an
+[issuer](../guides/rotating-a-key.md).
 
 ## Environments
 
@@ -69,12 +69,3 @@ the key is due.
 The hosted console can't read your vault. For it to show when each key is due, run `keypin status --write` in the
 project and commit `.keypin/status.json`. It holds each key's `rotated` day per environment, or `null`, and the day
 it was written; no values or vault references.
-
-## Pulling in CI
-
-Moved to [Publishing](publishing.md#pulling-in-ci).
-
-## Rotating a key
-
-Moved to [Rotation](rotation.md), with each issuer, such as <a name="neon"></a>[Neon](rotation.md#neon) and
-<a name="random"></a>[`random`](rotation.md#random).

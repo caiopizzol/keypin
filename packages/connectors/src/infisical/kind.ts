@@ -21,11 +21,11 @@ function fixFor(failures: readonly SignInReason[], { env }: InfisicalHost): stri
   if (credentials && "problem" in credentials) return credentials.problem;
   const oidc = credentials !== null && "identityId" in credentials;
   if (failures.some((reason) => reason.kind === "no-credentials"))
-    return oidc ? NO_JOB_TOKEN : `${NO_CREDENTIALS} (docs/infisical.md)`;
+    return oidc ? NO_JOB_TOKEN : `${NO_CREDENTIALS} (docs/integrations/vaults/infisical.md)`;
   if (failures.some((reason) => reason.kind === "wrong-account"))
     return "use a machine identity from the organization keypin.toml pins under [infisical]; keypin can't read from a sub-organization";
   if (oidc)
-    return `check ${IDENTITY_ID}, the machine identity's OIDC Auth settings and the url under [infisical] in keypin.toml (docs/infisical.md)`;
+    return `check ${IDENTITY_ID}, the machine identity's OIDC Auth settings and the url under [infisical] in keypin.toml (docs/integrations/vaults/infisical.md)`;
   const variables =
     credentials && "variable" in credentials
       ? credentials.variable
@@ -61,7 +61,7 @@ export const infisicalVault: VaultKind<
       Object.values(key.environments).flatMap((entry) => (entry ? [entry.ref] : [])),
     );
     return map.pins.infisical !== undefined && refs.every((ref) => ref.kind === "infisical")
-      ? `add the secrets in Infisical and map them with ${SCHEME} references (docs/infisical.md)`
+      ? `add the secrets in Infisical and map them with ${SCHEME} references (docs/integrations/vaults/infisical.md)`
       : undefined;
   },
   itemNotes(refs, host) {

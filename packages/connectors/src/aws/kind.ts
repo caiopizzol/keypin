@@ -28,7 +28,7 @@ export interface SecretsManagerHost {
   readonly env: Readonly<Record<string, string | undefined>>;
 }
 
-const DOCS = "docs/aws-secrets-manager.md";
+const DOCS = "docs/integrations/vaults/aws-secrets-manager.md";
 
 export const secretsManagerVault: VaultKind<
   SecretsManagerHost,

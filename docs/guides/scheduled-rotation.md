@@ -8,7 +8,7 @@ Actions.
 ## Setup
 
 1. Move each key and its issuer's `admin` item into a vault you create, and update the references in `keypin.toml`.
-   A [service account](service-account.md) can't open the Private, Personal or Employee vaults, or the default
+   A [service account](service-accounts.md) can't open the Private, Personal or Employee vaults, or the default
    Shared vault. `rotate --due` skips a key without `rotate_every` in the map or a `rotated` date on its item.
 2. Create a service account with write access to that vault, and save its token as the Actions secret
    `OP_SERVICE_ACCOUNT_TOKEN`. keypin reads each admin key from the vault, so it isn't a secret of its own.
@@ -21,7 +21,7 @@ Actions.
    though GitHub can delay or skip a scheduled run. To check at other times, change the
    [schedule](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule);
    add `timezone:` to use your own time zone.
-5. [Ignore](configuration.md#ignored-keys) the two secrets at the top of `keypin.toml`, or `keypin check` asks you to
+5. [Ignore](../reference/keypin-toml.md#ignored-keys) the two secrets at the top of `keypin.toml`, or `keypin check` asks you to
    add them:
 
    ```toml

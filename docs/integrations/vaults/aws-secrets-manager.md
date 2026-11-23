@@ -49,7 +49,7 @@ it isn't the AWS managed one.
 ## Pulling in GitHub Actions
 
 A GitHub Actions job can sign in to AWS with OIDC and read a key itself, so the repo stores no copy. List the job
-in the map with a [`pull`](publishing.md#pulling-in-ci) entry, then:
+in the map with a [`pull`](../../guides/publishing.md#pulling-in-ci) entry, then:
 
 1. Add GitHub as an identity provider, once per AWS account:
 

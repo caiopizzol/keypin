@@ -360,7 +360,7 @@ describe("keypin with AWS Secrets Manager", () => {
       const run = project({ env: OIDC, aws: refused, idToken });
       expect(await cli(["check"], run.deps)).toBe(1);
       expect(run.stdout.text).toContain(
-        "Check KEYPIN_AWS_ROLE_ARN, KEYPIN_AWS_AUDIENCE and the role's trust policy (docs/aws-secrets-manager.md).",
+        "Check KEYPIN_AWS_ROLE_ARN, KEYPIN_AWS_AUDIENCE and the role's trust policy (docs/integrations/vaults/aws-secrets-manager.md).",
       );
       hidesSecrets(run.stdout.text + run.stderr.text);
     });

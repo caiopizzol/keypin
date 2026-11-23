@@ -31,7 +31,7 @@ billing /work/billing · read 0 env files, 0 wrangler configs, 0 workflows
 1 thing to do:
 1 Sign in to 1Password
   Install the 1Password desktop app.
-  On a server or in CI, use a 1Password service account instead (docs/service-account.md).
+  On a server or in CI, use a 1Password service account instead (docs/guides/service-accounts.md).
   1Password account "my.1password.com": sign-in failed: the 1Password desktop app isn't installed.
 
 --- stderr ---

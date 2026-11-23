@@ -1,7 +1,7 @@
 import { type IssuedKey, type Issuer, type IssuerCheck, Secret } from "@keypin/core";
 
 const BYTES = 32;
-const DOCS = "docs/rotation.md#random";
+const DOCS = "docs/guides/rotating-a-key.md#random";
 
 export class RandomIssuer implements Issuer {
   readonly #encoding: "base64" | "hex";

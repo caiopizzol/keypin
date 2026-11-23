@@ -44,7 +44,7 @@ reminded, set a [secret reminder](https://docs.doppler.com/docs/secrets#secret-r
 ## Pulling in GitHub Actions
 
 A GitHub Actions job can sign in to Doppler with OIDC and read a key itself, without a stored `DOPPLER_TOKEN`. This
-needs Doppler's Team or Enterprise plan. List the job in the map with a [`pull`](publishing.md#pulling-in-ci)
+needs Doppler's Team or Enterprise plan. List the job in the map with a [`pull`](../../guides/publishing.md#pulling-in-ci)
 entry, then:
 
 1. On a service account that can read the config, add a

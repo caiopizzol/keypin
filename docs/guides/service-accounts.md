@@ -1,4 +1,4 @@
-# Service account
+# Service accounts
 
 On a server or in CI without the 1Password desktop app, keypin can sign in with a
 [1Password service account](https://developer.1password.com/docs/service-accounts/). With read access, `run`, `check`,

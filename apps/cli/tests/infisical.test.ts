@@ -500,10 +500,10 @@ describe("keypin with Infisical", () => {
     expect(await cli(["check"], run.deps)).toBe(1);
     expect(run.stdout.text).not.toContain("keypin import");
     expect(run.stdout.text).toContain(
-      ".env sets STRIPE_API_KEY, which keypin.toml maps with no dev entry; for a key add the secrets in Infisical and map them with infisical:// references (docs/infisical.md).",
+      ".env sets STRIPE_API_KEY, which keypin.toml maps with no dev entry; for a key add the secrets in Infisical and map them with infisical:// references (docs/integrations/vaults/infisical.md).",
     );
     expect(run.stdout.text).toContain(
-      "Note: .env sets RESEND_KEY, which keypin.toml doesn't map; a plain setting can stay, and for a key add the secrets in Infisical and map them with infisical:// references (docs/infisical.md)",
+      "Note: .env sets RESEND_KEY, which keypin.toml doesn't map; a plain setting can stay, and for a key add the secrets in Infisical and map them with infisical:// references (docs/integrations/vaults/infisical.md)",
     );
   });
 
@@ -545,7 +545,7 @@ from = "infisical://billing/prod/STRIPE_API_KEY"
     run.disk.contents.set("/work/billing/.env", "RESEND_KEY=resend-value-1234\n");
     expect(await cli(["import", ".env", "--vault", "Private", "--yes"], run.deps)).toBe(1);
     expect(run.stderr.text).toContain(
-      "import creates 1Password items, and /work/billing/keypin.toml reads from Infisical; add the secrets in Infisical and map them with infisical:// references (docs/infisical.md)",
+      "import creates 1Password items, and /work/billing/keypin.toml reads from Infisical; add the secrets in Infisical and map them with infisical:// references (docs/integrations/vaults/infisical.md)",
     );
     expect(run.store.effects).toEqual([]);
   });

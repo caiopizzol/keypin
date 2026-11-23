@@ -3,6 +3,7 @@ import {
   type AccountCheck,
   type Destination,
   type Evidence,
+  type Expiry,
   type Fetch,
   objectField,
   parseObject,
@@ -67,9 +68,10 @@ export class GitHubSecretDestination implements Destination {
     if (user.status !== 200) throw this.#failure("GitHub GET /user", user);
     const publisher = stringField(user.body, "login");
     const scopes = user.headers.get("x-oauth-scopes");
+    const expires = this.#expiry(user.headers);
 
     const repo = await this.#get(`/repos/${this.#repo}`);
-    const facts = { publisher, expected: this.#owner };
+    const facts = { publisher, expected: this.#owner, ...(expires ? { expires } : {}) };
     const sso = this.#ssoRefusal(repo);
     if (sso !== null) return { ...facts, destinationAccount: null, ok: false, ...sso };
     if (repo.status === 404) {
@@ -192,6 +194,17 @@ export class GitHubSecretDestination implements Destination {
       : null;
   }
 
+  #expiry(headers: Headers): Expiry | null {
+    const at = expiryTime(headers.get("github-authentication-token-expiration"));
+    if (at === null) return null;
+    const who = this.#login ?? "the active gh login";
+    return {
+      credential: `the GitHub token for ${who}`,
+      at,
+      renew: `make a new token with the same access and sign gh in with it: gh auth login --hostname github.com --with-token < token.txt. In a workflow, replace the secret that holds it`,
+    };
+  }
+
   #ssoRefusal(reply: Reply): Refusal | null {
     const fix =
       reply.status === 403 || reply.status === 404 ? ssoFix(reply.headers, this.#owner) : null;
@@ -238,6 +251,16 @@ export async function sealedBox(value: string, publicKey: string): Promise<strin
   await sodium.ready;
   const key = sodium.from_base64(publicKey, sodium.base64_variants.ORIGINAL);
   return sodium.to_base64(sodium.crypto_box_seal(value, key), sodium.base64_variants.ORIGINAL);
+}
+
+const EXPIRATION = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}) (?:UTC|([+-]\d{2})(\d{2}))$/;
+
+export function expiryTime(header: string | null): string | null {
+  const [, day, time, hours, minutes] = EXPIRATION.exec(header?.trim() ?? "") ?? [];
+  if (day === undefined || time === undefined) return null;
+  const zone = hours === undefined ? "Z" : `${hours}:${minutes ?? "00"}`;
+  const at = new Date(`${day}T${time}${zone}`);
+  return Number.isNaN(at.getTime()) ? null : at.toISOString();
 }
 
 function sameLogin(a: string, b: string): boolean {

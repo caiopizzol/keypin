@@ -9,6 +9,7 @@ export {
   type Destination,
   type Environment,
   type Evidence,
+  type Expiry,
   type IssuedKey,
   type Issuer,
   type IssuerCheck,
@@ -44,7 +45,9 @@ export {
   type IssuerReader,
   type IssuerRules,
   type IssuerSpec,
+  readsAdminExpiry,
 } from "./issuer";
+export { type ExpiryVerdict, judgeExpiry } from "./expiry";
 export {
   envFlag,
   isEnvironmentName,

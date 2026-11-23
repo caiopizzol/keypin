@@ -205,6 +205,20 @@ describe("a service account sign-in", () => {
     await expect(failure).rejects.not.toThrow("Error {");
   });
 
+  test("a deleted service account says so, and how to replace it", async () => {
+    const deleted =
+      "(403) Forbidden (Service Account Deleted): The Service Account used in this integration has been deleted.";
+    const backend = onePasswordBackend(
+      serviceAccountConnect(TOKEN, async () => {
+        throw new Error(`Error { msg: ${deleted}, inner: None }`);
+      }),
+      "service-account",
+    );
+    await expect(backend.itemIds(ref("acme.1password.com"))).rejects.toThrow(
+      `1Password account "acme.1password.com": sign-in failed: ${deleted} The service account in OP_SERVICE_ACCOUNT_TOKEN no longer exists. Create a new one with read and write access to the vault, and put its token in OP_SERVICE_ACCOUNT_TOKEN (in a workflow, the secret that holds it)`,
+    );
+  });
+
   test("Account not found keeps the SDK's words: the desktop app's hint doesn't apply", async () => {
     const backend = onePasswordBackend(
       serviceAccountConnect(TOKEN, async () => {

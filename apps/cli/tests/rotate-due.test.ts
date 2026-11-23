@@ -511,6 +511,60 @@ describe("keypin rotate --due says who must act: 0 when nothing does, 3 for an a
   });
 });
 
+describe("keypin rotate --due checks the credentials it runs with, on days nothing is due too", () => {
+  const RENEW =
+    "Renew it: make a new token with the same access and sign gh in with it: gh auth login --hostname github.com --with-token < token.txt. In a workflow, replace the secret that holds it.";
+  const idle = async (expires?: string) => {
+    const w = await world();
+    w.dates.set(ITEM, "2026-11-01");
+    if (expires !== undefined) w.gh.tokenExpires = expires;
+    return w;
+  };
+
+  test("a GitHub token with weeks left is listed, and the run passes", async () => {
+    const run = ci(await idle("2027-01-30 12:00:00 UTC"));
+    expect(await run.run("--due")).toBe(0);
+    expect(run.stderr.text).toContain(
+      "Credentials\n  GitHub acme/mailer: the GitHub token for the active gh login expires 2027-01-30, in 82 days\n",
+    );
+    expect(run.warnings).toEqual([]);
+  });
+
+  test("under 14 days left warns, and the run passes", async () => {
+    const run = ci(await idle("2026-11-20 12:00:00 UTC"));
+    expect(await run.run("--due")).toBe(0);
+    expect(run.warnings).toEqual([
+      `A credential expires soon: GitHub acme/mailer: the GitHub token for the active gh login expires 2026-11-20, in 11 days. ${RENEW}`,
+    ]);
+  });
+
+  test("under 7 days left fails the run, with the steps to renew it", async () => {
+    const w = await idle("2026-11-14 12:00:00 UTC");
+    const run = ci(w);
+    expect(await recorded("github-token-expires", run, "--due")).toBe(1);
+    expect(run.stderr.text).toContain("Nothing is due.");
+    expect(run.stderr.text).toContain(RENEW);
+    expect(await ci(w).run("--check")).toBe(1);
+    expect(w.effects).toEqual([]);
+  });
+
+  test("a token GitHub refuses fails the run", async () => {
+    const w = await idle();
+    w.gh.revoked = true;
+    const run = ci(w);
+    expect(await run.run("--due")).toBe(1);
+    expect(run.stderr.text).toContain(
+      "FAILED GitHub acme/mailer: GitHub refused the token for the active gh login (HTTP 401)",
+    );
+  });
+
+  test("a token without an expiry adds nothing", async () => {
+    const run = ci(await idle());
+    expect(await run.run("--due")).toBe(0);
+    expect(run.stderr.text).not.toContain("Credentials");
+  });
+});
+
 describe("keypin rotate --due after a person replaced a waiting key by hand", () => {
   const HAND = "re_hand_sentinel_value_9a3d";
 

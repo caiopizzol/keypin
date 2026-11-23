@@ -12,6 +12,8 @@ export interface FakeGitHub {
   scopes?: string | null;
   repos: Record<string, FakeRepo>;
   failPut?: boolean;
+  tokenExpires?: string;
+  revoked?: boolean;
 }
 
 const SECRETS = /^\/repos\/([^/]+\/[^/]+)\/(?:actions|environments\/([^/]+))\/secrets(?:\/(.+))?$/;
@@ -37,8 +39,18 @@ export async function githubFetch(fake: FakeGitHub) {
     const reply = (status: number, body?: unknown, headers?: Record<string, string>) =>
       new Response(body === undefined ? null : JSON.stringify(body), { status, headers });
     const scopes = fake.scopes === undefined ? "repo" : fake.scopes;
+    if (fake.revoked) return reply(401, { message: "Bad credentials" });
     if (path === "/user")
-      return reply(200, { login: fake.login }, scopes === null ? {} : { "x-oauth-scopes": scopes });
+      return reply(
+        200,
+        { login: fake.login },
+        {
+          ...(scopes === null ? {} : { "x-oauth-scopes": scopes }),
+          ...(fake.tokenExpires === undefined
+            ? {}
+            : { "github-authentication-token-expiration": fake.tokenExpires }),
+        },
+      );
     const repoName = /^\/repos\/([^/]+\/[^/]+)$/.exec(path)?.[1];
     if (repoName !== undefined) {
       const repo = fake.repos[repoName];

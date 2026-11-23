@@ -14,6 +14,7 @@ import {
   generationOf,
   issuedFor,
   type KeyEntry,
+  type KeyRef,
   localDay,
   loadState,
   messageOf,
@@ -29,6 +30,7 @@ import { lookUpIds } from "../../publishing";
 import { type Flags, type Context, jobFor } from "./job";
 import { rotateLocked } from "./rotate-key";
 import { waitsNotice } from "./messages";
+import { checkCredentials } from "./credentials";
 
 async function progressOf(
   context: Context,
@@ -130,11 +132,12 @@ async function readsRoutinely(
 export async function rotateDue(context: Context, flags: Flags, path: string): Promise<number> {
   const { map, environment, deps, out } = context;
   const metadata = await readDates(deps, dueRefs(map, environment));
+  const dated = (ref: KeyRef) => metadata.dates.get(refKey(ref)) ?? null;
   const choices = dueKeys({
     map,
     environment,
     today: localDay(deps.now()),
-    metadata: (ref) => metadata.dates.get(refKey(ref)) ?? null,
+    metadata: dated,
     progress: await progressOf(context, path),
   });
   const shown = { rotate: "rotate", finish: "finish", skip: "skip", waiting: "wait" } as const;
@@ -159,6 +162,7 @@ export async function rotateDue(context: Context, flags: Flags, path: string): P
   if (!picked.length && !blocked.length)
     out.line(waiting.length ? "Nothing is due. An old key waits for approval." : "Nothing is due.");
   for (const c of waiting) waitsNotice(context, c.keyId);
+  codes.push(await checkCredentials(context, choices, dated));
   for (const choice of picked) {
     out.line("");
     try {
@@ -177,11 +181,12 @@ export async function rotateDue(context: Context, flags: Flags, path: string): P
 export async function checkDue(context: Context, path: string): Promise<number> {
   const { map, environment, deps, out } = context;
   const metadata = await readDates(deps, dueRefs(map, environment));
+  const dated = (ref: KeyRef) => metadata.dates.get(refKey(ref)) ?? null;
   const choices = dueKeys({
     map,
     environment,
     today: localDay(deps.now()),
-    metadata: (ref) => metadata.dates.get(refKey(ref)) ?? null,
+    metadata: dated,
     progress: await progressOf(context, path, { check: true }),
   });
   const checks = (c: DueChoice) => c.action !== "skip" || c.date !== undefined;
@@ -195,7 +200,7 @@ export async function checkDue(context: Context, path: string): Promise<number> 
     );
     return 1;
   }
-  const codes: number[] = [];
+  const codes = [await checkCredentials(context, choices, dated)];
   for (const choice of picked) {
     out.line("");
     const key = map.keys.find((each) => each.name === choice.keyId);

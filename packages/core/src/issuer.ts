@@ -24,7 +24,11 @@ export interface IssuerRules<T extends IssuerSpec = IssuerSpec> {
 
 export type IssuerKind<T extends IssuerSpec = IssuerSpec> = IssuerRules<T> &
   (
-    | { readonly admin?: true; connect(spec: T, admin: Secret, fetch?: Fetch): Issuer }
+    | {
+        readonly admin?: true;
+        readonly adminExpiry?: true;
+        connect(spec: T, admin: Secret, fetch?: Fetch): Issuer;
+      }
     | { readonly admin: false; connect(spec: T): Issuer }
   );
 
@@ -46,6 +50,11 @@ export function connectIssuer(
   if (found.admin === false) return found.connect(spec);
   if (admin === null) throw new Error(`the "${spec.kind}" issuer needs an admin key`);
   return found.connect(spec, admin, fetch);
+}
+
+export function readsAdminExpiry(kinds: IssuerKinds, spec: IssuerSpec): boolean {
+  const found = kinds.find((k) => k.kind === spec.kind);
+  return found !== undefined && found.admin !== false && found.adminExpiry === true;
 }
 
 export function idKeyOf(kinds: readonly IssuerRules[], spec: IssuerSpec): KeyId | null {

@@ -40,7 +40,7 @@ export function providerLines(
     const names = new Set([...(inherits ? Object.keys(base) : []), ...Object.keys(own)]);
     names.delete("defaults");
     for (const name of names) {
-      const secret = { ...table(base[name]), ...table(own[name]) };
+      const secret = { ...(inherits ? table(base[name]) : {}), ...table(own[name]) };
       if (secret.composed !== undefined || secret.from !== undefined) continue;
       const [first] = chainOf(profile, secret);
       if (first === undefined) unpinned = true;

@@ -1,0 +1,20 @@
+$ keypin rotate --due --yes
+exit 3
+
+--- calls runner warnings ---
+An old key waits for approval: The old RESEND_API_KEY (prod) still works. Once nothing uses it, run this workflow with approve revoke, or run this in your checkout: keypin rotate RESEND_API_KEY --approve-revoke
+
+--- stdout ---
+
+--- stderr ---
+ok     keypin status now lists /work/billing
+ok     Read 1 rotated date from 1Password account my.1password.com, not the values
+ok     Looked up 1 item ID in 1Password account my.1password.com, not the values
+ok     Read the key op://Private/mailer resend key/credential
+
+Keys in prod
+  RESEND_API_KEY  wait  rotated 2026-11-09, the old key waits; was due 2026-10-30
+  STRIPE_KEY      skip  no issuer, so keypin can't make a new key
+FAILED RESEND_API_KEY (prod) was due 2026-10-30, but keypin won't rotate it while its old key waits for approval.
+ok     Read 2 rotated dates from 1Password account my.1password.com, not the values
+ok     wrote /work/billing/.keypin/status.json

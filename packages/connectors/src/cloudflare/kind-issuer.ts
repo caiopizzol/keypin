@@ -4,6 +4,7 @@ import { cloudflareIssuerRules, type CloudflareTokenSpec } from "./rules";
 
 export const cloudflareIssuer: IssuerKind<CloudflareTokenSpec> = {
   ...cloudflareIssuerRules,
+  adminExpiry: true,
   connect: ({ accountId }, admin, fetch) =>
     new CloudflareIssuer({
       admin: async () => admin,

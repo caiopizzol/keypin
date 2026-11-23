@@ -58,6 +58,7 @@ import {
   abandonedNote,
   heldSteps,
   resetStop,
+  shortLifetime,
 } from "./messages";
 import { routineWrites } from "./routine-check";
 import { revokeOnly, resetHeld, neverSaved } from "./unfinished-rotation";
@@ -204,10 +205,11 @@ export async function rotateLocked(job: Job): Promise<number> {
     generation,
   );
   if (job.check) {
-    if (reset) {
+    const short = shortLifetime(job, issuer, check.lifetimeDays);
+    if (short) say(`${out.mark(false)} ${short}`);
+    if (reset)
       say(`\n${resetStop(deps, issuer, reset, vaultName(entry.ref, deps.vaults), job.args)}`);
-      return 1;
-    }
+    if (short || reset) return 1;
     say(`${out.mark(true)} ${key.name} (${owner.environment}) is ready for keypin rotate --due.`);
     return 0;
   }

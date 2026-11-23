@@ -1088,7 +1088,7 @@ describe("keypin rotate in a real terminal", () => {
       });
       expect(result.exit).toBe(0);
       expect(result.screen).toContain(
-        "  + Cloudflare            create a new key\n    with the old token's 1 policy and IP filter; expiring 30 days after it starts",
+        "  + Cloudflare            create a new key\n    with the old token's 1 policy (Workers Scripts Write) and IP filter; expiring 30 days after it starts",
       );
       expect(result.screen).toMatch(/^✓ Cloudflare {2}revoked "deploy" {2}\d+\.\ds$/m);
       expect(result.effects).toHaveLength(4);

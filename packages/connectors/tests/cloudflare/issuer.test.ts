@@ -92,7 +92,9 @@ describe("checkAccount", () => {
     assert(check.ok);
     expect(check.currentId).toBe(OLD_ID);
     expect(check.facts).toBe('the vault holds user API token "deploy", with 1 policy');
-    expect(check.notes?.create).toBe("with the old token's 1 policy; no expiry");
+    expect(check.notes?.create).toBe(
+      "with the old token's 1 policy (Workers Scripts Write); no expiry",
+    );
     expect(requests.map((r) => [r.method, r.path, r.auth])).toEqual([
       ["GET", "/client/v4/user/tokens/verify", `Bearer ${VAULT}`],
       ["GET", `/client/v4/user/tokens/${OLD_ID}`, `Bearer ${ADMIN}`],
@@ -307,7 +309,7 @@ describe("create", () => {
     const check = await issuer.checkAccount(null, new Secret(VAULT));
     assert(check.ok);
     expect(check.notes?.create).toBe(
-      "with the old token's 1 policy and IP filter; expiring 90 days after it starts",
+      "with the old token's 1 policy (Workers Scripts Write) and IP filter; expiring 90 days after it starts",
     );
     const created = await issuer.create("CLOUDFLARE_API_TOKEN prod");
     const sent: unknown = JSON.parse(requests.at(-1)?.body ?? "");
@@ -395,7 +397,7 @@ describe("create", () => {
     const check = await next.checkAccount(first.id, first.secret);
     assert(check.ok);
     expect(check.notes?.create).toBe(
-      "with the old token's 1 policy; expiring 90 days after it starts",
+      "with the old token's 1 policy (e086da7e2179491d91ee5f35b3ca210a); expiring 90 days after it starts",
     );
   });
 
@@ -535,5 +537,80 @@ issuer = { kind = "cloudflare", admin = "op://Private/cloudflare token maker/cre
       assert(!parsed.ok);
       expect(parsed.errors.join("\n")).toContain(error);
     }
+  });
+});
+
+describe("what a rotation depends on", () => {
+  test("checkAdmin reads the admin token's own expiry with verify, and nothing else", async () => {
+    const { issuer, requests } = cloudflare([OLD], { adminExpires: "2026-12-01T00:00:00Z" });
+    expect(await issuer.checkAdmin()).toEqual({
+      credential: "the Cloudflare admin token",
+      at: "2026-12-01T00:00:00Z",
+      renew:
+        'give it a later expiry at https://dash.cloudflare.com/profile/api-tokens, or put a token made with the "Create additional tokens" template in the admin item; create one at https://dash.cloudflare.com/profile/api-tokens',
+    });
+    expect(requests.map((r) => [r.method, r.path, r.auth])).toEqual([
+      ["GET", "/client/v4/user/tokens/verify", `Bearer ${ADMIN}`],
+    ]);
+  });
+
+  test("an admin token without an expiry has none, and one Cloudflare refuses fails", async () => {
+    expect(await cloudflare().issuer.checkAdmin()).toBeNull();
+    const refused = withFetch(answering({}), ACCOUNT).checkAdmin();
+    await expect(refused).rejects.toThrow(
+      `Cloudflare doesn't accept the admin token (Cloudflare GET /accounts/${ACCOUNT}/tokens/verify returned HTTP 404`,
+    );
+    await expect(refused).rejects.toThrow("Account API Tokens Edit");
+    const disabled = withFetch(
+      answering({
+        "GET /user/tokens/verify": {
+          status: 200,
+          body: { success: true, result: { id: "a".repeat(32), status: "disabled" } },
+        },
+      }),
+    ).checkAdmin();
+    await expect(disabled).rejects.toThrow("the admin token is disabled at Cloudflare");
+  });
+
+  test("checkAccount reports how many days a new token lasts", async () => {
+    const lasting = {
+      ...OLD,
+      not_before: "2026-01-01T00:00:00Z",
+      expires_on: "2026-01-31T00:00:00Z",
+    };
+    const check = await cloudflare([lasting]).issuer.checkAccount(null, new Secret(VAULT));
+    assert(check.ok);
+    expect(check.lifetimeDays).toBe(30);
+    const endless = await cloudflare().issuer.checkAccount(null, new Secret(VAULT));
+    assert(endless.ok);
+    expect(endless.lifetimeDays).toBeUndefined();
+  });
+
+  test("Admin and token-write permissions are named in a warning; narrower ones aren't", async () => {
+    const group = (id: string, name: string) => ({ id, name, meta: {} });
+    const broad: FakeToken = {
+      ...OLD,
+      policies: [
+        {
+          ...POLICY,
+          permission_groups: [
+            group("e086da7e2179491d91ee5f35b3ca210a", "Workers Scripts Write"),
+            group("1af1fa2adc104452b74a9a3364202f20", "Workers Admin"),
+            group("5bc3f8b21c554832afc660159ab75fa4", "Account API Tokens Write"),
+          ],
+        },
+      ],
+    };
+    const check = await cloudflare([broad]).issuer.checkAccount(null, new Secret(VAULT));
+    assert(check.ok);
+    expect(check.notes?.create).toBe(
+      "with the old token's 1 policy (Workers Scripts Write, Workers Admin, Account API Tokens Write); no expiry",
+    );
+    expect(check.warnings).toEqual([
+      'the new token copies Workers Admin, Account API Tokens Write from token "deploy". If it doesn\'t need those, make a narrower token at https://dash.cloudflare.com/profile/api-tokens, publish it, check what uses it still works, then delete the old one.',
+    ]);
+    const narrow = await cloudflare().issuer.checkAccount(null, new Secret(VAULT));
+    assert(narrow.ok);
+    expect(narrow.warnings).toBeUndefined();
   });
 });

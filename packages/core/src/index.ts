@@ -9,6 +9,7 @@ export {
   type Destination,
   type Environment,
   type Evidence,
+  type Expiry,
   type IssuedKey,
   type Issuer,
   type IssuerCheck,
@@ -44,7 +45,9 @@ export {
   type IssuerReader,
   type IssuerRules,
   type IssuerSpec,
+  readsAdminExpiry,
 } from "./issuer";
+export { type ExpiryVerdict, judgeExpiry } from "./expiry";
 export {
   envFlag,
   isEnvironmentName,
@@ -128,7 +131,7 @@ export {
   waitsForRevoke,
   writeRotationFile,
 } from "./rotation-file";
-export { type DueChoice, dueKeys, dueRefs, type Progress } from "./due";
+export { type DateProblem, type DueChoice, dueKeys, dueRefs, type Progress } from "./due";
 export { envFileKind, envNames, envValues, type EnvFileKind } from "./dotenv";
 export {
   type Discovered,

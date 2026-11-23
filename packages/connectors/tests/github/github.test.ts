@@ -2,6 +2,7 @@ import sodium from "libsodium-wrappers";
 import { assert, beforeAll, describe, expect, test } from "vite-plus/test";
 import { type Fetch, isRecord, Secret } from "@keypin/core";
 import { GitHubSecretDestination, sealedBox } from "../../src/github/index";
+import { expiryTime } from "../../src/github/github";
 import { expectNoneOf } from "@keypin/core/testing";
 
 const SENTINEL = "sentinel-value-7f3a9c";
@@ -115,6 +116,36 @@ describe("checkAccount", () => {
       `GET /repos/${REPO}/actions/secrets/public-key`,
     ]);
     expect(requests[0]?.headers.Authorization).toBe(`Bearer ${TOKEN}`);
+  });
+
+  test("reports the token's expiry from GitHub's header, in UTC or with an offset", async () => {
+    const cases: [string, string][] = [
+      ["2026-12-18 09:00:00 UTC", "2026-12-18T09:00:00.000Z"],
+      ["2026-12-18 09:00:00 -0300", "2026-12-18T12:00:00.000Z"],
+    ];
+    for (const [header, at] of cases) {
+      const routes = happyRoutes();
+      routes["GET /user"] = {
+        status: 200,
+        body: { login: "acme" },
+        headers: { "github-authentication-token-expiration": header },
+      };
+      const check = await destination(routes, { login: "acme" }).github.checkAccount();
+      expect(check.ok).toBe(true);
+      expect(check.expires).toEqual({
+        credential: "the GitHub token for acme",
+        at,
+        renew:
+          "make a new token with the same access and sign gh in with it: gh auth login --hostname github.com --with-token < token.txt. In a workflow, replace the secret that holds it",
+      });
+    }
+  });
+
+  test("a token without the header, or with one keypin can't read, has no expiry", async () => {
+    expect(expiryTime(null)).toBeNull();
+    expect(expiryTime("next tuesday")).toBeNull();
+    expect(expiryTime("2026-13-40 09:00:00 UTC")).toBeNull();
+    expect((await destination(happyRoutes()).github.checkAccount()).expires).toBeUndefined();
   });
 
   test("a wrong owner fails, and write then refuses", async () => {

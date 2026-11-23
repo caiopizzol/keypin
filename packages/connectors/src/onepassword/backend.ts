@@ -369,6 +369,8 @@ const SERVICE_ACCOUNT_LIMITS =
   "A service account token gets 1,000 reads and 100 writes an hour (10,000 and 1,000 on Business), and an account's service accounts together 1,000 requests a day (5,000 on Teams, 50,000 on Business)";
 const SDK_ERROR = /Error \{ msg: (.+?), inner: .*\}\s*$/s;
 const NO_PERMISSION = /do(?:n't| not) have the right permissions/;
+const DELETED =
+  /Service Account Deleted|service account used in this integration has been deleted/i;
 
 function signInFailed(
   account: string,
@@ -379,7 +381,12 @@ function signInFailed(
   const message = messageOf(error);
   const inner = SDK_ERROR.exec(message)?.[1] ?? message;
   const unknown = mode === "desktop" && inner === "Account not found";
-  const why = unknown ? "the 1Password app has no account with this sign-in address or ID" : inner;
+  const deleted = mode === "service-account" && DELETED.test(inner);
+  const why = unknown
+    ? "the 1Password app has no account with this sign-in address or ID"
+    : deleted
+      ? `${inner} The service account in OP_SERVICE_ACCOUNT_TOKEN no longer exists. Create a new one with read and write access to the vault, and put its token in OP_SERVICE_ACCOUNT_TOKEN (in a workflow, the secret that holds it)`
+      : inner;
   const reason: SignInReason =
     error instanceof SignInFailed ? error.reason : { kind: unknown ? "unknown-account" : "other" };
   const hint = tokenIgnored

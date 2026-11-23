@@ -1,0 +1,28 @@
+$ keypin rotate CLOUDFLARE_API_TOKEN --plan
+exit 3
+
+--- calls runner warnings ---
+
+--- calls vault ---
+read deploy cloudflare token
+read cloudflare token maker
+
+--- stdout ---
+
+--- stderr ---
+CLOUDFLARE_API_TOKEN prod  from op://Site/deploy cloudflare token/credential in 1Password account my.1password.com
+ok     Read the key and the admin key op://Site/cloudflare token maker/credential
+ok     Cloudflare  the vault holds user API token "deploy", with 1 policy
+
+Plan
+  + Cloudflare  create a new key
+    with the old token's 1 policy (Workers Scripts Write); expiring 30 days after it starts
+  ~ 1Password   save it to op://Site/deploy cloudflare token/credential, rotated today
+  - Cloudflare  revoke the old key "deploy", after a second y
+
+secretspec.toml publishes CLOUDFLARE_API_TOKEN (prod) nowhere, and no workflow in this repo runs secretspec run for prod. Check what uses it before you revoke the old key.
+
+This plan is routine: --yes can approve it.
+Nothing was written: --plan only shows the plan.
+To approve, run this in a terminal:
+  cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts rotate CLOUDFLARE_API_TOKEN

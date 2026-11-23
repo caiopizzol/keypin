@@ -1,0 +1,28 @@
+$ keypin rotate --check
+exit 1
+
+--- calls runner warnings ---
+
+--- calls vault ---
+read cloudflare token maker
+ids deploy cloudflare token
+read deploy cloudflare token
+read cloudflare token maker
+
+--- stdout ---
+
+--- stderr ---
+ok     Read 1 rotated date from 1Password account my.1password.com, not the values
+
+Keys in prod
+  CLOUDFLARE_API_TOKEN  check  not due until 2026-11-26
+ok     Read the admin key op://Site/cloudflare token maker/credential
+
+CLOUDFLARE_API_TOKEN prod  from op://Site/deploy cloudflare token/credential in 1Password account my.1password.com
+ok     Looked up 1 item ID in 1Password account my.1password.com, not the values
+ok     Read the key and the admin key op://Site/cloudflare token maker/credential
+ok     Cloudflare  the vault holds user API token "deploy", with 1 policy
+warn   the new token copies Workers Admin from token "deploy". If it doesn't need that, make a narrower token at https://dash.cloudflare.com/profile/api-tokens, publish it, check what uses it still works, then delete the old one.
+FAILED CLOUDFLARE_API_TOKEN (prod): a new key lasts 20 days, and rotate_every is 25d, so the published key would expire before the next rotation. Give the current key a longer lifetime at https://dash.cloudflare.com/profile/api-tokens, or set rotate_every under 20 days in [tool.keypin.prod.CLOUDFLARE_API_TOKEN].
+
+Fix what failed above, then run the check again. Nothing was created or written.

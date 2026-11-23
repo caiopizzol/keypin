@@ -1,0 +1,47 @@
+$ keypin check
+exit 1
+
+--- file secretspec.toml ---
+
+[project]
+name = "billing"
+revision = "1.0"
+
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+STRIPE_API_KEY = { description = "STRIPE_API_KEY", ref = { item = "billing stripe api key", field = "password" } }
+
+[profiles.prod]
+STRIPE_API_KEY = { description = "STRIPE_API_KEY", ref = { item = "billing stripe api key", field = "password" } }
+
+[tool.keypin.prod.STRIPE_API_KEY]
+rotate_every = "365d"
+issuer = { kind = "resend", admin = "op://Private/resend admin key/credential", permission = "sending_access" }
+publish = [
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
+  { to = "github-actions", repo = "acme/billing" },
+]
+
+--- calls vault ---
+ids billing stripe api key
+ids resend admin key
+
+--- calls destination ---
+check cloudflare-worker:billing-worker
+check github-actions:acme/billing
+
+--- stdout ---
+billing /work/billing · read 0 env files, 0 wrangler configs, 0 workflows
+1 thing to do:
+1 Fix the vault item op://Private/resend admin key/credential
+  No item "resend admin key".
+  Used by STRIPE_API_KEY (prod) as its issuer's admin key.
+
+--- stderr ---
+FAILED Couldn't look up 1 of 2 items in 1Password account my.1password.com, not the values
+ok     Checked 2 accounts

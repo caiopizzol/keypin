@@ -66,7 +66,13 @@ export interface VaultBackend {
   close?(): Promise<void>;
 }
 
-export type AccountCheck = { publisher: string; expected: string } & (
+export interface Expiry {
+  credential: string;
+  at: string;
+  renew: string;
+}
+
+export type AccountCheck = { publisher: string; expected: string; expires?: Expiry } & (
   | { ok: true; destinationAccount: string }
   | { ok: false; destinationAccount: string | null; reason: string; fix?: string }
 );
@@ -81,7 +87,14 @@ export interface Destination {
 }
 
 export type IssuerCheck = { facts: string } & (
-  | { ok: true; currentId?: string; gone?: string; notes?: { create?: string; revoke?: string } }
+  | {
+      ok: true;
+      currentId?: string;
+      gone?: string;
+      notes?: { create?: string; revoke?: string };
+      lifetimeDays?: number;
+      warnings?: readonly string[];
+    }
   | { ok: false; reason: string; fix?: string }
 );
 
@@ -98,6 +111,7 @@ export interface Issuer {
   lostCreate?(name: string): string;
   revoke?(id: string): Promise<"revoked" | "already gone">;
   label?(id: string): string;
+  checkAdmin?(): Promise<Expiry | null>;
   readonly createResetsOld?: true;
 }
 

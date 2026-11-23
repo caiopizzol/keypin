@@ -1,0 +1,20 @@
+$ keypin rotate --due
+exit 1
+
+--- calls runner warnings ---
+
+--- stdout ---
+
+--- stderr ---
+ok     keypin status now lists /work/billing
+ok     Read 1 rotated date from 1Password account my.1password.com, not the values
+
+Keys in prod
+  RESEND_API_KEY  skip  not due until 2027-01-30
+  STRIPE_KEY      skip  no issuer, so keypin can't make a new key
+Nothing is due.
+
+Credentials
+FAILED GitHub acme/mailer: the GitHub token for the active gh login expires 2026-11-14, in 5 days. Renew it: make a new token with the same access and sign gh in with it: gh auth login --hostname github.com --with-token < token.txt. In a workflow, replace the secret that holds it.
+ok     Read 2 rotated dates from 1Password account my.1password.com, not the values
+ok     wrote /work/billing/.keypin/status.json

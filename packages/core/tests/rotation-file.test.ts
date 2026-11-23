@@ -133,18 +133,19 @@ describe("rotate --due picks keys", () => {
         keyId: "UNREADABLE",
         action: "skip",
         why: "the vault's rotated date couldn't be read",
-        date: "missing",
+        date: "unread",
       },
       { keyId: "UNDATED", action: "skip", why: "no rotated date in the vault", date: "missing" },
       { keyId: "FOREVER", action: "skip", why: "never rotates" },
     ]);
   });
 
-  test("finishes a rotation that stopped, and leaves one that waits for approval, whatever the date", () => {
+  test("finishes a rotation that stopped, and leaves one that waits for approval, saying when it is due or undated", () => {
+    const waiting = ["DUE_KEY", "TODAY_KEY", "UNREADABLE", "UNDATED", "FOREVER"];
     const progress = (keyId: string): Progress =>
       keyId === "FRESH_KEY"
         ? { kind: "unfinished", since: "2026-11-01", revokes: true }
-        : keyId === "DUE_KEY"
+        : waiting.includes(keyId)
           ? { kind: "waiting", since: "2026-11-02", revokes: true }
           : null;
     const choices = dueKeys({
@@ -154,10 +155,31 @@ describe("rotate --due picks keys", () => {
       metadata,
       progress,
     });
-    expect(choices.slice(0, 3)).toEqual([
-      { keyId: "DUE_KEY", action: "waiting", why: "rotated 2026-11-02, the old key waits" },
-      { keyId: "TODAY_KEY", action: "rotate", why: "due today" },
+    const waits = "rotated 2026-11-02, the old key waits";
+    expect(choices).toEqual([
+      {
+        keyId: "DUE_KEY",
+        action: "waiting",
+        why: `${waits}; was due 2026-10-30`,
+        blocked: "2026-10-30",
+      },
+      { keyId: "TODAY_KEY", action: "waiting", why: `${waits}; due today`, blocked: TODAY },
       { keyId: "FRESH_KEY", action: "finish", why: "finishing the rotation from 2026-11-01" },
+      { keyId: "BY_HAND", action: "skip", why: "no issuer, so keypin can't make a new key" },
+      { keyId: "NOWHERE", action: "rotate", why: "was due 2026-04-01" },
+      {
+        keyId: "UNREADABLE",
+        action: "waiting",
+        why: `${waits}; the vault's rotated date couldn't be read`,
+        date: "unread",
+      },
+      {
+        keyId: "UNDATED",
+        action: "waiting",
+        why: `${waits}; no rotated date in the vault`,
+        date: "missing",
+      },
+      { keyId: "FOREVER", action: "waiting", why: waits },
     ]);
   });
 });

@@ -53,6 +53,21 @@ jobs:
     expect(refs.keypin).toEqual(["0.40.0", "0.41.0"]);
   });
 
+  test("a double quote after an escaped backslash closes the string, so the comment after it is skipped", () => {
+    const refs = workflowRefs(String.raw`
+on: push
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "C:\\" # previously npx keypin@0.39.0
+          echo "say \"hi #1\"" && npm install -g keypin@0.40.0
+`);
+    assert(refs);
+    expect(refs.keypin).toEqual(["0.40.0"]);
+  });
+
   test("finds secrets and vars in expressions and if conditions, not in comments", () => {
     const refs = workflowRefs(`
 on: push

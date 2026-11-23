@@ -155,10 +155,13 @@ function withoutComments(script: string): string {
       let quote: string | null = null;
       for (let at = 0; at < line.length; at++) {
         const char = line[at];
-        if (quote === null && char === "\\") at++;
-        else if (quote === null && (char === '"' || char === "'")) quote = char;
-        else if (char === quote && (quote === "'" || line[at - 1] !== "\\")) quote = null;
-        else if (quote === null && char === "#" && (at === 0 || /\s/.test(line[at - 1] ?? "")))
+        if (quote === "'") {
+          if (char === "'") quote = null;
+        } else if (char === "\\") at++;
+        else if (quote === '"') {
+          if (char === '"') quote = null;
+        } else if (char === '"' || char === "'") quote = char;
+        else if (char === "#" && (at === 0 || /\s/.test(line[at - 1] ?? "")))
           return line.slice(0, at);
       }
       return line;

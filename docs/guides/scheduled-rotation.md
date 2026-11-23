@@ -7,11 +7,9 @@ Actions; for another vault, see [Other vaults](#other-vaults).
 
 ## Setup
 
-1. Move each key and its issuer's `admin` item into a vault for this project alone, and point `[providers]` and each
-   `admin` reference in `secretspec.toml` at it. The service account can change every item in its vaults, so in a
-   shared vault, this repository's token would reach other projects' keys. A [service account](service-accounts.md)
-   can't open the Private, Personal or Employee vaults, or the default Shared vault. `rotate --due` skips a key
-   without `rotate_every` or a `rotated` date on its item.
+1. Move each key and its issuer's `admin` item into a vault for this project alone, as
+   [Service accounts](service-accounts.md) says, and point `[providers]` and each `admin` reference in
+   `secretspec.toml` at it. In a shared vault, this repository's token would reach other projects' keys.
 2. In Settings → Environments, create the environment `rotation`, and limit its deployment branches to the default
    branch. A private repository on GitHub Free has no environment secrets: delete `environment:` from the workflow,
    and save the secrets below as repo secrets.
@@ -23,24 +21,21 @@ Actions; for another vault, see [Other vaults](#other-vaults).
      gh secret set OP_SERVICE_ACCOUNT_TOKEN --env rotation -R acme/web
    ```
 
-   Without `--expires-in`, it never expires; with it, make a new one before that day. keypin reads each admin key
-   from the vault, so it isn't a secret of its own.
+   Without `--expires-in`, it never expires; with it, [set a reminder](service-accounts.md#expiry) to make a new one
+   before that day. keypin reads each admin key from the vault, so it isn't a secret of its own.
 
 4. Create a fine-grained GitHub token for this repository only, with the Secrets permission set to Read and write,
    and save it as the secret `KEYPIN_GITHUB_TOKEN` in `rotation`. Keys published to an environment also need
    Environments set to Read and write. The workflow's own `GITHUB_TOKEN` can't write secrets.
-5. Add the workflow below as `.github/workflows/rotate-keys.yml`. Pin the keypin version you run on your laptop, and
-   bump both together. It checks every day at 06:17 UTC, so a due key usually rotates that day, though GitHub can
-   delay or skip a scheduled run. To check at other times, change the
-   [schedule](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule);
-   add `timezone:` to use your own time zone. `GH_CONFIG_DIR` and `--insecure-storage` keep `gh`'s login in the
-   job's temporary folder, which the runner empties after the job, not on a self-hosted runner's disk or keyring.
-6. Anyone with a `KEYPIN_GITHUB_TOKEN` that has Contents write can push code to the default branch, past its rules if
-   the token's account may bypass them. Every run, manual ones too, pushes `.keypin/` there with the workflow's
-   `GITHUB_TOKEN` instead, which a rule requiring a pull request or a status check rejects. Keep the branch free of
-   such a rule, or accept that risk: give the token Contents write from an account that may bypass the rule, pass it
-   to checkout as `token:`, and add `paths-ignore: [".keypin/**"]` to your `on: push` workflows, which its pushes
-   start. Pushes with `GITHUB_TOKEN` start none.
+5. Add the workflow below as `.github/workflows/rotate-keys.yml`. Pin the keypin version you run on your laptop;
+   `keypin check` notes when they differ. It runs daily at 06:17 UTC, though GitHub can delay or skip a scheduled run;
+   change the [schedule](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
+   to run at other times. `GH_CONFIG_DIR` and `--insecure-storage` keep `gh`'s login in the job's temporary folder,
+   which the runner empties after the job, not on a self-hosted runner's disk or keyring.
+6. Every run, manual ones too, pushes `.keypin/` to the default branch with the workflow's `GITHUB_TOKEN`, which a
+   rule requiring a pull request or a status check rejects. Keep the branch free of such a rule, or give
+   `KEYPIN_GITHUB_TOKEN` Contents write from an account that may bypass it, pass it to checkout as `token:`, and add
+   `paths-ignore: [".keypin/**"]` to your `on: push` workflows. Anyone with that token can then push code there.
 7. `keypin check` asks for the workflow's two secrets. [Ignore](../reference/secretspec-toml.md#toolkeypin) them:
 
    ```toml
@@ -49,10 +44,9 @@ Actions; for another vault, see [Other vaults](#other-vaults).
    ```
 
    Or declare them in a profile no app runs with, so `keypin publish --all --profile rotation` writes them and
-   `keypin status` shows when they're due. Save each in the vault with a
-   [rotated date](../integrations/vaults/1password.md#rotated-date): in step 3, pipe the token to
-   `secretspec set OP_SERVICE_ACCOUNT_TOKEN --profile rotation`. Without a `production` profile, put this one above
-   the last, which `publish` and `rotate` use.
+   `keypin status` shows when they're due. In step 3, pipe the token to `secretspec set OP_SERVICE_ACCOUNT_TOKEN
+   --profile rotation`, and give each item a [rotated date](../integrations/vaults/1password.md#rotated-date).
+   Without a `production` profile, put this one above the last, which `publish` and `rotate` use.
 
    ```toml
    [profiles.rotation]
@@ -164,12 +158,17 @@ still sign in to Doppler with [OIDC](../integrations/vaults/doppler.md#signing-i
 
 ## Runs
 
-`rotate --due` rotates each key that is due and has an `issuer`, and says why it skips the others.
-Without a terminal, `--yes` approves only routine writes, as in [publishing](publishing.md#steps).
+`rotate --due` rotates each key that is due and has an `issuer`, and says why it skips the others. Without a
+terminal, `--yes` approves only routine writes, as in [publishing](publishing.md#steps). It exits 0 when no one needs
+to act, even while an old key waits for approval; 3 while a key is due and its old key still waits, every run until
+someone approves; and 1 when something failed, or a key's rotated date is missing or couldn't be read.
 
-When an old key waits for approval, the run passes with a warning; a red run means something failed. GitHub emails a
-failed scheduled run only to the account that last changed the `schedule` or re-enabled the workflow, and only if it
-turned on Actions [notifications](https://docs.github.com/en/actions/concepts/workflows-and-actions/notifications-for-workflow-runs).
+Every run also checks the credentials it uses, on days nothing is due too. It warns when the GitHub token expires in
+under 14 days and fails under 7, and fails when a Cloudflare admin token expires within 7 days of the key's next due
+date. A [service account](service-accounts.md#expiry)'s expiry can't be read.
+
+GitHub emails a failed scheduled run only to the account that last changed the `schedule` or re-enabled the workflow,
+and only if it turned on Actions [notifications](https://docs.github.com/en/actions/concepts/workflows-and-actions/notifications-for-workflow-runs).
 To approve, run the workflow with **approve revoke** checked, and a key to approve only that one. keypin deletes an
 old key only if every destination got the new one, and only in a terminal if a destination taken out of
 `secretspec.toml` may still use it. Resend can't tell keypin which key the vault holds, so keypin never revokes the

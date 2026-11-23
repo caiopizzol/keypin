@@ -137,9 +137,13 @@ its own vault item. For an account API token (`cfat_`), add `account_id` and use
 
 keypin finds the vault's token with Cloudflare's verify endpoint, makes a new token with the same policies, IP
 filter and lifetime (and its start date, if still ahead), then deletes the old one. It doesn't use Roll, which stops the old token at once.
-A deploy token needs the [Workers role](https://developers.cloudflare.com/workers/authorization/workers/) Admin to
-create a Worker, and Editor to deploy one that exists. Rotation copies the old token's permissions, so once the
-Worker exists, replace an Admin token with an Editor one.
+The plan names the permissions it copies, and warns about Admin and API Tokens Edit (or Write) ones. A deploy token
+needs the [Workers role](https://developers.cloudflare.com/workers/authorization/workers/) Admin to create a Worker,
+and Editor to deploy one that exists, so once the Worker exists, replace an Admin token with an Editor one.
+
+`rotate --check` fails when the new token would expire before the next rotation: give the token a longer lifetime, or
+a shorter `rotate_every`. `--due` and `--check` also fail when the admin token expires within 7 days of the key's
+next due date.
 
 ## OpenRouter
 

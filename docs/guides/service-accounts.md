@@ -29,3 +29,8 @@ without an account in the provider, the vaults you granted the service account a
 1Password limits each token to 1,000 reads and 100 writes an hour on individual, Families and Teams accounts (10,000
 and 1,000 on Business), and all service accounts together to 1,000 requests a day (5,000 on Teams, 50,000 on
 Business). See [rate limits](https://www.1password.dev/service-accounts/rate-limits).
+
+## Expiry
+
+1Password can't tell keypin when a service account expires, so set a reminder to replace it before the date you gave
+`--expires-in`. Once one is deleted, every run fails and says how to replace it.

@@ -28,7 +28,13 @@
     "@keypin/connectors": "workspace:*",
     "@keypin/core": "workspace:*",
     "@types/bun": "1.4.4",
+    "@types/mdast": "4.0.4",
+    "github-slugger": "2.0.0",
+    "mdast-util-to-string": "4.0.0",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
     "typescript": "7.0.2",
+    "unified": "11.0.5",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },

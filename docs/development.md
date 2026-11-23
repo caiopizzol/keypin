@@ -20,6 +20,9 @@ bun run test       # tests
 bun run typecheck  # tsc in every package
 ```
 
+keypin.dev builds `/docs` from `docs/` on `main`, and rebuilds when a push changes it. `bun run test` fails on a
+broken link or a page keypin.dev can't build.
+
 ## Guardrails
 
 `bun run check` fails when code breaks one of these, so the code keeps its shape:

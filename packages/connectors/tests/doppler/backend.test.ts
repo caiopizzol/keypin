@@ -151,10 +151,19 @@ describe("reading", () => {
     );
   });
 
-  test("ids are the config and the secret's name, and metadata has no rotated date", async () => {
+  test("ids are the workplace, the config and the secret's name, and metadata has no rotated date", async () => {
     const { vault } = setup(SERVICE);
-    expect(await vault.itemIds(REF)).toEqual({ vault: "billing/prd", item: "STRIPE_KEY" });
+    expect(await vault.itemIds(REF)).toEqual({ vault: "acme/billing/prd", item: "STRIPE_KEY" });
+    expect((await vault.readItem(REF)).ids).toEqual({
+      vault: "acme/billing/prd",
+      item: "STRIPE_KEY",
+    });
     expect(await vault.metadata(REF)).toEqual({ rotated: null });
+  });
+
+  test("the same config in another workplace has other ids, so an old approval doesn't cover it", async () => {
+    const { vault } = setup(SERVICE, { workplace: "other" });
+    expect(await vault.itemIds(REF)).toEqual({ vault: "other/billing/prd", item: "STRIPE_KEY" });
   });
 
   test("list names the config's secrets without reading a value", async () => {

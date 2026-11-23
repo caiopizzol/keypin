@@ -1,6 +1,6 @@
 {
   "packages/connectors/src/doppler/backend.ts": {
-    "lines": 404,
+    "lines": 408,
     "why": "dopplerBackend is one closure: sign-in, reads and writes share its credentials, fetch, session and strict state, so splitting it means threading that state through every helper."
   },
   "packages/connectors/src/infisical/backend.ts": {

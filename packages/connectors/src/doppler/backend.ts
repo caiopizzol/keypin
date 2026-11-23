@@ -54,6 +54,7 @@ export interface DopplerOptions {
 interface Session {
   token: string;
   minted: boolean;
+  workplace: string;
 }
 
 export function dopplerBackend(
@@ -63,6 +64,7 @@ export function dopplerBackend(
 ): VaultBackend {
   const warn = options.warn ?? (() => {});
   let pending: Promise<Session> | null = null;
+  const session = () => (pending ??= signIn());
   const strict = credentials !== null && "identityId" in credentials;
   const stored = credentials !== null && "token" in credentials ? credentials.token : null;
   const kind = strict ? IDENTITY_TOKEN : stored === null ? "token" : tokenKind(stored);
@@ -102,8 +104,7 @@ export function dopplerBackend(
     path: string,
     options: { query?: Record<string, string>; body?: Json } = {},
   ): Promise<{ status: number; body: Json }> {
-    pending ??= signIn();
-    const { token } = await pending;
+    const { token } = await session();
     return request(method, path, { ...options, token });
   }
 
@@ -116,20 +117,19 @@ export function dopplerBackend(
     if ("problem" in credentials)
       throw new SignInFailed(`${where}: sign-in failed: ${credentials.problem}`, { kind: "other" });
     if ("token" in credentials) {
-      await checkToken(credentials.token);
-      return { token: credentials.token, minted: false };
+      const workplace = await workplaceOf(credentials.token);
+      return { token: credentials.token, minted: false, workplace };
     }
     const token = await oidcToken(credentials);
     try {
-      await checkToken(token);
+      return { token, minted: true, workplace: await workplaceOf(token) };
     } catch (error) {
       await revoke(token);
       throw error;
     }
-    return { token, minted: true };
   }
 
-  async function checkToken(token: string): Promise<void> {
+  async function workplaceOf(token: string): Promise<string> {
     const where = account();
     const me = await request("GET", "/v3/me", { token });
     if (me.status === 401 && !strict)
@@ -137,12 +137,16 @@ export function dopplerBackend(
         `${where}: sign-in failed: Doppler refused the ${kind} in ${TOKEN_VARIABLE} (HTTP 401); it may be revoked or expired, so make a new one`,
         { kind: "other" },
       );
-    if (me.status !== 200)
+    const workplace = isRecord(me.body.workplace) ? me.body.workplace.slug : undefined;
+    if (me.status !== 200 || typeof workplace !== "string" || !workplace)
       throw new SignInFailed(
         `${where}: sign-in failed: couldn't check the ${kind} ${held} (${problem(me)})`,
         { kind: "other" },
       );
+    return workplace;
   }
+
+  const idsIn = async (ref: DopplerRef) => idsOf(ref, (await session()).workplace);
 
   async function oidcToken(given: {
     identityId: string;
@@ -237,7 +241,7 @@ export function dopplerBackend(
   async function existing(ref: DopplerRef) {
     if (!(await names(ref)).includes(ref.name))
       throw new Error(`${describeRef(ref)}: no secret ${ref.name} in ${ref.project}/${ref.config}`);
-    return idsOf(ref);
+    return idsIn(ref);
   }
 
   async function valueOf(ref: DopplerRef) {
@@ -247,7 +251,7 @@ export function dopplerBackend(
         `${describeRef(ref)}: Doppler hides this restricted secret's value from a ${kind}; use a service token or service account token`,
       );
     if (computed === "") throw new Error(`${describeRef(ref)}: the value is empty`);
-    return { secret: new Secret(computed), ids: idsOf(ref) };
+    return { secret: new Secret(computed), ids: await idsIn(ref) };
   }
 
   async function ownSecret(ref: DopplerRef, fail: (message: string) => Error): Promise<void> {

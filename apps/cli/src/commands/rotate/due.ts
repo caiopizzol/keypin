@@ -189,9 +189,11 @@ export async function checkDue(context: Context, path: string): Promise<number> 
     out.line("");
     if (choice.action === "skip" && choice.date === "missing") {
       const ref = map.keys.find((key) => key.name === choice.keyId)?.environments[environment]?.ref;
-      if (ref && vaultKindOf(deps.vaults, ref.kind).keepsRotated === false) {
+      const read = ref !== undefined && metadata.dates.get(refKey(ref)) != null;
+      if (read && vaultKindOf(deps.vaults, ref.kind).keepsRotated === false) {
+        const command = ["keypin rotate", choice.keyId, ...context.envArgs].join(" ");
         out.warn(
-          `${choice.keyId}: its vault keeps no rotated date, so scheduled rotation doesn't cover it. Rotate it by hand with keypin rotate ${choice.keyId}.`,
+          `${choice.keyId}: its vault keeps no rotated date, so scheduled rotation doesn't cover it. Rotate it by hand with ${command}.`,
         );
         continue;
       }

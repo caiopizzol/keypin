@@ -632,6 +632,38 @@ describe("keypin rotate --check, the setup check a workflow runs before the firs
     unchanged(w);
   });
 
+  test("a vault lookup that failed still fails, even where the vault keeps no rotated date", async () => {
+    const w = await published();
+    w.vault.metadata = async () => {
+      throw new Error("the token can't read this config");
+    };
+    const failed = machine(w, {
+      vaults: vaults.map((vault) => ({ ...vault, keepsRotated: false as const })),
+    });
+    expect(await failed.run("--check")).toBe(1);
+    expect(failed.stderr.text).toContain(
+      "RESEND_API_KEY: the vault's rotated date couldn't be read",
+    );
+    expect(failed.stderr.text).not.toContain("Rotate it by hand");
+    unchanged(w);
+  });
+
+  test("rotating by hand keeps the profile it checked", async () => {
+    const w = await world(
+      MAP.replace("[profiles.prod]\nRESEND_API_KEY", "[profiles.dev]\nRESEND_API_KEY")
+        .replace("\nSTRIPE_KEY = ", "\n[profiles.prod]\nSTRIPE_KEY = ")
+        .replace("[tool.keypin.prod.RESEND_API_KEY]", "[tool.keypin.dev.RESEND_API_KEY]"),
+    );
+    w.dates.delete(ITEM);
+    const undated = machine(w, {
+      vaults: vaults.map((vault) => ({ ...vault, keepsRotated: false as const })),
+    });
+    await undated.run("--check", "--profile", "dev");
+    expect(undated.stderr.text).toContain(
+      "Rotate it by hand with keypin rotate RESEND_API_KEY --profile dev.",
+    );
+  });
+
   test("the next step keeps the environment it checked", async () => {
     const run = ci(
       await world(

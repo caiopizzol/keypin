@@ -14,6 +14,12 @@ export interface WorkflowRefs {
 export interface SecretspecRun {
   profile: string | null;
   folder: string | null;
+  checkouts: Checkout[];
+}
+
+export interface Checkout {
+  repository: string | null;
+  path: string | null;
 }
 
 export interface SecretUse {
@@ -98,8 +104,10 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     const callerOwned = passedByCaller && named === null;
     const steps = isRecord(job) && Array.isArray(job.steps) ? job.steps : [];
     const own = [...secretsIn(job, steps, callerOwned)];
+    const checkouts = steps.flatMap(checkoutOf);
     const parts = steps.map((step) => {
-      const found = isRecord(job) && isRecord(step) ? secretspecSteps(top, job, step) : [];
+      const found =
+        isRecord(job) && isRecord(step) ? secretspecSteps(top, job, step, checkouts) : [];
       runs.push(...found);
       return {
         secrets: [...secretsIn(step, null, callerOwned)],
@@ -142,6 +150,7 @@ function secretspecSteps(
   top: Record<string, unknown>,
   job: Record<string, unknown>,
   step: Record<string, unknown>,
+  checkouts: Checkout[],
 ): SecretspecRun[] {
   if (typeof step.run !== "string") return [];
   const env = { ...envOf(top), ...envOf(job), ...envOf(step) };
@@ -152,7 +161,17 @@ function secretspecSteps(
   return secretspecRuns(step.run).map((run) => ({
     profile: profileOf(run.profile, env[PROFILE_VARIABLE]),
     folder: run.moved || run.file ? null : folder,
+    checkouts,
   }));
+}
+
+function checkoutOf(step: unknown): Checkout[] {
+  if (!isRecord(step) || typeof step.uses !== "string") return [];
+  if (!/^actions\/checkout(?:@|$)/i.test(step.uses.trim())) return [];
+  const inputs = isRecord(step.with) ? step.with : {};
+  const repository = inputs.repository ?? "";
+  if (typeof repository !== "string") return [];
+  return [{ repository: repository.trim() || null, path: folderOf(inputs.path) }];
 }
 
 function runDefault(scope: Record<string, unknown>): unknown {

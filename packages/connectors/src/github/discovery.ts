@@ -6,7 +6,7 @@ import {
   messageOf,
   type ProjectReader,
 } from "@keypin/core";
-import { usesSecrets, workflowRefs } from "./workflows";
+import { type SecretspecRun, usesSecrets, workflowRefs } from "./workflows";
 import { needsOf } from "./discovery-needs";
 import { githubOrigin } from "./discovery-origin";
 import type { Repo, Workflow, WorkflowHost } from "./discovery-repo";
@@ -26,10 +26,18 @@ export const workflowDiscovery: Discovery<WorkflowHost> = {
     const placed = !root.startsWith("..") && !isAbsolute(root);
     const how = `secretspec run --profile ${profile}`;
     const found: JobReader[] = [];
+    let origin: Promise<string | null> | undefined;
+    const repo = () =>
+      (origin ??= top
+        ? githubOrigin(host, project.root).then((o) => (o && "repo" in o ? o.repo : null))
+        : Promise.resolve(null));
     for (const workflow of await readWorkflows(project, top)) {
-      const folders = workflow.refs.runs
-        .filter((run) => run.profile === profile)
-        .map((run) => (placed ? run.folder : null));
+      const folders: (string | null)[] = [];
+      for (const run of workflow.refs.runs) {
+        if (run.profile !== profile) continue;
+        const folder = placed ? await repoFolder(run, repo) : null;
+        if (folder !== false) folders.push(folder);
+      }
       let here = false;
       for (const folder of folders)
         if (folder !== null && (await runsIn(project, root, folder))) here = true;
@@ -40,6 +48,27 @@ export const workflowDiscovery: Discovery<WorkflowHost> = {
     return found;
   },
 };
+
+async function repoFolder(
+  run: SecretspecRun,
+  repo: () => Promise<string | null>,
+): Promise<string | null | false> {
+  const mine = [];
+  for (const checkout of run.checkouts) {
+    if (checkout.repository !== null) {
+      const name = checkout.repository.includes("${{") ? null : await repo();
+      if (name === null) return null;
+      if (checkout.repository.toLowerCase() !== name.toLowerCase()) continue;
+    }
+    mine.push(checkout);
+  }
+  const [only] = mine;
+  if (run.folder === null || only === undefined) return run.folder;
+  if (mine.length > 1 || only.path === null) return null;
+  if (!only.path) return run.folder;
+  if (run.folder === only.path) return "";
+  return run.folder.startsWith(`${only.path}/`) ? run.folder.slice(only.path.length + 1) : false;
+}
 
 async function runsIn(project: ProjectReader, root: string, folder: string): Promise<boolean> {
   if (folder === root) return true;

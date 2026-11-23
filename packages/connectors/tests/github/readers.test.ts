@@ -29,7 +29,10 @@ function readers(project: string, workflow: string, files: Record<string, string
   const unused = async () => ({ ok: false as const, reason: "not read here" });
   const host: WorkflowHost = {
     git: async (_folder, args) =>
-      args.join(" ") === "rev-parse --show-toplevel" ? `${TOP}\n` : null,
+      ({
+        "rev-parse --show-toplevel": `${TOP}\n`,
+        "remote get-url origin": "git@github.com:acme/repo.git\n",
+      })[args.join(" ")] ?? null,
     githubSecrets: unused,
     organizationSecrets: unused,
     sshHostname: async () => null,
@@ -44,6 +47,18 @@ jobs:
     steps:
       - ${step}
 `;
+
+const checkout = (inputs: string) => `uses: actions/checkout@v4
+        with:
+          ${inputs.split("\n").join("\n          ")}
+      - `;
+
+const inFolder = (folder: string) =>
+  `run: secretspec run --profile prod -- ./deploy.sh\n        working-directory: ${folder}`;
+
+const LISTED = [
+  { file: "../../.github/workflows/deploy.yml", how: "secretspec run --profile prod" },
+];
 
 describe("the workflows a vault-only rotation lists", () => {
   test("a workflow that runs secretspec run in another app of the repo isn't listed", async () => {
@@ -85,5 +100,43 @@ describe("the workflows a vault-only rotation lists", () => {
         how: "secretspec run --profile prod, from a folder keypin can't tell",
       },
     ]);
+  });
+
+  test("a folder under the job's checkout path is the repo folder below that path", async () => {
+    const workflow = deploy(checkout("path: ./repo") + inFolder("repo/apps/web"));
+    expect(await readers("apps/web", workflow)).toEqual(LISTED);
+    expect(await readers("apps/billing", workflow)).toEqual([]);
+  });
+
+  test("a folder outside the job's checkout path isn't in this repo", async () => {
+    expect(
+      await readers("apps/web", deploy(checkout("path: repo") + inFolder("apps/web"))),
+    ).toEqual([]);
+    expect(
+      await readers("", deploy(checkout("path: repo") + "run: secretspec run -P prod")),
+    ).toEqual([]);
+  });
+
+  test.each([
+    ["set by an expression", checkout("path: ${{ inputs.dir }}")],
+    ["of this repo twice", checkout("path: repo") + checkout("path: other")],
+    ["of a repository keypin can't name", checkout("repository: ${{ github.repository }}")],
+  ])("a checkout %s is listed, saying keypin can't tell its folder", async (_, checkouts) => {
+    expect(await readers("apps/billing", deploy(checkouts + inFolder("repo/apps/web")))).toEqual([
+      {
+        file: "../../.github/workflows/deploy.yml",
+        how: "secretspec run --profile prod, from a folder keypin can't tell",
+      },
+    ]);
+  });
+
+  test("a checkout of another repository is ignored, and one naming this repository counts", async () => {
+    const other = checkout("repository: acme/tools\npath: tools");
+    const self = checkout("repository: Acme/Repo\npath: repo");
+    expect(await readers("apps/web", deploy(other + inFolder("apps/web")))).toEqual(LISTED);
+    expect(await readers("apps/web", deploy(other + self + inFolder("repo/apps/web")))).toEqual(
+      LISTED,
+    );
+    expect(await readers("apps/web", deploy(self + inFolder("apps/web")))).toEqual([]);
   });
 });

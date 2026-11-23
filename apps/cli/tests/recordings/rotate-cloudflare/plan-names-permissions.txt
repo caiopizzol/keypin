@@ -20,7 +20,7 @@ Plan
   ~ 1Password   save it to op://Site/deploy cloudflare token/credential, rotated today
   - Cloudflare  revoke the old key "deploy", after a second y
 
-secretspec.toml publishes CLOUDFLARE_API_TOKEN (prod) nowhere, and nothing in this repo reads it at job time. Check what uses it before you revoke the old key.
+secretspec.toml publishes CLOUDFLARE_API_TOKEN (prod) nowhere, and no workflow in this repo runs secretspec run for prod. Check what uses it before you revoke the old key.
 
 This plan is routine: --yes can approve it.
 Nothing was written: --plan only shows the plan.

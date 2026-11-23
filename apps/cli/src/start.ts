@@ -84,6 +84,7 @@ import { isStyled } from "./output";
 import { selfCommand } from "./runtime";
 import { selfFor } from "./self";
 import { RandomIssuer } from "./random";
+import { version } from "../../../package.json";
 import { onePasswordFrom } from "./sign-in";
 import { routedVault } from "./vault";
 
@@ -240,6 +241,7 @@ function self(cwd: string) {
     full: compiled ? [process.execPath] : selfCommand(process.argv[0] ?? "bun", script),
     running: compiled ? [process.execPath] : [script],
     cwd,
+    version,
     env: process.env,
     which: (name, path) => Bun.which(name, { PATH: path }),
     real: realPath,

@@ -1,0 +1,65 @@
+$ keypin publish STRIPE_API_KEY --plan
+exit 3
+
+--- file /work/billing/secretspec.toml ---
+
+[project]
+name = "billing"
+revision = "1.0"
+
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+STRIPE_API_KEY = { description = "STRIPE_API_KEY", ref = { item = "billing stripe api key", field = "password" } }
+
+[profiles.prod]
+STRIPE_API_KEY = { description = "STRIPE_API_KEY", ref = { item = "billing stripe api key", field = "password" } }
+
+[tool.keypin.prod.STRIPE_API_KEY]
+rotate_every = "365d"
+publish = [
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
+  { to = "github-actions", repo = "acme/billing" },
+]
+
+--- given terminal ---
+"none"
+
+--- given running ---
+"/home/me/.npm/_npx/9bc54a/node_modules/@keypin/cli-darwin-arm64/bin/keypin"
+
+--- given version ---
+"0.39.0"
+
+--- calls vault ---
+read billing stripe api key
+
+--- calls destination ---
+check cloudflare-worker:billing-worker
+check github-actions:acme/billing
+
+--- calls asked ---
+
+--- stdout ---
+
+--- stderr ---
+
+STRIPE_API_KEY prod  from op://Private/billing stripe api key/password in 1Password account my.1password.com
+ok     Cloudflare  billing-worker  as me@example.com, account 11111111111111111111111111111111
+ok     GitHub      acme/billing    as acme, account acme
+
+ok     Read 1 value from 1Password account my.1password.com
+
+Plan  generation 8f24c3e0b75826a7
+  + Cloudflare  billing-worker  first write  needs approval
+    writing a Worker secret deploys a new version of the Worker
+  + GitHub      acme/billing    first write  needs approval
+
+This plan needs approval in a terminal; --yes can't give it.
+Nothing was written: --plan only shows the plan.
+To approve, run this in a terminal:
+  cd /work/billing && npx keypin@0.39.0 publish STRIPE_API_KEY

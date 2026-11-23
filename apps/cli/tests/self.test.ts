@@ -19,6 +19,7 @@ function here(over: Partial<Here> & { links?: Record<string, string> } = {}): He
     full: FULL,
     running: ["/lib/keypin/main.js"],
     cwd: "/private/tmp/project",
+    version: "0.39.0",
     env: { PATH: "/home/me/.bun/bin:/usr/bin", PWD: "/tmp/project" },
     which: (name, path) =>
       path.split(":").includes("/home/me/.bun/bin") ? `/home/me/.bun/bin/${name}` : null,
@@ -130,6 +131,30 @@ describe("selfFor", () => {
     expect(self.command).toEqual(["/tmp/keypin"]);
   });
 
+  test("a binary in npx's cache: npx with the running version", () => {
+    const binary = "/home/me/.npm/_npx/9bc54a/node_modules/@keypin/cli-darwin-arm64/bin/keypin";
+    const self = selfFor(here({ full: [binary], running: [binary], which: () => null }));
+    expect(self.command).toEqual(["npx", "keypin@0.39.0"]);
+  });
+
+  test("a binary in npx's cache that is also the keypin on PATH: keypin", () => {
+    const binary = "/home/me/.npm/_npx/9bc54a/node_modules/@keypin/cli-darwin-arm64/bin/keypin";
+    const self = selfFor(
+      here({
+        full: [binary],
+        running: [binary],
+        links: { "/home/me/.bun/bin/keypin": binary, [binary]: binary },
+      }),
+    );
+    expect(self.command).toEqual(["keypin"]);
+  });
+
+  test("a folder named like npx's cache, but not it: the full command", () => {
+    const binary = "/home/me/my_npx/keypin";
+    const self = selfFor(here({ full: [binary], running: [binary], which: () => null }));
+    expect(self.command).toEqual([binary]);
+  });
+
   test("a PWD that isn't this folder, or that is missing, leaves the real folder", () => {
     expect(selfFor(here({ env: { PWD: "/somewhere/else" } })).folder).toBe("/private/tmp/project");
     expect(selfFor(here({ env: {} })).folder).toBe("/private/tmp/project");
@@ -174,6 +199,7 @@ describe("selfFor on disk", () => {
       full: FULL,
       running: [join(root, "lib/main.js")],
       cwd: join(root, "project"),
+      version: "0.39.0",
       env: { PATH: `${join(root, "bin")}:/usr/bin`, PWD: join(root, "link") },
       which: (name: string, path: string) => Bun.which(name, { PATH: path }),
       real,

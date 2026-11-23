@@ -224,6 +224,7 @@ async function checkInstalled() {
       full: [running],
       running: [running],
       cwd: folder,
+      version,
       env: { PATH: `${bin}:${BASE_ENV.PATH}`, PWD: linked },
       which: (name, path) => Bun.which(name, { PATH: path }),
       real: (path) => (existsSync(path) ? realpathSync(path) : null),

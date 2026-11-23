@@ -9,6 +9,7 @@ export interface Here {
   full: readonly string[];
   running: readonly string[];
   cwd: string;
+  version: string;
   env: Readonly<Record<string, string | undefined>>;
   which: (name: string, path: string) => string | null;
   real: (path: string) => string | null;
@@ -16,6 +17,7 @@ export interface Here {
 }
 
 const RUNNER_BIN = `${sep}node_modules${sep}.bin`;
+const NPX_CACHE = `${sep}_npx${sep}`;
 
 export function terminalPath(path: string | undefined): string {
   return (path ?? "")
@@ -25,7 +27,14 @@ export function terminalPath(path: string | undefined): string {
 }
 
 export function selfFor(here: Here): Self {
-  return { folder: shownFolder(here), command: isOnPath(here) ? ["keypin"] : here.full };
+  return { folder: shownFolder(here), command: commandFor(here) };
+}
+
+function commandFor(here: Here): readonly string[] {
+  if (isOnPath(here)) return ["keypin"];
+  if (here.running.some((path) => path.includes(NPX_CACHE)))
+    return ["npx", `keypin@${here.version}`];
+  return here.full;
 }
 
 function isOnPath({ running, env, which, real, launches, cwd }: Here): boolean {

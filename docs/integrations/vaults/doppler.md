@@ -1,62 +1,67 @@
 # Doppler
 
-keypin can read keys from [Doppler](https://www.doppler.com) instead of 1Password. `run`, `check`, `publish` and
+keypin reads secrets from [Doppler](https://www.doppler.com) configs. `run`, `check`, `status`, `publish` and
 `rotate` work; `import` creates 1Password items, so add the secrets in Doppler yourself.
 
-1. Pin your workplace in `keypin.toml`, and reference each secret by project, config and name:
+## Sign in
 
-   ```toml
-   [doppler]
-   workplace = "2faa85f6610102d983522"
-   
-   [keys.STRIPE_KEY]
-   rotate_every = "90d"
-   dev = "doppler://billing/dev/STRIPE_KEY"
-   prod = "doppler://billing/prd/STRIPE_KEY"
-   ```
+Set a token on the machine:
 
-   `workplace` is the slug after `/workplace/` in the dashboard's address, or the one `doppler me` shows.
+```sh
+export DOPPLER_TOKEN=dp.sa.xxxx
+```
 
-2. Set a token on the machine:
+- A [service account](https://docs.doppler.com/docs/service-accounts) token reads every config the account has
+  access to.
+- A [service token](https://docs.doppler.com/docs/service-tokens) reads one config, so it suits a server or CI job
+  that uses one environment.
+- A personal token works, but Doppler hides restricted secrets from it.
 
-   ```sh
-   export DOPPLER_TOKEN=dp.sa.xxxx
-   ```
+In GitHub Actions, keypin can sign in with OIDC instead; see [Pulling in GitHub Actions](#pulling-in-github-actions).
+keypin checks that the token belongs to the pinned workplace, and never passes `DOPPLER_TOKEN` to the command
+`keypin run` starts.
 
-   - A [service account](https://docs.doppler.com/docs/service-accounts) token reads every config the account has
-     access to. `keypin rotate` needs a role that can write the config.
-   - A [service token](https://docs.doppler.com/docs/service-tokens) reads one config, so it suits a server or CI
-     job that uses one environment. `keypin rotate` needs one made with read/write access.
-   - A personal token works, but Doppler hides restricted secrets from it.
+## The map
 
-   In a GitHub Actions job, keypin can sign in with OIDC instead; see
-   [Pulling in GitHub Actions](#pulling-in-github-actions).
+```toml
+[doppler]
+workplace = "2faa85f6610102d983522"
 
-keypin never passes `DOPPLER_TOKEN` to the command `keypin run` starts. Before it reads, keypin checks that the token
-belongs to the pinned workplace and refuses another.
+[keys.STRIPE_KEY]
+rotate_every = "90d"
+dev = "doppler://billing/dev/STRIPE_KEY"
+prod = "doppler://billing/prd/STRIPE_KEY"
+```
 
-keypin refuses to save a rotated key in a secret that references another, such as `${shared.prd.STRIPE_KEY}`, or
-that a branch config's root or an inherited config also holds; point `keypin.toml` at the source secret instead.
+`workplace` is the slug after `/workplace/` in the dashboard's address, or the one `doppler me` shows.
 
-Doppler keeps no rotated date on a secret, so `keypin status` notes it can't tell when a Doppler key is due. To be
-reminded, set a [secret reminder](https://docs.doppler.com/docs/secrets#secret-reminders) in Doppler.
+## References
+
+A reference is `doppler://<project>/<config>/<SECRET_NAME>`.
+
+## Rotated date
+
+Doppler keeps no rotated date on a secret, so `keypin status` can't tell when a Doppler key is due. To be reminded,
+set a [secret reminder](https://docs.doppler.com/docs/secrets#secret-reminders) in Doppler.
+
+## Permissions
+
+`keypin rotate` needs write access to the config: a service account role that can write it, or a service token made
+with read/write access.
 
 ## Pulling in GitHub Actions
 
-A GitHub Actions job can sign in to Doppler with OIDC and read a key itself, without a stored `DOPPLER_TOKEN`. This
-needs Doppler's Team or Enterprise plan. List the job in the map with a [`pull`](../../guides/publishing.md#pulling-in-ci)
-entry, then:
+A job can sign in with OIDC and read a key itself, without a stored `DOPPLER_TOKEN`. This needs Doppler's Team or
+Enterprise plan. List the job in the map with a [`pull`](../../guides/publishing.md#pulling-in-ci) entry, then:
 
 1. On a service account that can read the config, add a
    [service account identity](https://docs.doppler.com/docs/service-account-identities). Set the discovery URL to
-   `https://token.actions.githubusercontent.com`, the `aud` claim to `https://github.com/<owner>`, and the `sub`
-   claim to the one GitHub gives your repo's branch, such as `repo:owner@123456/repo@456789:ref:refs/heads/main`.
-   See [the subject formats](aws-secrets-manager.md#pulling-in-github-actions) for older repos and GitHub
-   environments. Keep the identity's token TTL to a few minutes.
-
-2. In the job, give keypin the identity's ID. keypin exchanges GitHub's token for a short-lived Doppler token,
-   reads, and tries to revoke it before the command starts; if that fails, keypin warns and starts the command
-   anyway, and the token lasts until its TTL runs out:
+   `https://token.actions.githubusercontent.com`, the `aud` claim to `https://github.com/<owner>`, and the `sub` claim
+   to your repo's branch, such as `repo:owner@123456/repo@456789:ref:refs/heads/main`
+   ([subject formats](aws-secrets-manager.md#pulling-in-github-actions)). Keep the identity's token TTL to a few
+   minutes.
+2. In the job, give keypin the identity's ID, and leave `DOPPLER_TOKEN` unset. keypin exchanges GitHub's token for a
+   short-lived Doppler token, reads, and tries to revoke it before the command starts:
 
    ```yaml
    permissions:
@@ -73,5 +78,9 @@ entry, then:
          KEYPIN_DOPPLER_IDENTITY_ID: <identity ID>
    ```
 
-   Set `KEYPIN_DOPPLER_AUDIENCE` if the identity expects another audience. Leave `DOPPLER_TOKEN` unset; keypin
-   refuses both. `keypin check` flags a job that sets the ID without `id-token: write`.
+Set `KEYPIN_DOPPLER_AUDIENCE` if the identity expects another audience.
+
+## Limits
+
+keypin won't save a rotated key in a secret that references another, such as `${shared.prd.STRIPE_KEY}`, or that a
+branch config's root or an inherited config also holds; point the map at the source secret.

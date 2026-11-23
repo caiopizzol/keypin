@@ -42,8 +42,8 @@ GitHub repo `me/billing`. keypin rejects a field it doesn't know and a `<...>` l
 ## References
 
 A reference is the address of one value in your vault, such as `op://Private/billing stripe key/credential`. In
-1Password, open the field's menu and select **Copy Secret Reference**. Other vaults have their own format:
-[Infisical](../integrations/vaults/infisical.md), [Bitwarden](../integrations/vaults/bitwarden.md),
+1Password, open the field's menu and select **Copy Secret Reference**. Each vault's page gives its format:
+[1Password](../integrations/vaults/1password.md), [Infisical](../integrations/vaults/infisical.md), [Bitwarden](../integrations/vaults/bitwarden.md),
 [Doppler](../integrations/vaults/doppler.md), [AWS Secrets Manager](../integrations/vaults/aws-secrets-manager.md).
 
 ## Environments

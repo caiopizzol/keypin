@@ -1,6 +1,6 @@
 {
   "name": "keypin",
-  "version": "0.40.0",
+  "version": "0.41.0",
   "private": true,
   "description": "Key syncs and rotation for the vault you already use. keypin rotates your keys at their provider and publishes them to your CI and hosting.",
   "homepage": "https://github.com/caiopizzol/keypin#readme",

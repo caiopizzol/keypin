@@ -1,63 +1,63 @@
 # How it works
 
-keypin connects your vault, the places that use your keys, and the providers that issue them. It keeps only the
-path between them, in `keypin.toml`.
+keypin connects your vault, the places that use your keys, and the providers that issue them. The project's
+`secretspec.toml` says which keys exist and where each one lives; keypin's part of it says where each key goes and
+how it's rotated.
 
 ```mermaid
 flowchart LR
-  vault["Your vault<br>the values<br>rotated dates"] -- reads --> map["keypin.toml, in your repo<br>key names<br>vault references<br>destinations<br>rotation rules"]
-  map -- writes --> used["Where keys are used<br>your laptop, CI and hosting<br>env vars while a command runs<br>published copies"]
+  vault["Your vault<br>the values<br>rotated dates"] -- reads --> map["secretspec.toml, in your repo<br>key names and profiles<br>vault providers<br>destinations<br>rotation rules"]
+  map -- writes --> used["Where keys are used<br>CI and hosting<br>published copies"]
 ```
 
 ## Your vault holds the values
 
-Each value is kept once, in your vault. keypin reads it only while `run`, `publish` or `rotate` needs it. A
-`rotated` date on the vault item tells keypin when the key is due.
+Each value is kept once, in your vault. keypin reads it only while `publish` or `rotate` needs it. A rotated date on
+the secret tells keypin when the key is due.
 
-## keypin.toml holds names and places
+## secretspec.toml holds names and places
 
-It lists the project's keys, where each one lives in your vault, and where each one goes. It holds no value, so you
-commit it.
+[secretspec](https://secretspec.dev) owns the file: the project's keys and the vault each one lives in. keypin adds
+`[tool.keypin]`: where each key goes and how it's rotated. The file holds no value, so you commit it.
 
 ```toml
-[1password]
-account = "my.1password.com"
+[project]
+name = "billing"
+revision = "1.0"
 
-[keys.STRIPE_KEY]
+[providers]
+acme = "onepassword://Acme"
+
+[defaults]
+providers = ["acme"]
+
+[profiles.default]
+STRIPE_KEY = { description = "Stripe test key" }
+
+[profiles.production]
+STRIPE_KEY = { description = "Stripe live key" }
+
+[tool.keypin.production.STRIPE_KEY]
 rotate_every = "90d"
-dev = "op://Private/billing dev stripe key/credential"
-
-[keys.STRIPE_KEY.prod]
-from = "op://Private/billing prod stripe key/credential"
-
-[[keys.STRIPE_KEY.prod.publish]]
-to = "github-actions"
-repo = "me/billing"
+publish = [{ to = "github-actions", repo = "me/billing" }]
 ```
 
-Here `STRIPE_KEY` has one 1Password field for `dev` and another for `prod`, and the `prod` value is published to the
-GitHub repo `me/billing`. keypin rejects a field it doesn't know and a `<...>` left in a value. Every field is in
-[keypin.toml](../reference/secretspec-toml.md).
+Here `STRIPE_KEY` has one 1Password item per profile in the `Acme` vault, `secretspec/billing/default/STRIPE_KEY`
+and `secretspec/billing/production/STRIPE_KEY`, and the production value is published to the GitHub repo
+`me/billing`. keypin rejects a field it doesn't know and a `<...>` left in a value. Every field keypin reads is in
+[secretspec.toml](../reference/secretspec-toml.md).
 
-## References
+## Profiles
 
-A reference is the address of one value in your vault, such as `op://Private/billing stripe key/credential`. In
-1Password, open the field's menu and select **Copy Secret Reference**. Each vault's page gives its format:
-[1Password](../integrations/vaults/1password.md), [Infisical](../integrations/vaults/infisical.md), [Bitwarden](../integrations/vaults/bitwarden.md),
-[Doppler](../integrations/vaults/doppler.md), [AWS Secrets Manager](../integrations/vaults/aws-secrets-manager.md).
-
-## Environments
-
-Each key has one entry per environment, `dev` and `prod` by default. `keypin run` uses the first and
-`keypin publish` the last; `--env <name>` picks another. Each entry can point to a different vault item, so your
-laptop never needs the production value.
+Each secretspec profile is a set of keys, such as `default` for your laptop and `production`. Every profile also has
+the keys of `[profiles.default]`. `keypin publish` and `keypin rotate` use `production`; `--profile <name>` picks
+another. Each profile reads its own vault item, so your laptop never needs the production value.
 
 ## How a key reaches your code
 
-- `keypin run` starts your command with the keys as environment variables. Nothing is written to disk.
-- `keypin publish` writes each value to its destinations, such as a GitHub Actions secret.
-- A CI job can sign in to your vault and run `keypin run` instead. See
-  [Pulling in CI](../guides/publishing.md#pulling-in-ci).
+- `secretspec run -- <command>` starts your command with the keys as environment variables, on your laptop or in a
+  CI job.
+- `keypin publish` writes each value to its destinations, such as a GitHub Actions secret or a Cloudflare Worker.
 
 ## Rotation
 
@@ -65,8 +65,8 @@ Give a key an `issuer`, such as Resend, Neon or OpenAI, and `keypin rotate` crea
 saves it to your vault and publishes it. Its plan says whether keypin revokes the old key after a second `y`, or
 leaves it for you to delete, as on a first Resend rotation. See [Rotating a key](../guides/rotating-a-key.md).
 
-`keypin status` shows which keys are due. [Scheduled rotation](../guides/scheduled-rotation.md) rotates them on a
-schedule, for keys in 1Password published to GitHub Actions.
+`keypin status` shows which keys are due. [Scheduled rotation](../guides/scheduled-rotation.md) rotates them in
+your GitHub Actions.
 
 ## keypin asks first
 

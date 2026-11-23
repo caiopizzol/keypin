@@ -1,88 +1,92 @@
 # Infisical
 
-keypin reads secrets from [Infisical](https://infisical.com) projects. `run`, `check`, `status`, `publish` and
-`rotate` work; `import` creates 1Password items, so add the secrets in Infisical yourself.
+keypin reads and rotates keys in [Infisical](https://infisical.com) projects. `check`, `status`, `publish` and
+`rotate` work.
 
 ## Sign in
 
-keypin signs in as a machine identity from your top-level organization, not a sub-organization:
+keypin signs in as a machine identity:
 
 - **[Universal Auth](https://infisical.com/docs/documentation/platform/identities/universal-auth):** set
   `INFISICAL_UNIVERSAL_AUTH_CLIENT_ID` and `INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET` to the identity's client ID and
   secret.
 - **An access token**, for another auth method such as Kubernetes or AWS: set `INFISICAL_TOKEN` or
   `INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN`, for example to `$(infisical login --method=<method> ... --silent --plain)`.
-  keypin uses the client ID and secret when both are set.
-- **GitHub Actions OIDC:** see [Pulling in GitHub Actions](#pulling-in-github-actions).
+  keypin uses the client ID and secret when both are set, and refuses a token that isn't a machine identity's.
+- **GitHub Actions OIDC:** see [Signing in from GitHub Actions](#signing-in-from-github-actions).
 
-keypin checks that the identity belongs to the pinned organization, and never passes these variables to the command
-`keypin run` starts.
+secretspec reads `INFISICAL_CLIENT_ID` and `INFISICAL_CLIENT_SECRET` instead; only `INFISICAL_TOKEN` works for both.
 
-## The map
+## The provider
 
 ```toml
-[infisical]
-organization = "acme"
-url = "https://eu.infisical.com"
+[project]
+name = "billing"
 
-[keys.STRIPE_KEY]
-rotate_every = "90d"
-dev = "infisical://billing/dev/STRIPE_KEY"
-prod = "infisical://billing/prod/payments/STRIPE_KEY"
+[providers]
+infisical = "infisical://app.infisical.com/7e2f1a4c-0b1d-4c8e-9f00-1234567890ab"
+infisical_eu = "infisical://eu.infisical.com/7e2f1a4c-0b1d-4c8e-9f00-1234567890ab?env=prod&path=/apps"
+
+[defaults]
+providers = ["infisical"]
+
+[profiles.production]
+STRIPE_KEY = { description = "Stripe" }
+RESEND_API_KEY = { description = "Resend", ref = { item = "/billing/RESEND" } }
+SENTRY_DSN = { description = "Sentry", providers = ["infisical_eu"] }
 ```
 
-`organization` is the slug in your organization's settings. Leave out `url` for US Cloud; set it, with no path, for
-EU Cloud or a self-hosted server.
+The provider is `infisical://<host>/<project ID>`, with the server's host, such as `app.infisical.com`,
+`eu.infisical.com` or your own, and the project ID from the project's settings. `?env=<slug>` names the environment;
+without it, the profile does. `?path=<folder>` sets the folder secretspec keeps its secrets under, `/secretspec` by
+default.
 
-## References
+keypin refuses a URI without a host, since CI and the console can't see the `INFISICAL_DOMAIN` secretspec would use,
+and `tls=false`: keypin signs in only over https.
 
-A reference is `infisical://<project>/<environment>/<SECRET_NAME>`, with the project's slug or ID and the
-environment's slug. Folders go before the name, as `payments` in `prod` above.
+## Addresses
+
+- **Without `ref`:** the secret `<KEY>` in the folder `<path>/<project>/<profile>`. In the example,
+  `STRIPE_KEY` is in `/secretspec/billing/production`, environment `production`, and `SENTRY_DSN` in
+  `/apps/billing/production`, environment `prod`. keypin refuses a project or profile name with characters other than
+  letters, digits, `-` and `_`.
+- **With `ref`:** `item` is the secret's name, with its folder before it. `/billing/RESEND` is `RESEND` in
+  `/billing`; `team/RESEND` is in `<path>/team`; a bare `RESEND` is in `<path>`. keypin refuses any field but `item`,
+  and a `version`: keypin rotates the secret, and secretspec only reads a pinned version.
+
+An issuer's `admin` is a reference in keypin's own syntax, not a provider URI: `infisical://<project>/<environment>/<NAME>`,
+with the project's slug or ID and any folders before the name. keypin reads it from the key's own server.
 
 ## Rotated date
 
-Add a `rotated` entry to the secret's metadata, with the day the value last changed as `YYYY-MM-DD`.
-`keypin rotate` sets it to today.
+keypin keeps a `rotated` entry in the secret's metadata, with the day the value last changed as `YYYY-MM-DD`.
+`keypin rotate` sets it to today and keeps the secret's other metadata. secretspec doesn't read it.
 
 ## Permissions
 
 Add the identity to each project keypin reads, with read access to its environments. `keypin rotate` also needs
 write access.
 
-## Pulling in GitHub Actions
+## Signing in from GitHub Actions
 
-A job can sign in with OIDC and read a key itself, with no stored copy or client secret. List the job in the map with
-a [`pull`](../../guides/publishing.md#pulling-in-ci) entry, then:
+A job, such as [scheduled rotation](../../guides/scheduled-rotation.md), can sign in with OIDC, with no client secret
+stored in the repo:
 
 1. Create a machine identity with [OIDC Auth](https://infisical.com/docs/documentation/platform/identities/oidc-auth/github)
-   and add it to the project with read access. Set the discovery URL and issuer to
-   `https://token.actions.githubusercontent.com`, the audience to `https://github.com/<owner>`, and the subject to
-   your repo's branch, such as `repo:owner@123456/repo@456789:ref:refs/heads/main`
-   ([subject formats](aws-secrets-manager.md#pulling-in-github-actions)). Set **Access Token TTL** and **Access Token
-   Max TTL** to a few minutes; both default to 30 days.
-2. In the job, give keypin the identity's ID. keypin exchanges GitHub's token for an access token, reads, and
-   tries to revoke it before the command starts; if that fails, keypin warns, and the token lasts until its TTL runs
-   out:
-
-   ```yaml
-   permissions:
-     id-token: write
-     contents: read
-   steps:
-     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-     - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-       with:
-         node-version: 24
-     - run: npm install -g keypin
-     - run: keypin run --profile prod --only STRIPE_KEY -- <command>
-       env:
-         KEYPIN_INFISICAL_IDENTITY_ID: <machine identity ID>
-   ```
+   and add it to the project. Set the discovery URL and issuer to `https://token.actions.githubusercontent.com`, the
+   audience to `https://github.com/<owner>`, and the subject to your repo's branch, such as
+   `repo:owner@123456/repo@456789:ref:refs/heads/main`
+   ([subject formats](aws-secrets-manager.md#signing-in-from-github-actions)). Set **Access Token TTL** and **Access
+   Token Max TTL** to a few minutes; both default to 30 days.
+2. Give the job `permissions: id-token: write`, and set `KEYPIN_INFISICAL_IDENTITY_ID` to the identity's ID, with
+   the other Infisical variables unset. keypin exchanges GitHub's token for an access token and tries to revoke it
+   when it's done.
 
 Set `KEYPIN_INFISICAL_AUDIENCE` if the identity expects another audience. keypin sends GitHub's token only to
-Infisical Cloud; for a self-hosted `url`, also set `KEYPIN_INFISICAL_URL` to the same address.
+Infisical Cloud; for your own server, also set `KEYPIN_INFISICAL_URL` to `https://<host>`, the provider's server.
 
 ## Limits
 
-- keypin won't save a rotated key in a secret that references or imports another; point the map at the source.
+- keypin won't save a rotated key in a secret that references or imports another; point `ref` at the source.
+- keypin doesn't create folders, so a secret's folder must exist before keypin first saves to it.
 - A self-hosted server must be from September 2025 or later.

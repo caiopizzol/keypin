@@ -1,28 +1,28 @@
 # What keypin is
 
-keypin gets your keys out of `.env` files. It runs your apps with keys from your vault, publishes them to your CI
-and hosting, and rotates them.
+keypin rotates your keys at the provider that issued them and publishes them to your CI and hosting. It reads them
+from the vault you already use.
 
 ## The problem
 
-Every laptop has a copy of every key in a `.env` file. More copies sit in chats, notes and commits, and nobody has
-the full list.
+Every key has copies: in CI secrets and hosting settings, on laptops, in chats and notes. Replacing one means making
+a new key, updating each copy by hand and revoking the old one, so it rarely happens.
 
 ## What keypin does
 
-Each project lists its keys in a `keypin.toml`: names, vault references and destinations, never values. From it,
-keypin:
+A project declares its keys in [secretspec](https://secretspec.dev)'s `secretspec.toml`: names and vaults, never
+values. keypin's settings sit in the same file, under `[tool.keypin]`. From it, keypin:
 
-- reports what a project uses and what's missing (`keypin check`);
-- runs your app with keys from your vault (`keypin run`);
+- replaces a key at the provider that issued it (`keypin rotate`);
 - writes production keys to CI and hosting (`keypin publish`);
-- replaces a key at the provider that issued it (`keypin rotate`).
+- reports what a project uses and what's missing (`keypin check`);
+- shows when each key is due, across your projects (`keypin status`).
 
-It reads 1Password, Infisical, Bitwarden, Doppler and AWS Secrets Manager. The
+It reads 1Password, Infisical, Bitwarden Secrets Manager, Doppler and AWS Secrets Manager. The
 [README](../../README.md#what-is-keypin) lists every destination and issuer.
 
 ## What keypin isn't
 
-keypin is not a vault, a secrets manager or a server, and needs no keypin account. It reads a value only while a
-command runs, and never stores one. A command it starts still holds its keys; keypin removes the copies in files,
-chats and laptops.
+keypin is not a vault, a secrets manager or a server, and needs no keypin account. secretspec declares the keys and
+runs your app with them; keypin rotates and publishes them. keypin reads a value only while a command needs it, and
+never stores one.

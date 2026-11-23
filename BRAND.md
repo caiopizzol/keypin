@@ -12,15 +12,16 @@ language: en
 
 ### Overview
 
-keypin is a command-line tool that gets keys out of `.env` files. Each project lists its keys in a `keypin.toml`:
-names, vault items and destinations, never values. Before: every laptop has a copy of every key in a `.env` file,
-more copies sit in chats, notes and commits, and nobody has the full list. After: each value is kept once, in your
-vault; one map says where every key comes from, where it goes and when it's due; and keypin reads a value only
-while a command runs.
+keypin is a command-line tool that rotates keys and publishes them from your vault to CI and hosting. Each project
+declares its keys in [secretspec](https://secretspec.dev)'s `secretspec.toml`, with keypin's settings under
+`[tool.keypin]`: names, vaults and destinations, never values. secretspec runs apps with the keys; keypin keeps the
+copies in CI and hosting current. Before: every key has copies in CI secrets, hosting settings and `.env` files, and
+replacing one means updating each copy by hand. After: each value is kept once, in your vault; one map says where
+every key comes from, where it goes and when it's due; and keypin reads a value only while a command needs it.
 
-Direction: get keys out of files, keep one map of every key, and rotate keys with the vault you already use. keypin
-reads five vaults, publishes to CI and hosting, and rotates keys at the issuers in the README. Scheduled rotation
-covers 1Password to GitHub Actions so far. Anything else stays out of the README until the code does it.
+Direction: keep one map of every key, and rotate keys with the vault you already use. keypin reads five vaults,
+publishes to CI and hosting, and rotates keys at the issuers in the README. Scheduled rotation is documented for
+1Password to GitHub Actions so far. Anything else stays out of the README until the code does it.
 
 ### Audience
 
@@ -59,7 +60,7 @@ The careful operator. Exact, plain, cautious, quiet. Not alarmist, not clever, n
 ### Promise
 
 keypin never stores your keys. Values stay in your vault and your infrastructure, and the CLI reads one only while
-a command runs or a publish writes it. The hosted console reads `keypin.toml`, workflow files, and secret names and
+a command runs or a publish writes it. The hosted console reads `secretspec.toml`, workflow files, and secret names and
 dates, never a value. When keypin automates rotation, it will run in your own cloud, never on keypin's servers.
 
 Your vault is the source for each key, and publishing sends it only to the destinations in the map. Nothing is
@@ -86,13 +87,13 @@ Essence: one source, one map.
 
 - Primary: "Key syncs and rotation for the vault you already use." Use it as the headline, everywhere. Name the
   category, never a competitor: Infisical and Doppler are vaults keypin reads.
-- Description: "keypin gets your keys out of `.env` files. It runs your apps with keys from your vault, publishes them
-  to your CI and hosting, and rotates them."
+- Description: "keypin rotates your keys at their provider and publishes them from your vault to your CI and
+  hosting."
 - Short description (60 characters or fewer): "Key syncs and rotation for the vault you already use."
 
 ### Message Pillars
 
-- **No files:** keypin runs your apps with keys from your vault. Nothing to commit, paste, or leave behind.
+- **Rotation:** a new key at the provider, saved to your vault and published everywhere it's used.
 - **One map:** every key your team uses, where it goes, and when it's due, in one committed file per project.
 - **Approval:** a plan before every publish, and a checked account behind it.
 
@@ -108,7 +109,7 @@ Essence: one source, one map.
 | Concept                             | We call it  | Not              |
 | ----------------------------------- | ----------- | ---------------- |
 | A credential an app reads           | key         | token, env var   |
-| `keypin.toml`                       | the map     | config, manifest |
+| `secretspec.toml`                   | the map     | config, manifest |
 | GitHub Actions, a Cloudflare Worker | destination | target, sink     |
 | An entry in your vault (1Password)  | vault item  | entry, record    |
 

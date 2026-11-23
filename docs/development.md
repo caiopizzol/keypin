@@ -77,8 +77,9 @@ platform, `@keypin/cli-<os>-<cpu>`, as optional dependencies pinned to its versi
 next to itself and runs it with the same arguments and environment; it loads no `.env` file.
 
 `check-binary` runs the binary, and then the installed npm packages, in an empty folder with a `.env` and a
-`bunfig.toml` preload, and checks that `keypin run` passes no variable it wasn't given. Run it on the platform the
-binary is for; the `check` workflow runs it for all four.
+`bunfig.toml` preload. It runs `keypin status` and checks that the preload never runs and that keypin refuses
+`BUN_OPTIONS`, `BUN_INSPECT` and `BUN_INSPECT_CONNECT_TO`. Run it on the platform the binary is for; the `check`
+workflow runs it for all four.
 
 ## Releases
 

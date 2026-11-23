@@ -1,6 +1,6 @@
 ---
 name: "keypin"
-tagline: "Key syncs and rotation for the vault you already use."
+tagline: "Rotate a key everywhere it's used."
 specVersion: "0.3.0"
 version: 1
 language: en
@@ -12,34 +12,40 @@ language: en
 
 ### Overview
 
-keypin is a command-line tool that rotates keys and publishes them from your vault to CI and hosting. Each project
-declares its keys in [secretspec](https://secretspec.dev)'s `secretspec.toml`, with keypin's settings under
-`[tool.keypin]`: names, vaults and destinations, never values. secretspec runs apps with the keys; keypin keeps the
-copies in CI and hosting current. Before: every key has copies in CI secrets, hosting settings and `.env` files, and
-replacing one means updating each copy by hand. After: each value is kept once, in your vault; one map says where
-every key comes from, where it goes and when it's due; and keypin reads a value only while a command needs it.
+keypin is a command-line tool that replaces a key at its provider and everywhere it's used, across all your
+projects. Each project declares its keys in [secretspec](https://secretspec.dev)'s `secretspec.toml`; keypin's
+settings, under `[tool.keypin]`, say where each key is published and how it's rotated. secretspec says which keys a
+project needs and runs it with them. keypin keeps those keys fresh everywhere.
 
-Direction: keep one map of every key, and rotate keys with the vault you already use. keypin reads five vaults,
-publishes to CI and hosting, and rotates keys at the issuers in the README. Scheduled rotation is documented for
+Before: a key may have leaked, or is due, and replacing it means making a new one at the provider, pasting it into
+each CI secret and hosting setting by hand, and revoking the old one. It rarely happens, and nobody knows which
+copies were missed. After: `keypin rotate` makes the new key, publishes it to every destination in
+`secretspec.toml`, and revokes the old one after you approve. `keypin status` and the console show what's due in
+every project.
+
+Direction: rotation at the provider and publishing to destinations, in every repo, on a schedule in your own CI.
+keypin rotates keys at the issuers in the README and publishes to its destinations. Scheduled rotation is proven for
 1Password to GitHub Actions so far. Anything else stays out of the README until the code does it.
 
 ### Audience
 
 Anyone building software with coding agents, from one developer to a company. An agent creates a provider key
-(Resend, Neon, Supabase, OpenAI) in minutes, so keys pile up in `.env` files and dashboards faster than anyone tracks
-them. They ship to GitHub Actions and Cloudflare Workers, and keep secrets in a vault. They distrust tools that ask
-to hold their secrets. Not for teams that want a hosted secrets manager.
+(Resend, Neon, Supabase, OpenAI) in minutes, so a team ends up with dozens of keys across many repos, each copied to
+GitHub Actions, Vercel or Cloudflare. They meet keypin in a moment: a key may have leaked, a key is due, someone left
+the team, or an auditor asks when a key last changed. They keep secrets in a vault and distrust tools that ask to
+hold them. Not for teams that want a hosted secrets manager.
 
 ### Positioning
 
-The way out of `.env` files for keys you already keep in a vault. Not a secrets manager, not a vault, not a server.
-Your vault holds the values; GitHub and Cloudflare receive them; keypin knows the path between them.
+Rotation for keys that live in many places. Not a secrets manager, not a vault, not a server. The provider issues
+the key, your vault holds it, your CI and hosting receive it; keypin replaces it in all three, in that order.
+secretspec declares the keys and runs apps with them; keypin works from the same file.
 
-- No key sits in a file to commit, paste, or leave on a laptop.
-- The map holds names and places, never values.
-- It checks the account before every write.
-- It shows a plan before every publish, and a first write waits for you to answer `y`.
-- The CLI needs no keypin server and no keypin account. The hosted console is optional.
+- "Everywhere" means every destination in `secretspec.toml`, never a copy the file doesn't list.
+- It shows a plan before every write, and a first write waits for you to answer `y`.
+- It revokes an old key only after you approve.
+- `secretspec.toml` holds names and places, never values.
+- The CLI needs no keypin server and no keypin account. The hosted console is optional and only reads.
 
 ### Pricing
 
@@ -63,55 +69,59 @@ keypin never stores your keys. Values stay in your vault and your infrastructure
 a command runs or a publish writes it. The hosted console reads `secretspec.toml`, workflow files, and secret names and
 dates, never a value. When keypin automates rotation, it will run in your own cloud, never on keypin's servers.
 
-Your vault is the source for each key, and publishing sends it only to the destinations in the map. Nothing is
-published without a plan, and a first write or a changed account waits for you to answer `y`.
+Your vault is the source for each key, and publishing sends it only to the destinations in `secretspec.toml`.
+Nothing is published without a plan, and a first write or a changed account waits for you to answer `y`.
 
-Base message: key syncs and rotation for the vault you already use.
+Base message: rotate a key everywhere it's used.
 
 ### Guardrails
 
 Plain, exact, calm. keypin cannot sound like a security vendor, a hosted platform, or a growth product.
 Litmus test: if a sentence would need a value to be true, or a superlative to be interesting, it's wrong. Never
-promise that a key can't leak: a running command still holds it. Say what keypin removes instead.
+promise that a key can't leak: a running command still holds it. keypin doesn't detect leaks; it replaces a key once
+you know or suspect one.
 
 ## Voice
 
 ### Identity
 
-We get your keys out of files and into one place, and we tell you exactly what we read, what we write, and what we
-never touch.
+When a key has to change, we replace it at the provider and everywhere it's used, and we tell you exactly what we
+read, what we write, and what we never touch.
 
-Essence: one source, one map.
+Essence: one key, changed everywhere.
 
 ### Tagline & Slogans
 
-- Primary: "Key syncs and rotation for the vault you already use." Use it as the headline, everywhere. Name the
-  category, never a competitor: Infisical and Doppler are vaults keypin reads.
-- Description: "keypin rotates your keys at their provider and publishes them from your vault to your CI and
-  hosting."
-- Short description (60 characters or fewer): "Key syncs and rotation for the vault you already use."
+- Primary: "Rotate a key everywhere it's used." Use it as the headline, everywhere. Name the category, never a
+  competitor: Infisical and Doppler are vaults keypin reads.
+- Description: "keypin makes a new key at the provider, publishes it to your CI and hosting, and revokes the old one
+  only after you approve."
+- Short description (60 characters or fewer): "Rotate a key everywhere it's used."
+- With secretspec: "secretspec says which keys a project needs and runs it with them. keypin keeps those keys fresh
+  everywhere."
 
 ### Message Pillars
 
 - **Rotation:** a new key at the provider, saved to your vault and published everywhere it's used.
-- **One map:** every key your team uses, where it goes, and when it's due, in one committed file per project.
-- **Approval:** a plan before every publish, and a checked account behind it.
+- **Across projects:** `keypin status` and the console show what's due, overdue or unpublished in every repo.
+- **Approval:** a plan before every write, and the old key revoked only after you approve.
 
 ### Phrases
 
-- "Get your team's keys out of `.env` files."
-- "Nothing to commit, paste in a chat, or leave on a laptop."
+- "Rotate a key everywhere it's used."
+- "This key may have leaked." / "This key is due." / "Someone left the team."
 - "Names, never values."
-- "A plan before every publish."
+- "A plan before every write."
 
 ### Vocabulary
 
-| Concept                             | We call it  | Not              |
-| ----------------------------------- | ----------- | ---------------- |
-| A credential an app reads           | key         | token, env var   |
-| `secretspec.toml`                   | the map     | config, manifest |
-| GitHub Actions, a Cloudflare Worker | destination | target, sink     |
-| An entry in your vault (1Password)  | vault item  | entry, record    |
+| Concept                             | We call it        | Not                       |
+| ----------------------------------- | ----------------- | ------------------------- |
+| A credential an app reads           | key               | token, env var            |
+| Writing a key to a destination      | publish           | sync                      |
+| `secretspec.toml`                   | `secretspec.toml` | config, manifest, the map |
+| GitHub Actions, a Cloudflare Worker | destination       | target, sink              |
+| An entry in your vault (1Password)  | vault item        | entry, record             |
 
 The name is always lowercase: keypin.
 

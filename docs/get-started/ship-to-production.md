@@ -71,7 +71,7 @@ keypin publish STRIPE_API_KEY --plan
 ```
 
 ```
-STRIPE_API_KEY prod  from op://Private/billing stripe api key/password in 1Password account my.1password.com
+STRIPE_API_KEY prod  from op://Private/billing prod stripe api key/password in 1Password account my.1password.com
 ok     Cloudflare  billing-worker  as me@example.com, account 11111111111111111111111111111111
 ok     GitHub      acme/billing    as acme, account acme
 

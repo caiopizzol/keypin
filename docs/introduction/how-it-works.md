@@ -5,8 +5,8 @@ providers that issue them. It keeps only the path between them, in one file in y
 
 ```mermaid
 flowchart LR
-  vault["Your vault<br>the values and rotated dates"] -- reads --> map["keypin.toml, in your repo<br>key names, vault references,<br>destinations, rotation rules"]
-  map -- writes --> used["Where keys are used<br>your laptop, GitHub Actions,<br>Cloudflare, Vercel…"]
+  vault["Your vault<br>the values<br>rotated dates"] -- reads --> map["keypin.toml, in your repo<br>key names<br>vault references<br>destinations<br>rotation rules"]
+  map -- writes --> used["Where keys are used<br>your laptop, CI and hosting<br>env vars while a command runs<br>published copies"]
 ```
 
 keypin reads a value only while a command runs. The file in the middle never holds one.

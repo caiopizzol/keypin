@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import { cli } from "../src/cli";
-import { TEMPLATE } from "../src/commands/init";
+import { template } from "../src/commands/init";
 import {
   fakeDeps,
   fakeDestinations,
@@ -13,8 +13,7 @@ import {
 import { changes, recording } from "./recording";
 
 const ROOT = "/work/billing";
-const MAP = `${ROOT}/keypin.toml`;
-const PROD_ENV = `${ROOT}/.env.production`;
+const MAP = `${ROOT}/secretspec.toml`;
 
 const PROJECT: Record<string, string> = {
   [`${ROOT}/.env`]: `DATABASE_URL=${SENTINEL}-database\nRESEND_API_KEY=${SENTINEL}-resend\n`,
@@ -40,15 +39,12 @@ const GIT: Record<string, string> = {
   "remote get-url origin": "git@github.com:acme/billing.git\n",
 };
 
-const PLACEHOLDER = '"op://<vault>/<item>/<field>"';
-const STRIPE_ITEM = '"op://Private/billing prod stripe api key/password"';
-
 function journey() {
   const disk = memoryFiles(PROJECT);
   for (const folder of [`${ROOT}/.github`, `${ROOT}/.github/workflows`]) disk.folders.add(folder);
   const vault = fakeVault({
     items: [],
-    values: { "billing prod stripe api key": `${SENTINEL}-stripe` },
+    values: { "secretspec/billing/production/STRIPE_API_KEY": `${SENTINEL}-stripe` },
   });
   const destinations = fakeDestinations();
   const launcher = fakeLauncher();
@@ -113,7 +109,7 @@ describe("the Get started pages, one project from init to publish", () => {
     const { disk, launcher, destinations, step } = journey();
 
     expect((await step("init", ["init"])).exit).toBe(0);
-    expect(disk.contents.get(MAP)).toBe(TEMPLATE);
+    expect(disk.contents.get(MAP)).toBe(template("billing"));
     expect((await step("check-after-init", ["check"])).exit).toBe(1);
 
     const local = ["import", ".env", "DATABASE_URL", "RESEND_API_KEY", "--vault", "Private"];
@@ -127,16 +123,11 @@ describe("the Get started pages, one project from init to publish", () => {
       RESEND_API_KEY: `${SENTINEL}-resend`,
     });
 
-    disk.contents.set(PROD_ENV, `RESEND_API_KEY=${SENTINEL}-prod-resend\n`);
-    const prod = ["import", ".env.production", "RESEND_API_KEY", "--env", "prod"];
-    expect((await step("import-prod", [...prod, "--vault", "Private"], true)).exit).toBe(0);
-    disk.contents.delete(PROD_ENV);
-
     const before = await step("check-before-destinations", ["check"]);
     expect(before.exit).toBe(1);
     const add = tomlToAdd(before.stdout);
-    expect(add.split(PLACEHOLDER)).toHaveLength(2);
-    disk.contents.set(MAP, `${disk.contents.get(MAP)}\n${add.replace(PLACEHOLDER, STRIPE_ITEM)}\n`);
+    expect(add).not.toContain("<");
+    disk.contents.set(MAP, `${disk.contents.get(MAP)}\n${add}\n`);
 
     expect((await step("check-after-destinations", ["check"])).exit).toBe(1);
     expect((await step("publish-plan", ["publish", "STRIPE_API_KEY", "--plan"])).exit).toBe(3);

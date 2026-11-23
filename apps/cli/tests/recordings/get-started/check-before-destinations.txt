@@ -5,9 +5,8 @@ exit 1
 false
 
 --- calls vault ---
-ids billing dev database url
-ids billing dev resend api key
-ids billing prod resend api key
+ids billing default database url
+ids billing default resend api key
 
 --- calls destination ---
 
@@ -19,22 +18,22 @@ billing /work/billing · read 0 env files, 1 wrangler config, 1 workflow; GitHub
 1 Sign in to Cloudflare
     wrangler login
   Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
-2 Add the production keys to keypin.toml
-  STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and keypin.toml doesn't publish it there.
-  RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and keypin.toml doesn't publish it there.
+2 Add the production keys to secretspec.toml
+  STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there.
+  RESEND_API_KEY: wrangler.toml requires it; the Worker billing-worker doesn't have it, and secretspec.toml doesn't publish it there.
   Replace each <...> with the real value; keypin rejects a map that still has one:
 
-[keys.STRIPE_API_KEY]
+[profiles.production.STRIPE_API_KEY]
+description = "STRIPE_API_KEY"
+
+[tool.keypin.production.STRIPE_API_KEY]
 rotate_every = "90d"
 
-[keys.STRIPE_API_KEY.prod]
-from = "op://<vault>/<item>/<field>"
-
-[[keys.STRIPE_API_KEY.prod.publish]]
+[[tool.keypin.production.STRIPE_API_KEY.publish]]
 to = "github-actions"
 repo = "acme/billing"
 
-[[keys.RESEND_API_KEY.prod.publish]]
+[[tool.keypin.production.RESEND_API_KEY.publish]]
 to = "cloudflare-worker"
 account = "11111111111111111111111111111111"
 worker = "billing-worker"
@@ -42,4 +41,4 @@ worker = "billing-worker"
   Then run keypin check again.
 
 --- stderr ---
-ok     Looked up 3 items in 1Password account my.1password.com, not the values
+ok     Looked up 2 items in 1Password account my.1password.com, not the values

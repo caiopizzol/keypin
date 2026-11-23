@@ -221,9 +221,17 @@ jobs:
         env:
           DEPLOY_KEY: \${{ secrets.DEPLOY_KEY }}
       - run: secretspec run -P preview -- ./preview.sh
+        env:
+          PREVIEW_KEY: \${{ secrets.PREVIEW_KEY }}
       - run: secretspec run -Pqa -- ./qa.sh
+        env:
+          QA_KEY: \${{ secrets.QA_KEY }}
       - run: secretspec run --profile "\${{ inputs.profile }}" -- ./any.sh
+        env:
+          ANY_KEY: \${{ secrets.ANY_KEY }}
       - run: echo secretspec check
+        env:
+          CHECK_KEY: \${{ secrets.CHECK_KEY }}
   plain:
     env:
       SECRETSPEC_PROFILE: ""
@@ -235,12 +243,21 @@ jobs:
     assert(refs);
     expect(refs.uses).toEqual([
       { environment: null, secrets: ["TEST_TOKEN"], fromCaller: false, secretspec: ["staging"] },
+      { environment: "production", secrets: ["CHECK_KEY"], fromCaller: false, secretspec: [] },
       {
         environment: "production",
         secrets: ["DEPLOY_KEY"],
         fromCaller: false,
-        secretspec: ["production", "preview", "qa", null],
+        secretspec: ["production"],
       },
+      {
+        environment: "production",
+        secrets: ["PREVIEW_KEY"],
+        fromCaller: false,
+        secretspec: ["preview"],
+      },
+      { environment: "production", secrets: ["QA_KEY"], fromCaller: false, secretspec: ["qa"] },
+      { environment: "production", secrets: ["ANY_KEY"], fromCaller: false, secretspec: [null] },
       { environment: null, secrets: ["A"], fromCaller: false, secretspec: ["default"] },
     ]);
   });
@@ -249,17 +266,54 @@ jobs:
     const refs = workflowRefs(`
 jobs:
   deploy:
+    env:
+      KEY: \${{ secrets.KEY }}
     steps:
       - run: secretspec run --profile="prod" -- ./deploy.sh
       - run: secretspec run --profile 'prod' -- ./deploy.sh
       - run: secretspec run "--profile=prod" -- ./deploy.sh
       - run: secretspec run --profile="$PROFILE" -- ./deploy.sh
         env:
-          KEY: \${{ secrets.KEY }}
+          OTHER: \${{ secrets.OTHER }}
 `);
     assert(refs);
     expect(refs.uses).toEqual([
-      { environment: null, secrets: ["KEY"], fromCaller: false, secretspec: ["prod", null] },
+      { environment: null, secrets: ["KEY"], fromCaller: false, secretspec: [] },
+      { environment: null, secrets: ["OTHER"], fromCaller: false, secretspec: [null] },
+    ]);
+    const quoted = workflowRefs(`
+jobs:
+  deploy:
+    env:
+      KEY: \${{ secrets.KEY }}
+    steps:
+      - run: secretspec run --profile="prod" -- ./deploy.sh
+      - run: secretspec run --profile 'prod' -- ./deploy.sh
+      - run: secretspec run "--profile=prod" -- ./deploy.sh
+`);
+    expect(quoted?.uses).toEqual([
+      { environment: null, secrets: ["KEY"], fromCaller: false, secretspec: ["prod"] },
+    ]);
+  });
+
+  test("a secret is read at job time only by the step that runs secretspec run", () => {
+    const refs = workflowRefs(`
+jobs:
+  deploy:
+    env:
+      SHARED: \${{ secrets.SHARED }}
+    steps:
+      - run: secretspec run --profile production -- ./build.sh
+        env:
+          API_KEY: \${{ secrets.API_KEY }}
+      - run: ./deploy.sh
+        env:
+          API_KEY: \${{ secrets.API_KEY }}
+`);
+    assert(refs);
+    expect(refs.uses).toEqual([
+      { environment: null, secrets: ["SHARED", "API_KEY"], fromCaller: false, secretspec: [] },
+      { environment: null, secrets: ["API_KEY"], fromCaller: false, secretspec: ["production"] },
     ]);
   });
 

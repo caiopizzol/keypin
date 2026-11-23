@@ -17,12 +17,18 @@ export function needsOf(github: Repo, workflows: Workflow[], view: MapView) {
   const shared = namesOf(github.organization);
   const fromOrganization = new Map<string, { paths: string[]; environments: string[] }>();
   const readAtJobTime: { name: string; path: string; profile: string }[] = [];
+  const readBy = (use: (typeof uses)[number]) =>
+    use.secretspec.find((p) => p !== null && view.declares(use.name, p));
+  const unread = new Set(
+    uses.filter((use) => !readBy(use)).map((use) => `${use.path} ${use.name}`),
+  );
   for (const use of uses) {
     if (view.ignores(use.name)) {
       needs.push({ name: use.name, place: repo, usedBy: use.path });
       continue;
     }
-    const profile = use.secretspec.find((p) => p !== null && view.declares(use.name, p));
+    const profile = readBy(use);
+    if (profile && unread.has(`${use.path} ${use.name}`)) continue;
     if (profile) {
       if (!readAtJobTime.some((r) => r.name === use.name && r.path === use.path))
         readAtJobTime.push({ name: use.name, path: use.path, profile });

@@ -86,14 +86,26 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     const name = isRecord(environment) ? environment.name : environment;
     const named = typeof name === "string" && name.trim() ? name : null;
     if (named !== null) refs.environments.add(named);
-    const secrets = [...secretsIn(job, null, passedByCaller && named === null)];
-    if (named?.includes("${{") && stored([...secrets, ...inherited])) refs.hidesUses = true;
-    uses.push({
-      environment: named?.trim() ?? null,
-      secrets,
-      fromCaller: passedByCaller,
-      secretspec: isRecord(job) ? secretspecProfiles(top, job) : [],
-    });
+    const callerOwned = passedByCaller && named === null;
+    const steps = isRecord(job) && Array.isArray(job.steps) ? job.steps : [];
+    const own = [...secretsIn(job, steps, callerOwned)];
+    const parts = steps.map((step) => ({
+      secrets: [...secretsIn(step, null, callerOwned)],
+      secretspec: isRecord(job) && isRecord(step) ? secretspecProfiles(top, job, step) : [],
+    }));
+    const all = [...own, ...parts.flatMap((part) => part.secrets)];
+    if (named?.includes("${{") && stored([...all, ...inherited])) refs.hidesUses = true;
+    const everyStep = parts.reduce<Profile[]>(
+      (common, part) => common.filter((profile) => part.secretspec.includes(profile)),
+      parts[0]?.secretspec ?? [],
+    );
+    const unread = parts.filter((part) => !part.secretspec.length).flatMap((part) => part.secrets);
+    for (const part of [
+      { secrets: [...new Set(everyStep.length ? unread : [...own, ...unread])], secretspec: [] },
+      ...(everyStep.length ? [{ secrets: own, secretspec: everyStep }] : []),
+      ...parts.filter((part) => part.secretspec.length),
+    ])
+      uses.push({ environment: named?.trim() ?? null, fromCaller: passedByCaller, ...part });
   }
   return {
     secrets: [...refs.secrets],
@@ -107,18 +119,18 @@ export function workflowRefs(text: string): WorkflowRefs | null {
 const PROFILE_VARIABLE = "SECRETSPEC_PROFILE";
 const DEFAULT_PROFILE = "default";
 
+type Profile = string | null;
+
 function secretspecProfiles(
   top: Record<string, unknown>,
   job: Record<string, unknown>,
-): (string | null)[] {
-  const steps = Array.isArray(job.steps) ? job.steps.filter(isRecord) : [];
-  const found = new Set<string | null>();
-  for (const step of steps) {
-    if (typeof step.run !== "string") continue;
-    const env = { ...envOf(top), ...envOf(job), ...envOf(step) };
-    for (const flag of secretspecRuns(step.run)) found.add(profileOf(flag, env[PROFILE_VARIABLE]));
-  }
-  return [...found];
+  step: Record<string, unknown>,
+): Profile[] {
+  if (typeof step.run !== "string") return [];
+  const env = { ...envOf(top), ...envOf(job), ...envOf(step) };
+  return [
+    ...new Set(secretspecRuns(step.run).map((flag) => profileOf(flag, env[PROFILE_VARIABLE]))),
+  ];
 }
 
 function profileOf(flag: string | undefined, variable: unknown): string | null {

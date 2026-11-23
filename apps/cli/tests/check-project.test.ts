@@ -2156,6 +2156,44 @@ ${env}    steps:
     expect(await cli(["check"], run.deps)).toBe(0);
   });
 
+  test("a step that doesn't run secretspec run still needs the Actions secret", async () => {
+    const workflow = `
+on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: secretspec run --profile prod -- ./build.sh
+        env:
+          STRIPE_API_KEY: \${{ secrets.STRIPE_API_KEY }}
+      - run: ./deploy.sh
+        env:
+          STRIPE_API_KEY: \${{ secrets.STRIPE_API_KEY }}
+`;
+    const run = setup({ files: project(workflow) });
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(run.stdout.text).toContain("[tool.keypin.prod.STRIPE_API_KEY]");
+    expect(run.stdout.text).not.toContain("can go");
+  });
+
+  test("a job's env counts as read at job time only when every step runs secretspec run", async () => {
+    const workflow = (steps: string) => `
+on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      STRIPE_API_KEY: \${{ secrets.STRIPE_API_KEY }}
+    steps:
+${steps}`;
+    const wrapped = "      - run: secretspec run --profile prod -- ./deploy.sh\n";
+    const covered = setup({ files: project(workflow(wrapped)) });
+    expect(await cli(["check"], covered.deps)).toBe(0);
+    const mixed = setup({ files: project(workflow(`${wrapped}      - run: ./notify.sh\n`)) });
+    expect(await cli(["check"], mixed.deps)).toBe(1);
+    expect(mixed.stdout.text).toContain("[tool.keypin.prod.STRIPE_API_KEY]");
+  });
+
   test("a profile that doesn't declare the key, or one check can't read, still asks to publish it", async () => {
     for (const command of [
       "secretspec run -- ./deploy.sh",

@@ -14,6 +14,7 @@ import {
   fakeDeps,
   fakeDestinations,
   fakeVault,
+  type FakeVaultOptions,
   memoryFiles,
   parseJson,
   REGISTRY,
@@ -84,6 +85,7 @@ function project(
     map?: string;
     doppler?: FakeDoppler;
     idToken?: IdToken;
+    onePassword?: FakeVaultOptions;
   } = {},
 ) {
   const disk = memoryFiles({
@@ -92,7 +94,7 @@ function project(
   });
   const store = memoryStore();
   const env = { PATH: "/usr/bin", DOPPLER_TOKEN: ACCOUNT_TOKEN, ...options.env };
-  const onePassword = fakeVault();
+  const onePassword = fakeVault(options.onePassword);
   const signIn = () =>
     onePasswordFrom(env, {
       desktop: async () => {
@@ -214,6 +216,80 @@ describe("keypin with Doppler", () => {
     expect(run.stdout.text).toContain(
       "STRIPE_API_KEY (dev): no rotated date\n    Doppler keeps no rotated date on a secret, so keypin can't tell when this key is due (docs/integrations/vaults/doppler.md).",
     );
+  });
+
+  test("rotate --check fails a key whose schedule Doppler can't date, and says the two ways out", async () => {
+    const run = project({ map: ISSUER_MAP });
+    expect(await cli(["rotate", "--check"], run.deps)).toBe(1);
+    expect(run.stderr.text).toContain(
+      'STRIPE_API_KEY (prod): its vault keeps no rotation date, so scheduled rotation can\'t cover it. Set rotate_every = "never" in [tool.keypin.prod.STRIPE_API_KEY], or remove it, and rotate it by hand with keypin rotate STRIPE_API_KEY --profile prod.',
+    );
+    expect(run.issued).toEqual([]);
+  });
+
+  test("rotate --due skips that key, and exits 0", async () => {
+    const run = project({ map: ISSUER_MAP });
+    expect(await cli(["rotate", "--due", "--yes"], run.deps)).toBe(0);
+    expect(run.stderr.text).toContain("STRIPE_API_KEY  skip  no rotated date in the vault");
+    expect(run.issued).toEqual([]);
+  });
+
+  describe("rotate --check with keys in Doppler and in 1Password", () => {
+    const PUBLISH = `publish = [{ to = "github-actions", repo = "acme/billing" }]\n`;
+    const mixed = (schedules: Record<string, string>) => {
+      const tool = (key: string, admin: string, publish = PUBLISH) => `
+[tool.keypin.prod.${key}]
+rotate_every = "${schedules[key]}"
+${publish}issuer = { kind = "resend", admin = "${admin}", permission = "sending_access" }
+`;
+      const admin = "doppler://billing/prd/RESEND_ADMIN_KEY";
+      return `[project]
+name = "billing"
+revision = "1.0"
+
+[providers]
+doppler_prd = "doppler://billing/prd"
+op = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["doppler_prd"]
+
+[profiles.prod]
+STRIPE_API_KEY = { description = "Stripe" }
+RESEND_ADMIN_KEY = { description = "Resend admin" }
+SECOND_KEY = { description = "Another Doppler key" }
+MAILER_KEY = { description = "Mailer", providers = ["op"], ref = { item = "mailer key", field = "credential" } }
+${tool("STRIPE_API_KEY", admin)}${tool("SECOND_KEY", admin)}${tool("MAILER_KEY", "op://Private/resend admin key/credential", "")}`;
+    };
+    const doppler = () => {
+      const w = world();
+      const prd = w.projects.billing?.prd;
+      if (prd) prd.SECOND_KEY = { value: `${SENTINEL}-second` };
+      return w;
+    };
+    const onePassword = {
+      values: { "mailer key": `${SENTINEL}-mailer`, "resend admin key": `${SENTINEL}-admin` },
+      metadata: { "mailer key": { rotated: "2026-11-01" } },
+    };
+
+    test("reports every Doppler key with a schedule in one run, and checks the rest", async () => {
+      const map = mixed({ STRIPE_API_KEY: "90d", SECOND_KEY: "30d", MAILER_KEY: "90d" });
+      const run = project({ map, doppler: doppler(), onePassword });
+      expect(await cli(["rotate", "--check"], run.deps)).toBe(1);
+      for (const key of ["STRIPE_API_KEY", "SECOND_KEY"])
+        expect(run.stderr.text).toContain(
+          `${key} (prod): its vault keeps no rotation date, so scheduled rotation can't cover it.`,
+        );
+      expect(run.stderr.text).toContain("MAILER_KEY (prod) is ready for keypin rotate --due.");
+    });
+
+    test('rotate_every = "never" is the way out, and the check passes', async () => {
+      const map = mixed({ STRIPE_API_KEY: "never", SECOND_KEY: "never", MAILER_KEY: "90d" });
+      const run = project({ map, doppler: doppler(), onePassword });
+      expect(await cli(["rotate", "--check"], run.deps), run.stderr.text).toBe(0);
+      expect(run.stderr.text).toMatch(/STRIPE_API_KEY +skip +never rotates/);
+      expect(run.stderr.text).not.toContain("keeps no rotation date");
+    });
   });
 
   test("publish reads the prod value from the provider's config and writes it to GitHub", async () => {

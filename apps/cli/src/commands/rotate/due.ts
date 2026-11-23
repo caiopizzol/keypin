@@ -191,10 +191,11 @@ export async function checkDue(context: Context, path: string): Promise<number> 
       const ref = map.keys.find((key) => key.name === choice.keyId)?.environments[environment]?.ref;
       const read = ref !== undefined && metadata.dates.get(refKey(ref)) != null;
       if (read && vaultKindOf(deps.vaults, ref.kind).keepsRotated === false) {
-        const command = ["keypin rotate", choice.keyId, ...context.envArgs].join(" ");
-        out.warn(
-          `${choice.keyId}: its vault keeps no rotated date, so scheduled rotation doesn't cover it. Rotate it by hand with ${command}.`,
+        const { keyId } = choice;
+        out.line(
+          `${out.mark(false)} ${keyId} (${environment}): its vault keeps no rotation date, so scheduled rotation can't cover it. Set rotate_every = "never" in [tool.keypin.${environment}.${keyId}], or remove it, and rotate it by hand with keypin rotate ${keyId} --profile ${environment}.`,
         );
+        codes.push(1);
         continue;
       }
       out.line(

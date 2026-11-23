@@ -619,15 +619,15 @@ describe("keypin rotate --check, the setup check a workflow runs before the firs
     unchanged(w);
   });
 
-  test("a vault that keeps no rotated date is left to rotating by hand, and doesn't fail", async () => {
+  test("a dated schedule on a vault that keeps no rotated date fails, and says the two ways out", async () => {
     const w = await published();
     w.dates.delete(ITEM);
     const undated = machine(w, {
       vaults: vaults.map((vault) => ({ ...vault, keepsRotated: false as const })),
     });
-    expect(await undated.run("--check"), undated.stderr.text).toBe(0);
+    expect(await undated.run("--check"), undated.stderr.text).toBe(1);
     expect(undated.stderr.text).toContain(
-      "warn   RESEND_API_KEY: its vault keeps no rotated date, so scheduled rotation doesn't cover it. Rotate it by hand with keypin rotate RESEND_API_KEY.",
+      'FAILED RESEND_API_KEY (prod): its vault keeps no rotation date, so scheduled rotation can\'t cover it. Set rotate_every = "never" in [tool.keypin.prod.RESEND_API_KEY], or remove it, and rotate it by hand with keypin rotate RESEND_API_KEY --profile prod.',
     );
     unchanged(w);
   });
@@ -648,7 +648,7 @@ describe("keypin rotate --check, the setup check a workflow runs before the firs
     unchanged(w);
   });
 
-  test("rotating by hand keeps the profile it checked", async () => {
+  test("the way out names the profile it checked", async () => {
     const w = await world(
       MAP.replace("[profiles.prod]\nRESEND_API_KEY", "[profiles.dev]\nRESEND_API_KEY")
         .replace("\nSTRIPE_KEY = ", "\n[profiles.prod]\nSTRIPE_KEY = ")
@@ -660,7 +660,7 @@ describe("keypin rotate --check, the setup check a workflow runs before the firs
     });
     await undated.run("--check", "--profile", "dev");
     expect(undated.stderr.text).toContain(
-      "Rotate it by hand with keypin rotate RESEND_API_KEY --profile dev.",
+      "[tool.keypin.dev.RESEND_API_KEY], or remove it, and rotate it by hand with keypin rotate RESEND_API_KEY --profile dev.",
     );
   });
 

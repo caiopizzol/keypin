@@ -60,7 +60,7 @@ for (const field of [null, "api_key"]) {
         },
       };
       const store = memorySecrets();
-      const scope = { kind: "awssm" as const, account: "123456789012", region: "us-east-1" };
+      const scope = { kind: "awssm" as const, region: "us-east-1" };
       return {
         vault: secretsManagerBackend(
           { credentials: SIGN_IN, source: "the test credentials" },

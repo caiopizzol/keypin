@@ -7,7 +7,8 @@ import { onePasswordRef } from "@keypin/connectors/onepassword";
 import { memoryKeys, resendFetch } from "@keypin/connectors/resend/testing";
 import { cli } from "../src/cli";
 import { NEEDS_APPROVAL } from "../src/approval";
-import { issuer as connect } from "../src/start";
+import type { Deps } from "../src/deps";
+import { issuer as connect, vaults } from "../src/start";
 import { fakeDeps, memoryFiles, parseJson, writableVault } from "./fakes";
 
 const OLD = "re_old_sentinel_value_4b1c";
@@ -93,7 +94,12 @@ type World = Awaited<ReturnType<typeof world>>;
 
 function machine(
   w: World,
-  options: { terminal?: boolean; answers?: string[]; runner?: boolean } = {},
+  options: {
+    terminal?: boolean;
+    answers?: string[];
+    runner?: boolean;
+    vaults?: Deps["vaults"];
+  } = {},
 ) {
   const disk = memoryFiles();
   const answers = [...(options.answers ?? [])];
@@ -103,6 +109,7 @@ function machine(
     deps: {
       isTerminal: options.terminal ?? false,
       ...(options.runner === false ? { warnRunner: () => false } : {}),
+      ...(options.vaults ? { vaults: options.vaults } : {}),
       ask: async () => answers.shift() ?? "",
       issuer: (spec, admin) => connect(spec, admin, w.resend),
       destination: (target) =>
@@ -610,6 +617,67 @@ describe("keypin rotate --check, the setup check a workflow runs before the firs
       "FAILED RESEND_API_KEY: no rotated date in the vault, so keypin rotate --due never rotates it.",
     );
     unchanged(w);
+  });
+
+  test("a dated schedule on a vault that keeps no rotated date fails, and says the two ways out", async () => {
+    const w = await published();
+    w.dates.delete(ITEM);
+    const undated = machine(w, {
+      vaults: vaults.map((vault) => ({ ...vault, keepsRotated: false as const })),
+    });
+    expect(await undated.run("--check"), undated.stderr.text).toBe(1);
+    expect(undated.stderr.text).toContain(
+      'FAILED RESEND_API_KEY (prod): its vault keeps no rotation date, so scheduled rotation can\'t cover it. rotate_every applies to RESEND_API_KEY in every profile, so either set it to "never" (or remove it) in every [tool.keypin.<profile>.RESEND_API_KEY] that sets it, which stops scheduled rotation of RESEND_API_KEY in every profile, or keep its prod value in a vault that keeps rotation dates. Rotate it by hand with keypin rotate RESEND_API_KEY --profile prod.',
+    );
+    unchanged(w);
+  });
+
+  test("a dated schedule on a vault that keeps no rotated date fails while an old key waits too", async () => {
+    const w = await rotatedOnceOnALaptop();
+    expect(await ci(w).run("--due", "--yes")).toBe(0);
+    const undated = machine(w, {
+      vaults: vaults.map((vault) => ({ ...vault, keepsRotated: false as const })),
+    });
+    expect(await undated.run("--check"), undated.stderr.text).toBe(1);
+    expect(undated.stderr.text).toContain(
+      "RESEND_API_KEY  check  rotated 2026-11-09, the old key waits",
+    );
+    expect(undated.stderr.text).toContain(
+      "FAILED RESEND_API_KEY (prod): its vault keeps no rotation date, so scheduled rotation can't cover it.",
+    );
+    expect(undated.stderr.text).not.toContain("is ready for keypin rotate --due");
+  });
+
+  test("a vault lookup that failed still fails, even where the vault keeps no rotated date", async () => {
+    const w = await published();
+    w.vault.metadata = async () => {
+      throw new Error("the token can't read this config");
+    };
+    const failed = machine(w, {
+      vaults: vaults.map((vault) => ({ ...vault, keepsRotated: false as const })),
+    });
+    expect(await failed.run("--check")).toBe(1);
+    expect(failed.stderr.text).toContain(
+      "RESEND_API_KEY: the vault's rotated date couldn't be read",
+    );
+    expect(failed.stderr.text).not.toContain("Rotate it by hand");
+    unchanged(w);
+  });
+
+  test("the way out names the profile it checked", async () => {
+    const w = await world(
+      MAP.replace("[profiles.prod]\nRESEND_API_KEY", "[profiles.dev]\nRESEND_API_KEY")
+        .replace("\nSTRIPE_KEY = ", "\n[profiles.prod]\nSTRIPE_KEY = ")
+        .replace("[tool.keypin.prod.RESEND_API_KEY]", "[tool.keypin.dev.RESEND_API_KEY]"),
+    );
+    w.dates.delete(ITEM);
+    const undated = machine(w, {
+      vaults: vaults.map((vault) => ({ ...vault, keepsRotated: false as const })),
+    });
+    await undated.run("--check", "--profile", "dev");
+    expect(undated.stderr.text).toContain(
+      "or keep its dev value in a vault that keeps rotation dates. Rotate it by hand with keypin rotate RESEND_API_KEY --profile dev.",
+    );
   });
 
   test("the next step keeps the environment it checked", async () => {

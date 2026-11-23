@@ -81,7 +81,6 @@ describe("state", () => {
     const source = {
       kind: "infisical" as const,
       url: "https://app.infisical.com",
-      organization: "acme",
       project: "billing",
       environment: "prod",
       path: "/",

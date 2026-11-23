@@ -13,7 +13,6 @@ const SECRETS = [JWT, REQUEST_TOKEN, OIDC_TOKEN];
 
 const REF: DopplerRef = {
   kind: "doppler",
-  workplace: "acme",
   project: "billing",
   config: "prd",
   name: "STRIPE_KEY",
@@ -32,7 +31,6 @@ function setup(
   options: {
     env?: Record<string, string>;
     oidc?: Partial<NonNullable<FakeDoppler["oidc"]>>;
-    workplace?: string;
     github?: number;
     revoke?: number;
     echo?: boolean;
@@ -43,7 +41,7 @@ function setup(
 ) {
   const env = { ...JOB, ...options.env };
   const fake: FakeDoppler = {
-    workplace: options.workplace ?? "acme",
+    workplace: "acme",
     projects: { billing: { prd: { STRIPE_KEY: { value: SENTINEL } } } },
     tokens: {},
     oidc: { identityId: IDENTITY, jwt: JWT, ...options.oidc },
@@ -127,7 +125,7 @@ const READ = "GET https://api.doppler.com/v3/configs/config/secret";
 const REVOKE = "POST https://api.doppler.com/v3/auth/revoke";
 
 describe("signing in with GitHub Actions OIDC", () => {
-  test("exchanges GitHub's token, checks the workplace, reads, then revokes on close", async () => {
+  test("exchanges GitHub's token, checks it, reads, then revokes on close", async () => {
     const run = setup();
     expect((await run.vault.read(REF)).equals(new Secret(SENTINEL))).toBe(true);
     await run.vault.close?.();
@@ -212,18 +210,6 @@ describe("signing in with GitHub Actions OIDC", () => {
     expect(plain.calls.map((c) => c.call)).toEqual([GITHUB, LOGIN]);
   });
 
-  test("an identity from another workplace is revoked, and nothing is read", async () => {
-    const run = setup({ workplace: "other" });
-    const error = await failure(run.vault.read(REF));
-    expect(String(error)).toContain(
-      "sign-in failed: the service account identity token for the identity in KEYPIN_DOPPLER_IDENTITY_ID belongs to the workplace other Inc (other), but secretspec.toml names acme",
-    );
-    expect(run.calls.map((c) => c.call)).toEqual([GITHUB, LOGIN, ME, REVOKE]);
-    expect(run.fake.revoked).toEqual([OIDC_TOKEN]);
-    await run.vault.close?.();
-    expect(run.fake.revoked).toEqual([OIDC_TOKEN]);
-  });
-
   test("a token that lives longer than an hour warns once to shorten the identity's TTL", async () => {
     const run = setup({ oidc: { expiresInSeconds: 7200 } });
     await run.vault.read(REF);
@@ -238,7 +224,7 @@ describe("signing in with GitHub Actions OIDC", () => {
     await run.vault.read(REF);
     await run.vault.close?.();
     expect(run.warnings).toEqual([
-      "Doppler workplace acme: couldn't revoke keypin's service account identity token (Doppler returned HTTP 500); it lasts until its TTL runs out",
+      "Doppler: couldn't revoke keypin's service account identity token (Doppler returned HTTP 500); it lasts until its TTL runs out",
     ]);
   });
 
@@ -247,7 +233,7 @@ describe("signing in with GitHub Actions OIDC", () => {
     await run.vault.read(REF);
     await run.vault.close?.();
     expect(run.warnings).toEqual([
-      "Doppler workplace acme: couldn't revoke keypin's service account identity token (connection dropped after [hidden]); it lasts until its TTL runs out",
+      "Doppler: couldn't revoke keypin's service account identity token (connection dropped after [hidden]); it lasts until its TTL runs out",
     ]);
   });
 
@@ -265,11 +251,11 @@ describe("signing in with GitHub Actions OIDC", () => {
     showsNoToken(error);
   });
 
-  test("a failed workplace check that echoes Doppler's token shows it hidden, and revokes it", async () => {
+  test("a failed token check that echoes Doppler's token shows it hidden, and revokes it", async () => {
     const run = setup({ echoing: "/v3/me" });
     const error = await failure(run.vault.read(REF));
     expect(String(error)).toContain(
-      "couldn't read the service account identity token's workplace (Doppler returned HTTP 500: Bad bearer Bearer [hidden] from [hidden])",
+      "couldn't check the service account identity token for the identity in KEYPIN_DOPPLER_IDENTITY_ID (Doppler returned HTTP 500: Bad bearer Bearer [hidden] from [hidden])",
     );
     showsNoToken(error);
     expect(run.fake.revoked).toEqual([OIDC_TOKEN]);
@@ -279,7 +265,7 @@ describe("signing in with GitHub Actions OIDC", () => {
     const run = setup({ echoing: "/v3/configs/config/secret" });
     const error = await failure(run.vault.read(REF));
     expect(String(error)).toContain(
-      "doppler://billing/prd/STRIPE_KEY (Doppler workplace acme): Doppler returned HTTP 500: Bad bearer Bearer [hidden] from [hidden]",
+      "doppler://billing/prd/STRIPE_KEY (Doppler): Doppler returned HTTP 500: Bad bearer Bearer [hidden] from [hidden]",
     );
     showsNoToken(error);
   });
@@ -322,7 +308,6 @@ describe("signing in with GitHub Actions OIDC", () => {
     for (const options of [
       { oidc: { jwt: "another-jwt" } },
       { github: 500 },
-      { workplace: "other" },
       { oidc: { expiresInSeconds: 7200 } },
       { revoke: 500 },
       { echo: true },
@@ -339,7 +324,7 @@ describe("signing in with GitHub Actions OIDC", () => {
       await run.vault.close?.();
       texts.push(...run.warnings);
     }
-    expect(texts.filter(Boolean)).toHaveLength(8);
+    expect(texts.filter(Boolean)).toHaveLength(7);
     showsNoToken(...texts);
   });
 });

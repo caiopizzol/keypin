@@ -1,16 +1,15 @@
-import { isRecord, type TableReader } from "@keypin/core";
+import { isRecord } from "@keypin/core";
 
 export type BitwardenRef = {
   kind: "bitwarden";
   url: string;
-  organization: string;
   project: string;
   name: string;
 };
 
-export type BitwardenReference = Omit<BitwardenRef, "url" | "organization">;
+export type BitwardenReference = Omit<BitwardenRef, "url">;
 
-export type BitwardenPin = Pick<BitwardenRef, "url" | "organization">;
+export type BitwardenPlace = Pick<BitwardenRef, "url">;
 
 export type BitwardenScope = Omit<BitwardenRef, "name">;
 
@@ -40,70 +39,25 @@ export function format(ref: BitwardenReference): string {
   return `${SCHEME}${ref.project}/${ref.name}`;
 }
 
-export function account(place: BitwardenPin): string {
-  return `Bitwarden organization ${place.organization} at ${place.url}`;
+export function account(place: BitwardenPlace): string {
+  return `Bitwarden at ${place.url}`;
 }
 
 export function describe(ref: BitwardenRef): string {
   return `${format(ref)} (${account(ref)})`;
 }
 
-export function readPin(read: TableReader): BitwardenPin | undefined {
-  read.only(["url", "organization"]);
-  const url = read.filledIn(
-    read.optional("url"),
-    "url",
-    `your Bitwarden server's address, such as ${EU_CLOUD}`,
-  );
-  const organization = read.filledIn(
-    read.required("organization"),
-    "organization",
-    "your Bitwarden organization's ID, from the address bar in Secrets Manager",
-  );
-  const origin = url === undefined ? US_CLOUD : httpsOrigin(url);
-  if (origin === null) {
-    read.fail(`field "url" must be an https:// address such as ${EU_CLOUD}, with no path`);
-    return undefined;
-  }
-  if (organization === undefined) return undefined;
-  if (!UUID.test(organization)) {
-    read.fail(
-      `field "organization" must be your organization's ID, such as 2f1d6c9e-8a3b-4c5d-9e7f-0a1b2c3d4e5f, from the address bar in Secrets Manager`,
-    );
-    return undefined;
-  }
-  return { url: origin, organization: organization.toLowerCase() };
-}
-
-function httpsOrigin(text: string): string | null {
-  if (!/^https:\/\/[^/?#\\]+\/?$/.test(text)) return null;
-  try {
-    const url = new URL(text);
-    return url.protocol === "https:" && url.pathname === "/" && !url.username && !url.password
-      ? url.origin
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 export function decode(value: unknown): BitwardenRef | null {
   if (!isRecord(value) || value.kind !== "bitwarden") return null;
-  const { url, organization, project, name } = value;
-  if (
-    typeof url !== "string" ||
-    typeof organization !== "string" ||
-    typeof project !== "string" ||
-    typeof name !== "string"
-  )
+  const { url, project, name } = value;
+  if (typeof url !== "string" || typeof project !== "string" || typeof name !== "string")
     return null;
-  return { kind: "bitwarden", url, organization, project, name };
+  return { kind: "bitwarden", url, project, name };
 }
 
 export function decodeScope(value: unknown): BitwardenScope | null {
   if (!isRecord(value) || value.kind !== "bitwarden") return null;
-  const { url, organization, project } = value;
-  if (typeof url !== "string" || typeof organization !== "string" || typeof project !== "string")
-    return null;
-  return { kind: "bitwarden", url, organization, project };
+  const { url, project } = value;
+  if (typeof url !== "string" || typeof project !== "string") return null;
+  return { kind: "bitwarden", url, project };
 }

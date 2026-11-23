@@ -25,7 +25,6 @@ import {
 import {
   account,
   describe as describeRef,
-  type DopplerPin as Place,
   type DopplerRef,
   type DopplerScope as Scope,
   format,
@@ -53,9 +52,9 @@ export interface DopplerOptions {
 }
 
 interface Session {
-  place: Place;
   token: string;
   minted: boolean;
+  workplace: string;
 }
 
 export function dopplerBackend(
@@ -64,7 +63,8 @@ export function dopplerBackend(
   options: DopplerOptions = {},
 ): VaultBackend {
   const warn = options.warn ?? (() => {});
-  const sessions = new Map<string, Promise<Session>>();
+  let pending: Promise<Session> | null = null;
+  const session = () => (pending ??= signIn());
   const strict = credentials !== null && "identityId" in credentials;
   const stored = credentials !== null && "token" in credentials ? credentials.token : null;
   const kind = strict ? IDENTITY_TOKEN : stored === null ? "token" : tokenKind(stored);
@@ -100,17 +100,16 @@ export function dopplerBackend(
   }
 
   async function signedIn(
-    place: Place,
     method: string,
     path: string,
     options: { query?: Record<string, string>; body?: Json } = {},
   ): Promise<{ status: number; body: Json }> {
-    const { token } = await session(place);
+    const { token } = await session();
     return request(method, path, { ...options, token });
   }
 
-  async function signIn(place: Place): Promise<Session> {
-    const where = account(place);
+  async function signIn(): Promise<Session> {
+    const where = account();
     if (!credentials)
       throw new SignInFailed(`${where}: sign-in failed: ${NO_CREDENTIALS}`, {
         kind: "no-credentials",
@@ -118,49 +117,43 @@ export function dopplerBackend(
     if ("problem" in credentials)
       throw new SignInFailed(`${where}: sign-in failed: ${credentials.problem}`, { kind: "other" });
     if ("token" in credentials) {
-      await checkWorkplace(place, credentials.token);
-      return { place, token: credentials.token, minted: false };
+      const workplace = await workplaceOf(credentials.token);
+      return { token: credentials.token, minted: false, workplace };
     }
-    const token = await oidcToken(place, credentials);
+    const token = await oidcToken(credentials);
     try {
-      await checkWorkplace(place, token);
+      return { token, minted: true, workplace: await workplaceOf(token) };
     } catch (error) {
-      await revoke(place, token);
+      await revoke(token);
       throw error;
     }
-    return { place, token, minted: true };
   }
 
-  async function checkWorkplace(place: Place, token: string): Promise<void> {
-    const where = account(place);
+  async function workplaceOf(token: string): Promise<string> {
+    const where = account();
     const me = await request("GET", "/v3/me", { token });
     if (me.status === 401 && !strict)
       throw new SignInFailed(
         `${where}: sign-in failed: Doppler refused the ${kind} in ${TOKEN_VARIABLE} (HTTP 401); it may be revoked or expired, so make a new one`,
         { kind: "other" },
       );
-    const workplace = isRecord(me.body.workplace) ? me.body.workplace : {};
-    const slug = workplace.slug;
-    if (me.status !== 200 || typeof slug !== "string")
+    const workplace = isRecord(me.body.workplace) ? me.body.workplace.slug : undefined;
+    if (me.status !== 200 || typeof workplace !== "string" || !workplace)
       throw new SignInFailed(
-        `${where}: sign-in failed: couldn't read the ${kind}'s workplace (${problem(me)})`,
+        `${where}: sign-in failed: couldn't check the ${kind} ${held} (${problem(me)})`,
         { kind: "other" },
       );
-    if (slug !== place.workplace) {
-      const name = typeof workplace.name === "string" ? `${workplace.name} (${slug})` : slug;
-      throw new SignInFailed(
-        `${where}: sign-in failed: the ${kind} ${held} belongs to the workplace ${name}, but secretspec.toml names ${place.workplace}`,
-        { kind: "wrong-account", pinned: place.workplace, actual: slug },
-      );
-    }
+    return workplace;
   }
 
-  async function oidcToken(
-    place: Place,
-    given: { identityId: string; audience: string | null },
-  ): Promise<string> {
+  const idsIn = async (ref: DopplerRef) => idsOf(ref, (await session()).workplace);
+
+  async function oidcToken(given: {
+    identityId: string;
+    audience: string | null;
+  }): Promise<string> {
     const failed = (why: string, kind: "no-credentials" | "other" = "other") =>
-      new SignInFailed(`${account(place)}: sign-in failed: ${why}`, { kind });
+      new SignInFailed(`${account()}: sign-in failed: ${why}`, { kind });
     const idToken =
       options.idToken ??
       (() => Promise.reject(new NoIdToken("keypin has no way to ask for an OIDC token here")));
@@ -193,7 +186,7 @@ export function dopplerBackend(
     return token;
   }
 
-  async function revoke(place: Place, token: string): Promise<void> {
+  async function revoke(token: string): Promise<void> {
     let why: string | null;
     try {
       const response = await fetch(`${API}/v3/auth/revoke`, {
@@ -212,17 +205,8 @@ export function dopplerBackend(
     }
     if (why !== null)
       warn(
-        `${account(place)}: couldn't revoke keypin's ${IDENTITY_TOKEN} (${hidden(why)}); it lasts until its TTL runs out`,
+        `${account()}: couldn't revoke keypin's ${IDENTITY_TOKEN} (${hidden(why)}); it lasts until its TTL runs out`,
       );
-  }
-
-  function session(place: Place): Promise<Session> {
-    let pending = sessions.get(place.workplace);
-    if (!pending) {
-      pending = signIn(place);
-      sessions.set(place.workplace, pending);
-    }
-    return pending;
   }
 
   function refused(scope: Scope, found: { status: number; body: Json }): string {
@@ -234,7 +218,7 @@ export function dopplerBackend(
   }
 
   async function secretOf(ref: DopplerRef): Promise<{ raw: unknown; computed: unknown }> {
-    const found = await signedIn(ref, "GET", "/v3/configs/config/secret", {
+    const found = await signedIn("GET", "/v3/configs/config/secret", {
       query: { project: ref.project, config: ref.config, name: ref.name },
     });
     const value = isRecord(found.body.value) ? found.body.value : null;
@@ -244,12 +228,12 @@ export function dopplerBackend(
   }
 
   async function names(scope: Scope): Promise<string[]> {
-    const found = await signedIn(scope, "GET", "/v3/configs/config/secrets/names", {
+    const found = await signedIn("GET", "/v3/configs/config/secrets/names", {
       query: { project: scope.project, config: scope.config },
     });
     if (found.status !== 200 || !Array.isArray(found.body.names))
       throw new Error(
-        `${account(scope)}: couldn't list ${scope.project}/${scope.config}: ${refused(scope, found)}`,
+        `${account()}: couldn't list ${scope.project}/${scope.config}: ${refused(scope, found)}`,
       );
     return found.body.names.filter((name): name is string => typeof name === "string");
   }
@@ -257,7 +241,7 @@ export function dopplerBackend(
   async function existing(ref: DopplerRef) {
     if (!(await names(ref)).includes(ref.name))
       throw new Error(`${describeRef(ref)}: no secret ${ref.name} in ${ref.project}/${ref.config}`);
-    return idsOf(ref);
+    return idsIn(ref);
   }
 
   async function valueOf(ref: DopplerRef) {
@@ -267,7 +251,7 @@ export function dopplerBackend(
         `${describeRef(ref)}: Doppler hides this restricted secret's value from a ${kind}; use a service token or service account token`,
       );
     if (computed === "") throw new Error(`${describeRef(ref)}: the value is empty`);
-    return { secret: new Secret(computed), ids: idsOf(ref) };
+    return { secret: new Secret(computed), ids: await idsIn(ref) };
   }
 
   async function ownSecret(ref: DopplerRef, fail: (message: string) => Error): Promise<void> {
@@ -283,7 +267,7 @@ export function dopplerBackend(
       );
     const holders: string[] = [];
     for (const parent of await parentsOf(ref, fail)) {
-      const found = await signedIn(ref, "GET", "/v3/configs/config/secrets/names", {
+      const found = await signedIn("GET", "/v3/configs/config/secrets/names", {
         query: { project: parent.project, config: parent.config },
       });
       if (found.status !== 200 || !Array.isArray(found.body.names))
@@ -311,7 +295,7 @@ export function dopplerBackend(
   }
 
   async function parentsOf(ref: DopplerRef, fail: (message: string) => Error): Promise<Scope[]> {
-    const found = await signedIn(ref, "GET", "/v3/configs/config", {
+    const found = await signedIn("GET", "/v3/configs/config", {
       query: { project: ref.project, config: ref.config },
     });
     const config = isRecord(found.body.config) ? found.body.config : {};
@@ -335,7 +319,7 @@ export function dopplerBackend(
     fail: (message: string) => Error,
   ): Promise<Scope> {
     for (let page = 1; ; page++) {
-      const found = await signedIn(ref, "GET", "/v3/configs", {
+      const found = await signedIn("GET", "/v3/configs", {
         query: { project: ref.project, environment, page: String(page), per_page: String(PAGE) },
       });
       const configs = Array.isArray(found.body.configs)
@@ -373,7 +357,7 @@ export function dopplerBackend(
         );
       if (!options.newItem) await ownSecret(ref, (message) => new WriteRefused(message));
       const saved = value.reveal();
-      const written = await signedIn(ref, "POST", "/v3/configs/config/secrets", {
+      const written = await signedIn("POST", "/v3/configs/config/secrets", {
         body: { project: ref.project, config: ref.config, secrets: { [ref.name]: saved } },
       });
       if (written.status >= 400 && written.status < 500) {
@@ -407,14 +391,10 @@ export function dopplerBackend(
     },
 
     async close() {
-      const open = [...sessions.values()];
-      sessions.clear();
-      await Promise.all(
-        open.map(async (pending) => {
-          const current = await pending.catch(() => null);
-          if (current?.minted) await revoke(current.place, current.token);
-        }),
-      );
+      const open = pending;
+      pending = null;
+      const current = await open?.catch(() => null);
+      if (current?.minted) await revoke(current.token);
     },
   };
 }

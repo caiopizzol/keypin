@@ -16,7 +16,6 @@ const TOKEN_SECRET = "fake-machine-account-secret-7d2e";
 const REF: BitwardenRef = {
   kind: "bitwarden",
   url: "https://vault.bitwarden.com",
-  organization: ORGANIZATION,
   project: "billing",
   name: "STRIPE_KEY",
 };
@@ -89,13 +88,11 @@ describe("signing in to Bitwarden", () => {
     expectNoneOf([TOKEN_SECRET, SENTINEL], error);
   });
 
-  test("a machine account in another organization is wrong-account", async () => {
+  test("keypin checks no organization: it lists the projects of the token's own", async () => {
     const other = "9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b";
-    const { vault } = setup({ organization: other });
-    const error = await caught(vault.read(REF));
-    expect(error).toMatchObject({
-      reason: { kind: "wrong-account", pinned: ORGANIZATION, actual: other },
-    });
+    const { vault, calls } = setup({ organization: other });
+    expect((await vault.read(REF)).equals(new Secret(SENTINEL))).toBe(true);
+    expect(calls[1]).toBe(`GET https://api.bitwarden.com/organizations/${other}/projects`);
   });
 
   test("the EU cloud and a self-hosted server use their own identity and API addresses", async () => {

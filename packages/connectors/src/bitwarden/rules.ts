@@ -8,6 +8,7 @@ import {
   parse,
   SCHEME,
 } from "./reference";
+import { locate, PASSWORD_MANAGER } from "./secretspec";
 
 export const bitwardenVaultRules: VaultRules<BitwardenRef, BitwardenReference> = {
   kind: "bitwarden",
@@ -20,5 +21,5 @@ export const bitwardenVaultRules: VaultRules<BitwardenRef, BitwardenReference> =
   account,
   sameItem: (a, b) => a.project === b.project && a.name === b.name,
   stored: decode,
-  secretspec: { provider: "bws" },
+  secretspec: { provider: "bws", refuses: new Map([["bw", PASSWORD_MANAGER]]), locate },
 };

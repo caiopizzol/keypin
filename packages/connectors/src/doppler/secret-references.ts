@@ -21,7 +21,7 @@ export function ownScope(scope: VaultScope): Scope {
 }
 
 export function scopeOf(ref: DopplerRef): Scope {
-  return { kind: ref.kind, workplace: ref.workplace, project: ref.project, config: ref.config };
+  return { kind: ref.kind, project: ref.project, config: ref.config };
 }
 
 export function isConfigName(entry: unknown): entry is { project: string; config: string } {
@@ -33,8 +33,8 @@ export function sourceOf(sources: string[]): string {
   return sources.length === 1 && only ? only : "the source secret";
 }
 
-export function idsOf(ref: DopplerRef) {
-  return { vault: `${ref.project}/${ref.config}`, item: ref.name };
+export function idsOf(ref: DopplerRef, workplace: string) {
+  return { vault: `${workplace}/${ref.project}/${ref.config}`, item: ref.name };
 }
 
 const REFERENCE = /\$\{([^}]+)\}/g;

@@ -13,7 +13,7 @@ import {
   serviceAccountKeyId,
 } from "@keypin/connectors/google/testing";
 import type { FakeInfisical } from "@keypin/connectors/infisical/testing";
-import { type FakeBitwarden } from "@keypin/connectors/bitwarden/testing";
+import { FAKE_ACCESS_TOKEN, type FakeBitwarden } from "@keypin/connectors/bitwarden/testing";
 import type { FakeDoppler } from "@keypin/connectors/doppler/testing";
 import type { FakeOpenAIKey } from "@keypin/connectors/openai/testing";
 import type { FakeElevenLabsKey } from "@keypin/connectors/elevenlabs/testing";
@@ -173,6 +173,161 @@ export const ready: Scenario = {
   wrangler: true,
   githubSecrets: ["STRIPE_KEY"],
   places: {},
+};
+
+const vaultMap = (provider: string, dev: string, prod: string) => `[project]
+name = "billing"
+revision = "1.0"
+
+[providers]
+${provider}
+
+[profiles.dev]
+STRIPE_KEY = { description = "STRIPE_KEY"${dev} }
+
+[profiles.prod]
+STRIPE_KEY = { description = "STRIPE_KEY"${prod} }
+
+[tool.keypin.dev.STRIPE_KEY]
+rotate_every = "90d"
+
+[tool.keypin.prod.STRIPE_KEY]
+rotate_every = "90d"
+publish = [{ to = "github-actions", repo = "acme/billing" }]
+`;
+
+export const INFISICAL_PROJECT = "7e2f1a4c-0b1d-4c8e-9f00-1234567890ab";
+
+const infisical: Scenario = {
+  ...ready,
+  about:
+    "ready, but secretspec.toml reads from a fake Infisical project, signed in as a machine identity",
+  files: {
+    ...ready.files,
+    "secretspec.toml": vaultMap(
+      `infisical = "infisical://app.infisical.com/${INFISICAL_PROJECT}"\n\n[defaults]\nproviders = ["infisical"]`,
+      "",
+      ', ref = { item = "/STRIPE_KEY" }',
+    ),
+  },
+  onePassword: { accounts: {} },
+  infisical: {
+    projectIds: { billing: INFISICAL_PROJECT },
+    projects: {
+      billing: {
+        dev: {
+          "/secretspec/billing/dev/STRIPE_KEY": {
+            value: "verify-dev-stripe-6b1e",
+            rotated: day(-30),
+          },
+        },
+        prod: { STRIPE_KEY: { value: "verify-prod-stripe-9d4a", rotated: day(-85) } },
+      },
+    },
+  },
+  env: {
+    INFISICAL_UNIVERSAL_AUTH_CLIENT_ID: "verify-client-id",
+    INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET: "verify-client-secret-3e7a",
+  },
+};
+
+const BITWARDEN_ORGANIZATION = "2f1d6c9e-8a3b-4c5d-9e7f-0a1b2c3d4e5f";
+const BITWARDEN_DEV = "a1b2c3d4-0000-4000-8000-000000000001";
+export const BITWARDEN_PROD = "a9230ec4-5507-4870-b8b5-b3f500587e4c";
+
+const bitwarden: Scenario = {
+  ...ready,
+  about: "ready, but secretspec.toml reads from fake Bitwarden Secrets Manager projects",
+  files: {
+    ...ready.files,
+    "secretspec.toml": vaultMap(
+      `bw_dev = "bws://${BITWARDEN_DEV}"\nbw = "bws://${BITWARDEN_PROD}"\n\n[profiles.dev.defaults]\nproviders = ["bw_dev"]\n\n[profiles.prod.defaults]\nproviders = ["bw"]`,
+      "",
+      "",
+    ),
+  },
+  onePassword: { accounts: {} },
+  bitwarden: {
+    organization: BITWARDEN_ORGANIZATION,
+    projects: {
+      "billing-dev": {
+        id: BITWARDEN_DEV,
+        secrets: [
+          { name: "STRIPE_KEY", value: "verify-dev-stripe-2c7f", note: `rotated: ${day(-30)}` },
+        ],
+      },
+      billing: {
+        id: BITWARDEN_PROD,
+        secrets: [
+          { name: "STRIPE_KEY", value: "verify-prod-stripe-8e1b", note: `rotated: ${day(-85)}` },
+        ],
+      },
+    },
+  },
+  env: { BWS_ACCESS_TOKEN: FAKE_ACCESS_TOKEN },
+};
+
+const doppler: Scenario = {
+  ...ready,
+  about:
+    "ready, but secretspec.toml reads from a fake Doppler project, signed in with a service account token",
+  files: {
+    ...ready.files,
+    "secretspec.toml": vaultMap(
+      `doppler = "doppler://billing"\ndoppler_prd = "doppler://billing/prd"\n\n[profiles.dev.defaults]\nproviders = ["doppler"]\n\n[profiles.prod.defaults]\nproviders = ["doppler_prd"]`,
+      "",
+      "",
+    ),
+  },
+  onePassword: { accounts: {} },
+  doppler: {
+    workplace: "acme",
+    projects: {
+      billing: {
+        dev: { STRIPE_KEY: { value: "verify-dev-stripe-2c7d" } },
+        prd: { STRIPE_KEY: { value: "verify-prod-stripe-5e8b" } },
+      },
+    },
+    tokens: { "dp.sa.verify-account-token-1a9f": { type: "service_account", write: true } },
+  },
+  env: { DOPPLER_TOKEN: "dp.sa.verify-account-token-1a9f" },
+};
+
+const AWSSM_KEY = {
+  id: "ASIAVERIFYVERIFY0001",
+  secret: "verify-aws-secret-key-4b8e",
+  token: "verify-aws-session-token-9d1c",
+};
+
+const awssm: Scenario = {
+  ...ready,
+  about:
+    "ready, but secretspec.toml reads from fake AWS Secrets Manager in eu-west-1, signed in with temporary credentials",
+  files: {
+    ...ready.files,
+    "secretspec.toml": vaultMap(
+      `aws = "awssm://eu-west-1"\n\n[defaults]\nproviders = ["aws"]`,
+      ', ref = { item = "billing/dev", field = "STRIPE_KEY" }',
+      "",
+    ),
+  },
+  onePassword: { accounts: {} },
+  awssm: {
+    account: "123456789012",
+    credentials: [AWSSM_KEY],
+    secrets: {
+      "eu-west-1/billing/dev": { value: JSON.stringify({ STRIPE_KEY: "verify-dev-stripe-2c7d" }) },
+      "eu-west-1/secretspec/billing/prod/STRIPE_KEY": {
+        value: "verify-prod-stripe-5e8b",
+        created: "2026-08-01T10:00:00Z",
+      },
+    },
+  },
+  env: {
+    AWS_ACCESS_KEY_ID: AWSSM_KEY.id,
+    AWS_SECRET_ACCESS_KEY: AWSSM_KEY.secret,
+    AWS_SESSION_TOKEN: AWSSM_KEY.token,
+  },
 };
 
 const RESEND_MAP = `[project]
@@ -1050,6 +1205,20 @@ export const scenarios: Record<string, Scenario> = {
     twilio: { keys: [{ ...TWILIO_KEY, type: "main" }] },
   },
   ready,
+  infisical,
+  bitwarden,
+  doppler,
+  awssm,
+  "infisical-token": {
+    ...infisical,
+    about: "infisical, but signed in with a machine identity's access token in INFISICAL_TOKEN",
+    infisical: {
+      projects: {},
+      ...infisical.infisical,
+      accessToken: "verify-access-token-8c3f",
+    },
+    env: { INFISICAL_TOKEN: "verify-access-token-8c3f" },
+  },
   paired,
   sendgrid,
   atlas,

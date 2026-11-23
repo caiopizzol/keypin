@@ -9,7 +9,7 @@ import {
 } from "../../src/bitwarden/testing";
 
 const ORGANIZATION = "2f1d6c9e-8a3b-4c5d-9e7f-0a1b2c3d4e5f";
-const PLACE = { url: "https://vault.bitwarden.com", organization: ORGANIZATION };
+const PLACE = { url: "https://vault.bitwarden.com" };
 
 for (const project of ["billing", "a3c1e2f4-5b6d-4e7f-8a9b-0c1d2e3f4a5b"]) {
   describe(`the vault contract, project ${project}`, () => {

@@ -233,7 +233,6 @@ const OTHER_ITEM = {
 const INFISICAL_ITEM = {
   kind: "infisical",
   url: "https://app.infisical.com",
-  organization: "acme",
   project: "billing",
   environment: "prod",
   path: "/",
@@ -252,7 +251,7 @@ test("a destination last published from Infisical, and now from 1Password, names
     ids: null,
   });
   expect(summary(plan)[0]?.approval).toBe(
-    `${WORKER} was last published from infisical://billing/prod/STRIPE_KEY (Infisical organization acme at https://app.infisical.com), and now from op://Private/billing stripe api key/password (1Password account my.1password.com)`,
+    `${WORKER} was last published from infisical://billing/prod/STRIPE_KEY (Infisical at https://app.infisical.com), and now from op://Private/billing stripe api key/password (1Password account my.1password.com)`,
   );
 });
 

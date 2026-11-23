@@ -17,7 +17,6 @@ const PERSONAL = "dp.pt.sentinel-personal-6f7a";
 
 const REF: DopplerRef = {
   kind: "doppler",
-  workplace: "acme",
   project: "billing",
   config: "prd",
   name: "STRIPE_KEY",
@@ -87,22 +86,14 @@ describe("signing in to Doppler", () => {
     const { vault } = setup("dp.st.prd.revoked-token-0000");
     const error = await failure(vault.read(REF));
     expect(error.message).toBe(
-      "Doppler workplace acme: sign-in failed: Doppler refused the service token in DOPPLER_TOKEN (HTTP 401); it may be revoked or expired, so make a new one",
+      "Doppler: sign-in failed: Doppler refused the service token in DOPPLER_TOKEN (HTTP 401); it may be revoked or expired, so make a new one",
     );
   });
 
-  test("a token from another workplace is wrong-account, before any secret is read", async () => {
+  test("keypin checks no workplace: a token from any workplace reads", async () => {
     const { vault, calls } = setup(SERVICE, { workplace: "globex" });
-    const error = await failure(vault.read(REF));
-    expect(error instanceof SignInFailed && error.reason).toEqual({
-      kind: "wrong-account",
-      pinned: "acme",
-      actual: "globex",
-    });
-    expect(error.message).toContain(
-      "the service token in DOPPLER_TOKEN belongs to the workplace globex Inc (globex), but secretspec.toml names acme",
-    );
-    expect(calls).toEqual(["GET /v3/me"]);
+    expect((await vault.read(REF)).equals(new Secret(SENTINEL))).toBe(true);
+    expect(calls[0]).toBe("GET /v3/me");
   });
 
   test("signs in once for many reads", async () => {
@@ -118,7 +109,7 @@ describe("reading", () => {
     const { vault } = setup(SERVICE);
     const error = await failure(vault.read({ ...REF, config: "dev" }));
     expect(error.message).toBe(
-      "doppler://billing/dev/STRIPE_KEY (Doppler workplace acme): Doppler returned HTTP 403: This token does not have access to requested config; a service token reads only the config it was made for, so use one made for billing/dev, or a service account token",
+      "doppler://billing/dev/STRIPE_KEY (Doppler): Doppler returned HTTP 403: This token does not have access to requested config; a service token reads only the config it was made for, so use one made for billing/dev, or a service account token",
     );
   });
 
@@ -126,10 +117,10 @@ describe("reading", () => {
     const { vault } = setup(ACCOUNT);
     const error = await failure(vault.read({ ...REF, name: "NOPE" }));
     expect(error.message).toBe(
-      "doppler://billing/prd/NOPE (Doppler workplace acme): Doppler returned HTTP 404: Could not find requested secret",
+      "doppler://billing/prd/NOPE (Doppler): Doppler returned HTTP 404: Could not find requested secret",
     );
     await expect(vault.itemIds({ ...REF, name: "NOPE" })).rejects.toThrow(
-      "doppler://billing/prd/NOPE (Doppler workplace acme): no secret NOPE in billing/prd",
+      "doppler://billing/prd/NOPE (Doppler): no secret NOPE in billing/prd",
     );
   });
 
@@ -146,7 +137,7 @@ describe("reading", () => {
       secrets: { billing: { prd: { STRIPE_KEY: { value: "" } } } },
     });
     await expect(vault.read(REF)).rejects.toThrow(
-      "doppler://billing/prd/STRIPE_KEY (Doppler workplace acme): the value is empty",
+      "doppler://billing/prd/STRIPE_KEY (Doppler): the value is empty",
     );
   });
 
@@ -156,21 +147,29 @@ describe("reading", () => {
     });
     const error = await failure(vault.read(REF));
     expect(error.message).toBe(
-      "doppler://billing/prd/STRIPE_KEY (Doppler workplace acme): Doppler hides this restricted secret's value from a personal token; use a service token or service account token",
+      "doppler://billing/prd/STRIPE_KEY (Doppler): Doppler hides this restricted secret's value from a personal token; use a service token or service account token",
     );
   });
 
-  test("ids are the config and the secret's name, and metadata has no rotated date", async () => {
+  test("ids are the workplace, the config and the secret's name, and metadata has no rotated date", async () => {
     const { vault } = setup(SERVICE);
-    expect(await vault.itemIds(REF)).toEqual({ vault: "billing/prd", item: "STRIPE_KEY" });
+    expect(await vault.itemIds(REF)).toEqual({ vault: "acme/billing/prd", item: "STRIPE_KEY" });
+    expect((await vault.readItem(REF)).ids).toEqual({
+      vault: "acme/billing/prd",
+      item: "STRIPE_KEY",
+    });
     expect(await vault.metadata(REF)).toEqual({ rotated: null });
+  });
+
+  test("the same config in another workplace has other ids, so an old approval doesn't cover it", async () => {
+    const { vault } = setup(SERVICE, { workplace: "other" });
+    expect(await vault.itemIds(REF)).toEqual({ vault: "other/billing/prd", item: "STRIPE_KEY" });
   });
 
   test("list names the config's secrets without reading a value", async () => {
     const { vault, calls } = setup(SERVICE);
     const items = await vault.list({
       kind: "doppler",
-      workplace: "acme",
       project: "billing",
       config: "prd",
     });
@@ -192,7 +191,7 @@ describe("writing", () => {
     const error = await failure(vault.write(REF, new Secret(`${SENTINEL}-2`)));
     expect(error).toBeInstanceOf(WriteRefused);
     expect(error.message).toBe(
-      "doppler://billing/prd/STRIPE_KEY (Doppler workplace acme): Doppler returned HTTP 403: You do not have permission to perform this action; keypin needs a service token with write access to billing/prd, so make a service token with read/write access",
+      "doppler://billing/prd/STRIPE_KEY (Doppler): Doppler returned HTTP 403: You do not have permission to perform this action; keypin needs a service token with write access to billing/prd, so make a service token with read/write access",
     );
     expect(store.effects).toEqual([]);
   });
@@ -224,7 +223,7 @@ describe("writing", () => {
     };
     const { vault, store } = setup(ACCOUNT, { secrets });
     const message =
-      "doppler://billing/prd/STRIPE_KEY (Doppler workplace acme): the secret references doppler://shared/prd/STRIPE_KEY, so a new key saved here would leave that secret, and everything that uses it, with the old key; point secretspec.toml at doppler://shared/prd/STRIPE_KEY instead";
+      "doppler://billing/prd/STRIPE_KEY (Doppler): the secret references doppler://shared/prd/STRIPE_KEY, so a new key saved here would leave that secret, and everything that uses it, with the old key; point secretspec.toml at doppler://shared/prd/STRIPE_KEY instead";
     await expect(vault.checkWrite?.(REF)).rejects.toThrow(message);
     const error = await failure(vault.write(REF, new Secret("x")));
     expect(error).toBeInstanceOf(WriteRefused);
@@ -259,7 +258,7 @@ describe("writing", () => {
     });
     expect((await vault.read(branch)).equals(new Secret(SENTINEL))).toBe(true);
     const message =
-      "doppler://billing/prd_aws/STRIPE_KEY (Doppler workplace acme): billing/prd_aws inherits doppler://billing/prd/STRIPE_KEY, and Doppler doesn't say whether the secret here overrides it, so a new key saved here could leave that secret, and every config that inherits it, with the old key; point secretspec.toml at doppler://billing/prd/STRIPE_KEY instead";
+      "doppler://billing/prd_aws/STRIPE_KEY (Doppler): billing/prd_aws inherits doppler://billing/prd/STRIPE_KEY, and Doppler doesn't say whether the secret here overrides it, so a new key saved here could leave that secret, and every config that inherits it, with the old key; point secretspec.toml at doppler://billing/prd/STRIPE_KEY instead";
     await expect(vault.checkWrite?.(branch)).rejects.toThrow(message);
     const error = await failure(vault.write(branch, new Secret("x")));
     expect(error).toBeInstanceOf(WriteRefused);
@@ -336,7 +335,7 @@ describe("writing", () => {
     const error = await failure(vault.write(branch, new Secret("x")));
     expect(error).toBeInstanceOf(WriteRefused);
     expect(error.message).toBe(
-      "doppler://billing/prd_aws/STRIPE_KEY (Doppler workplace acme): keypin can't read the configs of billing, so it can't tell whether the secret is inherited from another config: Doppler returned HTTP 403: This token does not have access to requested config; a service token reads only the config it was made for, so use a service account token or personal token that can read it",
+      "doppler://billing/prd_aws/STRIPE_KEY (Doppler): keypin can't read the configs of billing, so it can't tell whether the secret is inherited from another config: Doppler returned HTTP 403: This token does not have access to requested config; a service token reads only the config it was made for, so use a service account token or personal token that can read it",
     );
     expect(store.effects).toEqual([]);
   });

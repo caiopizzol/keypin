@@ -18,7 +18,6 @@ const SECRETS = [JWT, REQUEST_TOKEN, OIDC_ACCESS_TOKEN];
 const REF: InfisicalRef = {
   kind: "infisical",
   url: "https://app.infisical.com",
-  organization: "acme",
   project: "billing",
   environment: "prod",
   path: "/",
@@ -54,7 +53,6 @@ function setup(
   options: {
     env?: Record<string, string>;
     oidc?: Partial<NonNullable<FakeInfisical["oidc"]>>;
-    organization?: string;
     github?: number;
     revoke?: number;
     echo?: boolean;
@@ -64,7 +62,6 @@ function setup(
 ) {
   const env = { ...JOB, ...options.env };
   const fake: FakeInfisical = {
-    organization: options.organization ?? "acme",
     projects: { billing: { prod: { STRIPE_KEY: { value: SENTINEL } } } },
     oidc: { identityId: IDENTITY, jwt: JWT, ...options.oidc },
   };
@@ -131,18 +128,16 @@ function showsNoToken(...texts: unknown[]) {
 
 const GITHUB = "GET https://pipelines.actions.githubusercontent.com/abc/idtoken";
 const LOGIN = "POST https://app.infisical.com/api/v1/auth/oidc-auth/login";
-const DETAILS = "GET https://app.infisical.com/api/v1/identities/details";
 const REVOKE = "POST https://app.infisical.com/api/v1/auth/token/revoke";
 
 describe("signing in with GitHub Actions OIDC", () => {
-  test("exchanges GitHub's token, checks the organization, reads, then revokes on close", async () => {
+  test("exchanges GitHub's token, reads, then revokes on close", async () => {
     const run = setup();
     expect((await run.vault.read(REF)).equals(new Secret(SENTINEL))).toBe(true);
     await run.vault.close?.();
     expect(run.calls.map((c) => c.call)).toEqual([
       GITHUB,
       LOGIN,
-      DETAILS,
       "GET https://app.infisical.com/api/v1/projects/slug/billing",
       "GET https://app.infisical.com/api/v4/secrets/STRIPE_KEY",
       REVOKE,
@@ -162,7 +157,6 @@ describe("signing in with GitHub Actions OIDC", () => {
 
   test("Universal Auth sessions aren't revoked on close", async () => {
     const fake: FakeInfisical = {
-      organization: "acme",
       projects: { billing: { prod: { STRIPE_KEY: { value: SENTINEL } } } },
     };
     const paths: string[] = [];
@@ -233,7 +227,7 @@ describe("signing in with GitHub Actions OIDC", () => {
     const self = { ...REF, url: "https://infisical.acme.dev" };
     const refused = setup();
     expect(String(await failure(refused.vault.read(self)))).toContain(
-      "sign-in failed: keypin sends GitHub's OIDC token only to Infisical Cloud, and secretspec.toml's url is https://infisical.acme.dev; if that server is yours, set KEYPIN_INFISICAL_URL=https://infisical.acme.dev in the job",
+      "sign-in failed: keypin sends GitHub's OIDC token only to Infisical Cloud, and your infisical:// provider in secretspec.toml names https://infisical.acme.dev; if that server is yours, set KEYPIN_INFISICAL_URL=https://infisical.acme.dev in the job",
     );
     expect(refused.calls).toEqual([]);
     const otherServer = setup({ env: { KEYPIN_INFISICAL_URL: "https://elsewhere.acme.dev" } });
@@ -247,16 +241,6 @@ describe("signing in with GitHub Actions OIDC", () => {
         new Secret(SENTINEL),
       ),
     ).toBe(true);
-  });
-
-  test("an identity from another organization is revoked, and nothing is read", async () => {
-    const run = setup({ organization: "other" });
-    const error = await failure(run.vault.read(REF));
-    expect(String(error)).toContain("the machine identity belongs to the organization other");
-    expect(run.calls.map((c) => c.call)).toEqual([GITHUB, LOGIN, DETAILS, REVOKE]);
-    expect(run.fake.revoked).toEqual([OIDC_ACCESS_TOKEN]);
-    await run.vault.close?.();
-    expect(run.fake.revoked).toEqual([OIDC_ACCESS_TOKEN]);
   });
 
   test("a token that lives longer than an hour warns once to shorten the identity's TTLs", async () => {
@@ -275,7 +259,7 @@ describe("signing in with GitHub Actions OIDC", () => {
     await run.vault.read(REF);
     await run.vault.close?.();
     expect(run.warnings).toEqual([
-      "Infisical organization acme at https://app.infisical.com: couldn't revoke keypin's access token (Infisical returned HTTP 500); it lasts until its TTL runs out",
+      "Infisical at https://app.infisical.com: couldn't revoke keypin's access token (Infisical returned HTTP 500); it lasts until its TTL runs out",
     ]);
   });
 
@@ -289,11 +273,7 @@ describe("signing in with GitHub Actions OIDC", () => {
   });
 
   test("a server message after sign-in that echoes Infisical's access token shows it hidden", async () => {
-    for (const path of [
-      "/api/v1/identities/details",
-      "/api/v1/projects/slug/",
-      "/api/v4/secrets/",
-    ]) {
+    for (const path of ["/api/v1/projects/slug/", "/api/v4/secrets/"]) {
       const run = setup({ echoAfterSignIn: path });
       const error = await failure(run.vault.read(REF));
       expect(String(error)).toContain("Forbidden for [hidden]");
@@ -306,7 +286,7 @@ describe("signing in with GitHub Actions OIDC", () => {
     await run.vault.read(REF);
     await run.vault.close?.();
     expect(run.warnings).toEqual([
-      "Infisical organization acme at https://app.infisical.com: couldn't revoke keypin's access token (connection dropped after [hidden]); it lasts until its TTL runs out",
+      "Infisical at https://app.infisical.com: couldn't revoke keypin's access token (connection dropped after [hidden]); it lasts until its TTL runs out",
     ]);
   });
 
@@ -322,7 +302,7 @@ describe("signing in with GitHub Actions OIDC", () => {
     for (const options of [
       { oidc: { jwt: "another-jwt" } },
       { github: 500 },
-      { organization: "other" },
+      { echoAfterSignIn: "/api/v4/secrets/" },
       { oidc: { expiresIn: 7200 } },
       { revoke: 500 },
     ]) {

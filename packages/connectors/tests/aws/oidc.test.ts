@@ -26,7 +26,6 @@ const NOW = new Date("2026-11-20T12:00:00Z");
 
 const REF: SecretsManagerRef = {
   kind: "awssm",
-  account: ACCOUNT,
   region: "eu-west-1",
   name: "prod/stripe",
   field: null,
@@ -50,7 +49,6 @@ function setup(
     env?: Record<string, string>;
     jwt?: string;
     role?: string;
-    account?: string;
     github?: number[];
     sts?: number[];
     echo?: boolean;
@@ -63,7 +61,7 @@ function setup(
     webIdentity: {
       role: options.role ?? ROLE,
       jwt: options.jwt ?? `${JWT}:sts.amazonaws.com`,
-      minted: { ...MINTED, ...(options.account ? { account: options.account } : {}) },
+      minted: MINTED,
     },
     secrets: { "eu-west-1/prod/stripe": { value: SENTINEL } },
   };
@@ -136,7 +134,7 @@ const IDENTITY = "sts.eu-west-1.amazonaws.com GetCallerIdentity";
 const READ = "secretsmanager.eu-west-1.amazonaws.com secretsmanager.GetSecretValue";
 
 describe("signing in to AWS with GitHub Actions OIDC", () => {
-  test("exchanges GitHub's token for the role, checks the account with it, then reads", async () => {
+  test("exchanges GitHub's token for the role, checks the credentials, then reads", async () => {
     const run = setup();
     expect((await run.vault.read(REF)).equals(new Secret(SENTINEL))).toBe(true);
     expect(run.calls.map((c) => c.call)).toEqual([GITHUB, ASSUME, IDENTITY, READ]);
@@ -159,7 +157,7 @@ describe("signing in to AWS with GitHub Actions OIDC", () => {
     }
   });
 
-  test("mints new credentials a minute before the old ones expire, and checks the account again", async () => {
+  test("mints new credentials a minute before the old ones expire, and checks them again", async () => {
     const run = setup();
     const expires = Date.parse(WEB_IDENTITY_EXPIRATION);
     await run.vault.read(REF);
@@ -231,7 +229,7 @@ describe("signing in to AWS with GitHub Actions OIDC", () => {
     async (env, said) => {
       const run = setup({ env });
       const error = await failure(run.vault.read(REF));
-      expect(error.message).toBe(`AWS account ${ACCOUNT} in eu-west-1: sign-in failed: ${said}`);
+      expect(error.message).toBe(`AWS in eu-west-1: sign-in failed: ${said}`);
       expect(run.calls).toEqual([]);
       showsNoSecret(error.message);
     },
@@ -244,7 +242,7 @@ describe("signing in to AWS with GitHub Actions OIDC", () => {
     const error = await failure(run.vault.read(REF));
     expect(error.reason).toEqual({ kind: "no-credentials" });
     expect(error.message).toBe(
-      `AWS account ${ACCOUNT} in eu-west-1: sign-in failed: KEYPIN_AWS_ROLE_ARN is set, but this job can't ask GitHub Actions for an OIDC token (ACTIONS_ID_TOKEN_REQUEST_URL and ACTIONS_ID_TOKEN_REQUEST_TOKEN aren't set); give it permissions: id-token: write, or unset KEYPIN_AWS_ROLE_ARN to sign in another way`,
+      `AWS in eu-west-1: sign-in failed: KEYPIN_AWS_ROLE_ARN is set, but this job can't ask GitHub Actions for an OIDC token (ACTIONS_ID_TOKEN_REQUEST_URL and ACTIONS_ID_TOKEN_REQUEST_TOKEN aren't set); give it permissions: id-token: write, or unset KEYPIN_AWS_ROLE_ARN to sign in another way`,
     );
     expect(run.calls).toEqual([]);
   });
@@ -253,7 +251,7 @@ describe("signing in to AWS with GitHub Actions OIDC", () => {
     const run = setup({ github: [500] });
     const error = await failure(run.vault.read(REF));
     expect(error.message).toBe(
-      `AWS account ${ACCOUNT} in eu-west-1: sign-in failed: couldn't get GitHub Actions' OIDC token: GitHub's OIDC token endpoint returned HTTP 500`,
+      `AWS in eu-west-1: sign-in failed: couldn't get GitHub Actions' OIDC token: GitHub's OIDC token endpoint returned HTTP 500`,
     );
     expect(run.calls.map((c) => c.call)).toEqual([GITHUB]);
   });
@@ -262,7 +260,7 @@ describe("signing in to AWS with GitHub Actions OIDC", () => {
     const run = setup({ role: "arn:aws:iam::123456789012:role/other", echo: true });
     const error = await failure(run.vault.read(REF));
     expect(error.message).toBe(
-      `AWS account ${ACCOUNT} in eu-west-1: sign-in failed: AWS STS refused GitHub's OIDC token for the role ${ROLE} (AWS AssumeRoleWithWebIdentity returned HTTP 403 AccessDenied: Not authorized for [hidden]); keypin asked GitHub for a token for the audience sts.amazonaws.com, so check that the role's trust policy allows that audience and this job's subject`,
+      `AWS in eu-west-1: sign-in failed: AWS STS refused GitHub's OIDC token for the role ${ROLE} (AWS AssumeRoleWithWebIdentity returned HTTP 403 AccessDenied: Not authorized for [hidden]); keypin asked GitHub for a token for the audience sts.amazonaws.com, so check that the role's trust policy allows that audience and this job's subject`,
     );
     expect(run.calls.map((c) => c.call)).toEqual([GITHUB, ASSUME]);
     showsNoSecret(error.message);
@@ -275,20 +273,6 @@ describe("signing in to AWS with GitHub Actions OIDC", () => {
       "(AWS AssumeRoleWithWebIdentity returned HTTP 400 InvalidIdentityToken: Incorrect token audience)",
     );
     expect(run.calls.map((c) => c.call)).toEqual([GITHUB, ASSUME]);
-  });
-
-  test("a role in another account is refused before any read", async () => {
-    const run = setup({ account: "999999999999" });
-    const error = await failure(run.vault.read(REF));
-    expect(error.reason).toEqual({
-      kind: "wrong-account",
-      pinned: ACCOUNT,
-      actual: "999999999999",
-    });
-    expect(error.message).toBe(
-      `AWS account ${ACCOUNT} in eu-west-1: sign-in failed: the role in KEYPIN_AWS_ROLE_ARN belongs to AWS account 999999999999, but secretspec.toml names ${ACCOUNT}`,
-    );
-    expect(run.calls.map((c) => c.call)).toEqual([GITHUB, ASSUME, IDENTITY]);
   });
 
   test("without KEYPIN_AWS_ROLE_ARN, keypin signs in with the stored keys as before", async () => {

@@ -268,12 +268,12 @@ describe("where a secret lives", () => {
     [
       "a provider keypin can't read",
       secret(`, providers = ["keyring://"]`),
-      `uses keyring://, and keypin reads only 1Password from secretspec.toml`,
+      `uses keyring://, and keypin reads only Infisical and 1Password from secretspec.toml`,
     ],
     [
-      "a vault keypin reads, but not from secretspec.toml yet",
+      "a provider its vault kind refuses",
       secret(`, providers = ["infisical://app.infisical.com"]`),
-      `uses infisical://app.infisical.com; keypin doesn't read Infisical from secretspec.toml yet`,
+      `uses infisical://app.infisical.com, which doesn't name a project ID; write infisical://<host>/<project ID>, with the ID from the project's settings`,
     ],
     [
       "refs",

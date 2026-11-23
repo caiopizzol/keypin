@@ -47,7 +47,8 @@ export interface SecretspecAt {
 
 export interface SecretspecProvider<R extends KeyRef = KeyRef> {
   readonly provider: string;
-  locate?(at: SecretspecAt): R | string;
+  readonly refuses?: ReadonlyMap<string, string>;
+  locate(at: SecretspecAt): R | string;
 }
 
 export interface VaultRules<R extends KeyRef = KeyRef, U extends KeyRef = KeyRef> {
@@ -79,7 +80,6 @@ export interface VaultKind<
   readonly keepsRotated?: false;
   readonly holdsWrites?: boolean;
   readonly signInVariables?: readonly string[];
-  readonly oidcVariables?: readonly string[];
   addByHand?(map: KeysMap): string | undefined;
   signInNotes?(host: H): readonly string[];
   itemNotes?(refs: readonly KeyRef[], host: H): readonly string[];

@@ -20,7 +20,6 @@ export interface FakeSecret {
 type Projects = Record<string, Record<string, Record<string, FakeSecret>>>;
 
 export interface FakeInfisical {
-  organization: string;
   projects: Projects;
   projectIds?: Record<string, string>;
   imports?: FakeImport[];
@@ -164,7 +163,7 @@ export function infisicalFetch(fake: FakeInfisical, store: Store): Fetch {
     if (parsed.pathname === "/api/v1/identities/details")
       return reply(200, {
         identityDetails: {
-          organization: { id: "org", name: fake.organization, slug: fake.organization },
+          organization: { id: "org", name: "acme", slug: "acme" },
         },
       });
     const slug = /^\/api\/v1\/projects\/slug\/(.+)$/.exec(parsed.pathname)?.[1];

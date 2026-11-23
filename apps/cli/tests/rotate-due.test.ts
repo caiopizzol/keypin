@@ -7,7 +7,8 @@ import { onePasswordRef } from "@keypin/connectors/onepassword";
 import { memoryKeys, resendFetch } from "@keypin/connectors/resend/testing";
 import { cli } from "../src/cli";
 import { NEEDS_APPROVAL } from "../src/approval";
-import { issuer as connect } from "../src/start";
+import type { Deps } from "../src/deps";
+import { issuer as connect, vaults } from "../src/start";
 import { fakeDeps, memoryFiles, parseJson, writableVault } from "./fakes";
 
 const OLD = "re_old_sentinel_value_4b1c";
@@ -93,7 +94,12 @@ type World = Awaited<ReturnType<typeof world>>;
 
 function machine(
   w: World,
-  options: { terminal?: boolean; answers?: string[]; runner?: boolean } = {},
+  options: {
+    terminal?: boolean;
+    answers?: string[];
+    runner?: boolean;
+    vaults?: Deps["vaults"];
+  } = {},
 ) {
   const disk = memoryFiles();
   const answers = [...(options.answers ?? [])];
@@ -103,6 +109,7 @@ function machine(
     deps: {
       isTerminal: options.terminal ?? false,
       ...(options.runner === false ? { warnRunner: () => false } : {}),
+      ...(options.vaults ? { vaults: options.vaults } : {}),
       ask: async () => answers.shift() ?? "",
       issuer: (spec, admin) => connect(spec, admin, w.resend),
       destination: (target) =>
@@ -608,6 +615,19 @@ describe("keypin rotate --check, the setup check a workflow runs before the firs
     expect(await undated.run("--check")).toBe(1);
     expect(undated.stderr.text).toContain(
       "FAILED RESEND_API_KEY: no rotated date in the vault, so keypin rotate --due never rotates it.",
+    );
+    unchanged(w);
+  });
+
+  test("a vault that keeps no rotated date is left to rotating by hand, and doesn't fail", async () => {
+    const w = await published();
+    w.dates.delete(ITEM);
+    const undated = machine(w, {
+      vaults: vaults.map((vault) => ({ ...vault, keepsRotated: false as const })),
+    });
+    expect(await undated.run("--check"), undated.stderr.text).toBe(0);
+    expect(undated.stderr.text).toContain(
+      "warn   RESEND_API_KEY: its vault keeps no rotated date, so scheduled rotation doesn't cover it. Rotate it by hand with keypin rotate RESEND_API_KEY.",
     );
     unchanged(w);
   });

@@ -18,6 +18,7 @@ import {
   loadState,
   messageOf,
   type State,
+  vaultKindOf,
 } from "@keypin/core";
 import { columns } from "../../output";
 import { refKey } from "../../vault";
@@ -187,6 +188,13 @@ export async function checkDue(context: Context, path: string): Promise<number> 
   for (const choice of picked) {
     out.line("");
     if (choice.action === "skip" && choice.date === "missing") {
+      const ref = map.keys.find((key) => key.name === choice.keyId)?.environments[environment]?.ref;
+      if (ref && vaultKindOf(deps.vaults, ref.kind).keepsRotated === false) {
+        out.warn(
+          `${choice.keyId}: its vault keeps no rotated date, so scheduled rotation doesn't cover it. Rotate it by hand with keypin rotate ${choice.keyId}.`,
+        );
+        continue;
+      }
       out.line(
         `${out.mark(false)} ${choice.keyId}: ${choice.why}, so keypin rotate --due never rotates it. Give its vault item a rotated date: the day the key last changed.`,
       );

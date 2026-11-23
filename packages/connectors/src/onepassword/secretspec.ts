@@ -11,7 +11,7 @@ export const CREATED_FIELD = "password";
 export function locate({ uri, project, profile, key, ref }: SecretspecAt): OnePasswordRef | string {
   const [, variant, rest = ""] = URI.exec(uri) ?? [];
   if (variant !== undefined)
-    return `uses ${uri}; keypin doesn't read onepassword${variant}:// providers yet, so write ${SHAPE}. keypin signs in with the 1Password app, or with OP_SERVICE_ACCOUNT_TOKEN when KEYPIN_1PASSWORD=service-account`;
+    return `uses a onepassword${variant}:// provider, which keypin doesn't read yet, so write ${SHAPE}. keypin signs in with the 1Password app, or with OP_SERVICE_ACCOUNT_TOKEN when KEYPIN_1PASSWORD=service-account`;
   const place = rest.replace(/\/$/, "");
   if (place.includes("/"))
     return `uses ${uri}, which names more than a vault; write ${SHAPE}, and name the item with ref = { item = "..." }`;

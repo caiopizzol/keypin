@@ -10,11 +10,11 @@ export default defineConfig({
     outputOptions: {
       codeSplitting: {
         groups: [
+          { name: "core", test: /[\\/]core[\\/]src[\\/].*(?<!\.d)\.ts$|[\\/]smol-toml[\\/]/ },
           {
-            name: "rules",
-            test: /[\\/](core|connectors)[\\/]src[\\/].*(?<!\.d)\.ts$|[\\/]smol-toml[\\/]/,
+            name: "kinds",
+            test: /[\\/](connectors[\\/]src[\\/].*(?<!\.d)|rules[\\/]src[\\/]load-map)\.ts$/,
           },
-          { name: "load-map", test: /[\\/]rules[\\/]src[\\/]load-map\.ts$/ },
         ],
       },
     },

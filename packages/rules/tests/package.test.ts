@@ -95,6 +95,17 @@ issuers[0].parse = () => undefined;
 console.log(JSON.stringify(maps.map((text) => loadMap(text))));
 `,
   );
+  await writeFile(
+    join(consumer, "later.ts"),
+    `import { destinations, issuers, pulls, vaults } from "@keypin/rules";
+pulls.pop();
+destinations.length = 0;
+vaults.reverse();
+issuers[0].parse = () => undefined;
+const { results } = await import("./index.ts");
+console.log(JSON.stringify(results));
+`,
+  );
 }, 60_000);
 
 afterAll(async () => {
@@ -131,10 +142,10 @@ describe("@keypin/rules", () => {
     const list = run(["tar", "-tzf", TARBALL], out);
     expect(list.output.trim().split("\n").toSorted()).toEqual([
       "package/LICENSE",
+      "package/dist/core.js",
       "package/dist/index.d.ts",
       "package/dist/index.js",
-      "package/dist/load-map.js",
-      "package/dist/rules.js",
+      "package/dist/kinds.js",
       "package/package.json",
     ]);
   });
@@ -189,6 +200,20 @@ describe("@keypin/rules", () => {
   test("changing the exported lists doesn't change what loadMap reads", () => {
     const printed = run(["bun", "print.ts"], consumer);
     const changed = run(["bun", "change.ts"], consumer);
+    expect(changed.code).toBe(0);
+    expect(JSON.parse(changed.output)).toEqual(JSON.parse(printed.output));
+  });
+
+  test("changing the exported lists before a split bundle loads loadMap doesn't change what it reads", async () => {
+    const built = await Bun.build({
+      entrypoints: [join(consumer, "later.ts")],
+      outdir: join(out, "split"),
+      splitting: true,
+      minify: true,
+    });
+    expect(built.outputs.filter((output) => output.kind === "chunk").length).toBeGreaterThan(0);
+    const printed = run(["bun", "print.ts"], consumer);
+    const changed = run(["bun", join(out, "split", "later.js")], consumer);
     expect(changed.code).toBe(0);
     expect(JSON.parse(changed.output)).toEqual(JSON.parse(printed.output));
   });

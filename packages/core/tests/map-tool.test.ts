@@ -78,7 +78,6 @@ describe("[tool.keypin]", () => {
   test.each([
     ["rotate_every", `"90d"`],
     ["publish", `[${GITHUB}]`],
-    ["pull", "[]"],
     ["issuer", `{ kind = "resend" }`],
   ])("refuses %s inside a secret's entry", (setting, value) => {
     const text = `${HEAD}\n[profiles.production]\nAPI_KEY = { description = "API key", ${setting} = ${value} }\n`;

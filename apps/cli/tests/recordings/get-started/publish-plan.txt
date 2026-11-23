@@ -16,12 +16,12 @@ check github-actions:acme/billing
 
 --- stderr ---
 
-STRIPE_API_KEY production  from op://Private/secretspec/billing/production/STRIPE_API_KEY/value in 1Password account my.1password.com
+STRIPE_API_KEY production  from op://Private/secretspec/billing/production/STRIPE_API_KEY/value in 1Password's default account
 ok     GitHub  acme/billing  as acme, account acme
 
-ok     Read 1 value from 1Password account my.1password.com
+ok     Read 1 value from 1Password's default account
 
-Plan  generation e24c133a66cb5e4d
+Plan  generation bed8b08f2e36d8ba
   + GitHub  acme/billing  first write  needs approval
 
 This plan needs approval in a terminal; --yes can't give it.

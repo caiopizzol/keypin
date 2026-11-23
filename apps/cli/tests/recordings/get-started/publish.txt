@@ -9,7 +9,7 @@ read secretspec/billing/production/STRIPE_API_KEY
 
 --- calls destination ---
 check github-actions:acme/billing
-write github-actions:acme/billing STRIPE_API_KEY (32 chars)
+write github-actions:acme/billing STRIPE_API_KEY (45 chars)
 
 --- calls asked ---
 Write 1 secret? [y/N] 
@@ -18,12 +18,12 @@ Write 1 secret? [y/N]
 
 --- stderr ---
 
-STRIPE_API_KEY production  from op://Private/secretspec/billing/production/STRIPE_API_KEY/value in 1Password account my.1password.com
+STRIPE_API_KEY production  from op://Private/secretspec/billing/production/STRIPE_API_KEY/value in 1Password's default account
 ok     GitHub  acme/billing  as acme, account acme
 
-ok     Read 1 value from 1Password account my.1password.com
+ok     Read 1 value from 1Password's default account
 
-Plan  generation e24c133a66cb5e4d
+Plan  generation bed8b08f2e36d8ba
   + GitHub  acme/billing  first write  needs approval
 
 ok     GitHub  acme/billing  wrote STRIPE_API_KEY
@@ -44,14 +44,14 @@ Published STRIPE_API_KEY (production) to 1 destination.
         "section": null,
         "field": "value",
         "fallback": "password",
-        "account": "my.1password.com"
+        "account": ""
       },
       "sourceIds": {
         "vault": "id-private",
         "item": "id-secretspec/billing/production/stripe_api_key"
       },
       "destinationId": "github-actions:acme/billing:STRIPE_API_KEY",
-      "generation": "e24c133a66cb5e4d",
+      "generation": "bed8b08f2e36d8ba",
       "account": {
         "pinned": "acme",
         "publisher": "acme",

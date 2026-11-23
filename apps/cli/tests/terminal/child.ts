@@ -746,7 +746,7 @@ const real = realDeps();
 
 process.exitCode = await cli(process.argv.slice(2), {
   ...real,
-  self: { folder: real.cwd, command: ["keypin"] },
+  self: { ...real.self, folder: real.cwd, command: ["keypin"] },
   signIn: () => signedIn().signIn,
   vault: () => vault,
   ghLogin: async () => run.gh,

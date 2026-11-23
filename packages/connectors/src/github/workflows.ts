@@ -9,6 +9,7 @@ export interface WorkflowRefs {
   hidesUses: boolean;
   secretspec: (string | null)[];
   runs: SecretspecRun[];
+  keypin: string[];
 }
 
 export interface SecretspecRun {
@@ -96,6 +97,7 @@ export function workflowRefs(text: string): WorkflowRefs | null {
   const top: Record<string, unknown> = isRecord(data) ? data : {};
   const profiles = new Set<Profile>();
   const runs: SecretspecRun[] = [];
+  const pins = new Set<string>();
   for (const job of Object.values(jobs ?? {})) {
     const environment = isRecord(job) ? job.environment : undefined;
     const name = isRecord(environment) ? environment.name : environment;
@@ -103,6 +105,9 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     if (named !== null) refs.environments.add(named);
     const callerOwned = passedByCaller && named === null;
     const steps = isRecord(job) && Array.isArray(job.steps) ? job.steps : [];
+    for (const step of steps)
+      if (isRecord(step) && typeof step.run === "string")
+        for (const pin of keypinPins(step.run)) pins.add(pin);
     const own = [...secretsIn(job, steps, callerOwned)];
     const checkouts = steps.flatMap(checkoutOf);
     const parts = steps.map((step) => {
@@ -137,7 +142,36 @@ export function workflowRefs(text: string): WorkflowRefs | null {
     hidesUses: refs.hidesUses,
     secretspec: [...profiles],
     runs,
+    keypin: [...pins],
   };
+}
+
+const KEYPIN_PIN = /(?<![\w@./-])keypin@(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?![\w.+-])/g;
+
+function withoutComments(script: string): string {
+  return script
+    .split("\n")
+    .map((line) => {
+      let quote: string | null = null;
+      for (let at = 0; at < line.length; at++) {
+        const char = line[at];
+        if (quote === "'") {
+          if (char === "'") quote = null;
+        } else if (char === "\\") at++;
+        else if (quote === '"') {
+          if (char === '"') quote = null;
+        } else if (char === '"' || char === "'") quote = char;
+        else if (char === "#" && (at === 0 || /\s/.test(line[at - 1] ?? "")))
+          return line.slice(0, at);
+      }
+      return line;
+    })
+    .join("\n");
+}
+
+function keypinPins(script: string): string[] {
+  const live = withoutComments(script);
+  return [...live.matchAll(KEYPIN_PIN)].flatMap((match) => (match[1] ? [match[1]] : []));
 }
 
 const PROFILE_VARIABLE = "SECRETSPEC_PROFILE";

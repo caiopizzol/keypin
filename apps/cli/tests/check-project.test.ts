@@ -109,6 +109,7 @@ interface Setup {
   github?: StoreRead | Error;
   worker?: StoreRead | Error;
   deps?: Partial<Deps>;
+  values?: Record<string, string>;
 }
 
 function setup(options: Setup = {}) {
@@ -140,6 +141,7 @@ function setup(options: Setup = {}) {
       "billing prod item": SENTINEL,
       "secretspec/billing/production/STRIPE_API_KEY": SENTINEL,
       "secretspec/billing/production/RESEND_API_KEY": SENTINEL,
+      ...options.values,
     },
   });
   const destinations = fakeDestinations();
@@ -533,6 +535,80 @@ describe("keypin check on a whole project", () => {
       worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
     });
     expect(await run.record("scheduled-rotation-workflow", ["check"])).toBe(0);
+  });
+
+  test("a production item missing after importing .env into default says how to save it", async () => {
+    const run = setup({
+      files: {
+        [MAP]: `[project]
+name = "shop"
+revision = "1.0"
+
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.default]
+DATABASE_URL = { description = "DATABASE_URL" }
+RESEND_API_KEY = { description = "RESEND_API_KEY" }
+STRIPE_API_KEY = { description = "STRIPE_API_KEY" }
+
+[profiles.production]
+`,
+        [`${ROOT}/.env.production`]: `DATABASE_URL=${SENTINEL}\n`,
+        [`${ROOT}/wrangler.toml`]: null,
+        [`${ROOT}/.github/workflows/deploy.yml`]: null,
+      },
+      values: {
+        "secretspec/shop/default/DATABASE_URL": SENTINEL,
+        "secretspec/shop/default/RESEND_API_KEY": SENTINEL,
+        "secretspec/shop/default/STRIPE_API_KEY": SENTINEL,
+        "secretspec/shop/production/STRIPE_API_KEY": SENTINEL,
+      },
+    });
+    expect(await run.record("missing-profile-items", ["check"])).toBe(1);
+    expect(leaks(...run.everything())).toBe(false);
+  });
+
+  test("a workflow that pins another keypin version says which one to bump", async () => {
+    const rotate = (install: string) => `
+on: workflow_dispatch
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ${install}
+      - run: keypin rotate --due --yes
+`;
+    const files = {
+      [MAP]: PUBLISHED,
+      [`${ROOT}/.github/workflows/rotate-keys.yml`]: rotate("npm install -g keypin@0.39.0"),
+      [`${ROOT}/.github/workflows/check.yml`]: rotate("npx --yes keypin@0.39.0 check"),
+    };
+    const github = { ok: true as const, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] };
+    const worker = { ok: true as const, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] };
+    const deps = { workerSignIn: () => fakeSignIn("oauth") };
+    const older = setup({ files, github, worker, deps });
+    older.deps.self = { ...older.deps.self, version: "0.32.0" };
+    const given = { given: { running: "0.32.0" } };
+    expect(await older.record("workflow-pins-newer-keypin", ["check"], given)).toBe(0);
+
+    const newer = setup({
+      files: {
+        [MAP]: PUBLISHED,
+        [`${ROOT}/.github/workflows/rotate-keys.yml`]: rotate("npx keypin@0.32.0 rotate --check"),
+      },
+      github,
+      worker,
+      deps,
+    });
+    expect(await newer.record("workflow-pins-older-keypin", ["check"])).toBe(0);
+
+    const same = setup({ files, github, worker, deps });
+    expect(await cli(["check"], same.deps)).toBe(0);
+    expect(same.stdout.text).not.toContain("installs keypin");
   });
 
   test("ignore matches names in any case, so check never proposes a key ignore would reject", async () => {

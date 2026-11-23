@@ -28,6 +28,7 @@ export type PlanStep =
       target: PublishTarget;
       reason: WriteReason;
       approval: string | null;
+      sameValue?: true;
     }
   | {
       action: "skip";
@@ -84,7 +85,14 @@ export function planPublish(input: ReadPlanInput): PublishPlan {
   const { key, environment, generation, kinds } = input;
   const steps = judge(input, input.ids).map(({ id, target, receipt, approval }): PlanStep => {
     if (approval) {
-      return { action: "write", destinationId: id, target, ...approval };
+      const sameValue = approval.reason === "item changed" && receipt?.generation === generation;
+      return {
+        action: "write",
+        destinationId: id,
+        target,
+        ...approval,
+        ...(sameValue && { sameValue }),
+      };
     }
     if (receipt?.generation === generation) {
       return {

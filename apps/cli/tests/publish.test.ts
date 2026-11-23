@@ -13,6 +13,7 @@ import { type FullItem, onePasswordBackend } from "@keypin/connectors/onepasswor
 import { cli } from "../src/cli";
 import type { Deps, Publisher } from "../src/deps";
 import { NEEDS_APPROVAL, rerun } from "../src/approval";
+import { selfFor } from "../src/self";
 import { destinations, vaults } from "../src/start";
 import {
   fakeDeps,
@@ -37,7 +38,13 @@ interface Recordable {
   asked: string[];
 }
 
-async function record(name: string, args: string[], run: Recordable, terminal?: string) {
+async function record(
+  name: string,
+  args: string[],
+  run: Recordable,
+  terminal?: string,
+  given: Record<string, unknown> = {},
+) {
   const before = new Map(run.disk.contents);
   const exit = await cli(args, run.deps);
   await expect(
@@ -47,7 +54,7 @@ async function record(name: string, args: string[], run: Recordable, terminal?: 
       stdout: run.stdout.text,
       stderr: run.stderr.text,
       files: Object.fromEntries(before),
-      given: { terminal: terminal ?? "none" },
+      given: { terminal: terminal ?? "none", ...given },
       calls: { vault: run.calls, destination: run.log, asked: run.asked },
       wrote: changes(before, run.disk.contents),
     }),
@@ -152,6 +159,7 @@ describe("keypin publish", () => {
       self: {
         folder: "/work/billing/src",
         command: ["/opt/bun 1.4/bun", "--no-env-file", "/home/me/keypin/apps/cli/src/main.ts"],
+        version: "0.39.0",
       },
     };
     expect(await cli(["publish", "STRIPE_API_KEY", "--profile", "prod", "--yes"], fake)).toBe(
@@ -166,7 +174,10 @@ describe("keypin publish", () => {
 
   test("when the keypin on PATH is this keypin, the command to approve is keypin itself", async () => {
     const run = setup();
-    const fake = { ...run.deps, self: { folder: "/tmp/billing", command: ["keypin"] } };
+    const fake = {
+      ...run.deps,
+      self: { folder: "/tmp/billing", command: ["keypin"], version: "0.39.0" },
+    };
     expect(await cli(["publish", "STRIPE_API_KEY", "--plan"], fake)).toBe(NEEDS_APPROVAL);
     expect(run.stderr.text).toContain(
       "To approve, run this in a terminal:\n  cd /tmp/billing && keypin publish STRIPE_API_KEY\n",
@@ -339,6 +350,47 @@ describe("keypin publish", () => {
     const generation = await generationOf(new Secret(SENTINEL));
     expect(run.stderr.text).toContain(`Plan  generation ${generation}`);
     expect(leaks(...run.everything())).toBe(false);
+  });
+
+  test("--plan run from npx's cache prints npx with the running version", async () => {
+    const run = setup();
+    const binary = "/home/me/.npm/_npx/9bc54a/node_modules/@keypin/cli-darwin-arm64/bin/keypin";
+    run.deps.self = selfFor({
+      full: [binary],
+      running: [binary],
+      cwd: "/work/billing",
+      version: "0.39.0",
+      env: { PATH: "/home/me/.npm/_npx/9bc54a/node_modules/.bin:/usr/bin" },
+      which: () => null,
+      real: (path) => path,
+      launches: () => null,
+    });
+    const args = ["publish", "STRIPE_API_KEY", "--plan"];
+    const given = { running: binary, version: "0.39.0" };
+    expect(await record("plan-from-npx", args, run, undefined, given)).toBe(NEEDS_APPROVAL);
+    expect(run.stderr.text).toContain(
+      "cd /work/billing && npx keypin@0.39.0 publish STRIPE_API_KEY\n",
+    );
+  });
+
+  test("--plan after a vault move says same value, new item, and still needs approval", async () => {
+    const first = setup({ terminal: "yes" });
+    expect(await cli(["publish", "STRIPE_API_KEY"], first.deps)).toBe(0);
+    const moved = BILLING_MAP.replace("@Private", "@Acme");
+    first.disk.contents.set("/work/billing/secretspec.toml", moved);
+
+    const same = setup({ disk: first.disk });
+    const args = ["publish", "STRIPE_API_KEY", "--plan"];
+    expect(await record("plan-same-value-new-item", args, same)).toBe(NEEDS_APPROVAL);
+    expect(same.stderr.text).toContain("This plan needs approval in a terminal");
+    expect(same.log.some((l) => l.startsWith("write"))).toBe(false);
+
+    const other = setup({ disk: first.disk, value: `${SENTINEL}-next` });
+    expect(await cli(args, other.deps)).toBe(NEEDS_APPROVAL);
+    expect(other.stderr.text).not.toContain("same value");
+    expect(other.stderr.text).toMatch(
+      /\+ GitHub {6}acme\/billing {4}vault item changed +needs approval/,
+    );
   });
 
   test("--plan labels a routine update, and neither --yes nor a terminal makes it write", async () => {

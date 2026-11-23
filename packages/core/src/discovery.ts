@@ -74,7 +74,13 @@ export interface Discovered {
   readonly used: boolean;
   readonly about: string | null;
   readonly report: Readonly<Record<string, unknown>>;
+  readonly keypinPins?: readonly KeypinPin[];
   needs(view: MapView): Needs;
+}
+
+export interface KeypinPin {
+  readonly file: string;
+  readonly version: string;
 }
 
 export interface Scanned {

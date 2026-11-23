@@ -2,6 +2,7 @@ import { DEFAULT_ENVIRONMENTS, type Environment } from "../contracts";
 import type { Needs, Place } from "../discovery";
 import type { VaultKinds } from "../login";
 import {
+  envFileProfile,
   envFlag,
   isEnvironmentName,
   isVariableName,
@@ -167,7 +168,7 @@ export function findGaps(
   for (const file of scan.envFiles) {
     if (file.kind !== "set") continue;
     const suffix = envFileSuffix(file.path.split("/").at(-1) ?? "");
-    const env = suffix !== undefined && environments.includes(suffix) ? suffix : run;
+    const env = envFileProfile(file.path, { environments });
     const using = `SECRETSPEC_PROFILE=${env} `;
     const caveat =
       suffix !== undefined &&

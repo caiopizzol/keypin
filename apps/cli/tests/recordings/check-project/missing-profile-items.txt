@@ -1,0 +1,66 @@
+$ keypin check
+exit 1
+
+--- file .env ---
+DATABASE_URL=sentinel-value-7f3a9c2e1d
+RESEND_API_KEY=sentinel-value-7f3a9c2e1d
+
+--- file .env.example ---
+DATABASE_URL=
+
+--- file .env.production ---
+DATABASE_URL=sentinel-value-7f3a9c2e1d
+
+--- file secretspec.toml ---
+[project]
+name = "shop"
+revision = "1.0"
+
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.default]
+DATABASE_URL = { description = "DATABASE_URL" }
+RESEND_API_KEY = { description = "RESEND_API_KEY" }
+STRIPE_API_KEY = { description = "STRIPE_API_KEY" }
+
+[profiles.production]
+
+--- given git ---
+{
+  "rev-parse --show-toplevel": "/work/billing\n",
+  "remote get-url origin": "git@github.com:acme/billing.git\n",
+  "config --get github.account": null
+}
+
+--- calls reads ---
+
+--- calls vault ---
+ids secretspec/shop/default/DATABASE_URL
+ids secretspec/shop/production/DATABASE_URL
+ids secretspec/shop/default/RESEND_API_KEY
+ids secretspec/shop/production/RESEND_API_KEY
+ids secretspec/shop/default/STRIPE_API_KEY
+ids secretspec/shop/production/STRIPE_API_KEY
+
+--- calls destination ---
+
+--- stdout ---
+billing /work/billing · read 3 env files, 0 wrangler configs, 0 workflows; GitHub acme/billing
+2 things to do, in this order:
+1 Fix the vault item op://Private/secretspec/shop/production/DATABASE_URL/value
+  No item "secretspec/shop/production/DATABASE_URL".
+  Used by DATABASE_URL (production).
+  Each profile has its own items. Save the production value from .env.production:
+    SECRETSPEC_PROFILE=production secretspec import dotenv:.env.production
+2 Fix the vault item op://Private/secretspec/shop/production/RESEND_API_KEY/value
+  No item "secretspec/shop/production/RESEND_API_KEY".
+  Used by RESEND_API_KEY (production).
+  Each profile has its own items. Save the production value:
+    secretspec set RESEND_API_KEY --profile production
+
+--- stderr ---
+FAILED Couldn't look up 2 of 6 items in 1Password account my.1password.com, not the values

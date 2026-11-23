@@ -14,6 +14,7 @@ export {
   type Issuer,
   type IssuerCheck,
   type ItemIds,
+  ItemMissing,
   type KeyRef,
   NothingChanged,
   type Receipt,
@@ -49,6 +50,7 @@ export {
 } from "./issuer";
 export { type ExpiryVerdict, judgeExpiry } from "./expiry";
 export {
+  envFileProfile,
   envFlag,
   isEnvironmentName,
   isVariableName,
@@ -132,13 +134,14 @@ export {
   writeRotationFile,
 } from "./rotation-file";
 export { type DateProblem, type DueChoice, dueKeys, dueRefs, type Progress } from "./due";
-export { envFileKind, envNames, envValues, type EnvFileKind } from "./dotenv";
+export { envFileKind, envFileSuffix, envNames, envValues, type EnvFileKind } from "./dotenv";
 export {
   type Discovered,
   type Discovery,
   type FolderListing,
   type FoundNeed,
   type JobReader,
+  type KeypinPin,
   type MapView,
   type Needs,
   type OnlyFrom,

@@ -274,6 +274,10 @@ test("a destination last published from another item needs approval, even with t
       approval: `${WORKER} was last published from op://Private/cloudflare admin token/password (1Password account my.1password.com), and now from op://Private/billing stripe api key/password (1Password account my.1password.com)`,
     });
     expect(plan.needsApproval).toBe(true);
+    const step = plan.steps[0];
+    expect(step?.action === "write" && step.sameValue, "same value only when it matches").toBe(
+      generation === NEW || undefined,
+    );
   }
 });
 

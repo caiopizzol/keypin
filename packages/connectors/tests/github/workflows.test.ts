@@ -2,6 +2,72 @@ import { assert, describe, expect, test } from "vite-plus/test";
 import { workflowRefs } from "../../src/github/index";
 
 describe("workflows", () => {
+  test("finds the keypin versions run steps install, and nothing that only looks like one", () => {
+    const refs = workflowRefs(`
+on: push
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm install -g keypin@0.39.0 # x-release-please-version
+      - run: npx --yes keypin@0.39.0 check && bunx keypin@1.0.0-rc.1 status
+      - run: |
+          git config user.email keypin@users.noreply.github.com
+          npm install -g @keypin/rules@0.38.0 mykeypin@2.0.0 keypin@latest keypin@0.40
+      - uses: actions/checkout@v7
+        with:
+          note: keypin@9.9.9
+`);
+    assert(refs);
+    expect(refs.keypin).toEqual(["0.39.0", "1.0.0-rc.1"]);
+  });
+
+  test("skips an install a multiline run step keeps as a comment, and keeps the live one", () => {
+    const refs = workflowRefs(`
+on: push
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          # npm install -g keypin@0.38.0
+            #npm install -g keypin@0.37.0
+          npm install -g keypin@0.40.0 # was keypin@0.36.0
+`);
+    assert(refs);
+    expect(refs.keypin).toEqual(["0.40.0"]);
+  });
+
+  test("a # inside quotes doesn't start a comment, so the install after it still counts", () => {
+    const refs = workflowRefs(`
+on: push
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "Deploy #1" && npm install -g keypin@0.40.0
+          echo 'step #2' && npx keypin@0.41.0 rotate --due
+`);
+    assert(refs);
+    expect(refs.keypin).toEqual(["0.40.0", "0.41.0"]);
+  });
+
+  test("a double quote after an escaped backslash closes the string, so the comment after it is skipped", () => {
+    const refs = workflowRefs(String.raw`
+on: push
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "C:\\" # previously npx keypin@0.39.0
+          echo "say \"hi #1\"" && npm install -g keypin@0.40.0
+`);
+    assert(refs);
+    expect(refs.keypin).toEqual(["0.40.0"]);
+  });
+
   test("finds secrets and vars in expressions and if conditions, not in comments", () => {
     const refs = workflowRefs(`
 on: push

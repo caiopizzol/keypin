@@ -319,7 +319,7 @@ export function publishRows(
     return {
       sign: step.action === "skip" ? "=" : step.approval ? "+" : "~",
       place: label(step.target),
-      why: WHY[step.reason],
+      why: step.action === "write" && step.sameValue ? "same value, new item" : WHY[step.reason],
       approval: step.approval !== null,
       detail: [changed, note].filter((d) => d !== null).join("; ") || null,
     };

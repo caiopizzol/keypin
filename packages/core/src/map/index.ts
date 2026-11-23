@@ -17,6 +17,7 @@ export {
   publishEnvironment,
   reaches,
   runEnvironment,
+  envFileProfile,
   type EnvEntry,
   type KeyEntry,
   type KeysMap,

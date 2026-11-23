@@ -38,6 +38,8 @@ export class WriteRefused extends Error {}
 
 export class NothingChanged extends Error {}
 
+export class ItemMissing extends Error {}
+
 export type SignInReason =
   | { kind: "no-credentials" }
   | { kind: "no-desktop-app" }

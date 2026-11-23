@@ -1,0 +1,136 @@
+$ keypin publish STRIPE_API_KEY --plan
+exit 3
+
+--- file /home/me/.config/keypin/registry.json ---
+{
+  "version": 1,
+  "projects": [
+    "/work/billing"
+  ],
+  "shared": []
+}
+
+--- file /home/me/.local/state/keypin/state.json ---
+{
+  "version": 5,
+  "receipts": [
+    {
+      "keyId": "STRIPE_API_KEY",
+      "environment": "prod",
+      "mapFile": "/work/billing/secretspec.toml",
+      "source": {
+        "kind": "1password",
+        "vault": "Private",
+        "item": "billing stripe api key",
+        "section": null,
+        "field": "password",
+        "account": "my.1password.com"
+      },
+      "sourceIds": {
+        "vault": "id-private",
+        "item": "id-billing stripe api key"
+      },
+      "destinationId": "cloudflare-worker:billing-worker:STRIPE_API_KEY",
+      "generation": "8f24c3e0b75826a7",
+      "account": {
+        "pinned": "11111111111111111111111111111111",
+        "publisher": "me@example.com",
+        "destinationAccount": "11111111111111111111111111111111"
+      },
+      "at": "2026-11-09T12:00:00.000Z",
+      "evidence": {
+        "destination": "cloudflare-worker:billing-worker",
+        "version": "v-3"
+      }
+    },
+    {
+      "keyId": "STRIPE_API_KEY",
+      "environment": "prod",
+      "mapFile": "/work/billing/secretspec.toml",
+      "source": {
+        "kind": "1password",
+        "vault": "Private",
+        "item": "billing stripe api key",
+        "section": null,
+        "field": "password",
+        "account": "my.1password.com"
+      },
+      "sourceIds": {
+        "vault": "id-private",
+        "item": "id-billing stripe api key"
+      },
+      "destinationId": "github-actions:acme/billing:STRIPE_API_KEY",
+      "generation": "8f24c3e0b75826a7",
+      "account": {
+        "pinned": "acme",
+        "publisher": "acme",
+        "destinationAccount": "acme"
+      },
+      "at": "2026-11-09T12:00:00.000Z",
+      "evidence": {
+        "destination": "github-actions:acme/billing",
+        "version": "v-4"
+      }
+    }
+  ],
+  "issued": [],
+  "operations": []
+}
+
+--- file /work/billing/secretspec.toml ---
+
+[project]
+name = "billing"
+revision = "1.0"
+
+[providers]
+vault = "onepassword://my.1password.com@Acme"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+STRIPE_API_KEY = { description = "STRIPE_API_KEY", ref = { item = "billing stripe api key", field = "password" } }
+
+[profiles.prod]
+STRIPE_API_KEY = { description = "STRIPE_API_KEY", ref = { item = "billing stripe api key", field = "password" } }
+
+[tool.keypin.prod.STRIPE_API_KEY]
+rotate_every = "365d"
+publish = [
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
+  { to = "github-actions", repo = "acme/billing" },
+]
+
+--- given terminal ---
+"none"
+
+--- calls vault ---
+read billing stripe api key
+
+--- calls destination ---
+check cloudflare-worker:billing-worker
+check github-actions:acme/billing
+
+--- calls asked ---
+
+--- stdout ---
+
+--- stderr ---
+
+STRIPE_API_KEY prod  from op://Acme/billing stripe api key/password in 1Password account my.1password.com
+ok     Cloudflare  billing-worker  as me@example.com, account 11111111111111111111111111111111
+ok     GitHub      acme/billing    as acme, account acme
+
+ok     Read 1 value from 1Password account my.1password.com
+
+Plan  generation 8f24c3e0b75826a7
+  + Cloudflare  billing-worker  same value, new item  needs approval
+    cloudflare-worker:billing-worker:STRIPE_API_KEY was last published from op://Private/billing stripe api key/password (1Password account my.1password.com) (item id-billing stripe api key in vault id-private), and now from op://Acme/billing stripe api key/password (1Password account my.1password.com) (item id-billing stripe api key in vault id-acme); writing a Worker secret deploys a new version of the Worker
+  + GitHub      acme/billing    same value, new item  needs approval
+    github-actions:acme/billing:STRIPE_API_KEY was last published from op://Private/billing stripe api key/password (1Password account my.1password.com) (item id-billing stripe api key in vault id-private), and now from op://Acme/billing stripe api key/password (1Password account my.1password.com) (item id-billing stripe api key in vault id-acme)
+
+This plan needs approval in a terminal; --yes can't give it.
+Nothing was written: --plan only shows the plan.
+To approve, run this in a terminal:
+  cd /work/billing && /opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts publish STRIPE_API_KEY

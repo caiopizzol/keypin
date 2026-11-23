@@ -1,5 +1,6 @@
 import type { Environment, KeyId, KeyRef } from "../contracts";
 import type { PublishTarget } from "../destination";
+import { envFileSuffix } from "../dotenv";
 import type { IssuerSpec } from "../issuer";
 
 export interface EnvEntry {
@@ -27,6 +28,11 @@ export type MapResult = { ok: true; map: KeysMap } | { ok: false; errors: string
 
 export function runEnvironment(map: Pick<KeysMap, "environments">): Environment {
   return map.environments.includes(RUN) ? RUN : (map.environments[0] ?? RUN);
+}
+
+export function envFileProfile(path: string, map: Pick<KeysMap, "environments">): Environment {
+  const suffix = envFileSuffix(path.split("/").at(-1) ?? "");
+  return suffix !== undefined && map.environments.includes(suffix) ? suffix : runEnvironment(map);
 }
 
 export function publishEnvironment(map: Pick<KeysMap, "environments">): Environment {

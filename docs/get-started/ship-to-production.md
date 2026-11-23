@@ -31,8 +31,8 @@ so `check` doesn't ask to publish them there ([Reading keys in CI](../guides/pub
 
 ## Put each production value in your vault
 
-- **From a file:** run `secretspec import dotenv:.env.production --profile production`, then remove the lines it
-  imported.
+- **From a file:** run `SECRETSPEC_PROFILE=production secretspec import dotenv:.env.production`, then remove the
+  lines it imported.
 - **A new key**, like `STRIPE_API_KEY` here: create it at the provider, then run
   `secretspec set STRIPE_API_KEY --profile production` and paste the value when it asks.
 

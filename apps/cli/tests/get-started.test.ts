@@ -11,8 +11,8 @@ name = "billing"
 revision = "1.0"
 
 [profiles.default]
-
-[profiles.production]
+DATABASE_URL = { description = "DATABASE_URL secret", required = true }
+RESEND_API_KEY = { description = "RESEND_API_KEY secret", required = true }
 `;
 
 const PROJECT: Record<string, string> = {
@@ -101,17 +101,12 @@ function tomlToAdd(stdout: string): string {
   return toml;
 }
 
-function secretspecAddAndImport(disk: ReturnType<typeof memoryFiles>) {
-  const declared = DECLARED.replace(
-    "[profiles.default]\n",
-    `[profiles.default]
-DATABASE_URL = { description = "DATABASE_URL" }
-RESEND_API_KEY = { description = "RESEND_API_KEY" }
-`,
-  );
+function nameTheVaultAndProduction(disk: ReturnType<typeof memoryFiles>) {
   disk.contents.set(
     MAP,
-    `${declared}
+    `${DECLARED}
+[profiles.production]
+
 [providers]
 onepassword = "onepassword://Private"
 
@@ -132,7 +127,7 @@ describe("the Get started pages, one project from secretspec init to publish", (
 
     expect((await step("check-first", ["check"])).exit).toBe(1);
 
-    secretspecAddAndImport(disk);
+    nameTheVaultAndProduction(disk);
     disk.contents.delete(`${ROOT}/.env`);
 
     const before = await step("check-before-destinations", ["check"]);

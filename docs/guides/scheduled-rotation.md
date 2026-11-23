@@ -113,9 +113,10 @@ access to the keys and their admin keys. In the workflow, add `id-token: write` 
 an Actions secret, set it in their place, and ignore it instead.
 
 Doppler keeps no rotated date, so `rotate --due` never rotates a Doppler key, and `--check` fails for one with a
-`rotate_every`. Set `rotate_every = "never"`, or remove it, and rotate the key by hand with
-`keypin rotate <KEY> --profile <name>`. A job can still sign in to Doppler with
-[OIDC](../integrations/vaults/doppler.md#signing-in-from-github-actions) to publish.
+`rotate_every`. [`rotate_every`](../reference/secretspec-toml.md#toolkeypin) applies to the key name in every
+profile, so set it to `"never"` or remove it wherever it's set, which stops scheduled rotation in every profile, or
+keep the key in a vault that keeps dates. Rotate it by hand with `keypin rotate <KEY> --profile <name>`. A job can
+still sign in to Doppler with [OIDC](../integrations/vaults/doppler.md#signing-in-from-github-actions) to publish.
 
 ## Runs
 

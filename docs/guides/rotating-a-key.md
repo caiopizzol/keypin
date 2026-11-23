@@ -35,8 +35,10 @@ on a schedule in GitHub Actions, see [Scheduled rotation](scheduled-rotation.md)
 Without an issuer, rotate by hand:
 
 1. Make a new value at the provider.
-2. Save it in your vault, such as with `secretspec set <VARIABLE> --profile production`, and set its rotated date
-   to today.
+2. Save it in your vault with `secretspec set <VARIABLE> --profile production`, and set its rotated date to today.
+   secretspec only reads some `ref`s, such as an
+   [AWS Secrets Manager `ref`](../integrations/vaults/aws-secrets-manager.md#addresses): change those in the vault,
+   keeping a JSON secret's other keys, and set the date as your vault's page says.
 3. Run `keypin publish <VARIABLE>`.
 4. Once everything uses the new value, revoke the old one at the provider.
 

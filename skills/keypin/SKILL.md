@@ -57,8 +57,9 @@ keypin reads values from the vault only while a command needs them. secretspec, 
 - `keypin status --json`: every project's keys and when each is due.
 - To rotate a key with an `issuer`, run `keypin rotate NAME --plan` and show the plan, then give the user the
   printed command to run in a terminal; it asks `y` to rotate and again to revoke the old key. Without an issuer,
-  the user makes a new value at the provider, saves it with `secretspec set` and sets its rotated date to today;
-  then publish it, and remind them to revoke the old one.
+  the user makes a new value at the provider, saves it with `secretspec set` (or in the vault, for a `ref` secretspec
+  only reads, such as AWS Secrets Manager's) and sets its rotated date to today; then publish it, and remind them to
+  revoke the old one.
 
 Details: [How it works](https://github.com/caiopizzol/keypin/blob/main/docs/introduction/how-it-works.md),
 [secretspec.toml](https://github.com/caiopizzol/keypin/blob/main/docs/reference/secretspec-toml.md),

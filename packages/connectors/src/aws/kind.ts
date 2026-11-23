@@ -34,7 +34,6 @@ export const secretsManagerVault: VaultKind<
   newValueByHand: "Put a new value in the AWS secret",
   addRotatedDate: `Tag the AWS secret with ${ROTATED_TAG}<JSON key>, set to the day that key last changed as YYYY-MM-DD (${DOCS}).`,
   signInVariables: [ROLE_ARN, AUDIENCE],
-  oidcVariables: [ROLE_ARN],
   addByHand: (map) => {
     const refs = map.keys.flatMap((key) =>
       Object.values(key.environments).flatMap((entry) => (entry ? [entry.ref] : [])),

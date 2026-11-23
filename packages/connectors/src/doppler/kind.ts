@@ -40,7 +40,6 @@ export const dopplerVault: VaultKind<DopplerHost, DopplerRef> = {
   addRotatedDate:
     "Doppler keeps no rotated date on a secret, so keypin can't tell when this key is due (docs/integrations/vaults/doppler.md).",
   signInVariables: [TOKEN_VARIABLE, IDENTITY_ID, AUDIENCE],
-  oidcVariables: [IDENTITY_ID],
   keepsRotated: false,
   addByHand: (map) => {
     const refs = map.keys.flatMap((key) =>

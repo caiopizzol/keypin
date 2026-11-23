@@ -47,7 +47,6 @@ export const infisicalVault: VaultKind<InfisicalHost, InfisicalRef, InfisicalRef
   addRotatedDate:
     "Add rotated to the Infisical secret's metadata, with the day the value last changed as YYYY-MM-DD.",
   signInVariables: [CLIENT_ID, CLIENT_SECRET, ...ACCESS_TOKENS, IDENTITY_ID, AUDIENCE],
-  oidcVariables: [IDENTITY_ID],
   holdsWrites: true,
   addByHand: (map) => {
     const refs = map.keys.flatMap((key) =>

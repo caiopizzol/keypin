@@ -17,7 +17,8 @@ keypin signs in to Cloudflare one of two ways:
 - **`wrangler login`:** keypin asks `wrangler auth token` (wrangler 4.57.0 or later) for the login, so a login in the
   system keyring works, and wrangler refreshes an expired one, even for `keypin check`. It runs the project's wrangler, else the one on
   `PATH`. Not on Windows yet.
-- **API token:** set `KEYPIN_CLOUDFLARE_API_TOKEN` to a token that can edit the Worker's scripts. keypin then doesn't
-  run wrangler.
+- **API token:** set `KEYPIN_CLOUDFLARE_API_TOKEN` to a token with the
+  [Workers role](https://developers.cloudflare.com/workers/authorization/workers/) Editor, which older tokens call
+  Workers Scripts Edit. keypin then doesn't run wrangler.
 
 keypin never signs in with `CLOUDFLARE_API_TOKEN`: that stays a key `secretspec.toml` can declare.

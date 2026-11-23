@@ -133,10 +133,13 @@ admin = "op://Acme/cloudflare token maker/credential"
 `admin` is a token made with the
 [Create additional tokens](https://developers.cloudflare.com/fundamentals/api/how-to/create-via-api/) template, in
 its own vault item. For an account API token (`cfat_`), add `account_id` and use an admin token with
-**Account API Tokens** Edit on that account.
+**Account API Tokens** Edit on that account; the API calls it Account API Tokens Write.
 
 keypin finds the vault's token with Cloudflare's verify endpoint, makes a new token with the same policies, IP
 filter and lifetime (and its start date, if still ahead), then deletes the old one. It doesn't use Roll, which stops the old token at once.
+A deploy token needs the [Workers role](https://developers.cloudflare.com/workers/authorization/workers/) Admin to
+create a Worker, and Editor to deploy one that exists. Rotation copies the old token's permissions, so once the
+Worker exists, replace an Admin token with an Editor one.
 
 ## OpenRouter
 

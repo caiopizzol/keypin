@@ -11,18 +11,23 @@ Actions; for another vault, see [Other vaults](#other-vaults).
    reference in `secretspec.toml` at it. A [service account](service-accounts.md) can't open the Private, Personal or
    Employee vaults, or the default Shared vault. `rotate --due` skips a key without `rotate_every` or a `rotated`
    date on its item.
-2. Create a service account with write access to that vault, and save its token as the Actions secret
-   `OP_SERVICE_ACCOUNT_TOKEN`. keypin reads each admin key from the vault, so it isn't a secret of its own.
-3. Create a fine-grained GitHub token for this repository only, with the Secrets permission set to Read and write,
-   and save it as the Actions secret `KEYPIN_GITHUB_TOKEN`. Keys published to an environment also need Environments
-   set to Read and write. The workflow's own `GITHUB_TOKEN` can't write secrets.
-4. Add the workflow below as `.github/workflows/rotate-keys.yml`. Every run, manual ones too, reads and pushes
+2. In Settings → Environments, create the environment `rotation`, and limit its deployment branches to the default
+   branch. A private repository on GitHub Free has no environment secrets: delete `environment:` from the workflow,
+   and save the secrets below as repo secrets.
+3. Create a service account with write access to that vault, and save its token as the secret
+   `OP_SERVICE_ACCOUNT_TOKEN` in `rotation`. keypin reads each admin key from the vault, so it isn't a secret of its
+   own.
+4. Create a fine-grained GitHub token for this repository only, with the Secrets permission set to Read and write,
+   and save it as the secret `KEYPIN_GITHUB_TOKEN` in `rotation`. Keys published to an environment also need
+   Environments set to Read and write. The workflow's own `GITHUB_TOKEN` can't write secrets.
+5. Add the workflow below as `.github/workflows/rotate-keys.yml`. Every run, manual ones too, reads and pushes
    `.keypin/` on the default branch, so the workflow must be allowed to push to it. Pin the keypin version you run on
    your laptop, and bump both together. It checks every day at 06:17 UTC, so a due key usually rotates that day,
    though GitHub can delay or skip a scheduled run. To check at other times, change the
    [schedule](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule);
-   add `timezone:` to use your own time zone.
-5. [Ignore](../reference/secretspec-toml.md#toolkeypin) the two secrets in `secretspec.toml`, or `keypin check` asks
+   add `timezone:` to use your own time zone. `GH_CONFIG_DIR` and `--insecure-storage` keep `gh`'s login in the
+   job's temporary folder, which the runner empties after the job, not on a self-hosted runner's disk or keyring.
+6. [Ignore](../reference/secretspec-toml.md#toolkeypin) the two secrets in `secretspec.toml`, or `keypin check` asks
    you to add them:
 
    ```toml
@@ -30,10 +35,10 @@ Actions; for another vault, see [Other vaults](#other-vaults).
    ignore = ["KEYPIN_GITHUB_TOKEN", "OP_SERVICE_ACCOUNT_TOKEN"]
    ```
 
-6. A runner starts with no receipts, so a first write would wait for approval. From your laptop, publish each key,
+7. A runner starts with no receipts, so a first write would wait for approval. From your laptop, publish each key,
    run `keypin rotate --due`, and commit `.keypin/`. It asks before it rotates a key that's due: answer `n` to only
    record what you published.
-7. Run the workflow with **check setup** checked. `keypin rotate --check` changes nothing, and fails with the next step
+8. Run the workflow with **check setup** checked. `keypin rotate --check` changes nothing, and fails with the next step
    if a key, an admin key, the GitHub token or a receipt isn't ready. It can't see the token's Secrets permission
    without writing a secret, so check that one yourself.
 
@@ -65,13 +70,19 @@ concurrency: rotate-keys
 jobs:
   rotate:
     runs-on: ubuntu-latest
+    environment: rotation
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.repository.default_branch }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
       - run: npm install -g keypin@0.40.0 # x-release-please-version
-      - run: gh auth login --hostname github.com --with-token <<< "$TOKEN"
+      - run: gh auth login --hostname github.com --with-token --insecure-storage <<< "$TOKEN"
         env:
+          GH_CONFIG_DIR: ${{ runner.temp }}/gh
           TOKEN: ${{ secrets.KEYPIN_GITHUB_TOKEN }}
       - run: |
           if [ "$CHECK" = true ]; then
@@ -85,6 +96,7 @@ jobs:
           CHECK: ${{ inputs.check_setup }}
           APPROVE: ${{ inputs.approve_revoke }}
           KEY: ${{ inputs.key }}
+          GH_CONFIG_DIR: ${{ runner.temp }}/gh
           KEYPIN_1PASSWORD: service-account
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
       - if: always()
@@ -97,9 +109,6 @@ jobs:
           for try in 1 2 3; do git pull --rebase && git push && exit 0; sleep 10; done
           exit 1
 ```
-
-If your plan has environments with deployment branches, keep both secrets in an environment only the default branch can
-use, and add `environment: <name>` to the job.
 
 ## Other vaults
 

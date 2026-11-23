@@ -1,0 +1,23 @@
+$ keypin rotate --due
+exit 1
+
+--- calls runner warnings ---
+
+--- calls vault ---
+read cloudflare token maker
+
+--- stdout ---
+
+--- stderr ---
+ok     keypin status now lists /work/site
+ok     Read 1 rotated date from 1Password account my.1password.com, not the values
+
+Keys in prod
+  CLOUDFLARE_API_TOKEN  skip  not due until 2026-11-26
+Nothing is due.
+ok     Read the admin key op://Site/cloudflare token maker/credential
+
+Credentials
+FAILED CLOUDFLARE_API_TOKEN (prod): the Cloudflare admin token expires 2026-11-30, in 20 days, too close to when CLOUDFLARE_API_TOKEN (prod) is due (2026-11-26). Renew it: give it a later expiry at https://dash.cloudflare.com/profile/api-tokens, or put a token made with the "Create additional tokens" template in the admin item; create one at https://dash.cloudflare.com/profile/api-tokens.
+ok     Read 1 rotated date from 1Password account my.1password.com, not the values
+ok     wrote /work/site/.keypin/status.json

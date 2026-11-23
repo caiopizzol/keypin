@@ -31,6 +31,17 @@ export function waitsNotice(
     );
 }
 
+export function shortLifetime(
+  { key, owner }: Job,
+  issuer: Issuer,
+  lifetimeDays: number | undefined,
+): string | null {
+  const every = key.rotateEvery?.days ?? null;
+  if (lifetimeDays === undefined || every === null || lifetimeDays > every) return null;
+  const lasts = Math.floor(lifetimeDays);
+  return `${key.name} (${owner.environment}): a new key lasts ${lasts} ${lasts === 1 ? "day" : "days"}, and rotate_every is ${key.rotateEvery?.text}, so the published key would expire before the next rotation. Give the current key a longer lifetime at ${issuer.dashboard()}, or set rotate_every under ${lasts} days in [tool.keypin.${owner.environment}.${key.name}].`;
+}
+
 export function resetStop(
   deps: Deps,
   issuer: Issuer,

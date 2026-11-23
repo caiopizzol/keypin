@@ -124,6 +124,7 @@ export interface TokenWorld {
 
 export interface FakeTokens {
   admin: string;
+  adminExpires?: string;
   account?: string;
   valuePrefix: string;
   issuedOn?: string;
@@ -151,6 +152,12 @@ export function tokensFetch(fake: FakeTokens): Fetch {
         ? "/client/v4/user/tokens"
         : `/client/v4/accounts/${fake.account}/tokens`;
     if (path === `${base}/verify` && init.method === "GET") {
+      if (bearer === fake.admin)
+        return reply(200, {
+          id: "ad".repeat(16),
+          status: "active",
+          ...(fake.adminExpires === undefined ? {} : { expires_on: fake.adminExpires }),
+        });
       const token = world.tokens.find((t) => t.value === bearer);
       return token
         ? reply(200, { id: token.id, status: token.status ?? "active" })

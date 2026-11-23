@@ -151,7 +151,10 @@ export async function checkIssuer(
       () => issuer.checkAccount(inVault, current),
       (result) => ({ ok: result.ok, text: `${where}  ${out.dim(result.facts)}` }),
     );
-    if (check.ok) return check;
+    if (check.ok) {
+      for (const warning of check.warnings ?? []) out.warn(warning);
+      return check;
+    }
     out.line(`    ${check.reason}`);
     if (check.fix) out.line(`    fix: ${check.fix}`);
     return null;

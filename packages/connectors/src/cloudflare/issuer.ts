@@ -1,51 +1,36 @@
 import {
+  type Expiry,
   type Fetch,
   type IssuedKey,
   type Issuer,
   type IssuerCheck,
-  isRecord,
   NothingChanged,
   objectField,
   Secret,
 } from "@keypin/core";
 import { call, type Reply, returned } from "./api";
+import {
+  type Copy,
+  copies,
+  DAY,
+  fitName,
+  parseToken,
+  plural,
+  timestamp,
+  tokenKind,
+} from "./token-record";
 
 const USER_TOKENS = "https://dash.cloudflare.com/profile/api-tokens";
 const ACCOUNT_TOKENS = "https://dash.cloudflare.com/?to=/:account/api-tokens";
 const CREATE_DOCS = "https://developers.cloudflare.com/fundamentals/api/how-to/create-via-api/";
 const ACCOUNT_ID = /^[0-9a-f]{32}$/;
-const NAME_LIMIT = 120;
-const DAY = 86_400_000;
+const BROAD = /\badmin\b|API Tokens (?:Write|Edit)/i;
 
 export interface CloudflareIssuerOptions {
   admin: () => Promise<Secret>;
   accountId?: string;
   fetch?: Fetch;
   now?: () => Date;
-}
-
-interface Policy {
-  effect: string;
-  resources: Record<string, unknown>;
-  permission_groups: { id: string }[];
-}
-
-interface Token {
-  id: string;
-  name: string;
-  status: string;
-  policies: Policy[];
-  condition: Record<string, unknown> | null;
-  notBefore: string | null;
-  expiresOn: string | null;
-  issuedOn: string | null;
-}
-
-interface Copy {
-  policies: Policy[];
-  condition: Record<string, unknown> | null;
-  notBefore: string | null;
-  lifetime: number | null;
 }
 
 export class CloudflareIssuer implements Issuer {
@@ -139,15 +124,42 @@ export class CloudflareIssuer implements Issuer {
     const ahead = token.notBefore !== null && Date.parse(token.notBefore) > this.#now().getTime();
     this.#copy = {
       policies: token.policies,
+      permissions: token.permissions,
       condition: token.condition,
       notBefore: ahead ? token.notBefore : null,
       lifetime,
     };
+    const broad = token.permissions.filter((name) => BROAD.test(name));
     return {
       ok: true,
       facts: `${which}, with ${plural(token.policies.length, "policy", "policies")}`,
       ...(currentId === null ? { currentId: token.id } : {}),
       notes: { create: copies(this.#copy) },
+      ...(lifetime === null ? {} : { lifetimeDays: lifetime / DAY }),
+      ...(broad.length
+        ? {
+            warnings: [
+              `the new token copies ${broad.join(", ")} from token ${this.label(token.id)}. If it doesn't need ${broad.length === 1 ? "that" : "those"}, make a narrower token at ${this.dashboard()}, publish it, check what uses it still works, then delete the old one.`,
+            ],
+          }
+        : {}),
+    };
+  }
+
+  async checkAdmin(): Promise<Expiry | null> {
+    const verified = await this.#request("GET", "/verify");
+    const result = objectField(verified.body, "result");
+    if (verified.status !== 200 || typeof result.id !== "string")
+      throw new Error(
+        `Cloudflare doesn't accept the admin token (${returned("GET", `${this.#base()}/verify`, verified)}): ${this.#adminFix()}`,
+      );
+    if (typeof result.status === "string" && result.status !== "active")
+      throw new Error(`the admin token is ${result.status} at Cloudflare: ${this.#adminFix()}`);
+    if (typeof result.expires_on !== "string" || !result.expires_on) return null;
+    return {
+      credential: "the Cloudflare admin token",
+      at: result.expires_on,
+      renew: `give it a later expiry at ${this.dashboard()}, or ${this.#adminFix()}`,
     };
   }
 
@@ -304,77 +316,4 @@ export class CloudflareIssuer implements Issuer {
     const key = as ?? (await this.#adminKey());
     return call(this.#fetch, key.reveal(), method, `${this.#base()}${rest}`, body);
   }
-}
-
-type TokenKind = "Global API Key" | "wrangler login token" | "account API token" | "user API token";
-
-function tokenKind(current: Secret): TokenKind | null {
-  if (current.reveal().startsWith("cfk_")) return "Global API Key";
-  if (current.reveal().startsWith("cfoat_")) return "wrangler login token";
-  if (current.reveal().startsWith("cfat_")) return "account API token";
-  if (current.reveal().startsWith("cfut_")) return "user API token";
-  return null;
-}
-
-function parseToken(body: Record<string, unknown>, id: string): Token | null {
-  const result = objectField(body, "result");
-  if (!Array.isArray(result.policies) || !result.policies.length) return null;
-  const policies = result.policies.map(parsePolicy);
-  if (policies.some((policy) => policy === null)) return null;
-  const text = (field: string) => {
-    const value = result[field];
-    return typeof value === "string" && value ? value : null;
-  };
-  const condition =
-    isRecord(result.condition) && Object.keys(result.condition).length ? result.condition : null;
-  return {
-    id: text("id") ?? id,
-    name: text("name") ?? "",
-    status: text("status") ?? "active",
-    policies: policies.filter((policy) => policy !== null),
-    condition,
-    notBefore: text("not_before"),
-    expiresOn: text("expires_on"),
-    issuedOn: text("issued_on"),
-  };
-}
-
-function parsePolicy(item: unknown): Policy | null {
-  if (!isRecord(item) || typeof item.effect !== "string" || !isRecord(item.resources)) return null;
-  if (!Array.isArray(item.permission_groups) || !item.permission_groups.length) return null;
-  const groups = item.permission_groups.map((group: unknown) =>
-    isRecord(group) && typeof group.id === "string" && group.id ? { id: group.id } : null,
-  );
-  if (groups.some((group) => group === null)) return null;
-  return {
-    effect: item.effect,
-    resources: item.resources,
-    permission_groups: groups.filter((group) => group !== null),
-  };
-}
-
-function copies(copy: Copy): string {
-  const kept = [
-    `the old token's ${plural(copy.policies.length, "policy", "policies")}`,
-    ...(copy.condition === null ? [] : ["IP filter"]),
-    ...(copy.notBefore === null ? [] : [`start date ${copy.notBefore.slice(0, 10)}`]),
-  ];
-  const list = kept.length === 1 ? kept[0] : `${kept.slice(0, -1).join(", ")} and ${kept.at(-1)}`;
-  const expires =
-    copy.lifetime === null
-      ? "no expiry"
-      : `expiring ${plural(Math.ceil(copy.lifetime / DAY), "day", "days")} after it starts`;
-  return `with ${list}; ${expires}`;
-}
-
-function plural(n: number, one: string, many: string): string {
-  return `${n} ${n === 1 ? one : many}`;
-}
-
-function timestamp(ms: number): string {
-  return new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
-}
-
-function fitName(name: string): string {
-  return name.length <= NAME_LIMIT ? name : `…${name.slice(name.length - NAME_LIMIT + 1)}`;
 }

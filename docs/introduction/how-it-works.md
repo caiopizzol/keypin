@@ -1,14 +1,25 @@
 # How it works
 
-keypin connects your vault, the places that use your keys, and the providers that issue them. The project's
-`secretspec.toml` says which keys exist and where each one lives; keypin's part of it says where each key goes and
-how it's rotated.
+When a key changes, keypin follows it from the provider that issues it, to your vault, to every place that uses
+it. The project's `secretspec.toml` says which keys exist and where each one lives; keypin's part of it says where
+each key goes and how it's rotated.
 
 ```mermaid
 flowchart LR
-  vault["Your vault<br>the values<br>rotated dates"] -- reads --> map["secretspec.toml, in your repo<br>key names and profiles<br>vault providers<br>destinations<br>rotation rules"]
-  map -- writes --> used["Where keys are used<br>CI and hosting<br>published copies"]
+  map["secretspec.toml, in your repo<br>key names and profiles<br>destinations<br>rotation rules"] -- rotate --> provider["The provider<br>makes the new key<br>revokes the old one"]
+  provider -- new key --> vault["Your vault<br>the value<br>its rotated date"]
+  vault -- publish --> used["Its destinations<br>CI and hosting<br>listed in secretspec.toml"]
 ```
+
+## Rotation
+
+Give a key an `issuer`, such as Resend, Neon or OpenAI, and `keypin rotate` creates a new key at the provider,
+saves it to your vault and publishes it to each destination `secretspec.toml` lists for that key and profile. Its
+plan says whether keypin revokes the old key after a second `y`, or leaves it for you to delete, as on a first
+Resend rotation. See [Rotating a key](../guides/rotating-a-key.md).
+
+`keypin status` shows which keys are due, in every project. [Scheduled rotation](../guides/scheduled-rotation.md)
+rotates them in your GitHub Actions.
 
 ## Your vault holds the values
 
@@ -59,17 +70,8 @@ another. Each profile reads its own vault item, so your laptop never needs the p
   CI job.
 - `keypin publish` writes each value to its destinations, such as a GitHub Actions secret or a Cloudflare Worker.
 
-## Rotation
-
-Give a key an `issuer`, such as Resend, Neon or OpenAI, and `keypin rotate` creates a new key at the provider,
-saves it to your vault and publishes it. Its plan says whether keypin revokes the old key after a second `y`, or
-leaves it for you to delete, as on a first Resend rotation. See [Rotating a key](../guides/rotating-a-key.md).
-
-`keypin status` shows which keys are due. [Scheduled rotation](../guides/scheduled-rotation.md) rotates them in
-your GitHub Actions.
-
 ## keypin asks first
 
-`publish` and `rotate` check the account behind each login and show a plan. A first write, a changed account or a
-changed vault item waits for your `y`. keypin never deletes a copy it published, and keeps no value on your machine
+`publish` and `rotate` show a plan with the account they reached at each destination. A first write, a changed
+account or a changed vault item waits for your `y`. keypin never deletes a copy it published, and keeps no value on your machine
 ([Files and state](../reference/files-and-state.md)).

@@ -1,12 +1,12 @@
 ---
 name: keypin
-description: Use the keypin CLI to check, publish or rotate a project's app keys. Use when a project's secretspec.toml has a [tool.keypin] table, or the user asks to check, publish or rotate keys with keypin.
+description: Use the keypin CLI to rotate, publish or check a project's app keys. Use when a key may have leaked or is due, when a project's secretspec.toml has a [tool.keypin] table, or the user asks to rotate, publish or check keys with keypin.
 ---
 
 # keypin
 
-keypin rotates a project's keys at their provider and publishes them to CI and hosting. The project declares its keys
-in secretspec's `secretspec.toml` (names and vaults, never values); keypin's settings sit under `[tool.keypin]`.
+When a key has to change, keypin replaces it at the provider and at every destination in the project's
+`secretspec.toml` (names and vaults, never values); keypin's settings sit under `[tool.keypin]`.
 keypin reads values from the vault only while a command needs them. secretspec, not keypin, puts values in the vault
 (`secretspec import`, `secretspec set`) and runs the app with them (`secretspec run`).
 
@@ -60,6 +60,8 @@ keypin reads values from the vault only while a command needs them. secretspec, 
   the user makes a new value at the provider, saves it with `secretspec set` (or in the vault, for a `ref` secretspec
   only reads, such as AWS Secrets Manager's) and sets its rotated date to today; then publish it, and remind them to
   revoke the old one.
+- When `rotate` says an old key waits, ask the user to confirm nothing still uses it (a published secret isn't proof
+  a deployment picked it up), then give them the command it printed, or **approve revoke** with that key filled in.
 
 Details: [How it works](https://github.com/caiopizzol/keypin/blob/main/docs/introduction/how-it-works.md),
 [secretspec.toml](https://github.com/caiopizzol/keypin/blob/main/docs/reference/secretspec-toml.md),

@@ -75,6 +75,18 @@ describe("[tool.keypin]", () => {
     expect(errorsOf(text)).toEqual([error]);
   });
 
+  test.each([
+    ["rotate_every", `"90d"`],
+    ["publish", `[${GITHUB}]`],
+    ["pull", "[]"],
+    ["issuer", `{ kind = "resend" }`],
+  ])("refuses %s inside a secret's entry", (setting, value) => {
+    const text = `${HEAD}\n[profiles.production]\nAPI_KEY = { description = "API key", ${setting} = ${value} }\n`;
+    expect(errorsOf(text)).toEqual([
+      `${MAP_FILE}: [profiles.production] API_KEY: "${setting}" is a keypin setting, and secretspec drops it from a secret; move it to [tool.keypin.production.API_KEY]`,
+    ]);
+  });
+
   test("one key rotates on one schedule", () => {
     const both = (other: string) =>
       `${PROFILES}\n[tool.keypin.default.API_KEY]\nrotate_every = "90d"\n\n[tool.keypin.production.API_KEY]\nrotate_every = "${other}"\n`;

@@ -2,6 +2,7 @@ import { parse as parseToml } from "smol-toml";
 import type { Environment, KeyRef } from "../contracts";
 import type { VaultRules } from "../login";
 import { isRecord } from "../record";
+import { TOOL_FIELDS } from "./key";
 import { isEnvironmentName, VARIABLE_NAME } from "./keys-map";
 import { PLACEHOLDER, type Table } from "./table";
 
@@ -92,6 +93,11 @@ export function readProfiles(
       }
       const mine = table(current);
       const theirs = table(inherited);
+      for (const setting of TOOL_FIELDS.filter((each) => mine[each] !== undefined))
+        fail(
+          where,
+          `"${setting}" is a keypin setting, and secretspec drops it from a secret; move it to [tool.keypin.${profile}.${key}]`,
+        );
       const field = (name: string): unknown => mine[name] ?? theirs[name];
       if (field("composed") !== undefined || field("from") !== undefined) {
         derived.add(`${profile} ${key}`);

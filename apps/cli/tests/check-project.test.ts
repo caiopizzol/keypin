@@ -254,8 +254,7 @@ function steps(text: string): string[] {
 }
 
 const FILLED: [string, string][] = [
-  ["<1Password sign-in address>", "my.1password.com"],
-  ["@<vault>", "@Private"],
+  ["onepassword://<vault>", "onepassword://my.1password.com@Private"],
 ];
 
 function fill(toml: string): string {
@@ -2167,5 +2166,17 @@ ${env}    steps:
       expect(await cli(["check"], run.deps)).toBe(1);
       expect(run.stdout.text).toContain("[tool.keypin.prod.STRIPE_API_KEY]");
     }
+  });
+});
+
+describe("keypin check, for a 1Password provider that names no account", () => {
+  test("looks the items up in 1Password's default account, as secretspec does", async () => {
+    const map = MAPPED.replace("onepassword://my.1password.com@Private", "onepassword://Private");
+    const run = setup({
+      files: { [MAP]: map, [`${ROOT}/.env`]: null, [`${ROOT}/wrangler.toml`]: null },
+    });
+    await cli(["check"], run.deps);
+    expect(run.stderr.text).toContain("Looked up 2 items in 1Password's default account");
+    expect(run.stdout.text).not.toContain("names no account");
   });
 });

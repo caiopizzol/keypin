@@ -24,9 +24,14 @@ export const onePasswordVaultRules: VaultRules<OnePasswordRef, OnePasswordRefere
   pinned: (reference, like) => ({ ...reference, account: like.account }),
   format,
   account,
-  accounts: (refs) => [
-    `1Password account ${[...new Set(refs.map((ref) => ref.account))].join(", ")}`,
-  ],
+  accounts: (refs) => {
+    const accounts = [...new Set(refs.map((ref) => ref.account))];
+    const named = accounts.filter(Boolean);
+    return [
+      ...(named.length ? [`1Password account ${named.join(", ")}`] : []),
+      ...(accounts.includes("") ? [account({ account: "" })] : []),
+    ];
+  },
   sameItem: (a, b) => sameName(a.vault, b.vault) && sameName(a.item, b.item),
   sameField: (a, b) =>
     sameName(a.section, b.section) &&
@@ -40,6 +45,6 @@ export const onePasswordVaultRules: VaultRules<OnePasswordRef, OnePasswordRefere
       ? format(ref)
       : `${format(ref)} (${ref.field}, then ${ref.fallback})`,
   stored: decode,
-  newKeys: { provider: "onepassword://<1Password sign-in address>@<vault>" },
+  newKeys: { provider: "onepassword://<vault>" },
   secretspec: { provider: "onepassword", locate },
 };

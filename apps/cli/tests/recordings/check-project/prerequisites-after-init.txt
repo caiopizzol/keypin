@@ -73,7 +73,7 @@ billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub
   Replace each <...> with the real value; keypin rejects a map that still has one:
 
 [providers]
-onepassword = "onepassword://<1Password sign-in address>@<vault>"
+onepassword = "onepassword://<vault>"
 
 [defaults]
 providers = ["onepassword"]

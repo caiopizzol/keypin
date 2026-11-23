@@ -1,4 +1,5 @@
 export { onePasswordBackend, type SignInMode } from "./backend";
+export { defaultAccount, withDefaultAccount } from "./default-account";
 export { desktopConnect, desktopLibrary, requireDesktopApp, sandboxedApp } from "./desktop";
 export { RateLimited, tokenClient } from "./sdk";
 export { pinKind, serviceAccountConnect, signInAddress, type TokenClient } from "./service-account";

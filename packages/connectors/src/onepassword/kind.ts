@@ -60,7 +60,7 @@ export const onePasswordVault: VaultKind<OnePasswordHost, OnePasswordRef, OnePas
   itemNotes(refs, { signIn }) {
     if (signIn?.mode !== "service-account") return [];
     const limit = "the vaults granted to the service account are what limit it";
-    const accounts = refs.flatMap((ref) => decode(ref)?.account ?? []);
+    const accounts = refs.flatMap((ref) => decode(ref)?.account || []);
     return [...new Set(accounts)].flatMap((account) => {
       const pinned = pinKind(account);
       if (pinned !== "address")

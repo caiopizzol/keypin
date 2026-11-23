@@ -339,10 +339,15 @@ describe("1Password", () => {
     ).toMatchObject({ vault: "Team Keys", item: "a/b/c" });
   });
 
+  test("a URI without an account uses the signed-in default account, as secretspec does", () => {
+    expect(refOf(at("onepassword://Acme", `, ref = { item = "db" }`), "A", "production")).toEqual(
+      item("db", { account: "", field: "value", fallback: "password" }),
+    );
+  });
+
   test.each([
-    ["onepassword://Acme", "doesn't name the 1Password account"],
-    ["onepassword://my.1password.com@", "doesn't name the 1Password account"],
-    ["onepassword://", "doesn't name the 1Password account"],
+    ["onepassword://my.1password.com@", "doesn't name a 1Password vault"],
+    ["onepassword://", "doesn't name a 1Password vault"],
     ["onepassword://my.1password.com@Acme/item/field", "names more than a vault"],
     ["onepassword+token://Acme", "a onepassword+token:// provider, which keypin doesn't read yet"],
   ])("refuses %s", (uri, problem) => {
@@ -354,9 +359,9 @@ describe("1Password", () => {
     expect(one(at(`onepassword+token://${token}@Acme`))).not.toContain(token);
   });
 
-  test("the account message says what to write", () => {
-    expect(one(at("onepassword://Acme"))).toBe(
-      `uses onepassword://Acme, which doesn't name the 1Password account; write onepassword://<sign-in address>@<vault>, with the sign-in address at the top left of the 1Password app (such as my.1password.com) or the account ID`,
+  test("the vault message says what to write", () => {
+    expect(one(at("onepassword://"))).toBe(
+      `uses onepassword://, which doesn't name a 1Password vault; write onepassword://<vault>, or onepassword://<sign-in address>@<vault>`,
     );
   });
 

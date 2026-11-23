@@ -37,7 +37,11 @@ export function format(ref: OnePasswordReference): string {
 }
 
 export function account(ref: Pick<OnePasswordRef, "account">): string {
-  return `1Password account ${ref.account}`;
+  return ref.account ? `1Password account ${ref.account}` : "1Password's default account";
+}
+
+export function accountName(account: string): string {
+  return account ? `1Password account "${account}"` : "1Password's default account";
 }
 
 export const sameName = (a: string | null, b: string | null) =>

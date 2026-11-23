@@ -18,6 +18,7 @@ import {
 } from "@keypin/core";
 import {
   account,
+  accountName,
   decode,
   decodeScope,
   format,
@@ -111,7 +112,7 @@ export function onePasswordBackend(
     if (!match) throw new Error(noVault(scope, mode));
     if (matches.length > 1) {
       throw new Error(
-        `1Password account "${scope.account}" has ${matches.length} vaults named "${scope.vault}"`,
+        `${accountName(scope.account)} has ${matches.length} vaults named "${scope.vault}"`,
       );
     }
     return match.id;
@@ -230,7 +231,7 @@ export function onePasswordBackend(
 }
 
 function noVault(scope: OnePasswordScope, mode: SignInMode): string {
-  const account = `1Password account "${scope.account}"`;
+  const account = accountName(scope.account);
   if (mode === "desktop") return `${account} has no vault "${scope.vault}"`;
   const move =
     "move the item to a vault you create, update its vault in secretspec.toml, and grant the service account read access to that vault";
@@ -384,5 +385,5 @@ function signInFailed(
   const hint = tokenIgnored
     ? "; OP_SERVICE_ACCOUNT_TOKEN is set, so set KEYPIN_1PASSWORD=service-account to use the service account"
     : "";
-  return new SignInFailed(`1Password account "${account}": sign-in failed: ${why}${hint}`, reason);
+  return new SignInFailed(`${accountName(account)}: sign-in failed: ${why}${hint}`, reason);
 }

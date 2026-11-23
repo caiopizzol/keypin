@@ -66,7 +66,7 @@ export class FlySecretsDestination implements Destination {
       return fail(
         `the token can't reach the app ${app}`,
         null,
-        `check app in keypin.toml, or ${create}`,
+        `check app in secretspec.toml, or ${create}`,
       );
     if (reply.status !== 200) throw failure("GET", "/apps/{app}", reply);
     const slug = objectField(reply.body, "organization").slug;
@@ -75,7 +75,7 @@ export class FlySecretsDestination implements Destination {
       return fail(
         `the app ${app} belongs to the organization ${org ?? "unknown"}, not ${this.#org}`,
         app,
-        "check org in keypin.toml",
+        "check org in secretspec.toml",
       );
     this.#passed = true;
     return { publisher, expected: app, destinationAccount: app, ok: true };

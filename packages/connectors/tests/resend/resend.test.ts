@@ -208,7 +208,7 @@ describe("checkAccount", () => {
     expect(wrong).toMatchObject({
       ok: false,
       reason: "the admin key's team has no Resend domain dom-typo",
-      fix: "check domain_id in keypin.toml against https://resend.com/domains",
+      fix: "check domain_id in secretspec.toml against https://resend.com/domains",
     });
     routes["GET /domains/dom-1"] = {
       status: 200,

@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { parseMap, parseObject, Secret } from "@keypin/core";
+import { readSecretspec, parseObject, Secret } from "@keypin/core";
 import { expectNoneOf } from "@keypin/core/testing";
 import { onePasswordVault } from "../../src/onepassword/index";
 import {
@@ -353,11 +353,11 @@ describe("sign-in", () => {
   });
 });
 
-describe("keypin.toml", () => {
+describe("secretspec.toml", () => {
   const map = (table: string, name = "API_KEY") =>
-    parseMap(
-      `[1password]\naccount = "my.1password.com"\n\n[keys.${name}.prod]\nfrom = "op://Private/web/credential"\n\n[[keys.${name}.prod.publish]]\n${table}`,
-      "keypin.toml",
+    readSecretspec(
+      `[project]\nname = "web"\nrevision = "1.0"\n\n[profiles.prod]\n${name} = { description = "a key", providers = ["onepassword://my.1password.com@Private"], ref = { item = "web", field = "credential" } }\n\n[[tool.keypin.prod.${name}.publish]]\n${table}`,
+      "secretspec.toml",
       [gitlabProject, gitlabGroup],
       [],
       [onePasswordVault],

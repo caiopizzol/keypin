@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, parseMap, Secret } from "@keypin/core";
+import { type Fetch, readSecretspec, Secret } from "@keypin/core";
 import { expectNoneOf } from "@keypin/core/testing";
 import {
   NetlifyEnvDestination,
@@ -239,11 +239,11 @@ describe("sign-in", () => {
   });
 });
 
-describe("keypin.toml", () => {
+describe("secretspec.toml", () => {
   const map = (table: string, key = "API_KEY") =>
-    parseMap(
-      `[1password]\naccount = "my.1password.com"\n\n[keys.${key}.prod]\nfrom = "op://Private/web/credential"\n\n[[keys.${key}.prod.publish]]\n${table}`,
-      "keypin.toml",
+    readSecretspec(
+      `[project]\nname = "web"\nrevision = "1.0"\n\n[profiles.prod]\n${key} = { description = "a key", providers = ["onepassword://my.1password.com@Private"], ref = { item = "web", field = "credential" } }\n\n[[tool.keypin.prod.${key}.publish]]\n${table}`,
+      "secretspec.toml",
       [netlifyProject],
       [],
       [onePasswordVault],

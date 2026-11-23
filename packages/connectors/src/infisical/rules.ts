@@ -3,23 +3,19 @@ import {
   account,
   decode,
   format,
-  type InfisicalPin,
   type InfisicalRef,
   type InfisicalReference,
   parse,
-  readPin,
   SCHEME,
 } from "./reference";
 
-export const infisicalVaultRules: VaultRules<InfisicalRef, InfisicalReference, InfisicalPin> = {
+export const infisicalVaultRules: VaultRules<InfisicalRef, InfisicalReference> = {
   kind: "infisical",
   name: "Infisical",
   scheme: SCHEME,
   placeholder: "the project's slug, the environment's slug, and the secret's name",
-  needsPin: `needs your Infisical organization: add [infisical] with organization = "..."`,
-  readPin,
   parse,
-  pinned: (reference, pin) => ({ ...reference, ...pin }),
+  pinned: (reference, like) => ({ ...like, ...reference }),
   format,
   account,
   sameItem: (a, b) =>
@@ -28,4 +24,5 @@ export const infisicalVaultRules: VaultRules<InfisicalRef, InfisicalReference, I
     a.path === b.path &&
     a.name === b.name,
   stored: decode,
+  secretspec: { provider: "infisical" },
 };

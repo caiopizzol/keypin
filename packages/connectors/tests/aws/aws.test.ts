@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, parseMap, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, readSecretspec, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { AwsIssuer, awsIssuer } from "../../src/aws/index";
 import {
@@ -344,25 +344,32 @@ describe("AWS IAM issuer", () => {
   });
 });
 
-describe("the aws issuer in keypin.toml", () => {
-  const map = (issuer: string) => `[1password]
-account = "my.1password.com"
+describe("the aws issuer in secretspec.toml", () => {
+  const map = (issuer: string) => `[project]
+name = "billing"
+revision = "1.0"
 
-[keys.AWS_SECRET_ACCESS_KEY.prod]
-from = "op://Private/app aws secret/credential"
+[providers]
+vault = "onepassword://my.1password.com@Private"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.prod]
+AWS_SECRET_ACCESS_KEY = { description = "AWS_SECRET_ACCESS_KEY", ref = { item = "app aws secret", field = "credential" } }
+AWS_ACCESS_KEY_ID = { description = "AWS_ACCESS_KEY_ID", ref = { item = "app aws key id", field = "credential" } }
+
+[tool.keypin.prod.AWS_SECRET_ACCESS_KEY]
 ${issuer}
-
-[keys.AWS_ACCESS_KEY_ID.prod]
-from = "op://Private/app aws key id/credential"
 `;
 
   test("names the key that holds the access key ID", () => {
-    const parsed = parseMap(
-      map(`[keys.AWS_SECRET_ACCESS_KEY.prod.issuer]
+    const parsed = readSecretspec(
+      map(`[tool.keypin.prod.AWS_SECRET_ACCESS_KEY.issuer]
 kind = "aws"
 admin = "op://Private/aws admin/credential"
 key_id = "AWS_ACCESS_KEY_ID"`),
-      "keypin.toml",
+      "secretspec.toml",
       [],
       [awsIssuer],
       [onePasswordVault],
@@ -374,11 +381,11 @@ key_id = "AWS_ACCESS_KEY_ID"`),
   });
 
   test("requires key_id", () => {
-    const parsed = parseMap(
-      map(`[keys.AWS_SECRET_ACCESS_KEY.prod.issuer]
+    const parsed = readSecretspec(
+      map(`[tool.keypin.prod.AWS_SECRET_ACCESS_KEY.issuer]
 kind = "aws"
 admin = "op://Private/aws admin/credential"`),
-      "keypin.toml",
+      "secretspec.toml",
       [],
       [awsIssuer],
       [onePasswordVault],

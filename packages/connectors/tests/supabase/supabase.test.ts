@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { NothingChanged, parseMap, Secret } from "@keypin/core";
+import { NothingChanged, readSecretspec, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { SupabaseIssuer, supabaseIssuer } from "../../src/supabase/index";
 import {
@@ -326,17 +326,20 @@ describe("revoke", () => {
   });
 });
 
-describe("keypin.toml", () => {
+describe("secretspec.toml", () => {
   const map = (fields: string) => `
-[1password]
-account = "my.1password.com"
+[project]
+name = "app"
+revision = "1.0"
 
-[keys.SUPABASE_SECRET_KEY.prod]
-from = "op://Private/app supabase key/credential"
+[profiles.prod]
+SUPABASE_SECRET_KEY = { description = "a key", providers = ["onepassword://my.1password.com@Private"], ref = { item = "app supabase key", field = "credential" } }
+
+[tool.keypin.prod.SUPABASE_SECRET_KEY]
 issuer = { kind = "supabase", admin = "op://Private/supabase token/credential"${fields} }
 `;
   const parse = (fields: string) =>
-    parseMap(map(fields), "/w/keypin.toml", [], [supabaseIssuer], [onePasswordVault]);
+    readSecretspec(map(fields), "/w/secretspec.toml", [], [supabaseIssuer], [onePasswordVault]);
 
   test("reads the issuer table", () => {
     const parsed = parse(`, project_ref = "${REF}"`);

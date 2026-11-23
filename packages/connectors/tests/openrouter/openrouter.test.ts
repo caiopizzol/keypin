@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, parseMap, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, readSecretspec, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { OpenRouterIssuer, openrouterIssuer } from "../../src/openrouter/index";
 import {
@@ -404,16 +404,19 @@ describe("revoke", () => {
 
 describe("the issuer table", () => {
   const parse = (fields: string) =>
-    parseMap(
+    readSecretspec(
       `
-[1password]
-account = "my.1password.com"
+[project]
+name = "app"
+revision = "1.0"
 
-[keys.OPENROUTER_API_KEY.prod]
-from = "op://Private/openrouter key/credential"
+[profiles.prod]
+OPENROUTER_API_KEY = { description = "a key", providers = ["onepassword://my.1password.com@Private"], ref = { item = "openrouter key", field = "credential" } }
+
+[tool.keypin.prod.OPENROUTER_API_KEY]
 issuer = { kind = "openrouter", admin = "op://Private/openrouter management key/credential"${fields} }
 `,
-      "/w/keypin.toml",
+      "/w/secretspec.toml",
       [],
       [openrouterIssuer],
       [onePasswordVault],

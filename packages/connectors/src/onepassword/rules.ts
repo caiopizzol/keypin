@@ -1,4 +1,5 @@
 import type { VaultRules } from "@keypin/core";
+import { locate } from "./secretspec";
 import {
   account,
   decode,
@@ -6,21 +7,18 @@ import {
   type OnePasswordRef,
   type OnePasswordReference,
   parse,
-  readPin,
   SCHEME,
   sameName,
 } from "./reference";
 
-export const onePasswordVaultRules: VaultRules<OnePasswordRef, OnePasswordReference, string> = {
+export const onePasswordVaultRules: VaultRules<OnePasswordRef, OnePasswordReference> = {
   kind: "1password",
   name: "1Password",
   scheme: SCHEME,
   placeholder:
     "the field's secret reference (in 1Password, open the field's menu and select Copy Secret Reference)",
-  needsPin: `needs your 1Password account: add [1password] with account = "..."`,
-  readPin,
   parse,
-  pinned: (reference, pinned) => ({ ...reference, account: pinned }),
+  pinned: (reference, like) => ({ ...reference, account: like.account }),
   format,
   account,
   accounts: (refs) => [
@@ -30,8 +28,9 @@ export const onePasswordVaultRules: VaultRules<OnePasswordRef, OnePasswordRefere
   sameField: (a, b) => sameName(a.section, b.section) && sameName(a.field, b.field),
   stored: decode,
   newKeys: {
-    reference: "<vault>/<item>/<field>",
-    pin: { account: "<1Password sign-in address>" },
+    provider: "onepassword://<1Password sign-in address>@<vault>",
     options: "--vault <vault>",
+    account: "--account <1Password sign-in address>",
   },
+  secretspec: { provider: "onepassword", locate },
 };

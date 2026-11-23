@@ -114,13 +114,13 @@ export function bitwardenBackend(
     });
     if (login.status === 400 && login.body.error === "invalid_client")
       throw fail(
-        `Bitwarden refused the access token in ${ACCESS_TOKEN}; it may be revoked or expired, or belong to another server than the url under [bitwarden] in keypin.toml`,
+        `Bitwarden refused the access token in ${ACCESS_TOKEN}; it may be revoked or expired, or belong to another server than the url under [bitwarden] in secretspec.toml`,
         { kind: "other" },
       );
     const { access_token: bearer, encrypted_payload: payload } = login.body;
     if (login.status !== 200 || typeof bearer !== "string" || typeof payload !== "string")
       throw fail(
-        `${problem(login)}; check that the url under [bitwarden] in keypin.toml is your Bitwarden server`,
+        `${problem(login)}; check that the url under [bitwarden] in secretspec.toml is your Bitwarden server`,
         { kind: "other" },
       );
     const key = organizationKey(payload, token.key);
@@ -136,7 +136,7 @@ export function bitwardenBackend(
       });
     if (organization.toLowerCase() !== place.organization)
       throw new SignInFailed(
-        `${where}: sign-in failed: the machine account belongs to the organization ${organization}, but keypin.toml pins ${place.organization}`,
+        `${where}: sign-in failed: the machine account belongs to the organization ${organization}, but secretspec.toml names ${place.organization}`,
         { kind: "wrong-account", pinned: place.organization, actual: organization },
       );
     return { token: bearer, key, projects: null, secrets: new Map() };

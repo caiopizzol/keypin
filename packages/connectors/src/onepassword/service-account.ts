@@ -47,7 +47,7 @@ export function serviceAccountConnect(token: string, open: TokenClient): Connect
   return async (account) => {
     if (pinKind(account) === "address" && pinnedAddress(account) !== address) {
       throw new SignInFailed(
-        `the service account signs in to ${address}, but keypin.toml pins ${account}`,
+        `the service account signs in to ${address}, but secretspec.toml names ${account}`,
         { kind: "wrong-account", pinned: account, actual: address },
       );
     }

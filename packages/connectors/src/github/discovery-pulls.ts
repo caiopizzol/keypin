@@ -26,7 +26,7 @@ export function leftovers(
     if (publishedIn.length) {
       problems.set(
         where,
-        `${key}: keypin.toml says jobs in ${place} pull it from the vault at job time, but also publishes it there for ${publishedIn.join(" and ")}; keep the pull entry or the publish entry, not both`,
+        `${key}: secretspec.toml says jobs in ${place} pull it from the vault at job time, but also publishes it there for ${publishedIn.join(" and ")}; keep the pull entry or the publish entry, not both`,
       );
       continue;
     }
@@ -50,7 +50,7 @@ export function leftovers(
         : null;
     const fixes = [
       ...(paths.length
-        ? [`read it with keypin run --env ${environment} --only ${key} -- <command> instead`]
+        ? [`read it with keypin run --profile ${environment} --only ${key} -- <command> instead`]
         : []),
       ...(stored
         ? [
@@ -62,7 +62,7 @@ export function leftovers(
     ];
     problems.set(
       where,
-      `${key}: keypin.toml says jobs in ${place} pull it from the vault at job time, but ${facts.join(" and ")}; ${fixes.join(", then ")}`,
+      `${key}: secretspec.toml says jobs in ${place} pull it from the vault at job time, but ${facts.join(" and ")}; ${fixes.join(", then ")}`,
     );
   }
   return [...problems.values()];
@@ -91,7 +91,7 @@ export function pullNotes(
         const fields = [`by = "github-actions"`, `repo = "${repo}"`];
         if (literal !== null) fields.push(`environment = "${literal}"`);
         notes.add(
-          `${key}: ${path} reads it with keypin run, but keypin.toml has no pull entry for ${describePlace(repo, literal)}; add [[keys.${key}.${env}.pull]] with ${fields.join(", ")}`,
+          `${key}: ${path} reads it with keypin run, but secretspec.toml has no pull entry for ${describePlace(repo, literal)}; add [[tool.keypin.${env}.${key}.pull]] with ${fields.join(", ")}`,
         );
       }
     }
@@ -102,7 +102,7 @@ export function pullNotes(
     );
     if (!used)
       notes.add(
-        `${key}: keypin.toml says jobs in ${describePlace(pulled.repo, pulled.environment)} pull it, but no workflow there runs keypin run for it`,
+        `${key}: secretspec.toml says jobs in ${describePlace(pulled.repo, pulled.environment)} pull it, but no workflow there runs keypin run for it`,
       );
   }
   return [...notes];

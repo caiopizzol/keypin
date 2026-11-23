@@ -80,7 +80,7 @@ export class SupabaseIssuer implements Issuer {
           ok: false,
           facts,
           reason: `Supabase project ${this.#ref} has no secret key that matches the vault's key`,
-          fix: `check project_ref in keypin.toml; if the key was deleted, put the key your apps use in the vault, then run this again`,
+          fix: `check project_ref in secretspec.toml; if the key was deleted, put the key your apps use in the vault, then run this again`,
         };
       return {
         ok: false,
@@ -88,7 +88,7 @@ export class SupabaseIssuer implements Issuer {
         reason: held
           ? `Supabase doesn't list key ${currentId}, the one keypin issued last, but lists the vault's key as ${held.name}`
           : `Supabase project ${this.#ref} lists neither key ${currentId}, the one keypin issued last, nor the vault's key`,
-        fix: `check project_ref in keypin.toml; if the key was deleted, put the key your apps use in the vault, then run this again`,
+        fix: `check project_ref in secretspec.toml; if the key was deleted, put the key your apps use in the vault, then run this again`,
       };
     }
     if (!isDefaultTemplate(old.template))
@@ -180,7 +180,7 @@ export class SupabaseIssuer implements Issuer {
         ok: false,
         facts,
         reason: `the admin token can't read the API keys of Supabase project ${this.#ref}: the ref is wrong, or the token isn't scoped to the project or lacks the API Keys permission`,
-        fix: `check project_ref in keypin.toml, or give the token API Keys Read-write on the project; see ${TOKEN_DOCS}`,
+        fix: `check project_ref in secretspec.toml, or give the token API Keys Read-write on the project; see ${TOKEN_DOCS}`,
       };
     throw failure("GET", "/api-keys", reply);
   }

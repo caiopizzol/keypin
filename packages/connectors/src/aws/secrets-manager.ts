@@ -98,7 +98,7 @@ export function secretsManagerBackend(
       );
     if (actual !== place.account)
       throw new SignInFailed(
-        `${where}: sign-in failed: ${source} belongs to AWS account ${actual}, but keypin.toml pins ${place.account}`,
+        `${where}: sign-in failed: ${source} belongs to AWS account ${actual}, but secretspec.toml names ${place.account}`,
         { kind: "wrong-account", pinned: place.account, actual },
       );
     return { credentials, expires };
@@ -219,7 +219,7 @@ export function secretsManagerBackend(
       );
     if (details.RotationEnabled === true)
       throw fail(
-        `${describeRef(ref)}: Secrets Manager rotates this secret itself; turn its rotation off before keypin rotates the key, or drop the key's issuer from keypin.toml`,
+        `${describeRef(ref)}: Secrets Manager rotates this secret itself; turn its rotation off before keypin rotates the key, or drop the key's issuer from secretspec.toml`,
       );
     if (ref.field === null) return null;
     const found = await current(ref, fail);

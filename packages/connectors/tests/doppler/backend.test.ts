@@ -100,7 +100,7 @@ describe("signing in to Doppler", () => {
       actual: "globex",
     });
     expect(error.message).toContain(
-      "the service token in DOPPLER_TOKEN belongs to the workplace globex Inc (globex), but keypin.toml pins acme",
+      "the service token in DOPPLER_TOKEN belongs to the workplace globex Inc (globex), but secretspec.toml names acme",
     );
     expect(calls).toEqual(["GET /v3/me"]);
   });
@@ -224,7 +224,7 @@ describe("writing", () => {
     };
     const { vault, store } = setup(ACCOUNT, { secrets });
     const message =
-      "doppler://billing/prd/STRIPE_KEY (Doppler workplace acme): the secret references doppler://shared/prd/STRIPE_KEY, so a new key saved here would leave that secret, and everything that uses it, with the old key; point keypin.toml at doppler://shared/prd/STRIPE_KEY instead";
+      "doppler://billing/prd/STRIPE_KEY (Doppler workplace acme): the secret references doppler://shared/prd/STRIPE_KEY, so a new key saved here would leave that secret, and everything that uses it, with the old key; point secretspec.toml at doppler://shared/prd/STRIPE_KEY instead";
     await expect(vault.checkWrite?.(REF)).rejects.toThrow(message);
     const error = await failure(vault.write(REF, new Secret("x")));
     expect(error).toBeInstanceOf(WriteRefused);
@@ -259,7 +259,7 @@ describe("writing", () => {
     });
     expect((await vault.read(branch)).equals(new Secret(SENTINEL))).toBe(true);
     const message =
-      "doppler://billing/prd_aws/STRIPE_KEY (Doppler workplace acme): billing/prd_aws inherits doppler://billing/prd/STRIPE_KEY, and Doppler doesn't say whether the secret here overrides it, so a new key saved here could leave that secret, and every config that inherits it, with the old key; point keypin.toml at doppler://billing/prd/STRIPE_KEY instead";
+      "doppler://billing/prd_aws/STRIPE_KEY (Doppler workplace acme): billing/prd_aws inherits doppler://billing/prd/STRIPE_KEY, and Doppler doesn't say whether the secret here overrides it, so a new key saved here could leave that secret, and every config that inherits it, with the old key; point secretspec.toml at doppler://billing/prd/STRIPE_KEY instead";
     await expect(vault.checkWrite?.(branch)).rejects.toThrow(message);
     const error = await failure(vault.write(branch, new Secret("x")));
     expect(error).toBeInstanceOf(WriteRefused);
@@ -309,7 +309,9 @@ describe("writing", () => {
     expect((await vault.read(REF)).equals(new Secret(`${SENTINEL}-shared`))).toBe(true);
     const error = await failure(vault.write(REF, new Secret("x")));
     expect(error).toBeInstanceOf(WriteRefused);
-    expect(error.message).toContain("point keypin.toml at doppler://shared/prd/STRIPE_KEY instead");
+    expect(error.message).toContain(
+      "point secretspec.toml at doppler://shared/prd/STRIPE_KEY instead",
+    );
     expect(store.effects).toEqual([]);
   });
 

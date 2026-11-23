@@ -94,7 +94,7 @@ export class NeonIssuer implements Issuer {
         ok: false,
         facts: `the admin key reaches project ${this.#projectId}`,
         reason: `Neon project ${this.#projectId} has no branch ${this.#branchId}`,
-        fix: "check branch_id in keypin.toml",
+        fix: "check branch_id in secretspec.toml",
       };
     if (listed.status !== 200) throw failure("GET", "/roles", listed);
     const passwords = passwordTimes(listed.body);
@@ -118,7 +118,7 @@ export class NeonIssuer implements Issuer {
               `create ${missing.join(" and ")} with SQL, in the same group role as the other (see docs/guides/rotating-a-key.md#neon)`,
             ]
           : []),
-        ...(database.status === 404 ? ["check database in keypin.toml"] : []),
+        ...(database.status === 404 ? ["check database in secretspec.toml"] : []),
       ];
       return {
         ok: false,
@@ -155,7 +155,7 @@ export class NeonIssuer implements Issuer {
         ok: false,
         facts,
         reason: `the vault's URL connects to ${endpoint}, which isn't a compute of Neon branch ${this.#branchId}`,
-        fix: "check branch_id in keypin.toml, or put the branch's URL in the vault",
+        fix: "check branch_id in secretspec.toml, or put the branch's URL in the vault",
       };
     const known = currentId === null ? null : parseId(currentId);
     if (currentId !== null && (!known || !this.#roles.includes(known.role)))
@@ -318,7 +318,7 @@ export class NeonIssuer implements Issuer {
         ok: false,
         facts,
         reason: `the admin key can't reach Neon project ${this.#projectId}: the ID is wrong, or the key belongs to another organization or project`,
-        fix: `check project_id in keypin.toml, or use a key that reaches the project; see ${KEYS_DOCS}`,
+        fix: `check project_id in secretspec.toml, or use a key that reaches the project; see ${KEYS_DOCS}`,
       };
     throw failure("GET", "/projects/<project_id>", reply);
   }

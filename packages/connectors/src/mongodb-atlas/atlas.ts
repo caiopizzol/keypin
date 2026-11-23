@@ -118,7 +118,7 @@ export class AtlasIssuer implements Issuer {
         ok: false,
         facts,
         reason: `the vault's connection string connects to ${uri.hosts.join(",")}, which isn't a cluster in project ${name}`,
-        fix: "check project_id in keypin.toml, or put a connection string for this project's cluster in the vault",
+        fix: "check project_id in secretspec.toml, or put a connection string for this project's cluster in the vault",
       };
     if (clusters.length > 1)
       return {
@@ -332,7 +332,7 @@ export class AtlasIssuer implements Issuer {
         ok: false,
         facts,
         reason: `the service account can't reach Atlas project ${this.#projectId}: the ID is wrong, the service account isn't in the project's organization, or this computer's IP address isn't on its API access list`,
-        fix: `check project_id in keypin.toml, and give the service account the Project Database Access Admin role on the project; see ${SERVICE_ACCOUNTS}`,
+        fix: `check project_id in secretspec.toml, and give the service account the Project Database Access Admin role on the project; see ${SERVICE_ACCOUNTS}`,
       };
     throw failure("GET", "/groups/<project_id>", reply);
   }

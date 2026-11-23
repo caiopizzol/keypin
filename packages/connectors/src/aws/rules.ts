@@ -4,9 +4,7 @@ import {
   decode,
   format,
   parse,
-  readPin,
   SCHEME,
-  type SecretsManagerPin,
   type SecretsManagerRef,
   type SecretsManagerReference,
 } from "./reference";
@@ -27,22 +25,17 @@ export const awsIssuerRules = {
   idKey: (spec) => spec.keyId,
 } satisfies IssuerRules<AwsSpec>;
 
-export const secretsManagerVaultRules: VaultRules<
-  SecretsManagerRef,
-  SecretsManagerReference,
-  SecretsManagerPin
-> = {
+export const secretsManagerVaultRules: VaultRules<SecretsManagerRef, SecretsManagerReference> = {
   kind: "awssm",
   name: "AWS Secrets Manager",
   scheme: SCHEME,
   placeholder: "the secret's region and name",
-  needsPin: `needs your AWS account: add [awssm] with account = "..."`,
-  readPin,
   parse,
-  pinned: (reference, pin) => ({ ...reference, ...pin }),
+  pinned: (reference, like) => ({ ...like, ...reference }),
   format,
   account,
   sameItem: (a, b) => a.region === b.region && a.name === b.name,
   sameField: (a, b) => a.field === b.field,
   stored: decode,
+  secretspec: { provider: "awssm" },
 };

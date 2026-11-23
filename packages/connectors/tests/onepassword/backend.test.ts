@@ -658,3 +658,46 @@ describe("errors", () => {
     await expect(backendFor(client).backend.read(ref)).rejects.toThrow("2 items have this name");
   });
 });
+
+describe("secretspec's item, read as field value, then password", () => {
+  const convention: KeyRef = {
+    kind: "1password",
+    account: ACCOUNT,
+    vault: "Private",
+    item: "secretspec/web/production/API_KEY",
+    section: null,
+    field: "value",
+    fallback: "password",
+  };
+
+  test("reads value when the item has it, and password when it doesn't", async () => {
+    const { client } = fake([
+      item("secretspec/web/production/API_KEY", [field("value", "Concealed", VALUE)]),
+      item("secretspec/web/production/OTHER", [field("password", "Concealed", `${VALUE}-2`)]),
+    ]);
+    const { backend } = backendFor(client);
+    expect((await backend.read(convention)).reveal()).toBe(VALUE);
+    const other = { ...convention, item: "secretspec/web/production/OTHER" };
+    expect((await backend.read(other)).reveal()).toBe(`${VALUE}-2`);
+  });
+
+  test("names both fields when the item has neither", async () => {
+    const { client } = fake([
+      item("secretspec/web/production/API_KEY", [field("token", "Concealed", VALUE)]),
+    ]);
+    await expect(backendFor(client).backend.read(convention)).rejects.toThrow(
+      `the item has no field "value" or "password"`,
+    );
+  });
+
+  test("a missing item is created with a password field, which secretspec reads too", async () => {
+    const { client, calls } = fake();
+    await backendFor(client).backend.write(convention, new Secret(VALUE));
+    const [created] = calls.create;
+    assert(created);
+    expect(created).toMatchObject({ title: "secretspec/web/production/API_KEY" });
+    expect(created.fields).toEqual([
+      { id: "password", title: "password", fieldType: "Concealed", value: VALUE },
+    ]);
+  });
+});

@@ -233,7 +233,7 @@ describe("signing in with GitHub Actions OIDC", () => {
     const self = { ...REF, url: "https://infisical.acme.dev" };
     const refused = setup();
     expect(String(await failure(refused.vault.read(self)))).toContain(
-      "sign-in failed: keypin sends GitHub's OIDC token only to Infisical Cloud, and keypin.toml's url is https://infisical.acme.dev; if that server is yours, set KEYPIN_INFISICAL_URL=https://infisical.acme.dev in the job",
+      "sign-in failed: keypin sends GitHub's OIDC token only to Infisical Cloud, and secretspec.toml's url is https://infisical.acme.dev; if that server is yours, set KEYPIN_INFISICAL_URL=https://infisical.acme.dev in the job",
     );
     expect(refused.calls).toEqual([]);
     const otherServer = setup({ env: { KEYPIN_INFISICAL_URL: "https://elsewhere.acme.dev" } });

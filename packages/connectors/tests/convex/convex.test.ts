@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, parseMap, Secret } from "@keypin/core";
+import { type Fetch, readSecretspec, Secret } from "@keypin/core";
 import { expectNoneOf } from "@keypin/core/testing";
 import {
   ConvexEnvDestination,
@@ -92,7 +92,7 @@ describe("refusals", () => {
       "the deploy key is for deployment quiet-otter-456, not happy-animal-123",
     );
     expect(check.destinationAccount).toBe("quiet-otter-456");
-    expect(check.fix).toContain("check url in keypin.toml");
+    expect(check.fix).toContain("check url in secretspec.toml");
     expect(requests).toEqual([]);
     expectNoneOf([SECRET_PART], check);
   });
@@ -203,11 +203,11 @@ describe("sign-in", () => {
   });
 });
 
-describe("keypin.toml", () => {
+describe("secretspec.toml", () => {
   const map = (url: string, key = "API_KEY") =>
-    parseMap(
-      `[1password]\naccount = "my.1password.com"\n\n[keys.${key}.prod]\nfrom = "op://Private/web/credential"\n\n[[keys.${key}.prod.publish]]\nto = "convex-deployment"\nurl = "${url}"\n`,
-      "keypin.toml",
+    readSecretspec(
+      `[project]\nname = "web"\nrevision = "1.0"\n\n[profiles.prod]\n${key} = { description = "a key", providers = ["onepassword://my.1password.com@Private"], ref = { item = "web", field = "credential" } }\n\n[[tool.keypin.prod.${key}.publish]]\nto = "convex-deployment"\nurl = "${url}"\n`,
+      "secretspec.toml",
       [convexDeployment],
       [],
       [onePasswordVault],

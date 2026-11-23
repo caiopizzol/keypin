@@ -81,7 +81,7 @@ export class RailwayVariablesDestination implements Destination {
     if (projectToken && projectToken.projectId !== this.#project)
       return fail(
         `the project token is for another project, ${String(projectToken.projectId)}`,
-        `check project in keypin.toml, or ${tokenFix}`,
+        `check project in secretspec.toml, or ${tokenFix}`,
         String(projectToken.projectId),
       );
 
@@ -90,13 +90,13 @@ export class RailwayVariablesDestination implements Destination {
     if (!isRecord(reply.data.project))
       return fail(
         `the token can't reach the project ${this.#project}`,
-        `check project in keypin.toml, or ${tokenFix}`,
+        `check project in secretspec.toml, or ${tokenFix}`,
       );
     const project = objectField(reply.data, "project");
 
     const environment = one(nodes(project.environments), this.#environment, "environment");
     if (typeof environment === "string")
-      return fail(environment, "check environment in keypin.toml");
+      return fail(environment, "check environment in secretspec.toml");
     if (environment.canAccess === false)
       return fail(
         `the token can't reach the restricted environment ${this.#environment}`,
@@ -109,7 +109,7 @@ export class RailwayVariablesDestination implements Destination {
       );
 
     const service = one(nodes(project.services), this.#service, "service");
-    if (typeof service === "string") return fail(service, "check service in keypin.toml");
+    if (typeof service === "string") return fail(service, "check service in secretspec.toml");
 
     this.#place = { header, environmentId: environment.id, serviceId: service.id };
     return { ...facts, destinationAccount: this.#project, ok: true };

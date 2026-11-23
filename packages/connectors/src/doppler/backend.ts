@@ -149,7 +149,7 @@ export function dopplerBackend(
     if (slug !== place.workplace) {
       const name = typeof workplace.name === "string" ? `${workplace.name} (${slug})` : slug;
       throw new SignInFailed(
-        `${where}: sign-in failed: the ${kind} ${held} belongs to the workplace ${name}, but keypin.toml pins ${place.workplace}`,
+        `${where}: sign-in failed: the ${kind} ${held} belongs to the workplace ${name}, but secretspec.toml names ${place.workplace}`,
         { kind: "wrong-account", pinned: place.workplace, actual: slug },
       );
     }
@@ -279,7 +279,7 @@ export function dopplerBackend(
     const sources = referencedBy(ref, raw);
     if (sources.length)
       throw fail(
-        `${describeRef(ref)}: the secret references ${sources.join(" and ")}, so a new key saved here would leave that secret, and everything that uses it, with the old key; point keypin.toml at ${sourceOf(sources)} instead`,
+        `${describeRef(ref)}: the secret references ${sources.join(" and ")}, so a new key saved here would leave that secret, and everything that uses it, with the old key; point secretspec.toml at ${sourceOf(sources)} instead`,
       );
     const holders: string[] = [];
     for (const parent of await parentsOf(ref, fail)) {
@@ -298,7 +298,7 @@ export function dopplerBackend(
     }
     if (holders.length)
       throw fail(
-        `${describeRef(ref)}: ${ref.project}/${ref.config} inherits ${holders.join(" and ")}, and Doppler doesn't say whether the secret here overrides it, so a new key saved here could leave that secret, and every config that inherits it, with the old key; point keypin.toml at ${sourceOf(holders)} instead`,
+        `${describeRef(ref)}: ${ref.project}/${ref.config} inherits ${holders.join(" and ")}, and Doppler doesn't say whether the secret here overrides it, so a new key saved here could leave that secret, and every config that inherits it, with the old key; point secretspec.toml at ${sourceOf(holders)} instead`,
       );
   }
 

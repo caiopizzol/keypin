@@ -4,7 +4,7 @@ import type { Json } from "./response";
 export function fromElsewhere(ref: InfisicalRef, how: string, sources: readonly string[]): string {
   const [only] = sources;
   const source = sources.length === 1 && only ? only : "the source secret";
-  return `${describeRef(ref)}: the secret ${how} ${sources.join(" and ")}, so a new key saved here would leave that secret, and everything that uses it, with the old key; point keypin.toml at ${source} instead`;
+  return `${describeRef(ref)}: the secret ${how} ${sources.join(" and ")}, so a new key saved here would leave that secret, and everything that uses it, with the old key; point secretspec.toml at ${source} instead`;
 }
 
 export function importSource(ref: InfisicalRef, secret: Json): string {

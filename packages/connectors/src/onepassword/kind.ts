@@ -11,14 +11,14 @@ export interface OnePasswordHost {
   signIn: SignIn | null;
 }
 
-const MAP_FILE = "keypin.toml";
+const MAP_FILE = "secretspec.toml";
 const INTEGRATION =
   "the 1Password desktop app, with Settings → Developer → Integrate with other apps selected";
 const INSTALL_FIX = "install the 1Password desktop app";
 const PACKAGE_FIX = "install the 1Password desktop app from the .deb or .rpm package";
 const SERVICE_ACCOUNT_FIX =
   "on a server or in CI, use a 1Password service account instead (docs/guides/service-accounts.md)";
-const ACCOUNT_FIX = `set account under [1password] in ${MAP_FILE} to a sign-in address or account ID the 1Password app lists, under Settings → Accounts`;
+const ACCOUNT_FIX = `set the account in your onepassword:// provider in ${MAP_FILE} to a sign-in address or account ID the 1Password app lists, under Settings → Accounts`;
 const SIGN_IN = "Sign in to 1Password";
 
 function failed(title: string, fixes: string[], body = fixes.map(sentence)): Prerequisite {
@@ -36,7 +36,7 @@ function tokenFixes(failures: readonly SignInReason[], address: string): string[
   const fixes: string[] = [];
   if (failures.some((reason) => reason.kind === "wrong-account"))
     fixes.push(
-      `use a service account token for the account ${MAP_FILE} pins; OP_SERVICE_ACCOUNT_TOKEN signs in to ${address}`,
+      `use a service account token for the account ${MAP_FILE} names; OP_SERVICE_ACCOUNT_TOKEN signs in to ${address}`,
     );
   if (failures.some((reason) => reason.kind !== "wrong-account"))
     fixes.push(
@@ -45,12 +45,7 @@ function tokenFixes(failures: readonly SignInReason[], address: string): string[
   return fixes;
 }
 
-export const onePasswordVault: VaultKind<
-  OnePasswordHost,
-  OnePasswordRef,
-  OnePasswordReference,
-  string
-> = {
+export const onePasswordVault: VaultKind<OnePasswordHost, OnePasswordRef, OnePasswordReference> = {
   ...onePasswordVaultRules,
   newValueByHand: "Put a new value in the 1Password item and set rotated to today",
   addRotatedDate:
@@ -70,11 +65,11 @@ export const onePasswordVault: VaultKind<
       const pinned = pinKind(account);
       if (pinned !== "address")
         return [
-          `${MAP_FILE} pins the ${pinned} ${account}, which a service account token can't be checked against, so ${limit}`,
+          `${MAP_FILE} names the ${pinned} ${account}, which a service account token can't be checked against, so ${limit}`,
         ];
       if (isSharedAddress(pinnedAddress(account)) && isSharedAddress(signIn.address))
         return [
-          `individual 1Password accounts share the sign-in address ${signIn.address}, so keypin can't prove the service account belongs to the account ${MAP_FILE} pins; ${limit}`,
+          `individual 1Password accounts share the sign-in address ${signIn.address}, so keypin can't prove the service account belongs to the account ${MAP_FILE} names; ${limit}`,
         ];
       return [];
     });

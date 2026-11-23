@@ -286,12 +286,12 @@ describe("subusers and regions", () => {
     ]);
   });
 
-  test("a subuser key without subuser in keypin.toml isn't found in the parent account", async () => {
+  test("a subuser key without subuser in secretspec.toml isn't found in the parent account", async () => {
     const { sendgrid } = setup({ subusers: ["shop"] }, {}, [SUB_KEY]);
     const check = await sendgrid.checkAccount(null, VAULT);
     assert(!check.ok);
     expect(check.reason).toContain("the admin key's account has no key OldKeyId");
-    expect(check.fix).toContain("subuser and region in keypin.toml");
+    expect(check.fix).toContain("subuser and region in secretspec.toml");
   });
 
   test("a subuser the admin key's account doesn't have is refused", async () => {

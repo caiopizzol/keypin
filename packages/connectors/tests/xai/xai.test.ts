@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, parseMap, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, readSecretspec, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { XaiIssuer, xaiIssuer } from "../../src/xai/index";
 import { type FakeXai, type FakeXaiKey, memoryWorld, xaiFetch } from "../../src/xai/testing";
@@ -480,16 +480,19 @@ describe("revoke", () => {
 
 describe("the issuer table", () => {
   const parse = (fields: string) =>
-    parseMap(
+    readSecretspec(
       `
-[1password]
-account = "my.1password.com"
+[project]
+name = "app"
+revision = "1.0"
 
-[keys.XAI_API_KEY.prod]
-from = "op://Private/app xai key/credential"
+[profiles.prod]
+XAI_API_KEY = { description = "a key", providers = ["onepassword://my.1password.com@Private"], ref = { item = "app xai key", field = "credential" } }
+
+[tool.keypin.prod.XAI_API_KEY]
 issuer = { kind = "xai", admin = "op://Private/xai management key/credential"${fields} }
 `,
-      "/w/keypin.toml",
+      "/w/secretspec.toml",
       [],
       [xaiIssuer],
       [onePasswordVault],

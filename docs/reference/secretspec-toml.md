@@ -72,8 +72,8 @@ with `from` or `composed`: no vault holds it, so there's nothing to publish or r
 
 ## [tool.keypin]
 
-secretspec leaves this table alone. Don't put keypin's fields in a key's entry under `[profiles]`: secretspec warns
-about them and drops them.
+secretspec leaves this table alone. secretspec drops keypin's fields from a key's entry under `[profiles]`, so keypin
+refuses them there and names the `[tool.keypin.<profile>.<KEY>]` table to move them to.
 
 - `ignore`: keys a workflow or env file names that keypin shouldn't manage, such as the optional keys of a copied
   workflow. `keypin check` leaves them out, in any profile and any case, and says how many it ignores.

@@ -45,22 +45,21 @@ A secret that is only in GitHub or Cloudflare can't be read back, so create a ne
 keypin publish STRIPE_API_KEY --plan
 ```
 
-For a key published to a Worker and a repo, in a profile named `prod`, the plan reads:
+The plan reads:
 
 ```
-STRIPE_API_KEY prod  from op://Private/billing stripe api key/password in 1Password account my.1password.com
-ok     Cloudflare  billing-worker  as me@example.com, account 11111111111111111111111111111111
-ok     GitHub      acme/billing    as acme, account acme
+STRIPE_API_KEY production  from op://Private/secretspec/billing/production/STRIPE_API_KEY/value in 1Password's default account
+ok     GitHub  acme/billing  as acme, account acme
 
-ok     Read 1 value from 1Password account my.1password.com
+ok     Read 1 value from 1Password's default account
 
-Plan  generation 8f24c3e0b75826a7
-  + Cloudflare  billing-worker  first write  needs approval
-    writing a Worker secret deploys a new version of the Worker
-  + GitHub      acme/billing    first write  needs approval
+Plan  generation bed8b08f2e36d8ba
+  + GitHub  acme/billing  first write  needs approval
 
 This plan needs approval in a terminal; --yes can't give it.
 Nothing was written: --plan only shows the plan.
+To approve, run this in a terminal:
+  cd /work/billing && keypin publish STRIPE_API_KEY
 ```
 
 The plan shows the account keypin reached at each destination and every write; `--plan` writes nothing. To publish,

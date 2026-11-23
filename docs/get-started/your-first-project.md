@@ -26,7 +26,7 @@ Here `secretspec.toml` declares no key yet; `.env` sets two, a workflow uses `ST
 `RESEND_API_KEY`:
 
 ```
-billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub acme/billing
+billing /work/billing · read 1 env file, 1 wrangler config, 1 workflow; GitHub acme/billing
 5 things to do, in this order:
 1 Sign in to Cloudflare
     wrangler login

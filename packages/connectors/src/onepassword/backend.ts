@@ -8,6 +8,7 @@ import type {
 } from "@keypin/core";
 import {
   type Day,
+  ItemMissing,
   localDay,
   messageOf,
   parseDay,
@@ -132,7 +133,7 @@ export function onePasswordBackend(
   async function locate(sdk: SdkClient, ref: OnePasswordRef): Promise<ItemIds> {
     const vault = await vaultId(sdk, ref);
     const found = await find(sdk, vault, ref);
-    if (!found) throw new Error(`${where(ref)}: no such item`);
+    if (!found) throw new ItemMissing(`${where(ref)}: no such item`);
     return { vault, item: found.id };
   }
 

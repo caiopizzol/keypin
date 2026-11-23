@@ -1,6 +1,7 @@
 import { expect, test } from "vite-plus/test";
 import {
   HeldForApproval,
+  ItemMissing,
   type KeyRef,
   SignInFailed,
   type VaultBackend,
@@ -20,6 +21,7 @@ export interface VaultSubject {
   hold?: () => void;
   refuseWrites?: () => void;
   failSignIn?: () => void;
+  missing?: KeyRef;
 }
 
 type Make = (sentinel: string) => VaultSubject | Promise<VaultSubject>;
@@ -69,6 +71,12 @@ export function vaultContract(make: Make): void {
     expect(effects).toEqual([]);
     expect((await vault.read(ref)).equals(new Secret(SENTINEL))).toBe(true);
     expectNoSentinel(refused);
+  });
+
+  test("an item that doesn't exist is an ItemMissing", async (context) => {
+    const { vault, missing } = await make(SENTINEL);
+    if (!missing) return context.skip();
+    expect(await caught(vault.itemIds(missing))).toBeInstanceOf(ItemMissing);
   });
 
   test("a sign-in that fails is a SignInFailed, for reads and writes", async (context) => {

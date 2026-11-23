@@ -14,6 +14,7 @@ export {
   type Issuer,
   type IssuerCheck,
   type ItemIds,
+  ItemMissing,
   type KeyRef,
   NothingChanged,
   type Receipt,

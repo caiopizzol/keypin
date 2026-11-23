@@ -35,6 +35,7 @@ for (const mode of ["desktop", "service-account"] satisfies SignInMode[]) {
         ref: { ...scope, item: "stripe key", section: null, field: "password" },
         scope,
         effects: fake.effects,
+        missing: { ...scope, item: "no such key", section: null, field: "password" },
         failSignIn: () => {
           signIn = async () => {
             throw new Error("Error { msg: the app is locked, inner: None }");

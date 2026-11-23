@@ -3,6 +3,7 @@ import {
   type Destination,
   type DestinationKinds,
   type Files,
+  ItemMissing,
   type KeyRef,
   placeId,
   type PublishTarget,
@@ -90,7 +91,7 @@ export function fakeVault(options: FakeVaultOptions = {}) {
     const made = created.find((c) => c.ref.item.toLowerCase() === ref.item.toLowerCase());
     if (made) return made.value;
     const found = options.values?.[ref.item];
-    if (found === undefined) throw new Error(`no item "${ref.item}"`);
+    if (found === undefined) throw new ItemMissing(`no item "${ref.item}"`);
     return new Secret(found);
   };
   const value = (ref: KeyRef) => {

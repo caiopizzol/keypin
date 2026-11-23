@@ -373,6 +373,26 @@ describe("keypin publish", () => {
     );
   });
 
+  test("--plan after a vault move says same value, new item, and still needs approval", async () => {
+    const first = setup({ terminal: "yes" });
+    expect(await cli(["publish", "STRIPE_API_KEY"], first.deps)).toBe(0);
+    const moved = BILLING_MAP.replace("@Private", "@Acme");
+    first.disk.contents.set("/work/billing/secretspec.toml", moved);
+
+    const same = setup({ disk: first.disk });
+    const args = ["publish", "STRIPE_API_KEY", "--plan"];
+    expect(await record("plan-same-value-new-item", args, same)).toBe(NEEDS_APPROVAL);
+    expect(same.stderr.text).toContain("This plan needs approval in a terminal");
+    expect(same.log.some((l) => l.startsWith("write"))).toBe(false);
+
+    const other = setup({ disk: first.disk, value: `${SENTINEL}-next` });
+    expect(await cli(args, other.deps)).toBe(NEEDS_APPROVAL);
+    expect(other.stderr.text).not.toContain("same value");
+    expect(other.stderr.text).toMatch(
+      /\+ GitHub {6}acme\/billing {4}vault item changed +needs approval/,
+    );
+  });
+
   test("--plan labels a routine update, and neither --yes nor a terminal makes it write", async () => {
     const first = setup({ terminal: "yes" });
     await cli(["publish", "STRIPE_API_KEY"], first.deps);

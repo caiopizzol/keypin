@@ -25,7 +25,10 @@ export const onePasswordVaultRules: VaultRules<OnePasswordRef, OnePasswordRefere
     `1Password account ${[...new Set(refs.map((ref) => ref.account))].join(", ")}`,
   ],
   sameItem: (a, b) => sameName(a.vault, b.vault) && sameName(a.item, b.item),
-  sameField: (a, b) => sameName(a.section, b.section) && sameName(a.field, b.field),
+  sameField: (a, b) =>
+    sameName(a.section, b.section) &&
+    sameName(a.field, b.field) &&
+    sameName(a.fallback ?? null, b.fallback ?? null),
   stored: decode,
   newKeys: {
     provider: "onepassword://<1Password sign-in address>@<vault>",

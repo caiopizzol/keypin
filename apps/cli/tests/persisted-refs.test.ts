@@ -152,4 +152,20 @@ describe("the vault references keypin saves in state.json never change", () => {
       PLAIN_KEY: FRESH.PLAIN_KEY,
     });
   });
+
+  test("a receipt for one 1Password field doesn't cover a source that can fall back to another", async () => {
+    const declared = `CONVENTION_KEY = { description = "secretspec's own item" }`;
+    const explicit = MAP.replace(
+      declared,
+      `CONVENTION_KEY = { description = "secretspec's own item", ref = { item = "${CONVENTION_ITEM}", field = "value" } }`,
+    );
+    const first = setup({ [MAP_FILE]: explicit });
+    expect(await cli(["publish", "CONVENTION_KEY"], first.deps)).toBe(0);
+    const saved = first.disk.contents.get(STATE);
+    assert(saved !== undefined);
+
+    const again = setup({ [STATE]: saved }, "-new");
+    await cli(["publish", "CONVENTION_KEY"], again.deps);
+    expect(again.stderr.text).toContain("was last published from");
+  });
 });

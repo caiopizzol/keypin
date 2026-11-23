@@ -240,6 +240,24 @@ describe("where a secret lives", () => {
   });
 
   test.each([
+    ["a scalar", `, providers = "ops"`, "", "providers"],
+    ["an empty list", `, providers = []`, "", "providers"],
+    [
+      "a scalar in the profile's defaults",
+      "",
+      `\n[profiles.production.defaults]\nproviders = "ops"\n`,
+      "[profiles.production.defaults] providers",
+    ],
+  ])(
+    "refuses %s as providers, instead of falling back to the project's",
+    (_, entry, extra, name) => {
+      expect(errorsOf(`${secret(entry)}${extra}`)).toEqual([
+        `${MAP_FILE}: [profiles.production] A: ${name} must be a list of provider names, such as ["acme"]`,
+      ]);
+    },
+  );
+
+  test.each([
     [
       "an alias defined only in a user's own config",
       secret(`, providers = ["mine"]`),
@@ -329,9 +347,14 @@ describe("1Password", () => {
     ["onepassword://my.1password.com@", "doesn't name the 1Password account"],
     ["onepassword://", "doesn't name the 1Password account"],
     ["onepassword://my.1password.com@Acme/item/field", "names more than a vault"],
-    ["onepassword+token://Acme", "keypin doesn't read onepassword+token:// providers yet"],
+    ["onepassword+token://Acme", "a onepassword+token:// provider, which keypin doesn't read yet"],
   ])("refuses %s", (uri, problem) => {
     expect(one(at(uri))).toContain(problem);
+  });
+
+  test("a refused token URI stays out of the output", () => {
+    const token = "ops_sentinel_51H";
+    expect(one(at(`onepassword+token://${token}@Acme`))).not.toContain(token);
   });
 
   test("the account message says what to write", () => {

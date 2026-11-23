@@ -29,10 +29,16 @@ type Fail = (where: string, message: string) => void;
 
 const table = (value: unknown): Table => (isRecord(value) ? value : {});
 
-function chain(value: unknown): string[] | null {
-  return Array.isArray(value) && value.length && value.every((each) => typeof each === "string")
-    ? value
-    : null;
+function firstChain(
+  levels: readonly (readonly [string, unknown])[],
+): string[] | { invalid: string } | null {
+  for (const [name, value] of levels) {
+    if (value === undefined) continue;
+    return Array.isArray(value) && value.length && value.every((each) => typeof each === "string")
+      ? value
+      : { invalid: name };
+  }
+  return null;
 }
 
 export function readProfiles(
@@ -103,10 +109,16 @@ export function readProfiles(
         derived.add(`${profile} ${key}`);
         continue;
       }
-      const providers =
-        chain(field("providers")) ??
-        chain(defaults.providers) ??
-        chain(table(data.defaults).providers);
+      const providers = firstChain([
+        ["providers", field("providers")],
+        [`[profiles.${profile}.defaults] providers`, defaults.providers],
+        ["[defaults] providers", table(data.defaults).providers],
+      ]);
+      if (providers && "invalid" in providers) {
+        fail(where, `${providers.invalid} must be a list of provider names, such as ["acme"]`);
+        unplaced.add(`${profile} ${key}`);
+        continue;
+      }
       const refs = mine.ref !== undefined || mine.refs !== undefined ? mine : theirs;
       const ref = locate(
         { data, project: name, profile, key, providers, refs },
@@ -221,7 +233,8 @@ export function projectDefaults(text: string): { declared: boolean; uri: string 
     return { declared: false, uri: null };
   }
   if (!isRecord(data.defaults)) return { declared: false, uri: null };
-  const [first] = chain(data.defaults.providers) ?? [];
+  const providers = firstChain([["[defaults] providers", data.defaults.providers]]);
+  const [first] = Array.isArray(providers) ? providers : [];
   return {
     declared: true,
     uri: first === undefined ? null : (provider(table(data.providers), first)?.uri ?? null),

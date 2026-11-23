@@ -122,9 +122,10 @@ project = "acme/billing"
 3. **Approval:** you answer `y`.
 4. **Receipts:** it records each write on this machine, so a rerun skips destinations that are done.
 
-A first write to a destination, a changed account and a changed vault item always need a `y` in a terminal.
-`--yes` approves only routine updates. Without a terminal, a publish that needs a `y` stops before reading the
-value and prints the command to run in one.
+A first write to a destination, a changed account and a changed vault item always need a `y` in a terminal. When
+the new item holds the value already published, the plan says "same value, new item". `--yes` approves only routine
+updates. Without a terminal, a publish that needs a `y` stops before reading the value and prints the command to run
+in one (`npx keypin@<version> …` when you ran keypin with npx).
 
 A teammate's machine has no receipts, so their first publish counts as a first write.
 

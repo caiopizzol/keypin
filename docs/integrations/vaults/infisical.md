@@ -75,7 +75,8 @@ stored in the repo:
 1. Create a machine identity with [OIDC Auth](https://infisical.com/docs/documentation/platform/identities/oidc-auth/github)
    and add it to the project. Set the discovery URL and issuer to `https://token.actions.githubusercontent.com`, the
    audience to `https://github.com/<owner>`, and the subject to your repo's branch, such as
-   `repo:owner@123456/repo@456789:ref:refs/heads/main`
+   `repo:owner@123456/repo@456789:ref:refs/heads/main`, or, for a job with an `environment` like scheduled
+   rotation's, `repo:owner@123456/repo@456789:environment:rotation`
    ([subject formats](aws-secrets-manager.md#signing-in-from-github-actions)). Set **Access Token TTL** and **Access
    Token Max TTL** to a few minutes; both default to 30 days.
 2. Give the job `permissions: id-token: write`, and set `KEYPIN_INFISICAL_IDENTITY_ID` to the identity's ID, with

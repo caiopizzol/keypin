@@ -69,7 +69,7 @@ import {
   neverSaved,
   provenId,
   settlesUnproven,
-  unsignedStop,
+  migrationNote,
 } from "./unfinished-rotation";
 import { pairChecks } from "./pair-checks";
 import { readerRows, unreadNote } from "./readers";
@@ -198,7 +198,7 @@ export async function rotateLocked(job: Job): Promise<number> {
     say("\nStopped: an account check failed. Nothing was created and nothing was written.");
     return 1;
   }
-  if (unsignedStop(job, issuer, next, inVault, check.currentId)) return 1;
+  const migration = migrationNote(job, issuer, next, inVault, check.currentId);
   const reset = resetHeld(
     issuer,
     spec,
@@ -210,7 +210,8 @@ export async function rotateLocked(job: Job): Promise<number> {
     if (short) say(`${out.mark(false)} ${short}`);
     if (reset)
       say(`\n${resetStop(deps, issuer, reset, vaultName(entry.ref, deps.vaults), job.args)}`);
-    if (short || reset) return 1;
+    if (migration) say(`${out.mark(false)} ${migration}`);
+    if (short || reset || migration) return 1;
     say(`${out.mark(true)} ${key.name} (${owner.environment}) is ready for keypin rotate --due.`);
     return 0;
   }
@@ -266,6 +267,7 @@ export async function rotateLocked(job: Job): Promise<number> {
       ? abandonedNote(next.abandoned, issuer, spec, vaultName(entry.ref, deps.vaults))
       : null;
   if (note !== null) say(`\n${out.dim(note)}`);
+  if (migration) say(`\n${migration}`);
   const known = job.pair ? check.currentId : ((await proven(next.current)) ?? check.currentId);
   const current = check.gone === undefined ? (known ?? null) : null;
   const steps = planNewValue(input, read.ids);
@@ -302,7 +304,9 @@ export async function rotateLocked(job: Job): Promise<number> {
   if (unread !== null) say(`\n${unread}`);
   apartNote(job, checked);
   const needsApproval =
-    reset !== null || [...steps, ...pairSteps].some((step) => step.approval !== null);
+    reset !== null ||
+    migration !== null ||
+    [...steps, ...pairSteps].some((step) => step.approval !== null);
   if (job.plan)
     return planOnly(deps, "rotate", reset ? terminalArgs(job.args) : job.args, needsApproval);
   if (job.yes && reset) {

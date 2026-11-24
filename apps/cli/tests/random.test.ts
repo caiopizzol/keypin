@@ -191,9 +191,13 @@ describe("keypin rotate with a random issuer", () => {
     expect(run.destinations.log.some((line) => line.startsWith("write"))).toBe(false);
   });
 
-  test("without a terminal, --yes publishes a routine rotation and asks nothing more", async () => {
+  test("without a terminal, --yes publishes a routine rotation, even one recorded without a proof", async () => {
     const first = setup({ answers: ["y"] });
     await first.run();
+    for (const [path, text] of first.disk.contents)
+      if (text.includes('"proof"'))
+        first.disk.contents.set(path, text.replace(/,\s*"proof": \{[^}]*\}/g, ""));
+    expect([...first.disk.contents.values()].join("")).not.toContain('"proof"');
     const run = setup({ disk: first.disk, vault: first.vault, terminal: false });
     expect(await run.run("AUTH_SECRET", "--yes")).toBe(0);
     expect(run.asked).toEqual([]);

@@ -64,20 +64,17 @@ export async function provenId(
   return null;
 }
 
-export function unsignedStop(
+export function migrationNote(
   job: Job,
   issuer: Issuer,
   next: NextRotation,
   inVault: string | null,
   named: string | undefined,
-): boolean {
+): string | null {
   const recorded = next.action === "create" ? next.current : null;
-  if (job.pair || recorded === null || inVault !== null || named !== undefined) return false;
-  if (job.deps.isTerminal) return false;
-  job.out.line(
-    `\nStopped: ${ROTATION_FILE} records key ${shown(issuer, recorded)} for the vault's value without a proof, and ${issuer.describe()} can't confirm which key the vault holds. Run this once in a terminal to check the plan before keypin creates a key:\n  ${commandLine(job.deps, "rotate", terminalArgs(job.args))}\nNothing was created.`,
-  );
-  return true;
+  if (job.pair || !issuer.revoke || recorded === null || inVault !== null) return null;
+  if (named !== undefined) return null;
+  return `${ROTATION_FILE} records key ${shown(issuer, recorded)} for the vault's value without a proof, and ${issuer.describe()} can't confirm which key the vault holds, so a person checks this plan in a terminal before keypin creates a key.`;
 }
 
 export async function unprovenRevoke(

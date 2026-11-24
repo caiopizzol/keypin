@@ -14,10 +14,8 @@ Run `keypin check` first: it lists what's missing.
 ## Destinations
 
 List each place `publish` writes the key in the key's `[tool.keypin.<profile>.<KEY>]` table, under `publish`. The
-key must be declared in that profile or in `[profiles.default]`. `keypin check` prints these tables for each secret a workflow or Worker needs,
-with the Worker of a wrangler `[env.staging]` under the profile `staging`. It skips,
-with a note, an env with `routes = []`, `workers_dev = false`, and no preview URL, trigger, Durable Object, email
-address, or binding from another Worker, since only `wrangler dev` runs it.
+key must be declared in that profile or in `[profiles.default]`. `keypin check` prints these tables for each secret
+a workflow or Worker needs, with the Worker of a wrangler `[env.staging]` under the profile `staging`.
 
 ```toml
 [profiles.production]
@@ -70,8 +68,7 @@ project = "acme/billing"
 `secretspec.toml` says where a key goes, not who writes it, so every teammate publishes from the same file:
 
 - **GitHub:** Actions secrets, as the login in `git config github.account`, or else the active `gh` login. It needs
-  write access to the repo. GitHub reserves secret names that start with `GITHUB_`. Add
-  `environment = "production"` to write a secret of that GitHub environment instead of a repo secret; the
+  write access to the repo. Add `environment = "production"` to write a secret of that GitHub environment instead of a repo secret; the
   environment must already exist. The two are separate destinations. keypin doesn't publish to GitHub Enterprise
   Server or ghe.com.
 - **Cloudflare:** Worker secrets, with the `wrangler` login or `KEYPIN_CLOUDFLARE_API_TOKEN` (see
@@ -82,23 +79,19 @@ project = "acme/billing"
 - **Vercel:** Sensitive variables, one per `environment`: `production`, `preview`, `development` or a custom
   environment's name. It uses a token in `KEYPIN_VERCEL_TOKEN`, for the `team` or the project, and doesn't read the
   `vercel` login or `VERCEL_TOKEN`. Vercel uses a new value only in new deployments, so redeploy after publishing;
-  keypin doesn't. It stops rather than change a variable that also covers another environment, and leaves Git
-  branch variables alone.
+  keypin doesn't. It leaves Git branch variables alone.
 - **Supabase:** Edge Function secrets, with a personal access token in `KEYPIN_SUPABASE_ACCESS_TOKEN` with Edge
   Function Secrets Read-write on the project. keypin doesn't read the `supabase` login or `SUPABASE_ACCESS_TOKEN`.
-  Functions read a new value at once, with no redeploy. Supabase reserves names that start with `SUPABASE_`, so
-  keypin refuses them.
+  Functions read a new value at once, with no redeploy.
 - **Netlify:** secret variables, one value per `context`: `production`, `deploy-preview`, `branch-deploy` or
   `dev-server`. It uses a personal access token in `KEYPIN_NETLIFY_TOKEN`, from a member of the `team`, and doesn't
   read the `netlify` login or `NETLIFY_AUTH_TOKEN`. Netlify uses a new value only from the next build and deploy,
-  so redeploy after publishing; keypin doesn't. It stops rather than write to a variable not marked as secret. It
-  leaves other contexts and branch values alone. For `netlify dev`, run `secretspec run -- netlify dev`.
+  so redeploy after publishing; keypin doesn't. It leaves other contexts and branch values alone. For `netlify dev`, run `secretspec run -- netlify dev`.
 - **Railway:** service variables, with a workspace or account token in `KEYPIN_RAILWAY_TOKEN` that reaches the
   `project`, or a project token for the `environment`. keypin doesn't read the `railway` login, `RAILWAY_TOKEN` or
   `RAILWAY_API_TOKEN`. `environment` and `service` take a name or an ID. Railway stages the change and uses the new
   value only from the service's next deploy, so deploy after publishing; keypin doesn't. keypin can't seal a
-  variable through Railway's API; seal it once in Railway, and later writes keep it sealed. Railway reserves names
-  that start with `RAILWAY_`, so keypin refuses them.
+  variable through Railway's API; seal it once in Railway, and later writes keep it sealed.
 - **Convex:** environment variables, with a deploy key for the deployment in `url`, with `deployment:env:write`, in
   `KEYPIN_CONVEX_DEPLOY_KEY`. keypin doesn't read the `npx convex` login or `CONVEX_DEPLOY_KEY`. Changing a
   variable invalidates every subscription. Cron definitions read it only on the next deploy.
@@ -111,8 +104,7 @@ project = "acme/billing"
   project, or Owner on a group. A CI/CD job token can't change variables. keypin doesn't sign in with
   `GITLAB_TOKEN`. Add `host` for a self-managed instance, and `environment_scope` to write a project variable for
   one environment instead of `*`. A new variable is also hidden. GitLab can't hide a variable that already exists,
-  so keypin masks it and leaves its other settings, such as protected, alone. GitLab masks only a value of 8 or more
-  characters without spaces or line breaks; keypin refuses any other. The next pipeline uses the new value.
+  so keypin masks it and leaves its other settings, such as protected, alone. The next pipeline uses the new value.
 
 ## Steps
 
@@ -122,18 +114,14 @@ project = "acme/billing"
 3. **Approval:** you answer `y`.
 4. **Receipts:** it records each write on this machine, so a rerun skips destinations that are done.
 
-A first write to a destination, a changed account and a changed vault item always need a `y` in a terminal. When
-the new item holds the value already published, the plan says "same value, new item". `--yes` approves only routine
-updates. Without a terminal, a publish that needs a `y` stops before reading the value and prints the command to run
-in one (`npx keypin@<version> …` when you ran keypin with npx).
-
-A teammate's machine has no receipts, so their first publish counts as a first write.
+A first write to a destination, a changed account and a changed vault item always need a `y` in a terminal; `--yes`
+approves only routine updates. A teammate's machine has no receipts, so their first publish counts as a first write.
 
 ## --plan
 
-`--plan` runs the account checks and shows the full plan, then stops, even without a terminal. Use it to see what
-you'll approve. It reads the value, so 1Password may ask you to approve it, but it never writes or prints a value. It
-exits 3 when the plan would write and 0 when there's nothing to write.
+`--plan` runs the account checks and shows the full plan, then stops, even without a terminal. It reads the value,
+so 1Password may ask you to approve it, but never writes or prints one. It exits 3 when the plan would write and 0
+when there's nothing to write.
 
 ## Every key
 
@@ -155,10 +143,10 @@ a [1Password service account](service-accounts.md) token. See secretspec's
     OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 ```
 
-`keypin check` reads each job that runs `secretspec run`. Its profile is the one in `--profile` or `-P`, else
-`SECRETSPEC_PROFILE` in the step, job or workflow, else `default`. A secret that profile declares, used only in steps
-that run `secretspec run`, isn't asked for at the repo, and `check` notes that the job's `secrets.<NAME>` can go. Add `OP_SERVICE_ACCOUNT_TOKEN`, or your vault's
-token, to [`ignore`](../reference/secretspec-toml.md#toolkeypin).
+`keypin check` doesn't ask to publish a secret that the job's profile declares and that only `secretspec run` steps
+use. The profile is the one in `--profile` or `-P`, else `SECRETSPEC_PROFILE` in the step, job or workflow, else
+`default`. Add `OP_SERVICE_ACCOUNT_TOKEN`, or your vault's token, to
+[`ignore`](../reference/secretspec-toml.md#toolkeypin).
 
 `keypin rotate` saves a new key to the vault, where `secretspec run` reads it, so such a key needs no destination. To
 move a key to `secretspec run`:

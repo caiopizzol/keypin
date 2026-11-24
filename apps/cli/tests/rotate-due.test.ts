@@ -950,6 +950,32 @@ describe("keypin rotate --check, the setup check a workflow runs before the firs
     expect(onePassword.calls.lists.vaults).toBe(1);
   });
 
+  test("no Shared vault note for a key --due skips, such as one that never rotates", async () => {
+    const at = (vaultId: string, title: string, value: string) => ({
+      ...item(title, [
+        field("credential", "Concealed", value),
+        field("rotated", "Date", "2026-08-01"),
+      ]),
+      vaultId,
+    });
+    const onePassword = fakeOnePassword([
+      at("vault-1", ITEM, OLD),
+      at("vault-1", "resend admin key", ADMIN),
+      at("vault-1", "stripe key", "sk_x"),
+      at("vault-Shared", "stripe admin key", ADMIN),
+    ]);
+    const map = MAP.replace(
+      'rotate_every = "30d"',
+      'rotate_every = "never"\nissuer = { kind = "resend", admin = "op://Shared/stripe admin key/credential", permission = "sending_access" }',
+    );
+    const w = await world(map);
+    w.vault = onePasswordBackend(async () => onePassword.client);
+    const run = ci(w);
+    await run.run("--check");
+    expect(run.stderr.text).toContain("never rotates");
+    expect(run.stderr.text).not.toContain("default Shared vault");
+  });
+
   test("takes only --profile", async () => {
     const run = ci(await world());
     for (const extra of [

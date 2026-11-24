@@ -1,6 +1,7 @@
 import {
   formatReference,
   HeldForApproval,
+  type Issued,
   WriteRefused,
   type IssuedKey,
   type Issuer,
@@ -10,15 +11,16 @@ import {
   localDay,
   messageOf,
   NothingChanged,
+  RevokeRefused,
   Secret,
   vaultAccounts,
   vaultName,
 } from "@keypin/core";
 import { type Output } from "../../output";
 import { approval } from "../../sign-in";
-import { commandLine, withoutPlan } from "../../approval";
+import { commandLine, NEEDS_APPROVAL, withoutPlan } from "../../approval";
 import { type Pair, type Job } from "./job";
-import { shown } from "./messages";
+import { heldSteps, revokeRefused, shown } from "./messages";
 
 export async function itemIdsAfterSave({
   entry,
@@ -48,14 +50,19 @@ export async function saveId(job: Job, pair: Pair, issuer: Issuer, id: string): 
   return false;
 }
 
-export async function revokeOrphan(job: Job, issuer: Issuer, id: string): Promise<boolean> {
+export async function revokeOrphan(
+  job: Job,
+  issuer: Issuer,
+  id: string,
+  current: Secret,
+): Promise<boolean> {
   const where = issuer.describe();
   const revoke = issuer.revoke?.bind(issuer);
   if (!revoke) return true;
   try {
     await job.out.step(
       `${where}  revoking ${shown(issuer, id)}`,
-      () => revoke(id),
+      () => revoke(id, current),
       (result) => ({
         ok: true,
         text: `${where}  ${result === "revoked" ? "revoked" : "already gone:"} ${shown(issuer, id)}`,
@@ -63,6 +70,10 @@ export async function revokeOrphan(job: Job, issuer: Issuer, id: string): Promis
     );
     return true;
   } catch (error) {
+    if (error instanceof RevokeRefused) {
+      job.out.line(`${revokeRefused(issuer, id, error.message)} Nothing was created.`);
+      return false;
+    }
     job.out.line(
       `    ${messageOf(error)}\nStopped. Nothing was created. Delete key ${shown(issuer, id)} at ${issuer.dashboard()}, or run this again.`,
     );
@@ -81,13 +92,38 @@ export async function vaultTakesWrites({ entry, pair, deps, out }: Job): Promise
   }
 }
 
-export async function issuerLists(
+export async function stillHeld(
+  job: Job,
+  issuer: Issuer,
+  held: Issued,
+  current: Secret,
+): Promise<number | null> {
+  const { entry, deps, out } = job;
+  const listed = await issuerLists(issuer, held.id, current, out);
+  if (listed === null) return 1;
+  if (listed) {
+    out.line(
+      `\nStopped: ${vaultName(entry.ref, deps.vaults)} still holds the change that saves key ${shown(issuer, held.id)} for approval. Nothing was created.`,
+    );
+    out.line(heldSteps(job, issuer, held.id));
+    return NEEDS_APPROVAL;
+  }
+  out.line(
+    out.dim(
+      `\nKey ${shown(issuer, held.id)} is gone from ${issuer.describe()}, so keypin creates a new one.`,
+    ),
+  );
+  return null;
+}
+
+async function issuerLists(
   issuer: Issuer,
   id: string,
   current: Secret,
   out: Output,
 ): Promise<boolean | null> {
   try {
+    if (issuer.has) return await issuer.has(id);
     const check = await issuer.checkAccount(id, current);
     return check.ok && check.gone === undefined;
   } catch (error) {
@@ -198,6 +234,7 @@ export async function undoCreate(
   job: Job,
   issuer: Issuer,
   id: string,
+  current: Secret,
   stopped: string,
   forget: () => Promise<unknown> = async () => {},
 ): Promise<number> {
@@ -215,7 +252,7 @@ export async function undoCreate(
   try {
     await out.step(
       `${where}  revoking the new key ${shown(issuer, id)}`,
-      () => revoke(id),
+      () => revoke(id, current),
       () => ({ ok: true, text: `${where}  revoked the new key ${shown(issuer, id)}` }),
     );
   } catch (error) {

@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, RevokeRefused, Secret } from "@keypin/core";
 import { SendGridIssuer, type SendGridIssuerOptions } from "../../src/sendgrid/index";
 import {
   ADMIN_SCOPES,
@@ -17,6 +17,14 @@ const OLD: FakeSendGridKey = {
   name: "mailer",
   value: VAULT.reveal(),
   scopes: ["mail.send", "templates.read", "sender_verification_eligible", "2fa_required"],
+};
+
+const NEXT_VAULT = new Secret("SG.NextKeyId.next_sentinel_7e3c");
+const NEXT: FakeSendGridKey = {
+  ...OLD,
+  id: "NextKeyId",
+  name: "mailer 2",
+  value: NEXT_VAULT.reveal(),
 };
 
 interface Seen {
@@ -129,7 +137,7 @@ describe("checkAccount", () => {
       fix: "put a key with Full Access, or with API Keys Full Access, in the admin item; create one at https://app.sendgrid.com/settings/api_keys",
     });
     await expect(sendgrid.create("K")).rejects.toThrow(/checkAccount hasn't passed/);
-    await expect(sendgrid.revoke("OldKeyId")).rejects.toThrow(/checkAccount hasn't passed/);
+    await expect(sendgrid.revoke("OldKeyId", VAULT)).rejects.toThrow(/checkAccount hasn't passed/);
     expect(effects).toEqual([]);
   });
 
@@ -166,7 +174,9 @@ describe("checkAccount", () => {
     });
     expect(requests).toEqual([]);
     await expect(sendgrid.create("next")).rejects.toThrow("checkAccount hasn't passed");
-    await expect(sendgrid.revoke("AdminKeyId")).rejects.toThrow("checkAccount hasn't passed");
+    await expect(sendgrid.revoke("AdminKeyId", VAULT)).rejects.toThrow(
+      "checkAccount hasn't passed",
+    );
     expect(requests).toEqual([]);
   });
 
@@ -178,6 +188,19 @@ describe("checkAccount", () => {
       reason: "the vault's key is the admin key keypin signs in with",
     });
     expect(requests).toEqual([]);
+  });
+
+  test("a recorded key ID that isn't the one in the vault's value is refused, so create can't copy its scopes", async () => {
+    const { sendgrid, effects } = setup({}, {}, [OLD, NEXT]);
+    const check = await sendgrid.checkAccount("NextKeyId", VAULT);
+    expect(check).toMatchObject({
+      ok: false,
+      reason:
+        "key NextKeyId, the one keypin recorded for the vault's value, is another key: the vault holds key OldKeyId",
+      fix: "check .keypin/rotation.json for a change you didn't make",
+    });
+    await expect(sendgrid.create("K")).rejects.toThrow(/checkAccount hasn't passed/);
+    expect(effects).toEqual([]);
   });
 
   test("a vault value that isn't SG.<id>.<secret> is refused", async () => {
@@ -196,7 +219,7 @@ describe("checkAccount", () => {
     expect(check.reason).toBe(
       "the admin key's account has no key OldKeyId, the vault's key: it was deleted, or it's from another account or region",
     );
-    const issued = await sendgrid.checkAccount("NewKey9Id", VAULT);
+    const issued = await sendgrid.checkAccount("NewKey9Id", new Secret("SG.NewKey9Id.issued"));
     assert(!issued.ok);
     expect(issued.reason).toContain("no key NewKey9Id, the one keypin issued last time");
     await expect(sendgrid.create("K")).rejects.toThrow(/checkAccount hasn't passed/);
@@ -272,10 +295,12 @@ describe("subusers and regions", () => {
       ok: true,
       facts: 'the admin key manages API keys of subuser shop; the vault holds key "mailer"',
     });
-    await sendgrid.create("MAIL_KEY prod");
-    expect(await sendgrid.revoke("OldKeyId")).toBe("revoked");
+    const created = await sendgrid.create("MAIL_KEY prod");
+    expect(await sendgrid.revoke("OldKeyId", created.secret)).toBe("revoked");
     expect(requests[0]?.headers["on-behalf-of"]).toBeUndefined();
     expect(requests.slice(1).map((r) => r.headers["on-behalf-of"])).toEqual([
+      "shop",
+      "shop",
       "shop",
       "shop",
       "shop",
@@ -381,22 +406,59 @@ describe("create", () => {
 });
 
 describe("revoke", () => {
-  test("DELETEs the key by ID; a missing key is already gone", async () => {
-    const { sendgrid, requests } = setup();
-    await sendgrid.checkAccount(null, VAULT);
-    expect(await sendgrid.revoke("OldKeyId")).toBe("revoked");
+  test("DELETEs the retired key by ID once the vault holds the new one; a missing key is already gone", async () => {
+    const { sendgrid, requests } = setup({}, {}, [OLD, NEXT]);
+    await sendgrid.checkAccount(null, NEXT_VAULT);
+    expect(await sendgrid.revoke("OldKeyId", NEXT_VAULT)).toBe("revoked");
     expect(requests.at(-1)).toMatchObject({
       method: "DELETE",
       url: "https://api.sendgrid.com/v3/api_keys/OldKeyId",
     });
-    expect(await sendgrid.revoke("OldKeyId")).toBe("already gone");
+    expect(await sendgrid.revoke("OldKeyId", NEXT_VAULT)).toBe("already gone");
   });
 
-  test("the ID is one path segment", async () => {
-    const { sendgrid, requests } = setup();
-    await sendgrid.checkAccount(null, VAULT);
-    await sendgrid.revoke("../scopes");
+  test("the ID is one path segment, and a key the account doesn't have is never deleted", async () => {
+    const { sendgrid, requests } = setup({}, {}, [OLD, NEXT]);
+    await sendgrid.checkAccount(null, NEXT_VAULT);
+    expect(await sendgrid.revoke("../scopes", NEXT_VAULT)).toBe("already gone");
     expect(requests.at(-1)?.url).toBe("https://api.sendgrid.com/v3/api_keys/..%2Fscopes");
+    expect(requests.some((r) => r.method === "DELETE")).toBe(false);
+  });
+
+  test("refuses the key the vault holds and the admin key, before any request", async () => {
+    const { sendgrid, requests, effects } = setup({}, {}, [OLD, NEXT]);
+    await sendgrid.checkAccount(null, NEXT_VAULT);
+    const before = requests.length;
+    await expect(sendgrid.revoke("NextKeyId", NEXT_VAULT)).rejects.toThrow(
+      new RevokeRefused("it's the key the vault holds"),
+    );
+    await expect(sendgrid.revoke("AdminKeyId", NEXT_VAULT)).rejects.toThrow(
+      new RevokeRefused("it's the admin key"),
+    );
+    expect(requests).toHaveLength(before);
+    expect(effects).toEqual([]);
+  });
+
+  test("refuses when the vault's key isn't in the same account, or the vault's value names no key", async () => {
+    const { sendgrid, requests } = setup({ subusers: ["shop"] }, { subuser: "shop" }, [
+      { ...OLD, subuser: "shop" },
+      NEXT,
+    ]);
+    await sendgrid.checkAccount(null, VAULT);
+    await expect(sendgrid.revoke("OldKeyId", NEXT_VAULT)).rejects.toThrow(
+      new RevokeRefused("it's in the subuser shop, and the vault's key NextKeyId isn't"),
+    );
+    await expect(sendgrid.revoke("OldKeyId", new Secret("not-sendgrid"))).rejects.toThrow(
+      new RevokeRefused("keypin can't tell which key in the subuser shop the vault holds"),
+    );
+    expect(requests.some((r) => r.method === "DELETE")).toBe(false);
+  });
+
+  test("has throws when SendGrid refuses the lookup", async () => {
+    const issuer = routed({ "GET /v3/api_keys/OldKeyId": { status: 403 } });
+    await expect(issuer.has("OldKeyId")).rejects.toThrow(
+      "SendGrid GET /v3/api_keys/<id> returned HTTP 403",
+    );
   });
 
   test("a refused or failed delete throws, naming where to delete it by hand", async () => {
@@ -404,16 +466,17 @@ describe("revoke", () => {
       routed({
         "GET /v3/scopes": SCOPES_OK,
         "GET /v3/api_keys/OldKeyId": OLD_KEY,
+        "GET /v3/api_keys/NextKeyId": OLD_KEY,
         "DELETE /v3/api_keys/OldKeyId": { status },
       });
     const forbidden = issuer(403);
     await forbidden.checkAccount(null, VAULT);
-    await expect(forbidden.revoke("OldKeyId")).rejects.toThrow(
+    await expect(forbidden.revoke("OldKeyId", NEXT_VAULT)).rejects.toThrow(
       `the admin key can't delete key "mailer" (HTTP 403): delete it at https://app.sendgrid.com/settings/api_keys`,
     );
     const broken = issuer(500);
     await broken.checkAccount(null, VAULT);
-    await expect(broken.revoke("OldKeyId")).rejects.toThrow(
+    await expect(broken.revoke("OldKeyId", NEXT_VAULT)).rejects.toThrow(
       "SendGrid DELETE /v3/api_keys/<id> returned HTTP 500",
     );
   });

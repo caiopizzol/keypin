@@ -45,6 +45,7 @@ describe("the issuer contract", () => {
         sleep: async () => {},
       }),
       current: new Secret(VAULT),
+      vaultId: "projects/481537286014/locations/global/keys/maps-web",
       effects,
       failCreate: () => {
         fake.failCreate = 500;
@@ -74,6 +75,7 @@ describe("the service account key issuer contract", () => {
         fetch: iamFetch(fake),
       }),
       current: new Secret(iamKeyFile(APP, "acme-prod", serviceAccountKeyId(0xf00), "vault-pem")),
+      vaultId: `projects/acme-prod/serviceAccounts/${APP}/keys/${serviceAccountKeyId(0xf00)}`,
       effects,
       failCreate: () => {
         fake.failCreate = 500;

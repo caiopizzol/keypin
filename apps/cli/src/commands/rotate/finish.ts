@@ -1,6 +1,7 @@
 import {
-  removedBehind,
   generationOf,
+  proves,
+  RevokeRefused,
   type Issued,
   messageOf,
   type PlanStep,
@@ -15,6 +16,7 @@ import { commandLine, confirmed, NEEDS_APPROVAL, planOnly } from "../../approval
 import { showPlan, showRemoved, writeEach, writesFor } from "../../publishing";
 import { type Job, type Ready } from "./job";
 import { saveId, itemIdsAfterSave } from "./vault-and-issuer";
+import { unprovenRevoke, warnBehind } from "./unfinished-rotation";
 import {
   revokeRow,
   revokeWhen,
@@ -23,6 +25,7 @@ import {
   shown,
   apartNote,
   reached,
+  revokeRefused,
   waitsNotice,
 } from "./messages";
 
@@ -48,7 +51,7 @@ export async function resume(
   const unsavedId = pair !== null && !writes.idSaved;
   const all = [...steps, ...pairSteps];
   const published = all.every((step) => step.action === "skip") && !unsavedId;
-  if (published && !job.plan) return revokeOld(job, ready, issued, state);
+  if (published && !job.plan) return revokeOld(job, ready, issued, secret, state);
   const old = issued.old.revoked ? null : issued.old.id;
   out.line("\nPlan");
   showPlan(out, [
@@ -130,36 +133,21 @@ export async function publishThenRevoke(
     );
     return 1;
   }
-  return revokeOld(job, ready, issued, written.state);
+  return revokeOld(job, ready, issued, secret, written.state);
 }
 
-async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): Promise<number> {
+async function revokeOld(
+  job: Job,
+  ready: Ready,
+  issued: Issued,
+  current: Secret,
+  state: State,
+): Promise<number> {
   const { key, owner, deps, out } = job;
   const { issuer } = ready;
   const where = issuer.describe();
   out.line(`\nRotated ${out.bold(key.name)} (${owner.environment}): ${reached(job)}`);
-  const recorded = removedBehind(
-    job.committed,
-    job.map,
-    deps.destinations,
-    owner,
-    issued.generation,
-  )
-    .filter((p) => !ready.removed.some((r) => r.destinationId === p.destination))
-    .map((p) => ({
-      destinationId: p.destination,
-      lastReceipt: { generation: p.generation, at: p.at, destinationAccount: "unknown" },
-    }));
-  const behind = [
-    ...ready.removed.filter((r) => r.lastReceipt.generation !== issued.generation),
-    ...recorded,
-  ];
-  if (behind.length) {
-    out.line(
-      "Not in secretspec.toml any more, so keypin didn't write them; they may still use the old key:",
-    );
-    showRemoved(out, behind);
-  }
+  const behind = warnBehind(job, ready.removed, issued.generation);
   const old = issued.old.id;
   const revoke = issuer.revoke?.bind(issuer);
   if (!revoke) {
@@ -173,6 +161,10 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
     );
     return 0;
   }
+  if (old === issued.id) {
+    out.line(revokeRefused(issuer, old, "it's the key the vault holds"));
+    return 1;
+  }
   const asked = job.args.filter((arg) => arg !== "--yes");
   const later = `To revoke it later, run this in a terminal:\n  ${commandLine(deps, "rotate", asked)}`;
   if (job.due && !deps.isTerminal) {
@@ -180,6 +172,18 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
     waitsNotice({ ...job, environment: owner.environment }, key.name);
     return 0;
   }
+  const proof = await proves(issued, current, "new");
+  if (proof === false) {
+    out.line(
+      revokeRefused(
+        issuer,
+        old,
+        "keypin's record of this rotation doesn't match the vault's value",
+      ),
+    );
+    return 1;
+  }
+  if (proof === undefined) return unprovenRevoke(job, ready.issuer, issued, state);
   if (job.approve && !deps.isTerminal && behind.length) {
     out.line(
       `Stopped: something no longer in secretspec.toml may still use the old key ${shown(issuer, old)}, so keypin won't revoke it without a terminal. Nothing was revoked. Once nothing uses it, run this in a terminal:\n  ${commandLine(deps, "rotate", asked)}`,
@@ -202,13 +206,17 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
   try {
     await out.step(
       `${where}  revoking ${shown(issuer, old)}`,
-      () => revoke(old),
+      () => revoke(old, current),
       (result) => ({
         ok: true,
         text: `${where}  ${result === "revoked" ? "revoked" : "already gone:"} ${shown(issuer, old)}`,
       }),
     );
   } catch (error) {
+    if (error instanceof RevokeRefused) {
+      out.line(revokeRefused(issuer, old, error.message));
+      return 1;
+    }
     out.line(`    ${messageOf(error)}`);
     out.line(
       `Stopped: the old key ${shown(issuer, old)} may still work. To try again, run:\n  ${commandLine(deps, "rotate", job.args)}`,

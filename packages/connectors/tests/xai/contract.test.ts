@@ -24,6 +24,7 @@ describe("the issuer contract", () => {
         sleep: async () => {},
       }),
       current: new Secret(VAULT),
+      vaultId: "team_1/key_old",
       effects,
       failCreate: () => {
         fake.failCreate = 500;
@@ -47,7 +48,7 @@ describe("the fake xAI", () => {
     });
     expect((await issuer.checkAccount(null, new Secret(VAULT))).ok).toBe(true);
     const first = await issuer.create("first");
-    expect(await issuer.revoke("team_1/key_old")).toBe("revoked");
+    expect(await issuer.revoke("team_1/key_old", first.secret)).toBe("revoked");
     const second = await issuer.create("second");
     expect(second.id).not.toBe(first.id);
     expect(second.secret.equals(first.secret)).toBe(false);

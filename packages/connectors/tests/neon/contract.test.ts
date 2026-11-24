@@ -31,6 +31,7 @@ describe("the issuer contract", () => {
       current: new Secret(
         "postgresql://app_a:npg_live_a_9f2c@ep-quiet-1.us-east-2.aws.neon.tech/appdb?sslmode=require",
       ),
+      vaultId: "app_a@2026-11-15T12:00:00Z",
       effects,
       failCreate: () => {
         fake.failReset = "refuse";

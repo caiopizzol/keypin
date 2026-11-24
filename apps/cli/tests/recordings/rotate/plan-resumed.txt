@@ -86,6 +86,10 @@ exit 3
         "id": "key-1",
         "generation": "66b4730b863ddbcb",
         "revoked": false
+      },
+      "proof": {
+        "new": "1069a0fb66f57e023cde820c7cbdad81d0b3430c64ed264544e9c368a61e4ac1",
+        "old": "7e0b7dbf40138b1d7f3d4aca34530d4e0f5544b5b1ab843640110aa97a4abb39"
       }
     }
   ],

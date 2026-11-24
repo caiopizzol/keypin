@@ -27,6 +27,7 @@ describe("the issuer contract", () => {
         fetch: openaiFetch(fake),
       }),
       current: new Secret("sk-svcacct-in-the-vault-7d2a"),
+      vaultId: "svc_bot/key_old",
       effects,
       failCreate: () => {
         fake.failCreate = 500;
@@ -54,7 +55,7 @@ describe("the fake OpenAI", () => {
     const vault = new Secret("sk-svcacct-vault-3b1f");
     expect((await issuer.checkAccount(null, vault)).ok).toBe(true);
     const first = await issuer.create("first");
-    expect(await issuer.revoke("svc_bot/key_old")).toBe("revoked");
+    expect(await issuer.revoke("svc_bot/key_old", first.secret)).toBe("revoked");
     const second = await issuer.create("second");
     expect(second.id).not.toBe(first.id);
     expect(second.secret.equals(first.secret)).toBe(false);

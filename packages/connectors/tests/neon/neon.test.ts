@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, readSecretspec, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, readSecretspec, RevokeRefused, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { NeonIssuer, neonIssuer } from "../../src/neon/index";
 import { type FakeNeon, memoryWorld, neonFetch } from "../../src/neon/testing";
@@ -89,7 +89,7 @@ describe("which role keypin resets", () => {
       const old = currentId ?? check.currentId;
       assert(old);
       const created = await each.create();
-      expect(await each.revoke(old)).toBe("revoked");
+      expect(await each.revoke(old, created.secret)).toBe("revoked");
       url = created.secret;
       currentId = created.id;
     }
@@ -110,12 +110,61 @@ describe("which role keypin resets", () => {
     const created = await each.create();
     const passwordB = world.load().roles.app_b?.password;
     assert(check.ok);
-    expect(await each.revoke(check.currentId ?? "")).toBe("revoked");
+    expect(await each.revoke(check.currentId ?? "", created.secret)).toBe("revoked");
     expect(effects).toEqual(["neon reset app_b", "neon reset app_a"]);
     expect(world.load().roles.app_b?.password).toBe(passwordB);
-    expect(await each.revoke(check.currentId ?? "")).toBe("already gone");
-    expect(await each.revoke("app_gone@2026-11-15T12:00:00Z")).toBe("already gone");
+    expect(await each.revoke(check.currentId ?? "", created.secret)).toBe("already gone");
+    expect(await each.revoke("app_gone@2026-11-15T12:00:00Z", created.secret)).toBe("already gone");
     expect(created.id.startsWith("app_b@")).toBe(true);
+  });
+
+  test("has is true only while the role's password is the one keypin set", async () => {
+    const { issuer, requests } = neon();
+    const each = issuer();
+    expect(await each.has("app_a@2026-11-15T12:00:00Z")).toBe(true);
+    expect(await each.has("app_a@2026-11-14T12:00:00Z")).toBe(false);
+    expect(await each.has("owner@2026-11-15T12:00:00Z")).toBe(false);
+    expect(requests).toHaveLength(2);
+  });
+
+  test("has throws a plain error when Neon refuses the read", async () => {
+    const { issuer } = neon({ admin: "napi_other" });
+    await expect(issuer().has("app_a@2026-11-15T12:00:00Z")).rejects.toThrow(
+      new Error("Neon GET /roles/<role> returned HTTP 401 UNAUTHORIZED"),
+    );
+  });
+
+  test("revoke refuses the role the vault's URL uses, even with its current password time", async () => {
+    const { issuer, effects, requests } = neon();
+    const each = issuer();
+    expect((await each.checkAccount(null, urlFor("app_a", LIVE_A))).ok).toBe(true);
+    await expect(
+      each.revoke("app_a@2026-11-15T12:00:00Z", urlFor("app_a", LIVE_A)),
+    ).rejects.toThrow(
+      new RevokeRefused("it's the password of role app_a, which the vault's URL uses"),
+    );
+    expect(effects).toEqual([]);
+    expect(requests.filter((r) => r.startsWith("POST"))).toEqual([]);
+  });
+
+  test("revoke refuses a role outside the two keypin rotates", async () => {
+    const { issuer, effects } = neon({}, { app_a: LIVE_A, app_b: LIVE_B, owner: "npg_owner" });
+    const each = issuer();
+    expect((await each.checkAccount(null, urlFor("app_a", LIVE_A))).ok).toBe(true);
+    await expect(
+      each.revoke("owner@2026-11-15T12:00:00Z", urlFor("app_a", LIVE_A)),
+    ).rejects.toThrow(new RevokeRefused("it isn't a password keypin set on role app_a or app_b"));
+    expect(effects).toEqual([]);
+  });
+
+  test("revoke refuses when the vault's value names no role", async () => {
+    const { issuer, effects } = neon();
+    const each = issuer();
+    expect((await each.checkAccount(null, urlFor("app_a", LIVE_A))).ok).toBe(true);
+    await expect(
+      each.revoke("app_b@2026-11-15T12:00:00Z", new Secret("not a url")),
+    ).rejects.toThrow(new RevokeRefused("keypin can't tell which role the vault's URL uses"));
+    expect(effects).toEqual([]);
   });
 
   test("keypin's key stays listed while the vault holds the other role's URL, but neither role is reset", async () => {

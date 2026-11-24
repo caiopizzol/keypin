@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import type { KeyRef, VaultBackend } from "@keypin/core";
+import { isRecord, type KeyRef, type VaultBackend } from "@keypin/core";
 import { day } from "@keypin/core/testing";
 import { GitHubSecretDestination } from "@keypin/connectors/github";
 import { type FakeGitHub, githubFetch } from "@keypin/connectors/github/testing";
@@ -260,6 +260,38 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
     );
     const printed = [first.stderr.text, approve.stderr.text, committed].join("\n");
     for (const value of [OLD, ADMIN, w.value()]) expect(printed).not.toContain(value);
+  });
+
+  test("a finished rotation with no proof needs a person's answer before keypin creates a key", async () => {
+    const w = await rotatedOnceOnALaptop();
+    const file = parseJson(w.repo.contents.get(ROTATION) ?? "null");
+    assert(isRecord(file) && Array.isArray(file.issued));
+    for (const issued of file.issued) if (isRecord(issued)) delete issued.proof;
+    w.repo.contents.set(ROTATION, `${JSON.stringify(file, null, 2)}\n`);
+    const why =
+      ".keypin/rotation.json records key re-new-1 for the vault's value without a proof, and Resend can't confirm which key the vault holds, so a person checks this plan in a terminal before keypin creates a key.";
+
+    const run = ci(w);
+    expect(await run.run("--due", "--yes")).toBe(NEEDS_APPROVAL);
+    expect(run.stderr.text).toContain(why);
+    expect(run.stderr.text).toContain(
+      "Stopped: this plan needs approval, and --yes can't give it. Nothing was created.",
+    );
+    const plan = ci(w);
+    await plan.run("--due", "--plan");
+    expect(plan.stderr.text).toContain(
+      "This plan needs approval in a terminal; --yes can't give it.",
+    );
+    const check = machine(w, { terminal: true });
+    expect(await check.run("--check")).toBe(1);
+    expect(check.stderr.text).toContain(why);
+    const declined = machine(w, { terminal: true, answers: ["n"] });
+    expect(await declined.run("--due", "--yes")).toBe(NEEDS_APPROVAL);
+    expect(w.effects).toEqual(["resend create re-new-1"]);
+
+    const person = machine(w, { terminal: true, answers: ["y"] });
+    expect(await person.run("--due", "--yes")).toBe(0);
+    expect(w.effects).toEqual(["resend create re-new-1", "resend create re-new-2"]);
   });
 
   test("outside GitHub Actions, the waiting old key comes with the command that approves it", async () => {

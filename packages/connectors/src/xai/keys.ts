@@ -18,6 +18,21 @@ export interface VaultKey {
   off: string | null;
 }
 
+export function vaultKey(body: Record<string, unknown>): VaultKey {
+  const id = text(body, "api_key_id");
+  const team = text(body, "team_id");
+  if (!id || !team) throw new Error("xAI's GET /v1/api-key response has no api_key_id and team_id");
+  const off =
+    body.api_key_disabled === true
+      ? "is disabled"
+      : body.api_key_blocked === true
+        ? "is blocked"
+        : body.team_blocked === true
+          ? `belongs to team ${team}, which xAI blocked`
+          : null;
+  return { id, team, off };
+}
+
 export const idOf = (team: string, key: string) => `${team}/${key}`;
 
 export function parseId(id: string): { team: string; key: string } | null {

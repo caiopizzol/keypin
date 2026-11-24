@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, readSecretspec, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, readSecretspec, RevokeRefused, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { CloudflareIssuer, cloudflareIssuer } from "../../src/cloudflare/index";
 import {
@@ -120,13 +120,16 @@ describe("checkAccount", () => {
     expect(issuer.dashboard()).toBe("https://dash.cloudflare.com/?to=/:account/api-tokens");
   });
 
-  test("a token keypin issued is read by its ID, without verify", async () => {
+  test("a token keypin issued is matched with verify, then read by its ID", async () => {
     const { issuer, requests } = cloudflare();
     const check = await issuer.checkAccount(OLD_ID, new Secret(VAULT));
     assert(check.ok);
     expect(check.currentId).toBeUndefined();
     expect(check.facts).toBe('keypin issued user API token "deploy", with 1 policy');
-    expect(requests.map((r) => r.path)).toEqual([`/client/v4/user/tokens/${OLD_ID}`]);
+    expect(requests.map((r) => r.path)).toEqual([
+      "/client/v4/user/tokens/verify",
+      `/client/v4/user/tokens/${OLD_ID}`,
+    ]);
   });
 
   test.each([
@@ -251,11 +254,19 @@ describe("checkAccount", () => {
     expect(check.fix).toContain(`Account API Tokens Edit on account ${ACCOUNT}`);
   });
 
-  test("a token keypin issued that Cloudflare no longer has is refused", async () => {
-    const { issuer } = cloudflare();
+  test("a recorded token that isn't the vault's is refused, and nothing is copied", async () => {
+    const { issuer, effects } = cloudflare([
+      OLD,
+      { id: "b".repeat(32), name: "admin", value: "cfut_other", policies: [POLICY] },
+    ]);
     const check = await issuer.checkAccount("b".repeat(32), new Secret(VAULT));
     assert(!check.ok);
-    expect(check.reason).toContain("the one keypin issued last time");
+    expect(check.reason).toBe(
+      `token ${"b".repeat(32)}, the one keypin recorded for the vault's value, is another token`,
+    );
+    expect(check.fix).toBe("check .keypin/rotation.json for a change you didn't make");
+    await expect(issuer.create("API_TOKEN")).rejects.toThrow("checkAccount hasn't passed");
+    expect(effects).toEqual([]);
   });
 
   test("a disabled token isn't copied", async () => {
@@ -277,6 +288,7 @@ describe("checkAccount", () => {
   test("a token with no policy keypin can read stops the check", async () => {
     const issuer = withFetch(
       answering({
+        "GET /user/tokens/verify": { status: 200, body: { result: { id: OLD_ID } } },
         [`GET /user/tokens/${OLD_ID}`]: {
           status: 200,
           body: { result: { id: OLD_ID, policies: [{ effect: "allow" }] } },
@@ -453,10 +465,16 @@ describe("create", () => {
 });
 
 describe("revoke", () => {
+  const NEW_ID = "b".repeat(32);
+  const NEXT = "cfut_nextsentinelnextsentinel0000000000_8a2d";
+  const NEW: FakeToken = { id: NEW_ID, name: "deploy 2", value: NEXT, policies: [POLICY] };
+  const deletes = (requests: { method: string }[]) =>
+    requests.filter((request) => request.method === "DELETE");
+
   test("deletes the old token, never rolls it", async () => {
-    const { issuer, requests, effects } = cloudflare();
-    await issuer.checkAccount(null, new Secret(VAULT));
-    expect(await issuer.revoke(OLD_ID)).toBe("revoked");
+    const { issuer, requests, effects } = cloudflare([OLD, NEW]);
+    assert((await issuer.checkAccount(NEW_ID, new Secret(NEXT))).ok);
+    expect(await issuer.revoke(OLD_ID, new Secret(NEXT))).toBe("revoked");
     expect(requests.at(-1)).toMatchObject({
       method: "DELETE",
       path: `/client/v4/user/tokens/${OLD_ID}`,
@@ -465,37 +483,76 @@ describe("revoke", () => {
     expect(effects).toEqual([`cloudflare delete token ${OLD_ID}`]);
   });
 
+  const replies = (deleted: number) =>
+    answering({
+      "GET /user/tokens/verify": { status: 200, body: { result: { id: NEW_ID } } },
+      [`GET /user/tokens/${NEW_ID}`]: {
+        status: 200,
+        body: { result: { id: NEW_ID, name: "deploy 2", policies: [POLICY] } },
+      },
+      [`GET /user/tokens/${OLD_ID}`]: {
+        status: 200,
+        body: { result: { id: OLD_ID, name: "deploy", policies: [POLICY] } },
+      },
+      [`DELETE /user/tokens/${OLD_ID}`]: { status: deleted },
+    });
+
   test("a 403 names the token and where to delete it", async () => {
-    const issuer = withFetch(
-      answering({
-        "GET /user/tokens/verify": { status: 200, body: { result: { id: OLD_ID } } },
-        [`GET /user/tokens/${OLD_ID}`]: {
-          status: 200,
-          body: { result: { id: OLD_ID, name: "deploy", policies: [POLICY] } },
-        },
-        [`DELETE /user/tokens/${OLD_ID}`]: { status: 403 },
-      }),
-    );
-    await issuer.checkAccount(null, new Secret(VAULT));
-    await expect(issuer.revoke(OLD_ID)).rejects.toThrow(
-      `the admin token can't delete token "deploy"`,
+    const issuer = withFetch(replies(403));
+    await issuer.checkAccount(null, new Secret(NEXT));
+    await expect(issuer.revoke(OLD_ID, new Secret(NEXT))).rejects.toThrow(
+      `the admin token can't delete token ${OLD_ID}`,
     );
   });
 
   test("a 500 is an error", async () => {
-    const issuer = withFetch(
-      answering({
-        [`GET /user/tokens/${OLD_ID}`]: {
-          status: 200,
-          body: { result: { id: OLD_ID, name: "deploy", policies: [POLICY] } },
-        },
-        [`DELETE /user/tokens/${OLD_ID}`]: { status: 500 },
-      }),
-    );
-    await issuer.checkAccount(OLD_ID, new Secret(VAULT));
-    await expect(issuer.revoke(OLD_ID)).rejects.toThrow(
+    const issuer = withFetch(replies(500));
+    await issuer.checkAccount(NEW_ID, new Secret(NEXT));
+    await expect(issuer.revoke(OLD_ID, new Secret(NEXT))).rejects.toThrow(
       "Cloudflare DELETE /user/tokens/<id> returned HTTP 500",
     );
+  });
+
+  test("refuses the token the vault holds, and deletes nothing", async () => {
+    const { issuer, requests, effects } = cloudflare();
+    assert((await issuer.checkAccount(null, new Secret(VAULT))).ok);
+    const failed = await issuer.revoke(OLD_ID, new Secret(VAULT)).catch((e: unknown) => e);
+    assert(failed instanceof RevokeRefused);
+    expect(failed.message).toBe("it's the token the vault holds");
+    expect(deletes(requests)).toEqual([]);
+    expect(effects).toEqual([]);
+  });
+
+  test("refuses the admin token, and deletes nothing", async () => {
+    const ADMIN_ID = "ad".repeat(16);
+    const { issuer, requests, effects } = cloudflare([
+      OLD,
+      { id: ADMIN_ID, name: "keypin admin", value: ADMIN, policies: [POLICY] },
+    ]);
+    assert((await issuer.checkAccount(null, new Secret(VAULT))).ok);
+    const failed = await issuer.revoke(ADMIN_ID, new Secret(VAULT)).catch((e: unknown) => e);
+    assert(failed instanceof RevokeRefused);
+    expect(failed.message).toBe("it's the admin token keypin signs in with");
+    expect(deletes(requests)).toEqual([]);
+    expect(effects).toEqual([]);
+  });
+
+  test("a token the admin token can't see is already gone, with no delete", async () => {
+    const { issuer, requests } = cloudflare();
+    assert((await issuer.checkAccount(null, new Secret(VAULT))).ok);
+    expect(await issuer.revoke(NEW_ID, new Secret(VAULT))).toBe("already gone");
+    expect(deletes(requests)).toEqual([]);
+  });
+
+  test("has reads the token without checkAccount, and a Cloudflare error is an error", async () => {
+    const { issuer } = cloudflare();
+    expect(await issuer.has(OLD_ID)).toBe(true);
+    expect(await issuer.has(NEW_ID)).toBe(false);
+    const failing = withFetch(answering({ [`GET /user/tokens/${OLD_ID}`]: { status: 403 } }));
+    const failed = await failing.has(OLD_ID).catch((e: unknown) => e);
+    assert(failed instanceof Error);
+    expect(failed.message).toBe("Cloudflare GET /user/tokens/<id> returned HTTP 403");
+    expectNoSecret(failed);
   });
 });
 

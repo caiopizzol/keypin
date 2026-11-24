@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, readSecretspec, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, readSecretspec, RevokeRefused, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { GoogleIssuer, googleIssuer } from "../../src/google/index";
 import { keyIdOf } from "../../src/google/google";
@@ -29,6 +29,10 @@ const OLD: FakeGoogleKey = {
   restrictions: RESTRICTIONS,
 };
 const NAME = "web GOOGLE_MAPS_API_KEY prod 2026-11-17T12:00Z a1b2c3";
+const NEW: FakeGoogleKey = {
+  name: "projects/481537286014/locations/global/keys/maps-web-2",
+  value: "AIzaSyNewNewNewNewNewNewNewNewNewNew0002",
+};
 
 function google(
   keys: FakeGoogleKey[] = [OLD],
@@ -203,31 +207,31 @@ describe("Google Cloud issuer", () => {
     expect(failed.message).not.toContain("ya29");
   });
 
-  test("deletes the old key, then calls it already gone", async () => {
+  test("deletes the old key once the vault holds the new one, then calls it already gone", async () => {
     const subject = google();
     const check = await checked(subject);
     expect(check.notes?.revoke).toBe("Google Cloud can restore it for 30 days");
-    expect(await subject.issuer.revoke(OLD_NAME)).toBe("revoked");
-    expect(await subject.issuer.revoke(OLD_NAME)).toBe("already gone");
-    expect(subject.effects).toEqual([`google delete ${OLD_NAME}`]);
+    const created = await subject.issuer.create(NAME);
+    expect(await subject.issuer.revoke(OLD_NAME, created.secret)).toBe("revoked");
+    expect(await subject.issuer.revoke(OLD_NAME, created.secret)).toBe("already gone");
+    expect(subject.effects.at(-1)).toBe(`google delete ${OLD_NAME}`);
   });
 
-  test("checks the key keypin issued last time by its name", async () => {
+  test("checks the key keypin issued last time against the vault's key", async () => {
     const issued = "projects/481537286014/locations/global/keys/google-maps-api-key-prod-x";
     const subject = google([{ ...OLD, name: issued, displayName: "Maps web" }]);
-    const check = await subject.issuer.checkAccount(issued, new Secret("anything"));
+    const check = await subject.issuer.checkAccount(issued, new Secret(VAULT));
     expect(check).toMatchObject({
       ok: true,
       facts: 'keypin issued key "Maps web" (google-maps-api-key-prod-x) in project 481537286014',
     });
-    expect(subject.requests.some((r) => r.path.endsWith(":lookupKey"))).toBe(false);
   });
 
   test("gets a new access token once the old one is about to expire", async () => {
-    const subject = google();
+    const subject = google([OLD, NEW]);
     await checked(subject);
     subject.later(3_600_000);
-    await subject.issuer.revoke(OLD_NAME);
+    await subject.issuer.revoke(OLD_NAME, new Secret(NEW.value));
     expect(subject.requests.filter((r) => r.path === "/token")).toHaveLength(2);
   });
 });
@@ -353,21 +357,73 @@ describe("Google Cloud issuer refusals", () => {
     expect(check.reason).toBe("key_123 isn't a Google Cloud API key name");
   });
 
-  test("refuses when the issued key is gone", async () => {
-    const subject = google();
-    const check = await subject.issuer.checkAccount(
-      "projects/481537286014/locations/global/keys/gone",
-      new Secret(VAULT),
+  test("refuses a recorded key that isn't the vault's key, before reading its restrictions", async () => {
+    const subject = google([OLD, NEW]);
+    const check = await subject.issuer.checkAccount(NEW.name, new Secret(VAULT));
+    expect(check).toEqual({
+      ok: false,
+      facts: `the vault holds key ${OLD_NAME}`,
+      reason: `key ${NEW.name}, the one keypin recorded for the vault's value, is another key`,
+      fix: "check .keypin/rotation.json for a change you didn't make",
+    });
+    expect(subject.requests.some((r) => r.path === `/v2/${NEW.name}`)).toBe(false);
+  });
+
+  test("refuses to revoke the key the vault holds, and sends no delete", async () => {
+    const subject = google([OLD, NEW]);
+    await checked(subject);
+    await expect(subject.issuer.revoke(OLD_NAME, new Secret(VAULT))).rejects.toThrow(
+      new RevokeRefused("it's the key the vault holds"),
     );
-    assert(!check.ok);
-    expect(check.reason).toContain("the one keypin issued last time");
+    expect(subject.requests.some((r) => r.method === "DELETE")).toBe(false);
+  });
+
+  test("refuses to revoke a key in another project, and sends nothing", async () => {
+    const other = "projects/729401556318/locations/global/keys/billing";
+    const subject = google([OLD, { name: other, value: "AIzaSyOtherOtherOtherOtherOther000003" }], {
+      projects: ["481537286014", "729401556318"],
+    });
+    await checked(subject);
+    const before = subject.requests.length;
+    await expect(subject.issuer.revoke(other, new Secret(VAULT))).rejects.toThrow(
+      new RevokeRefused(
+        "it's in project 729401556318, not in project 481537286014, which owns the vault's key",
+      ),
+    );
+    expect(subject.requests).toHaveLength(before);
+  });
+
+  test("refuses to revoke when Google doesn't know the vault's value, and sends no delete", async () => {
+    const subject = google([OLD, NEW]);
+    await checked(subject);
+    await expect(
+      subject.issuer.revoke(NEW.name, new Secret("AIzaSyUnknownUnknownUnknownUnknown0000")),
+    ).rejects.toThrow(
+      new RevokeRefused("keypin can't tell which key in project 481537286014 the vault holds"),
+    );
+    expect(subject.effects).toEqual([]);
+  });
+
+  test("has answers false for a key in another project without asking Google", async () => {
+    const subject = google();
+    expect(await subject.issuer.has("projects/729401556318/locations/global/keys/billing")).toBe(
+      false,
+    );
+    expect(subject.requests).toEqual([]);
+  });
+
+  test("has throws a plain error when Google refuses the read", async () => {
+    const subject = google([OLD], { projects: [] });
+    await expect(subject.issuer.has(OLD_NAME)).rejects.toThrow(
+      new Error("Google GET <project>/keys/<id> returned HTTP 403 PERMISSION_DENIED"),
+    );
   });
 
   test("a delete Google refuses says where to delete the key", async () => {
-    const subject = google();
+    const subject = google([OLD, NEW]);
     await checked(subject);
-    subject.fake.projects = ["729401556318"];
-    await expect(subject.issuer.revoke(OLD_NAME)).rejects.toThrow(
+    subject.fake.refuseDelete = true;
+    await expect(subject.issuer.revoke(OLD_NAME, new Secret(NEW.value))).rejects.toThrow(
       `the admin service account can't delete key "Maps web" (maps-web): put a JSON key of a service account with the API Keys Admin role in the admin item; create one at https://console.cloud.google.com/iam-admin/serviceaccounts, or delete it at https://console.cloud.google.com/apis/credentials?project=481537286014`,
     );
     expect(subject.effects).toEqual([]);

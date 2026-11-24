@@ -27,6 +27,10 @@ exit 3
         "id": null,
         "generation": "9819eb49e959be60",
         "revoked": false
+      },
+      "proof": {
+        "new": "f2572cf6ca4c7c2bdef6791162173aed24a0963f72419e8ba6e10970b8dba6a3",
+        "old": "bf5a5f4efe3de2819414e8197d2d7534320465f7fa2848d52826426269d65b05"
       }
     }
   ],
@@ -122,6 +126,10 @@ To revoke it later, run this in a terminal:
         "id": "key-1",
         "generation": "66b4730b863ddbcb",
         "revoked": false
+      },
+      "proof": {
+        "new": "1069a0fb66f57e023cde820c7cbdad81d0b3430c64ed264544e9c368a61e4ac1",
+        "old": "7e0b7dbf40138b1d7f3d4aca34530d4e0f5544b5b1ab843640110aa97a4abb39"
       }
     }
   ],

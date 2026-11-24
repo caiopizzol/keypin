@@ -232,6 +232,10 @@ This rotation is recorded only on this machine: .keypin/rotation.json doesn't ex
         "id": "AKID-0",
         "generation": "181f27923457c4e2",
         "revoked": true
+      },
+      "proof": {
+        "new": "99c3e967e14a1317516f87a49a42ae12d1bc7f56759fdbbfd2253201ad9b56af",
+        "old": "0750326255e0df9b1fe70891794cfeacf03375860bda178b6a2630ee14d0162b"
       }
     }
   ],

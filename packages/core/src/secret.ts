@@ -56,3 +56,18 @@ export async function hashText(text: string): Promise<string> {
     .join("")
     .slice(0, 16);
 }
+
+export async function signedBy(secret: Secret, text: string): Promise<string> {
+  const encode = (value: string) => new TextEncoder().encode(value);
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encode(`keypin:${secret.reveal()}`),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, encode(text));
+  return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
+}

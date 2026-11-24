@@ -6,14 +6,14 @@ import {
   isRecord,
   NothingChanged,
   parseObject,
+  RevokeRefused,
   Secret,
 } from "@keypin/core";
 import { type Copy, copies, fitName, plural, timestamp } from "./copy";
 import { type Listed, listed, shownAs, text, type VaultKey } from "./keys";
+import { DASHBOARD, MANAGEMENT_KEYS, type Reply, refused } from "./reply";
 
 const API = "https://openrouter.ai/api/v1";
-const DASHBOARD = "https://openrouter.ai/settings/keys";
-const MANAGEMENT_KEYS = "https://openrouter.ai/settings/management-keys";
 const PAGE = 100;
 const PAGES = 100;
 
@@ -21,11 +21,6 @@ export interface OpenRouterIssuerOptions {
   admin: () => Promise<Secret>;
   fetch?: Fetch;
   now?: () => Date;
-}
-
-interface Reply {
-  status: number;
-  body: Record<string, unknown>;
 }
 
 export class OpenRouterIssuer implements Issuer {
@@ -86,7 +81,7 @@ export class OpenRouterIssuer implements Issuer {
           fix: `use a management key from the account or workspace that has the key at ${DASHBOARD}`,
         };
       }
-      if (read.status !== 200) return this.#refused(read, null, "/keys/<hash>");
+      if (read.status !== 200) return refused(read, null, "/keys/<hash>");
       const key = listed(read.body.data);
       if (!key)
         throw new Error("OpenRouter's GET /keys/<hash> response has no key keypin can read");
@@ -99,11 +94,18 @@ export class OpenRouterIssuer implements Issuer {
           reason: `OpenRouter doesn't accept the vault's key, but still lists key ${this.label(key.hash)}, the one keypin issued last time`,
           fix: `put key ${this.label(key.hash)} in the vault, then run this again`,
         };
+      if (key.label !== vault.label)
+        return {
+          ok: false,
+          facts: `keypin issued key ${this.label(key.hash)}`,
+          reason: `key ${this.label(key.hash)}, the one keypin recorded for the vault's value, is another key`,
+          fix: `check .keypin/rotation.json for a change you didn't make`,
+        };
       return this.#pass(key, vault, `keypin issued key ${this.label(key.hash)}`);
     }
 
     const keys = await this.#keys(vault?.workspaceId ?? null);
-    if (!Array.isArray(keys)) return this.#refused(keys, vault?.workspaceId ?? null, "/keys");
+    if (!Array.isArray(keys)) return refused(keys, vault?.workspaceId ?? null, "/keys");
     const facts = `the management key lists ${plural(keys.length, "API key")}`;
     if (!vault) {
       const disabled = keys.find((key) => key.disabled && shownAs(key.label, current));
@@ -187,9 +189,41 @@ export class OpenRouterIssuer implements Issuer {
     return `OpenRouter may have made the key before the reply was lost. Only this run uses the name "${fitName(name)}": delete a key with that name at ${DASHBOARD} before you run this again, or the rerun leaves it live.`;
   }
 
-  async revoke(id: string): Promise<"revoked" | "already gone"> {
+  async has(id: string): Promise<boolean> {
+    return (await this.#target(id)) !== null;
+  }
+
+  async revoke(id: string, current: Secret): Promise<"revoked" | "already gone"> {
     if (!this.#copy)
       throw new Error("refusing to delete an OpenRouter key: checkAccount hasn't passed");
+    const target = await this.#target(id);
+    if (!target) return "already gone";
+    const vault = await this.#vaultKey(current);
+    if (!vault)
+      throw new RevokeRefused(
+        "OpenRouter doesn't accept the vault's key, so keypin can't tell which key it is",
+      );
+    if (target.label === vault.label) throw new RevokeRefused("it's the key the vault holds");
+    if (vault.workspaceId !== null && target.workspaceId !== vault.workspaceId)
+      throw new RevokeRefused(
+        `it's in workspace ${target.workspaceId}, not in workspace ${vault.workspaceId}, which has the vault's key`,
+      );
+    if (vault.organizationId !== null) {
+      const keys = await this.#keys(vault.workspaceId);
+      if (!Array.isArray(keys))
+        throw new Error(`OpenRouter GET /keys returned HTTP ${keys.status}`);
+      const held = keys.filter((key) => key.label === vault.label);
+      const [own] = held;
+      if (!own || held.length > 1)
+        throw new RevokeRefused(
+          "keypin can't tell which key the management key lists is the vault's",
+        );
+      const member = (user: string | null) => (user === null ? "no member" : `member ${user}`);
+      if (target.creatorUserId !== own.creatorUserId)
+        throw new RevokeRefused(
+          `it's made for ${member(target.creatorUserId)}, not for ${member(own.creatorUserId)}, who has the vault's key`,
+        );
+    }
     const deleted = await this.#request("DELETE", `/keys/${encodeURIComponent(id)}`);
     if (deleted.status === 404) return "already gone";
     if (deleted.status === 401 || deleted.status === 403)
@@ -199,6 +233,18 @@ export class OpenRouterIssuer implements Issuer {
     if (deleted.status !== 200)
       throw new Error(`OpenRouter DELETE /keys/<hash> returned HTTP ${deleted.status}`);
     return "revoked";
+  }
+
+  async #target(id: string): Promise<Listed | null> {
+    const read = await this.#request("GET", `/keys/${encodeURIComponent(id)}`);
+    if (read.status === 404) return null;
+    if (read.status !== 200)
+      throw new Error(`OpenRouter GET /keys/<hash> returned HTTP ${read.status}`);
+    const target = listed(read.body.data);
+    if (!target)
+      throw new Error("OpenRouter's GET /keys/<hash> response has no key keypin can read");
+    this.#names.set(target.hash, target.name);
+    return target;
   }
 
   #disabled(key: Listed, facts: string): IssuerCheck {
@@ -312,34 +358,6 @@ export class OpenRouterIssuer implements Issuer {
       if (!data.length || (typeof total === "number" && items.length >= total)) return items;
     }
     throw new Error(`OpenRouter GET ${path} lists more than ${PAGE * PAGES} items`);
-  }
-
-  #refused(reply: Reply, workspace: string | null, path: string): IssuerCheck {
-    const facts = `OpenRouter answered HTTP ${reply.status}`;
-    const fix = `put a read/write management key in the admin item; create one at ${MANAGEMENT_KEYS}`;
-    if (reply.status === 401)
-      return {
-        ok: false,
-        facts,
-        reason:
-          "OpenRouter doesn't accept the management key: it isn't a management key, it expired or was deleted, or the item holds another value",
-        fix,
-      };
-    if (reply.status === 403)
-      return {
-        ok: false,
-        facts,
-        reason: `the management key can't list keys${workspace === null ? "" : ` in workspace ${workspace}, the vault key's workspace`}: it's scoped to another workspace`,
-        fix: `${fix}, in that workspace or for the whole organization`,
-      };
-    if ((reply.status === 400 || reply.status === 404) && workspace !== null)
-      return {
-        ok: false,
-        facts,
-        reason: `the management key's account has no workspace ${workspace}, the vault key's workspace: the vault's key is from another account`,
-        fix: `use a management key from the account that has the key at ${DASHBOARD}`,
-      };
-    throw new Error(`OpenRouter GET ${path} returned HTTP ${reply.status}`);
   }
 
   #adminKey(): Promise<Secret> {

@@ -79,7 +79,7 @@ const INFISICAL: FakeInfisical = {
 interface Earlier {
   disk: ReturnType<typeof memoryFiles>;
   store: ReturnType<typeof memoryStore>;
-  keys: Set<string>;
+  keys: Map<string, string>;
 }
 
 function project(
@@ -121,24 +121,26 @@ function project(
   );
   const destinations = fakeDestinations();
   const issued: string[] = [];
-  const keys = options.after?.keys ?? new Set<string>();
+  const keys = options.after?.keys ?? new Map<string, string>();
   const issuer: Issuer = {
     describe: () => "Resend",
     dashboard: () => "https://resend.com/api-keys",
-    checkAccount: async (id) => {
+    checkAccount: async (id, current) => {
       const facts = `the admin key lists ${keys.size} API keys`;
-      return id === null || keys.has(id)
+      if (id === null) return { ok: true, facts };
+      const value = keys.get(id);
+      if (value === undefined) return { ok: false, facts, reason: `Resend doesn't list key ${id}` };
+      return value === current.reveal()
         ? { ok: true, facts }
-        : { ok: false, facts, reason: `Resend doesn't list key ${id}` };
+        : { ok: false, facts, reason: `key ${id} isn't the vault's key` };
     },
+    has: async (id) => keys.has(id),
     async create(name) {
       issued.push(`create ${name}`);
       const count = keys.size + 1;
-      keys.add(`key-${count}`);
-      return {
-        id: `key-${count}`,
-        secret: new Secret(count === 1 ? ISSUED : `${ISSUED}-${count}`),
-      };
+      const secret = new Secret(count === 1 ? ISSUED : `${ISSUED}-${count}`);
+      keys.set(`key-${count}`, secret.reveal());
+      return { id: `key-${count}`, secret };
     },
     async revoke(id) {
       issued.push(`revoke ${id}`);

@@ -6,6 +6,7 @@ import {
   isRecord,
   NothingChanged,
   parseObject,
+  RevokeRefused,
   Secret,
 } from "@keypin/core";
 import {
@@ -224,7 +225,13 @@ export class NeonIssuer implements Issuer {
     return `Neon may have reset the password of role ${this.#idle?.role ?? "the idle role"} before the reply was lost. Nothing uses that role yet, so running this again is safe.`;
   }
 
-  async revoke(id: string): Promise<"revoked" | "already gone"> {
+  async has(id: string): Promise<boolean> {
+    const issued = parseId(id);
+    if (!issued || !this.#roles.includes(issued.role)) return false;
+    return (await this.#passwordTime(issued.role)) === issued.at;
+  }
+
+  async revoke(id: string, current: Secret): Promise<"revoked" | "already gone"> {
     if (!this.#passed)
       throw new Error("refusing to reset a Neon password: checkAccount hasn't passed");
     const issued = parseId(id);
@@ -232,9 +239,11 @@ export class NeonIssuer implements Issuer {
     const at = await this.#passwordTime(role);
     if (at === null) return "already gone";
     if (!issued || !this.#roles.includes(role))
-      throw new Error(
-        `keypin won't reset Neon role ${role}: key ${id} isn't a password keypin set on role ${this.#roles.join(" or ")}`,
-      );
+      throw new RevokeRefused(`it isn't a password keypin set on role ${this.#roles.join(" or ")}`);
+    const user = userOf(parseUrl(current.reveal()));
+    if (user === null) throw new RevokeRefused("keypin can't tell which role the vault's URL uses");
+    if (role === user)
+      throw new RevokeRefused(`it's the password of role ${role}, which the vault's URL uses`);
     if (at !== issued.at) return "already gone";
     await this.#reset(role);
     return "revoked";

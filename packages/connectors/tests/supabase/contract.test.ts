@@ -39,6 +39,7 @@ describe("the issuer contract", () => {
         fetch: supabaseFetch(fake),
       }),
       current: new Secret(VAULT),
+      vaultId: "key-backend",
       effects,
       failCreate: () => {
         fake.failCreate = 500;
@@ -84,7 +85,7 @@ describe("the fake Supabase", () => {
     });
     expect((await issuer.checkAccount(null, new Secret(VAULT))).ok).toBe(true);
     const first = await issuer.create("FIRST_KEY prod");
-    expect(await issuer.revoke("key-backend")).toBe("revoked");
+    expect(await issuer.revoke("key-backend", first.secret)).toBe("revoked");
     const second = await issuer.create("SECOND_KEY prod");
     expect(second.id).not.toBe(first.id);
     expect(second.secret.equals(first.secret)).toBe(false);

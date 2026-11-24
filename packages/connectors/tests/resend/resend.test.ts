@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, RevokeRefused, Secret } from "@keypin/core";
 import { ResendIssuer, type ResendIssuerOptions } from "../../src/resend/index";
 
 const ADMIN = "re_admin_sentinel_5c1f";
@@ -97,7 +97,7 @@ describe("checkAccount", () => {
     expect(check.reason).toContain("doesn't list key key-elsewhere");
     expect(check.reason).toContain("the admin key belongs to another team");
     await expect(resend.create("RESEND_API_KEY")).rejects.toThrow(/checkAccount hasn't passed/);
-    await expect(resend.revoke("key-old")).rejects.toThrow(/checkAccount hasn't passed/);
+    await expect(resend.revoke("key-old", VAULT)).rejects.toThrow(/checkAccount hasn't passed/);
     expect(requests.map((r) => r.method)).toEqual(["GET", "GET"]);
   });
 
@@ -325,35 +325,73 @@ describe("after a failed create", () => {
 });
 
 describe("revoke", () => {
-  test("DELETEs the key by id", async () => {
-    const { resend, requests } = issuer(happyRoutes());
-    await resend.checkAccount("key-old", VAULT);
-    expect(await resend.revoke("key-old")).toBe("revoked");
+  const LISTED: Reply = {
+    status: 200,
+    body: {
+      object: "list",
+      has_more: false,
+      data: [
+        { id: "key-old", name: "Production" },
+        { id: "key-new", name: "Production 2" },
+      ],
+    },
+  };
+
+  function rotated(): Routes {
+    return { ...happyRoutes(), "GET /api-keys": LISTED };
+  }
+
+  test("DELETEs the retired key by id once the vault holds the new one", async () => {
+    const { resend, requests } = issuer(rotated());
+    await resend.checkAccount("key-new", VAULT);
+    expect(await resend.revoke("key-old", VAULT)).toBe("revoked");
     expect(requests.at(-1)).toMatchObject({
       method: "DELETE",
       url: "https://api.resend.com/api-keys/key-old",
     });
   });
 
-  test("a key that's already gone is not an error", async () => {
-    const { resend } = issuer(happyRoutes());
-    await resend.checkAccount(null, VAULT);
-    expect(await resend.revoke("key-gone")).toBe("already gone");
+  test("a key the admin key's team doesn't list is already gone, and nothing is deleted", async () => {
+    const { resend, requests } = issuer(rotated());
+    await resend.checkAccount("key-new", VAULT);
+    expect(await resend.revoke("key-gone", VAULT)).toBe("already gone");
+    expect(await resend.revoke("../domains/d-1", VAULT)).toBe("already gone");
+    expect(requests.some((r) => r.method === "DELETE")).toBe(false);
   });
 
-  test("the id is one path segment", async () => {
-    const { resend, requests } = issuer(happyRoutes());
-    await resend.checkAccount(null, VAULT);
-    await resend.revoke("../domains/d-1");
-    expect(requests.at(-1)?.url).toBe("https://api.resend.com/api-keys/..%2Fdomains%2Fd-1");
+  test("refuses a key the full-access vault key's team doesn't list, and deletes nothing", async () => {
+    const routes = rotated();
+    routes["vault GET /api-keys"] = {
+      status: 200,
+      body: { object: "list", has_more: false, data: [{ id: "key-new", name: "Theirs" }] },
+    };
+    const { resend, requests } = issuer(routes);
+    await resend.checkAccount("key-new", VAULT);
+    await expect(resend.revoke("key-old", VAULT)).rejects.toThrow(
+      new RevokeRefused("it belongs to the admin key's team, not to the vault key's team"),
+    );
+    expect(requests.some((r) => r.method === "DELETE")).toBe(false);
+
+    routes["vault GET /api-keys"] = LISTED;
+    expect(await resend.revoke("key-old", VAULT)).toBe("revoked");
+  });
+
+  test("has throws when the admin key's list fails, without either key", async () => {
+    const routes = rotated();
+    routes["GET /api-keys"] = { status: 500 };
+    const error = await issuer(routes)
+      .resend.has("key-old")
+      .catch((caught: unknown) => caught);
+    expect(String(error)).toBe("Error: Resend GET /api-keys returned HTTP 500");
+    expectNoSecret(error);
   });
 
   test("another failure throws", async () => {
-    const routes = happyRoutes();
+    const routes = rotated();
     routes["DELETE /api-keys/key-old"] = { status: 500 };
     const { resend } = issuer(routes);
-    await resend.checkAccount(null, VAULT);
-    await expect(resend.revoke("key-old")).rejects.toThrow(
+    await resend.checkAccount("key-new", VAULT);
+    await expect(resend.revoke("key-old", VAULT)).rejects.toThrow(
       "Resend DELETE /api-keys/<id> returned HTTP 500",
     );
   });

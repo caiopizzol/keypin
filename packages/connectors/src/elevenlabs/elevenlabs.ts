@@ -3,10 +3,10 @@ import {
   type IssuedKey,
   type Issuer,
   type IssuerCheck,
-  isRecord,
   NothingChanged,
   objectField,
   parseObject,
+  RevokeRefused,
   Secret,
 } from "@keypin/core";
 import { idOf, type Listed, listedKeys, numberIn, parseId } from "./keys";
@@ -89,6 +89,14 @@ export class ElevenLabsIssuer implements Issuer {
           reason: `the admin key's workspace has no key ${this.label(currentId)}, the one keypin issued last time`,
           fix: `if it still works, use an admin key from its workspace; otherwise create a service account key by hand in ${SERVICE_ACCOUNTS}, put it in the vault and publish it, then run this again`,
         };
+      const owner = await this.#owner(current);
+      if (owner !== null && owner !== key.account)
+        return {
+          ok: false,
+          facts,
+          reason: `key ${this.label(currentId)}, the one keypin recorded for the vault's value, belongs to service account "${key.accountName}", not to ${accountOf(keys, owner)}, which owns the vault's key`,
+          fix: "check .keypin/rotation.json for a change you didn't make",
+        };
       return this.#pass(key, `${facts}; keypin issued key ${this.label(currentId)}`);
     }
 
@@ -131,10 +139,7 @@ export class ElevenLabsIssuer implements Issuer {
         fix: `replace it once with a key from a service account in ${SERVICE_ACCOUNTS}, or use an admin key from the key's workspace`,
       };
     const accountName = owned[0]?.accountName ?? owner;
-    const now = this.#now().getTime() / 1000;
-    const live = owned.filter(
-      (key) => !key.disabled && (key.expiresAt === null || key.expiresAt > now),
-    );
+    const live = this.#live(owned);
     const [match, ...more] = live;
     if (!match)
       throw new Error(
@@ -199,19 +204,29 @@ export class ElevenLabsIssuer implements Issuer {
     return `ElevenLabs may have made the key before the reply was lost. Only this run uses the name "${name}": delete a key with that name in ${SERVICE_ACCOUNTS} before you run this again, or the rerun leaves it live.`;
   }
 
-  async revoke(id: string): Promise<"revoked" | "already gone"> {
+  async revoke(id: string, current: Secret): Promise<"revoked" | "already gone"> {
     if (!this.#copy)
       throw new Error("refusing to delete an ElevenLabs key: checkAccount hasn't passed");
     const parsed = parseId(id);
     if (!parsed) return "already gone";
-    const path = `/service-accounts/${encodeURIComponent(parsed.account)}/api-keys`;
-    const listed = await this.#request("GET", path);
-    if (listed.status === 404) return "already gone";
-    if (listed.status !== 200)
-      throw new Error(returned("GET", "/v1/service-accounts/<id>/api-keys", listed));
-    const keys = Array.isArray(listed.body["api-keys"]) ? listed.body["api-keys"] : [];
-    if (!keys.some((key) => isRecord(key) && key.key_id === parsed.keyId)) return "already gone";
-    const deleted = await this.#request("DELETE", `${path}/${encodeURIComponent(parsed.keyId)}`);
+    const owner = await this.#owner(current);
+    if (owner === null)
+      throw new RevokeRefused("keypin can't tell which service account the vault's key belongs to");
+    const keys = await this.#listed();
+    if (parsed.account !== owner)
+      throw new RevokeRefused(
+        `it belongs to ${accountOf(keys, parsed.account)}, not to ${accountOf(keys, owner)}, which owns the vault's key`,
+      );
+    const owned = keys.filter((key) => key.account === owner);
+    const target = owned.find((key) => key.keyId === parsed.keyId);
+    if (!target) return "already gone";
+    const live = this.#live(owned);
+    if (live.length === 1 && live[0] === target)
+      throw new RevokeRefused(
+        `it's the only active key of ${accountOf(keys, owner)}, so it's the key the vault holds`,
+      );
+    const path = `/service-accounts/${encodeURIComponent(parsed.account)}/api-keys/${encodeURIComponent(parsed.keyId)}`;
+    const deleted = await this.#request("DELETE", path);
     if (deleted.status === 404) return "already gone";
     if (deleted.status === 401 || deleted.status === 403)
       throw new Error(
@@ -220,6 +235,31 @@ export class ElevenLabsIssuer implements Issuer {
     if (deleted.status !== 200)
       throw new Error(returned("DELETE", "/v1/service-accounts/<id>/api-keys/<key_id>", deleted));
     return "revoked";
+  }
+
+  async has(id: string): Promise<boolean> {
+    const parsed = parseId(id);
+    if (!parsed) return false;
+    const keys = await this.#listed();
+    return keys.some((key) => key.account === parsed.account && key.keyId === parsed.keyId);
+  }
+
+  async #listed(): Promise<Listed[]> {
+    const accounts = await this.#request("GET", "/service-accounts");
+    if (accounts.status !== 200) throw new Error(returned("GET", "/v1/service-accounts", accounts));
+    return listedKeys(accounts.body);
+  }
+
+  #live(keys: Listed[]): Listed[] {
+    const now = this.#now().getTime() / 1000;
+    return keys.filter((key) => !key.disabled && (key.expiresAt === null || key.expiresAt > now));
+  }
+
+  async #owner(current: Secret): Promise<string | null> {
+    const user = await this.#request("GET", "/user", current);
+    if (user.status >= 500) throw new Error(returned("GET", "/v1/user", user));
+    const owner = user.body.user_id;
+    return user.status === 200 && typeof owner === "string" && owner ? owner : null;
   }
 
   #pass(key: Listed, facts: string): IssuerCheck {
@@ -315,6 +355,11 @@ function copies(copy: Copy, accountName: string): string {
       ? "no expiry"
       : `expiring ${plural(Math.ceil(copy.lifetime / DAY), "day")} after it's made`;
   return `for service account "${accountName}", with the old key's ${plural(copy.permissions.length, "permission")}, ${limit}${ips}${concurrent}; ${expires}`;
+}
+
+function accountOf(keys: Listed[], account: string): string {
+  const name = keys.find((key) => key.account === account)?.accountName;
+  return name ? `service account "${name}"` : `service account ${account}`;
 }
 
 function plural(n: number, word: string): string {

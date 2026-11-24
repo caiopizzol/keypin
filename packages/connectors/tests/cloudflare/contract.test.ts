@@ -61,6 +61,7 @@ describe("the issuer contract", () => {
         fetch: tokensFetch(fake),
       }),
       current: new Secret(VAULT),
+      vaultId: "a".repeat(32),
       effects,
       failCreate: () => {
         fake.failCreate = 500;

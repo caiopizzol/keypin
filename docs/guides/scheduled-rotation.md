@@ -232,4 +232,8 @@ revokes the Resend key a first rotation replaces: once nothing uses it, delete i
 
 Each run pushes `.keypin/rotation.json` and `.keypin/status.json` ([Files and state](../reference/files-and-state.md)).
 Neither holds a value, but `rotation.json` holds each key's provider ID, which can name a project or service account.
-In a public repository, anyone can see which keys exist and when an old one still works.
+In a public repository, anyone can see which keys exist and when an old one still works. Anyone who can push
+`.keypin/` can change those IDs, so keypin signs each rotation with the new key's value and revokes an old key only
+when that signature matches the vault's value and the provider confirms it isn't the vault's key. A rotation with no
+signature, such as one an older keypin recorded, isn't revoked: delete its old key yourself, then run `keypin rotate
+<KEY>` in a terminal to record it.

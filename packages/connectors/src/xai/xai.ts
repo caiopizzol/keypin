@@ -6,12 +6,13 @@ import {
   isRecord,
   NothingChanged,
   parseObject,
+  RevokeRefused,
   Secret,
 } from "@keypin/core";
 import { API, DASHBOARD, MANAGEMENT, MANAGEMENT_KEYS, PAGE, PAGES, POLL_MS, POLLS } from "./api";
 import { type Copy, copies, plural, timestamp } from "./copy";
-import { idOf, type Listed, listed, parseId, text, type VaultKey } from "./keys";
-import { failure, type Reply, refused } from "./reply";
+import { idOf, type Listed, listed, parseId, text, type VaultKey, vaultKey } from "./keys";
+import { failure, notManagement, type Reply, refused } from "./reply";
 
 export interface XaiIssuerOptions {
   admin: () => Promise<Secret>;
@@ -125,6 +126,13 @@ export class XaiIssuer implements Issuer {
           reason: `the vault's key ${vault.off}, and keypin won't make an active copy of it`,
           fix: `turn it back on at ${DASHBOARD}, or replace it by hand`,
         };
+      if (vault && (vault.id !== wanted || vault.team !== team))
+        return {
+          ok: false,
+          facts,
+          reason: `key ${wanted}, the one keypin recorded for the vault's value, is another key: the vault holds key ${vault.id} of team ${vault.team}`,
+          fix: "check .keypin/rotation.json for a change you didn't make",
+        };
       if (listed) return this.#pass(team, listed, `${facts}, with ${this.label(currentId)}`);
       if (!vault)
         return {
@@ -194,7 +202,7 @@ export class XaiIssuer implements Issuer {
     const stuck = await this.#propagation(apiKeyId);
     if (stuck === null) return { id, secret: new Secret(apiKey) };
     try {
-      await this.revoke(id);
+      await this.#delete(id, apiKeyId);
     } catch {
       throw new Error(
         `${stuck}, and keypin couldn't delete it: delete key ${this.label(id)} at ${DASHBOARD}, then run this again`,
@@ -214,15 +222,35 @@ export class XaiIssuer implements Issuer {
     return `xAI may have made the key before the reply was lost. Only this run uses the name "${name}": delete a key with that name${team} at ${DASHBOARD} before you run this again, or the rerun leaves it live.`;
   }
 
-  async revoke(id: string): Promise<"revoked" | "already gone"> {
+  async revoke(id: string, current: Secret): Promise<"revoked" | "already gone"> {
     if (!this.#copy) throw new Error("refusing to revoke an xAI key: checkAccount hasn't passed");
     const parsed = parseId(id);
     if (!parsed) return "already gone";
-    const deleted = await this.#request(
-      MANAGEMENT,
-      "DELETE",
-      `/auth/api-keys/${encodeURIComponent(parsed.key)}`,
-    );
+    const vault = await this.#vaultKey(current);
+    if (!vault) throw new RevokeRefused("xAI doesn't accept the vault's key");
+    if (vault.id === parsed.key) throw new RevokeRefused("it's the key the vault holds");
+    if (parsed.team !== vault.team)
+      throw new RevokeRefused(
+        `it belongs to team ${parsed.team}, not to team ${vault.team}, which owns the vault's key`,
+      );
+    if (!(await this.#lists(vault.team, parsed.key))) return "already gone";
+    return this.#delete(id, parsed.key);
+  }
+
+  async has(id: string): Promise<boolean> {
+    const parsed = parseId(id);
+    return parsed !== null && this.#lists(parsed.team, parsed.key);
+  }
+
+  async #lists(team: string, key: string): Promise<boolean> {
+    const keys = await this.#keys(team);
+    if (!Array.isArray(keys)) throw failure("GET", "/auth/teams/<team_id>/api-keys", keys);
+    return keys.some((listed) => listed.id === key);
+  }
+
+  async #delete(id: string, key: string): Promise<"revoked" | "already gone"> {
+    const path = `/auth/api-keys/${encodeURIComponent(key)}`;
+    const deleted = await this.#request(MANAGEMENT, "DELETE", path);
     if (deleted.status === 404) return "already gone";
     if (deleted.status === 401 || deleted.status === 403)
       throw new Error(
@@ -302,34 +330,13 @@ export class XaiIssuer implements Issuer {
   }
 
   async #notManagement(reply: Reply): Promise<IssuerCheck> {
-    const facts = `xAI answered HTTP ${reply.status} to the management key`;
-    const fix = `put a management key in the admin item; create one at ${MANAGEMENT_KEYS}`;
     const asApiKey = await this.#request(API, "GET", "/v1/api-key");
-    if (asApiKey.status === 200)
-      return {
-        ok: false,
-        facts,
-        reason:
-          "the admin item holds an xAI API key, not a management key, and API keys can't create or delete keys",
-        fix,
-      };
-    return {
-      ok: false,
-      facts,
-      reason:
-        "xAI doesn't accept the management key: it was deleted, it's limited to other IP addresses, or the item holds another value",
-      fix,
-    };
+    return notManagement(reply, asApiKey.status === 200);
   }
 
   async #isManagementKey(key: Secret): Promise<boolean> {
-    const reply = await this.#request(
-      MANAGEMENT,
-      "GET",
-      "/auth/management-keys/validation",
-      undefined,
-      key,
-    );
+    const path = "/auth/management-keys/validation";
+    const reply = await this.#request(MANAGEMENT, "GET", path, undefined, key);
     return reply.status === 200;
   }
 
@@ -337,19 +344,7 @@ export class XaiIssuer implements Issuer {
     const reply = await this.#request(API, "GET", "/v1/api-key", undefined, current);
     if ([400, 401, 403].includes(reply.status)) return null;
     if (reply.status !== 200) throw failure("GET", "/v1/api-key with the vault's key", reply);
-    const id = text(reply.body, "api_key_id");
-    const team = text(reply.body, "team_id");
-    if (!id || !team)
-      throw new Error("xAI's GET /v1/api-key response has no api_key_id and team_id");
-    const off =
-      reply.body.api_key_disabled === true
-        ? "is disabled"
-        : reply.body.api_key_blocked === true
-          ? "is blocked"
-          : reply.body.team_blocked === true
-            ? `belongs to team ${team}, which xAI blocked`
-            : null;
-    return { id, team, off };
+    return vaultKey(reply.body);
   }
 
   async #keys(team: string): Promise<Listed[] | Reply> {

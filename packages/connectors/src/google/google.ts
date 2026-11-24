@@ -7,6 +7,7 @@ import {
   isRecord,
   NothingChanged,
   objectField,
+  RevokeRefused,
   Secret,
 } from "@keypin/core";
 import { API, apiDisabled, call, disabledIn, type Reply, returned, statusOf } from "./api";
@@ -79,43 +80,41 @@ export class GoogleIssuer implements Issuer {
     const signedIn = await this.#bearer();
     if (typeof signedIn !== "string") return { ok: false, ...signedIn };
 
-    let name = currentId;
-    if (name === null) {
-      if (!current.reveal().startsWith(KEY_PREFIX))
-        return {
-          ok: false,
-          facts: "the vault holds a value that doesn't start with AIza",
-          reason:
-            "keypin rotates Google Cloud API keys, which start with AIza, and the item holds another value",
-          fix: `put the API key your apps use in the vault; find it at ${CREDENTIALS}`,
-        };
-      const found = await this.#request(
-        "GET",
-        `keys:lookupKey?keyString=${encodeURIComponent(current.reveal())}`,
-      );
-      if (found.status !== 200) return this.#refusedLookup(found);
-      const { name: listed, parent } = found.body;
-      if (typeof listed !== "string" || !KEY_NAME.test(listed)) {
-        const project = typeof parent === "string" ? ` in ${parent}` : "";
-        return {
-          ok: false,
-          facts: `Google knows the vault's key${project}, but no longer lists it`,
-          reason:
-            "the key was deleted more than 30 days ago, so keypin can't read its restrictions",
-          fix: `create a key by hand at ${CREDENTIALS}, put it in the vault and publish it, then run this again`,
-        };
-      }
-      name = listed;
-    }
-    const parsed = KEY_NAME.exec(name);
-    if (!parsed)
+    if (currentId !== null && !KEY_NAME.test(currentId))
       return {
         ok: false,
-        facts: `keypin issued key ${name} last time`,
-        reason: `${name} isn't a Google Cloud API key name`,
+        facts: `keypin issued key ${currentId} last time`,
+        reason: `${currentId} isn't a Google Cloud API key name`,
         fix: `delete that key at ${CREDENTIALS} if it's still live, then run this again`,
       };
-    this.#project = parsed[1] ?? null;
+    if (!current.reveal().startsWith(KEY_PREFIX))
+      return {
+        ok: false,
+        facts: "the vault holds a value that doesn't start with AIza",
+        reason:
+          "keypin rotates Google Cloud API keys, which start with AIza, and the item holds another value",
+        fix: `put the API key your apps use in the vault; find it at ${CREDENTIALS}`,
+      };
+    const found = await this.#lookup(current);
+    if (found.status !== 200) return this.#refusedLookup(found);
+    const { name, parent } = found.body;
+    if (typeof name !== "string" || !KEY_NAME.test(name)) {
+      const project = typeof parent === "string" ? ` in ${parent}` : "";
+      return {
+        ok: false,
+        facts: `Google knows the vault's key${project}, but no longer lists it`,
+        reason: "the key was deleted more than 30 days ago, so keypin can't read its restrictions",
+        fix: `create a key by hand at ${CREDENTIALS}, put it in the vault and publish it, then run this again`,
+      };
+    }
+    if (currentId !== null && currentId !== name)
+      return {
+        ok: false,
+        facts: `the vault holds key ${name}`,
+        reason: `key ${currentId}, the one keypin recorded for the vault's value, is another key`,
+        fix: `check .keypin/rotation.json for a change you didn't make`,
+      };
+    this.#project = KEY_NAME.exec(name)?.[1] ?? null;
     if (this.#project !== this.#pinned)
       return {
         ok: false,
@@ -198,13 +197,28 @@ export class GoogleIssuer implements Issuer {
     return `Google Cloud may have made the key, or may still be making it. Only this run uses key ID ${keyIdOf(name)} and the name "${fitKeyName(name, KEY_ID_LIMIT)}": delete that key at ${this.dashboard()} before you run this again, or the rerun leaves it live.`;
   }
 
-  async revoke(id: string): Promise<"revoked" | "already gone"> {
+  async has(id: string): Promise<boolean> {
+    return KEY_NAME.exec(id)?.[1] === this.#pinned && (await this.#live(id));
+  }
+
+  async revoke(id: string, current: Secret): Promise<"revoked" | "already gone"> {
     if (!this.#copy)
       throw new Error("refusing to delete a Google Cloud key: checkAccount hasn't passed");
-    if (!KEY_NAME.test(id)) return "already gone";
-    const read = await this.#request("GET", id);
-    if (read.status === 404) return "already gone";
-    if (read.status === 200 && parseKey(read.body, id).deleted) return "already gone";
+    const project = KEY_NAME.exec(id)?.[1];
+    if (project === undefined) return "already gone";
+    if (project !== this.#pinned)
+      throw new RevokeRefused(
+        `it's in project ${project}, not in project ${this.#pinned}, which owns the vault's key`,
+      );
+    if (!(await this.#live(id))) return "already gone";
+    const found = current.reveal().startsWith(KEY_PREFIX) ? await this.#lookup(current) : null;
+    if (found && found.status >= 500) throw new Error(returned("GET", "keys:lookupKey", found));
+    const vault = found?.status === 200 ? found.body.name : undefined;
+    if (typeof vault !== "string" || !KEY_NAME.test(vault))
+      throw new RevokeRefused(
+        `keypin can't tell which key in project ${this.#pinned} the vault holds`,
+      );
+    if (vault === id) throw new RevokeRefused("it's the key the vault holds");
     const deleted = await this.#request("DELETE", id);
     if (deleted.status === 404) return "already gone";
     if (deleted.status === 401 || deleted.status === 403)
@@ -218,6 +232,17 @@ export class GoogleIssuer implements Issuer {
         `Google Cloud didn't delete key ${this.label(id)}: delete it at ${this.dashboard()}`,
       );
     return "revoked";
+  }
+
+  async #live(id: string): Promise<boolean> {
+    const read = await this.#request("GET", id);
+    if (read.status === 404) return false;
+    if (read.status !== 200) throw new Error(returned("GET", "<project>/keys/<id>", read));
+    return !parseKey(read.body, id).deleted;
+  }
+
+  #lookup(current: Secret): Promise<Reply> {
+    return this.#request("GET", `keys:lookupKey?keyString=${encodeURIComponent(current.reveal())}`);
   }
 
   async #keyString(id: string, given: unknown): Promise<string> {

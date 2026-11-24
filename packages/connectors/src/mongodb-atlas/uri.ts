@@ -1,3 +1,5 @@
+import { isRecord } from "@keypin/core";
+
 export interface MongoUri {
   scheme: "mongodb" | "mongodb+srv";
   username: string;
@@ -63,4 +65,10 @@ function decoded(text: string): string {
   } catch {
     return "";
   }
+}
+
+export function connectionStrings(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(connectionStrings);
+  return isRecord(value) ? Object.values(value).flatMap(connectionStrings) : [];
 }

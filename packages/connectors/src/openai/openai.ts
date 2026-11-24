@@ -7,6 +7,7 @@ import {
   NothingChanged,
   objectField,
   parseObject,
+  RevokeRefused,
   Secret,
 } from "@keypin/core";
 
@@ -87,6 +88,13 @@ export class OpenAIIssuer implements Issuer {
           fix: `delete that key at ${DASHBOARD} if it's still live, then run this again`,
         };
       const listed = keys.find((key) => key.id === issued.key);
+      if (listed && !sameKey(listed.redacted, current))
+        return {
+          ok: false,
+          facts,
+          reason: `key ${listed.id}, the one keypin recorded for the vault's value, is another key in project ${this.#project}`,
+          fix: `check .keypin/rotation.json for a change you didn't make`,
+        };
       if (listed) return this.#pass(listed, `${facts}, with ${listed.id}`);
       if (await this.#refusesVaultKey(current)) {
         this.#serviceAccount = issued.serviceAccount;
@@ -164,10 +172,34 @@ export class OpenAIIssuer implements Issuer {
     return `OpenAI may have made the key before the reply was lost. Only this run uses the name "${name}": delete a key with that name in project ${this.#project} at ${DASHBOARD} before you run this again, or the rerun leaves it live.`;
   }
 
-  async revoke(id: string): Promise<"revoked" | "already gone"> {
+  async has(id: string): Promise<boolean> {
+    const key = parseId(id)?.key ?? id;
+    const keys = await this.#keys();
+    if (!Array.isArray(keys))
+      throw failure("GET", "/organization/projects/<project_id>/api_keys", keys);
+    return keys.some((listed) => listed.id === key);
+  }
+
+  async revoke(id: string, current: Secret): Promise<"revoked" | "already gone"> {
     if (!this.#passed)
       throw new Error("refusing to revoke an OpenAI key: checkAccount hasn't passed");
     const key = parseId(id)?.key ?? id;
+    const keys = await this.#keys();
+    if (!Array.isArray(keys))
+      throw failure("GET", "/organization/projects/<project_id>/api_keys", keys);
+    const target = keys.find((listed) => listed.id === key);
+    if (!target) return "already gone";
+    const held = keys.filter((listed) => sameKey(listed.redacted, current));
+    const [vault] = held;
+    if (!vault || held.length > 1)
+      throw new RevokeRefused(
+        `keypin can't tell which key in project ${this.#project} the vault holds`,
+      );
+    if (vault.id === key) throw new RevokeRefused("it's the key the vault holds");
+    if (target.owner.type !== "service_account" || target.owner.id !== vault.owner.id)
+      throw new RevokeRefused(
+        `it belongs to ${target.owner.type === "user" ? "user" : "service account"} ${target.owner.name}, not to service account ${vault.owner.name}, which owns the vault's key`,
+      );
     const deleted = await this.#request(
       "DELETE",
       `${this.#projectPath()}/api_keys/${encodeURIComponent(key)}`,

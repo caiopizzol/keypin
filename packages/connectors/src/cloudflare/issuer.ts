@@ -6,6 +6,7 @@ import {
   type IssuerCheck,
   NothingChanged,
   objectField,
+  RevokeRefused,
   Secret,
 } from "@keypin/core";
 import { call, type Reply, returned } from "./api";
@@ -84,16 +85,20 @@ export class CloudflareIssuer implements Issuer {
         fix: `put a separate token that can create tokens in the admin item; see ${CREATE_DOCS}`,
       };
 
-    let id = currentId;
-    if (id === null) {
-      const verified = await this.#request("GET", "/verify", undefined, current);
-      if (verified.status !== 200 || typeof objectField(verified.body, "result").id !== "string")
-        return { ok: false, facts, ...this.#unverified(verified) };
-      id = String(objectField(verified.body, "result").id);
-    }
+    const verified = await this.#request("GET", "/verify", undefined, current);
+    const id = objectField(verified.body, "result").id;
+    if (verified.status !== 200 || typeof id !== "string")
+      return { ok: false, facts, ...this.#unverified(verified) };
+    if (currentId !== null && currentId !== id)
+      return {
+        ok: false,
+        facts,
+        reason: `token ${currentId}, the one keypin recorded for the vault's value, is another token`,
+        fix: `check .keypin/rotation.json for a change you didn't make`,
+      };
 
     const read = await this.#request("GET", `/${encodeURIComponent(id)}`);
-    if (read.status !== 200) return this.#refusedRead(read, id, currentId !== null);
+    if (read.status !== 200) return this.#refusedRead(read, id);
     const token = parseToken(read.body, id);
     if (!token)
       throw new Error(
@@ -203,9 +208,27 @@ export class CloudflareIssuer implements Issuer {
     return `Cloudflare may have made the token before the reply was lost. Only this run uses the name "${fitName(name)}": delete a token with that name at ${this.dashboard()} before you run this again, or the rerun leaves it live.`;
   }
 
-  async revoke(id: string): Promise<"revoked" | "already gone"> {
+  async has(id: string): Promise<boolean> {
+    const read = await this.#request("GET", `/${encodeURIComponent(id)}`);
+    if (read.status === 404) return false;
+    if (read.status !== 200) throw new Error(returned("GET", `${this.#base()}/<id>`, read));
+    return true;
+  }
+
+  async revoke(id: string, current: Secret): Promise<"revoked" | "already gone"> {
     if (!this.#copy)
       throw new Error("refusing to delete a Cloudflare token: checkAccount hasn't passed");
+    if (!(await this.has(id))) return "already gone";
+    const verified = await this.#request("GET", "/verify", undefined, current);
+    const held = objectField(verified.body, "result").id;
+    if (verified.status !== 200 || typeof held !== "string")
+      throw new RevokeRefused(
+        "Cloudflare doesn't accept the vault's token, so keypin can't tell which token it is",
+      );
+    if (held === id) throw new RevokeRefused("it's the token the vault holds");
+    const admin = await this.#request("GET", "/verify");
+    if (admin.status === 200 && objectField(admin.body, "result").id === id)
+      throw new RevokeRefused("it's the admin token keypin signs in with");
     const deleted = await this.#request("DELETE", `/${encodeURIComponent(id)}`);
     if (deleted.status === 404) return "already gone";
     if (deleted.status === 401 || deleted.status === 403)
@@ -262,7 +285,7 @@ export class CloudflareIssuer implements Issuer {
     throw new Error(returned("GET", `${this.#base()}/verify with the vault's token`, reply));
   }
 
-  #refusedRead(reply: Reply, id: string, issued: boolean): IssuerCheck {
+  #refusedRead(reply: Reply, id: string): IssuerCheck {
     const facts = `Cloudflare answered HTTP ${reply.status}`;
     if (reply.status === 400 || reply.status === 401)
       return {
@@ -283,14 +306,12 @@ export class CloudflareIssuer implements Issuer {
       return {
         ok: false,
         facts,
-        reason: issued
-          ? `Cloudflare has no token ${id}, the one keypin issued last time, so keypin can't copy its permissions`
-          : this.#account === null
+        reason:
+          this.#account === null
             ? `the admin token's user has no token ${id}: the vault's token belongs to another Cloudflare user`
             : `the admin token can't see token ${id} in account ${this.#account}: the token is from another account, or the admin token's creator isn't a Super Administrator and didn't make it`,
-        fix: issued
-          ? `create a token by hand at ${this.dashboard()}, put it in the vault and publish it, then run this again`
-          : this.#account === null
+        fix:
+          this.#account === null
             ? "put a token that can create tokens for the same user in the admin item"
             : "check account_id in secretspec.toml, or have a Super Administrator make the admin token",
       };

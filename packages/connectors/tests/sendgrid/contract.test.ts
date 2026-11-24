@@ -24,6 +24,7 @@ describe("the issuer contract", () => {
         fetch: sendgridFetch(fake),
       }),
       current: new Secret(OLD),
+      vaultId: "OldKeyId",
       effects,
       failCreate: () => {
         fake.failCreate = 500;

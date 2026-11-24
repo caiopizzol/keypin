@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, readSecretspec, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, readSecretspec, RevokeRefused, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { OpenRouterIssuer, openrouterIssuer } from "../../src/openrouter/index";
 import {
@@ -371,33 +371,110 @@ describe("create", () => {
 });
 
 describe("revoke", () => {
+  const NEXT = "sk-or-v1-next-sentinel-8a2d";
+  const NEW: FakeOpenRouterKey = { hash: "hash_new", name: "prod 2", value: NEXT };
+  const OTHER = "sk-or-v1-other-sentinel-3e9c";
+  const deletes = (requests: { method: string }[]) =>
+    requests.filter((request) => request.method === "DELETE");
+
   test("deletes the key by its hash, and again is already gone", async () => {
-    const { issuer, requests, effects } = openrouter();
-    await issuer.checkAccount(null, new Secret(VAULT));
-    expect(await issuer.revoke("hash_old")).toBe("revoked");
+    const { issuer, requests, effects } = openrouter([OLD, NEW]);
+    assert((await issuer.checkAccount("hash_new", new Secret(NEXT))).ok);
+    expect(await issuer.revoke("hash_old", new Secret(NEXT))).toBe("revoked");
     expect(requests.at(-1)).toMatchObject({ method: "DELETE", path: "/api/v1/keys/hash_old" });
     expect(effects).toEqual(["openrouter revoke hash_old"]);
-    expect(await issuer.revoke("hash_old")).toBe("already gone");
+    expect(await issuer.revoke("hash_old", new Secret(NEXT))).toBe("already gone");
   });
 
   test("the hash is one path segment", async () => {
-    const { issuer, requests } = openrouter();
-    await issuer.checkAccount(null, new Secret(VAULT));
-    expect(await issuer.revoke("hash/../x")).toBe("already gone");
+    const { issuer, requests } = openrouter([OLD, NEW]);
+    await issuer.checkAccount("hash_new", new Secret(NEXT));
+    expect(await issuer.revoke("hash/../x", new Secret(NEXT))).toBe("already gone");
     expect(requests.at(-1)?.path).toBe("/api/v1/keys/hash%2F..%2Fx");
+    expect(deletes(requests)).toEqual([]);
   });
 
   test("a management key that can't delete says where to delete it", async () => {
-    const { fake } = openrouter();
+    const { fake } = openrouter([OLD, NEW]);
     const served = openrouterFetch(fake);
     const issuer = withFetch(async (url, init) =>
       init.method === "DELETE" ? new Response("{}", { status: 403 }) : served(url, init),
     );
-    assert((await issuer.checkAccount(null, new Secret(VAULT))).ok);
-    const failed = await issuer.revoke("hash_old").catch((e: unknown) => e);
+    assert((await issuer.checkAccount("hash_new", new Secret(NEXT))).ok);
+    const failed = await issuer.revoke("hash_old", new Secret(NEXT)).catch((e: unknown) => e);
     expect(String(failed)).toContain(
       'the management key can\'t delete key "prod" (HTTP 403): delete it at https://openrouter.ai/settings/keys',
     );
+    expectNoSecret(failed);
+  });
+
+  test("refuses the key the vault holds, and deletes nothing", async () => {
+    const { issuer, requests, effects } = openrouter();
+    assert((await issuer.checkAccount(null, new Secret(VAULT))).ok);
+    const failed = await issuer.revoke("hash_old", new Secret(VAULT)).catch((e: unknown) => e);
+    assert(failed instanceof RevokeRefused);
+    expect(failed.message).toBe("it's the key the vault holds");
+    expect(deletes(requests)).toEqual([]);
+    expect(effects).toEqual([]);
+  });
+
+  test("refuses a key in another workspace", async () => {
+    const { issuer, requests, effects } = openrouter([
+      OLD,
+      { hash: "hash_other", name: "ci", value: OTHER, workspaceId: "ws_other" },
+    ]);
+    assert((await issuer.checkAccount(null, new Secret(VAULT))).ok);
+    const failed = await issuer.revoke("hash_other", new Secret(VAULT)).catch((e: unknown) => e);
+    assert(failed instanceof RevokeRefused);
+    expect(failed.message).toBe(
+      "it's in workspace ws_other, not in workspace ws_default, which has the vault's key",
+    );
+    expect(deletes(requests)).toEqual([]);
+    expect(effects).toEqual([]);
+  });
+
+  test("refuses an organization key made for another member", async () => {
+    const { issuer, requests, effects } = openrouter(
+      [
+        { ...OLD, creatorUserId: "user_ada" },
+        { hash: "hash_other", name: "ci", value: OTHER, creatorUserId: "user_bob" },
+      ],
+      { organizationId: "org_1" },
+    );
+    assert((await issuer.checkAccount(null, new Secret(VAULT))).ok);
+    const failed = await issuer.revoke("hash_other", new Secret(VAULT)).catch((e: unknown) => e);
+    assert(failed instanceof RevokeRefused);
+    expect(failed.message).toBe(
+      "it's made for member user_bob, not for member user_ada, who has the vault's key",
+    );
+    expect(deletes(requests)).toEqual([]);
+    expect(effects).toEqual([]);
+  });
+
+  test("checkAccount refuses a recorded key that isn't the vault's, and copies nothing", async () => {
+    const { issuer, effects } = openrouter([
+      OLD,
+      { hash: "hash_other", name: "ci", value: OTHER, limit: 500, creatorUserId: "user_bob" },
+    ]);
+    const check = await issuer.checkAccount("hash_other", new Secret(VAULT));
+    assert(!check.ok);
+    expect(check.reason).toBe(
+      'key "ci", the one keypin recorded for the vault\'s value, is another key',
+    );
+    expect(check.fix).toBe("check .keypin/rotation.json for a change you didn't make");
+    await expect(issuer.create("k")).rejects.toThrow("checkAccount hasn't passed");
+    expect(effects).toEqual([]);
+  });
+
+  test("has reads the key without checkAccount, and an OpenRouter error is an error", async () => {
+    const { issuer } = openrouter();
+    expect(await issuer.has("hash_old")).toBe(true);
+    expect(await issuer.has("hash_new")).toBe(false);
+    const failed = await withFetch(answering(403))
+      .has("hash_old")
+      .catch((e: unknown) => e);
+    assert(failed instanceof Error);
+    expect(failed.message).toBe("OpenRouter GET /keys/<hash> returned HTTP 403");
     expectNoSecret(failed);
   });
 });

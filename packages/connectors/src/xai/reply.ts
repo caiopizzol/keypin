@@ -28,6 +28,17 @@ export function refused(reply: Reply, team: string): IssuerCheck {
   throw failure("GET", "/auth/teams/<team_id>/api-keys", reply);
 }
 
+export function notManagement(reply: Reply, apiKey: boolean): IssuerCheck {
+  return {
+    ok: false,
+    facts: `xAI answered HTTP ${reply.status} to the management key`,
+    reason: apiKey
+      ? "the admin item holds an xAI API key, not a management key, and API keys can't create or delete keys"
+      : "xAI doesn't accept the management key: it was deleted, it's limited to other IP addresses, or the item holds another value",
+    fix: `put a management key in the admin item; create one at ${MANAGEMENT_KEYS}`,
+  };
+}
+
 export function failure(
   method: string,
   path: string,

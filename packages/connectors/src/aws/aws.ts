@@ -4,6 +4,7 @@ import {
   type Issuer,
   type IssuerCheck,
   NothingChanged,
+  RevokeRefused,
   Secret,
 } from "@keypin/core";
 import {
@@ -182,7 +183,7 @@ export class AwsIssuer implements Issuer {
     if (await this.#authenticates({ id, secret })) return { id, secret: new Secret(secret) };
     const waited = `AWS didn't accept the new access key ${id} within ${(POLLS * POLL_MS) / 1000} seconds`;
     try {
-      await this.revoke(id);
+      await this.#delete(target, id);
     } catch {
       throw new Error(
         `${waited}, and keypin couldn't delete it: delete it at ${this.dashboard()}, then run this again`,
@@ -198,11 +199,47 @@ export class AwsIssuer implements Issuer {
     return `AWS may have made an access key for IAM user ${target.user} before the reply was lost, and IAM keys have no name to find it by. Run aws iam list-access-keys --user-name ${target.user}: keep ${target.current}, the vault's key, and delete the other one with aws iam delete-access-key --user-name ${target.user} --access-key-id <ID> before you run this again. Until then the user has no room for a new key.`;
   }
 
-  async revoke(id: string): Promise<"revoked" | "already gone"> {
+  async revoke(id: string, current: Secret): Promise<"revoked" | "already gone"> {
     const target = this.#target;
     if (!target)
       throw new Error("refusing to delete an AWS access key: checkAccount hasn't passed");
     if (!ACCESS_KEY_ID.test(id)) return "already gone";
+    const listed = await this.#listed(target.user);
+    if (!listed.some((k) => k.id === id)) {
+      target.others = target.others.filter((k) => k.id !== id);
+      return "already gone";
+    }
+    const held = await this.#held(listed, current);
+    if (held === null)
+      throw new RevokeRefused(
+        `keypin can't tell which key of IAM user ${target.user} the vault holds`,
+      );
+    if (held === id) throw new RevokeRefused("it's the key the vault holds");
+    return this.#delete(target, id);
+  }
+
+  async has(id: string): Promise<boolean> {
+    const target = this.#target;
+    if (!target)
+      throw new Error("refusing to look up an AWS access key: checkAccount hasn't passed");
+    return ACCESS_KEY_ID.test(id) && (await this.#listed(target.user)).some((k) => k.id === id);
+  }
+
+  async #listed(user: string): Promise<Listed[]> {
+    const list = await this.#iam("ListAccessKeys", { UserName: user });
+    if (list.status !== 200) throw new Error(returned("ListAccessKeys", list));
+    return members(list.xml).map(parseListed);
+  }
+
+  async #held(keys: Listed[], current: Secret): Promise<string | null> {
+    for (const key of keys) {
+      const caller = await this.#caller({ id: key.id, secret: current.reveal() });
+      if (!("refused" in caller)) return key.id;
+    }
+    return null;
+  }
+
+  async #delete(target: Target, id: string): Promise<"revoked" | "already gone"> {
     const key = { UserName: target.user, AccessKeyId: id };
     const off = await this.#iam("UpdateAccessKey", { ...key, Status: "Inactive" });
     if (off.code === "NoSuchEntity") {

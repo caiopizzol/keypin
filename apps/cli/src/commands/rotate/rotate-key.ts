@@ -9,13 +9,14 @@ import {
   issuedFor,
   type ItemIds,
   type KeyEntry,
-  keyIdText,
   loadState,
   messageOf,
   nextRotation,
   planNewValue,
   type PlanInput,
   planPublish,
+  proofFor,
+  proves,
   recordIssued,
   saveState,
   Secret,
@@ -43,8 +44,8 @@ import {
   saveId,
   itemIdsAfterSave,
   vaultTakesWrites,
-  issuerLists,
   revokeOrphan,
+  stillHeld,
 } from "./vault-and-issuer";
 import {
   row,
@@ -61,7 +62,15 @@ import {
   shortLifetime,
 } from "./messages";
 import { routineWrites } from "./routine-check";
-import { revokeOnly, resetHeld, neverSaved } from "./unfinished-rotation";
+import {
+  revokeOnly,
+  resetHeld,
+  neverSaved,
+  provenId,
+  settlesUnproven,
+  migrationNote,
+  idInVault,
+} from "./unfinished-rotation";
 import { pairChecks } from "./pair-checks";
 import { readerRows, unreadNote } from "./readers";
 
@@ -144,23 +153,11 @@ export async function rotateLocked(job: Job): Promise<number> {
   });
   const unfinished = next.action !== "create";
   const issuer = deps.issuer(spec, read.admin);
+  const proven = (id: string | null) => provenId(recorded, id, read.secret);
   if (next.action === "wait") {
-    const held = next.issued;
-    const listed = await issuerLists(issuer, held.id, read.secret, out);
-    if (listed === null) return 1;
-    if (listed) {
-      say(
-        `\nStopped: ${vaultName(entry.ref, deps.vaults)} still holds the change that saves key ${shown(issuer, held.id)} for approval. Nothing was created.`,
-      );
-      say(heldSteps(job, issuer, held.id));
-      return NEEDS_APPROVAL;
-    }
-    say(
-      out.dim(
-        `\nKey ${shown(issuer, held.id)} is gone from ${issuer.describe()}, so keypin creates a new one.`,
-      ),
-    );
-    next = { action: "create", current: held.old.id, abandoned: null };
+    const stopped = await stillHeld(job, issuer, next.issued, read.secret);
+    if (stopped !== null) return stopped;
+    next = { action: "create", current: next.issued.old.id, abandoned: null };
   }
   if (next.action === "resume" && (next.issued.held || next.issued.unsaved)) {
     next = { action: "resume", issued: { ...next.issued, held: false, unsaved: false } };
@@ -176,7 +173,8 @@ export async function rotateLocked(job: Job): Promise<number> {
     );
     return 1;
   }
-  if (job.approve && !revokeOnly(next, counted, idSaved)) {
+  const onlyRevoke = revokeOnly(next, counted, idSaved);
+  if (job.approve && !onlyRevoke) {
     say(
       next.action === "resume" && waitsForRevoke(next.issued)
         ? `Stopped: not every destination has the new key ${shown(issuer, next.issued.id)}, so keypin won't revoke the old one. Run keypin rotate --due to publish it first. Nothing was revoked.`
@@ -184,20 +182,20 @@ export async function rotateLocked(job: Job): Promise<number> {
     );
     return 1;
   }
+  const lost = [...removed, ...(pairNow?.removed ?? [])];
+  const settled =
+    onlyRevoke && (await settlesUnproven(job, issuer, next, read.secret, state, lost));
+  if (typeof settled === "number") return settled;
   if (next.action === "create" && !(await vaultTakesWrites(job))) return 1;
 
-  const inVault =
-    next.action === "resume"
-      ? next.issued.id
-      : read.pair
-        ? keyIdText(read.pair.secret)
-        : next.current;
+  const inVault = await idInVault(next, recorded, read.secret, read.pair?.secret ?? null);
   const check = await checkIssuer(issuer, inVault, read.secret, out, spec.admin !== undefined);
   const checked = await checkAccounts(key, entry, deps, out, job.label);
   if (!check || !checked) {
     say("\nStopped: an account check failed. Nothing was created and nothing was written.");
     return 1;
   }
+  const migration = migrationNote(job, issuer, next, inVault, check.currentId);
   const reset = resetHeld(
     issuer,
     spec,
@@ -209,7 +207,8 @@ export async function rotateLocked(job: Job): Promise<number> {
     if (short) say(`${out.mark(false)} ${short}`);
     if (reset)
       say(`\n${resetStop(deps, issuer, reset, vaultName(entry.ref, deps.vaults), job.args)}`);
-    if (short || reset) return 1;
+    if (migration) say(`${out.mark(false)} ${migration}`);
+    if (short || reset || migration) return 1;
     say(`${out.mark(true)} ${key.name} (${owner.environment}) is ready for keypin rotate --due.`);
     return 0;
   }
@@ -219,7 +218,7 @@ export async function rotateLocked(job: Job): Promise<number> {
     issuer,
     checked,
     pairChecked: pairChecks(job, checked),
-    removed: [...removed, ...(pairNow?.removed ?? [])],
+    removed: lost,
   };
   if (next.action === "resume" && check.gone !== undefined) {
     if (job.approve) {
@@ -254,7 +253,10 @@ export async function rotateLocked(job: Job): Promise<number> {
   }
 
   const orphan =
-    job.pair && next.abandoned && neverSaved(next.abandoned, spec, generation, state)
+    job.pair &&
+    next.abandoned &&
+    neverSaved(next.abandoned, spec, generation, state) &&
+    (await proves(next.abandoned, read.secret, "old"))
       ? next.abandoned
       : null;
   const note =
@@ -262,7 +264,8 @@ export async function rotateLocked(job: Job): Promise<number> {
       ? abandonedNote(next.abandoned, issuer, spec, vaultName(entry.ref, deps.vaults))
       : null;
   if (note !== null) say(`\n${out.dim(note)}`);
-  const known = job.pair ? check.currentId : (next.current ?? check.currentId);
+  if (migration) say(`\n${migration}`);
+  const known = job.pair ? check.currentId : ((await proven(next.current)) ?? check.currentId);
   const current = check.gone === undefined ? (known ?? null) : null;
   const steps = planNewValue(input, read.ids);
   const pairSteps = pairInput ? planNewValue(pairInput, read.pair?.ids ?? null) : [];
@@ -298,7 +301,9 @@ export async function rotateLocked(job: Job): Promise<number> {
   if (unread !== null) say(`\n${unread}`);
   apartNote(job, checked);
   const needsApproval =
-    reset !== null || [...steps, ...pairSteps].some((step) => step.approval !== null);
+    reset !== null ||
+    migration !== null ||
+    [...steps, ...pairSteps].some((step) => step.approval !== null);
   if (job.plan)
     return planOnly(deps, "rotate", reset ? terminalArgs(job.args) : job.args, needsApproval);
   if (job.yes && reset) {
@@ -319,7 +324,7 @@ export async function rotateLocked(job: Job): Promise<number> {
   );
   if (!ok) return NEEDS_APPROVAL;
 
-  if (orphan && !(await revokeOrphan(job, issuer, orphan.id))) return 1;
+  if (orphan && !(await revokeOrphan(job, issuer, orphan.id, read.secret))) return 1;
   const created = await createKey(job, issuer);
   if ("unchanged" in created) {
     if (created.unchanged) say("Stopped. Nothing was created.");
@@ -327,7 +332,7 @@ export async function rotateLocked(job: Job): Promise<number> {
     return 1;
   }
   job = { ...job, discard: false, args: withoutDiscard(job.args) };
-  const issued: Issued = {
+  const fields = {
     ...owner,
     issuer: spec.kind,
     id: created.id,
@@ -337,6 +342,7 @@ export async function rotateLocked(job: Job): Promise<number> {
       ? { id: current, generation, revoked: check.gone !== undefined }
       : { id: null, generation, revoked: true },
   };
+  const issued: Issued = { ...fields, proof: await proofFor(fields, created.secret, read.secret) };
   const mayHold = vaultKindOf(deps.vaults, entry.ref.kind).holdsWrites === true;
   const pending = mayHold ? { ...issued, held: true } : issued;
   try {
@@ -346,6 +352,7 @@ export async function rotateLocked(job: Job): Promise<number> {
       job,
       issuer,
       created.id,
+      read.secret,
       `couldn't record the new key in ${job.path}: ${messageOf(error)}`,
     );
   }
@@ -356,6 +363,7 @@ export async function rotateLocked(job: Job): Promise<number> {
       job,
       issuer,
       created.id,
+      read.secret,
       `${vaultName(entry.ref, deps.vaults)} refused to save the new key`,
       () => saveState(deps.files, job.path, state),
     );

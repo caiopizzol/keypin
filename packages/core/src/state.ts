@@ -4,7 +4,7 @@ import { type DestinationKinds, receiptSecretKey } from "./destination";
 import { isRecord } from "./record";
 import type { VaultKinds } from "./login";
 import { storedRef } from "./reference";
-import type { Generation } from "./secret";
+import { type Generation, type Secret, signedBy } from "./secret";
 
 const STATE_VERSION = 5;
 
@@ -19,6 +19,12 @@ export interface Issued {
   old: { id: string | null; generation: Generation; revoked: boolean };
   held?: boolean;
   unsaved?: boolean;
+  proof?: Proof;
+}
+
+export interface Proof {
+  new: string;
+  old: string;
 }
 
 export interface State {
@@ -173,6 +179,47 @@ function isIssued(i: unknown): i is Issued {
     isText(i.old.generation) &&
     typeof i.old.revoked === "boolean" &&
     (i.held === undefined || typeof i.held === "boolean") &&
-    (i.unsaved === undefined || typeof i.unsaved === "boolean")
+    (i.unsaved === undefined || typeof i.unsaved === "boolean") &&
+    (i.proof === undefined || isProof(i.proof))
   );
+}
+
+export function isProof(value: unknown): value is Proof {
+  return isRecord(value) && isText(value.new) && isText(value.old);
+}
+
+type Proven = Pick<Issued, "keyId" | "environment" | "issuer" | "id" | "generation" | "at"> & {
+  old: Pick<Issued["old"], "id" | "generation">;
+};
+
+function proofText(i: Proven, role: keyof Proof): string {
+  return JSON.stringify([
+    "keypin rotation proof 1",
+    role,
+    i.keyId,
+    i.environment,
+    i.issuer,
+    i.id,
+    i.generation,
+    i.at,
+    i.old.id,
+    i.old.generation,
+  ]);
+}
+
+export async function proofFor(issued: Proven, created: Secret, replaced: Secret): Promise<Proof> {
+  return {
+    new: await signedBy(created, proofText(issued, "new")),
+    old: await signedBy(replaced, proofText(issued, "old")),
+  };
+}
+
+export async function proves(
+  issued: Issued,
+  vault: Secret,
+  holds: keyof Proof,
+): Promise<boolean | undefined> {
+  const proof = issued.proof?.[holds];
+  if (proof === undefined) return undefined;
+  return proof === (await signedBy(vault, proofText(issued, holds)));
 }

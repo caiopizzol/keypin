@@ -41,6 +41,24 @@ export function disabledIn(reply: Reply): string | null {
   return null;
 }
 
+const POLICIES = new Set([
+  "constraints/iam.disableServiceAccountKeyCreation",
+  "constraints/iam.managed.disableServiceAccountKeyCreation",
+]);
+
+export function blockedBy(reply: Reply): string | null {
+  const details = objectField(reply.body, "error").details;
+  if (!Array.isArray(details)) return null;
+  for (const detail of details) {
+    if (!isRecord(detail) || !Array.isArray(detail.violations)) continue;
+    for (const violation of detail.violations) {
+      const type = isRecord(violation) ? violation.type : undefined;
+      if (typeof type === "string" && POLICIES.has(type)) return type.replace(/^constraints\//, "");
+    }
+  }
+  return null;
+}
+
 export function returned(method: string, path: string, reply: Reply): string {
   const status = statusOf(objectField(reply.body, "error"));
   return `Google ${method} ${path} returned HTTP ${reply.status}${status ? ` ${status}` : ""}`;

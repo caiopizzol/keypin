@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, readSecretspec, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, readSecretspec, RevokeRefused, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { TwilioIssuer, twilioIssuer } from "../../src/twilio/index";
 import {
@@ -24,6 +24,13 @@ const MANAGE = [
   "/twilio/iam/api-keys/delete",
 ];
 const APP: FakeTwilioKey = { sid: APP_SID, secret: APP_SECRET, name: "app", type: "standard" };
+const FRESH: FakeTwilioKey = {
+  sid: NEW_SID,
+  secret: "new-secret-1x",
+  name: "new",
+  type: "standard",
+};
+const FRESH_SECRET = new Secret(FRESH.secret);
 const TOKEN_ADMIN = adminJson({ TWILIO_ACCOUNT_SID: ACCOUNT, TWILIO_AUTH_TOKEN: TOKEN });
 const KEY_ADMIN = adminJson({
   TWILIO_ACCOUNT_SID: ACCOUNT,
@@ -131,7 +138,9 @@ describe("Twilio issuer", () => {
     expect(check.reason).toContain("keypin can't confirm the vault's secret works");
     expect(check.reason).toContain("suspended");
     await expect(subject.issuer.create("app")).rejects.toThrow("checkAccount hasn't passed");
-    await expect(subject.issuer.revoke(APP_SID)).rejects.toThrow("checkAccount hasn't passed");
+    await expect(subject.issuer.revoke(APP_SID, new Secret(APP_SECRET))).rejects.toThrow(
+      "checkAccount hasn't passed",
+    );
     expect(subject.effects).toEqual([]);
   });
 
@@ -164,8 +173,9 @@ describe("Twilio issuer", () => {
     await checked(twilio([APP, adminKey("main")], KEY_ADMIN));
     const restricted = twilio([APP, adminKey("restricted", MANAGE)], KEY_ADMIN);
     await checked(restricted);
-    expect(await restricted.issuer.create("app")).toMatchObject({ id: NEW_SID });
-    expect(await restricted.issuer.revoke(APP_SID)).toBe("revoked");
+    const created = await restricted.issuer.create("app");
+    expect(created.id).toBe(NEW_SID);
+    expect(await restricted.issuer.revoke(APP_SID, created.secret)).toBe("revoked");
   });
 
   test("refuses a Standard admin key, which can't manage keys", async () => {
@@ -324,36 +334,66 @@ describe("Twilio issuer", () => {
   });
 
   test("revokes by deleting the key, and a missing key is already gone", async () => {
-    const subject = twilio();
-    await checked(subject);
-    expect(await subject.issuer.revoke(APP_SID)).toBe("revoked");
+    const subject = twilio([APP, FRESH]);
+    await checked(subject, NEW_SID, FRESH.secret);
+    expect(await subject.issuer.revoke(APP_SID, FRESH_SECRET)).toBe("revoked");
     expect(subject.effects).toEqual([`twilio delete ${APP_SID}`]);
-    expect(await subject.issuer.revoke(APP_SID)).toBe("already gone");
-    expect(await subject.issuer.revoke("not-a-sid")).toBe("already gone");
+    expect(await subject.issuer.revoke(APP_SID, FRESH_SECRET)).toBe("already gone");
+    expect(await subject.issuer.revoke("not-a-sid", FRESH_SECRET)).toBe("already gone");
   });
 
   test("on resume, checks the new pair and revokes the old key", async () => {
-    const fresh: FakeTwilioKey = {
-      sid: NEW_SID,
-      secret: "new-secret-1x",
-      name: "new",
-      type: "standard",
-    };
-    const subject = twilio([APP, fresh]);
-    const check = await checked(subject, NEW_SID, "new-secret-1x");
+    const subject = twilio([APP, FRESH]);
+    const check = await checked(subject, NEW_SID, FRESH.secret);
     expect(check.currentId).toBe(NEW_SID);
-    expect(await subject.issuer.revoke(APP_SID)).toBe("revoked");
+    expect(await subject.issuer.revoke(APP_SID, FRESH_SECRET)).toBe("revoked");
+  });
+
+  test("refuses to revoke the key the vault's secret signs in with, and sends no delete", async () => {
+    const subject = twilio([APP, FRESH]);
+    await checked(subject, NEW_SID, FRESH.secret);
+    await expect(subject.issuer.revoke(NEW_SID, FRESH_SECRET)).rejects.toThrow(
+      new RevokeRefused("it's the key the vault holds"),
+    );
+    expect(subject.calls.some((c) => c.method === "DELETE")).toBe(false);
+    expect(subject.effects).toEqual([]);
+  });
+
+  test("refuses to revoke the admin key", async () => {
+    const subject = twilio([APP, FRESH, adminKey("main")], KEY_ADMIN);
+    await checked(subject, NEW_SID, FRESH.secret);
+    await expect(subject.issuer.revoke(ADMIN_SID, FRESH_SECRET)).rejects.toThrow(
+      new RevokeRefused("it's the admin key"),
+    );
+    expect(subject.calls.some((c) => c.method === "DELETE")).toBe(false);
+  });
+
+  test("a key of another account is out of reach, so revoke deletes nothing", async () => {
+    const subject = twilio([APP, FRESH, { ...APP, sid: ADMIN_SID, account: OTHER_ACCOUNT }]);
+    await checked(subject, NEW_SID, FRESH.secret);
+    expect(await subject.issuer.revoke(ADMIN_SID, FRESH_SECRET)).toBe("already gone");
+    expect(subject.calls.some((c) => c.method === "DELETE")).toBe(false);
+  });
+
+  test("has looks a key up with the admin credential, and throws when Twilio refuses it", async () => {
+    const subject = twilio([APP, FRESH]);
+    expect(await subject.issuer.has(NEW_SID)).toBe(true);
+    expect(await subject.issuer.has(`SK${"9".repeat(32)}`)).toBe(false);
+    const standard = twilio([APP, adminKey("standard")], KEY_ADMIN);
+    await expect(standard.issuer.has(APP_SID)).rejects.toThrow(
+      "Twilio GET /v1/Keys/<sid> returned HTTP 401, code 20003",
+    );
   });
 
   test("an admin key that can't delete says to delete the key by hand", async () => {
-    const subject = twilio([APP, adminKey("restricted", MANAGE)], KEY_ADMIN);
+    const subject = twilio([APP, FRESH, adminKey("restricted", MANAGE)], KEY_ADMIN);
     await checked(subject);
     const keys = subject.world
       .load()
       .keys.map((k) => (k.sid === ADMIN_SID ? { ...k, policy: MANAGE.slice(0, 2) } : k));
     subject.world.save({ keys, created: 0 });
-    await expect(subject.issuer.revoke(APP_SID)).rejects.toThrow(
-      `the admin credential can't delete API key ${APP_SID} (HTTP 403, code 70051): delete it at`,
+    await expect(subject.issuer.revoke(NEW_SID, new Secret(APP_SECRET))).rejects.toThrow(
+      `the admin credential can't delete API key ${NEW_SID} (HTTP 403, code 70051): delete it at`,
     );
   });
 
@@ -361,7 +401,9 @@ describe("Twilio issuer", () => {
     const subject = twilio();
     await refused(subject, APP_SID, "wrong");
     await expect(subject.issuer.create("app")).rejects.toThrow("checkAccount");
-    await expect(subject.issuer.revoke(APP_SID)).rejects.toThrow("checkAccount");
+    await expect(subject.issuer.revoke(APP_SID, new Secret(APP_SECRET))).rejects.toThrow(
+      "checkAccount",
+    );
   });
 });
 

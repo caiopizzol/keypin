@@ -25,9 +25,10 @@ permission = "sending_access"
 `rotate` uses the `production` profile, or the last profile; `--profile <name>` picks another. After you answer `y`
 to its plan, it creates the key, saves it to your vault with today's rotated date, and publishes it to its
 [destinations](publishing.md#destinations). It revokes the old key after a second `y`, and only if every destination
-got the new one. For a key with no destinations, check what reads it before the old one goes: the plan lists only
-workflows that run `secretspec run`, not a call inside a script. `keypin --help` covers `--plan`, `--discard` and
-rerunning a failed rotation. To rotate on a schedule, see [Scheduled rotation](scheduled-rotation.md).
+got the new one. A first Resend rotation leaves the old key: delete it at Resend once nothing uses it. For a key
+with no destinations, check what reads it before the old one goes: the plan lists only workflows that run
+`secretspec run`, not a call inside a script. `keypin --help` covers `--plan`, `--discard` and rerunning a failed
+rotation. To rotate on a schedule, see [Scheduled rotation](scheduled-rotation.md).
 
 Without an issuer, rotate by hand:
 

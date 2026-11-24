@@ -24,3 +24,6 @@ secretspec run -- npm run dev
 
 `secretspec run` starts the command with the `default` profile's keys as environment variables. For `wrangler dev`, see
 [Troubleshooting](../reference/troubleshooting.md#wrangler-dev).
+
+secretspec refuses a coding agent that gives no reason: it adds `--reason "<why>"` to `import`, `run` or `get`, or
+sets `SECRETSPEC_REASON`.

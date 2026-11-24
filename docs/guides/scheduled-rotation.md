@@ -14,19 +14,24 @@ another vault, see [Other vaults](#other-vaults).
    `environment:` from the workflow, `--env rotation` from the command below, and `environment = "rotation"` from
    step 7's publish targets.
 3. Create a service account with write access to that vault, and save its token as the secret
-   `OP_SERVICE_ACCOUNT_TOKEN` in `rotation`. 1Password shows the token only once; this saves it without printing it:
+   `OP_SERVICE_ACCOUNT_TOKEN` in `rotation`. By default, only 1Password owners and administrators can create one;
+   anyone else needs them to
+   [grant access](https://www.1password.dev/service-accounts/manage-service-accounts#manage-who-can-create-service-accounts).
+   1Password shows the token only once; this saves it without printing it:
 
    ```sh
-   op service-account create "acme-web rotation" --vault "Acme:read_items,write_items" --expires-in 365d --raw |
+   op service-account create "acme-web rotation" --vault "Acme:read_items,write_items" --expires-in 89d --raw |
      gh secret set OP_SERVICE_ACCOUNT_TOKEN --env rotation -R acme/web
    ```
 
-   With `--expires-in`, [set a reminder](service-accounts.md#expiry) to make a new one before that day. Admin keys
-   stay in the vault, not in repo secrets.
+   1Password allows `--expires-in` only under 90 days, and keypin can't read when it ends, so
+   [set a reminder](service-accounts.md#expiry) to replace the token before then. Without `--expires-in`, the token
+   keeps write access to the vault until you delete it. Admin keys stay in the vault, not in repo secrets.
 
 4. Create a fine-grained GitHub token for this repository only, with the Secrets permission set to Read and write,
    and save it as the secret `KEYPIN_GITHUB_TOKEN` in `rotation`. Keys published to an environment also need
-   Environments set to Read and write. The workflow's own `GITHUB_TOKEN` can't write secrets.
+   Environments set to Read and write. Neither the workflow's own `GITHUB_TOKEN` nor a GitHub App installation token
+   works: keypin checks which account a token belongs to, and GitHub answers that only for a person's token.
 5. Add the workflow below as `.github/workflows/rotate-keys.yml`, pinned to the keypin version you run on your
    laptop. It runs daily at 06:17 UTC; change the
    [schedule](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)

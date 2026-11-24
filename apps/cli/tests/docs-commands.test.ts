@@ -25,10 +25,11 @@ const USAGE_LINE = /^ {2}keypin (\S+)(.*)$/;
 const FIX = "Fix the doc, or the usage text in apps/cli/src/cli.ts.";
 
 const commands = new Map<string, Set<string>>();
-const globals = new Set<string>(["--help"]);
+const HELP = new Set(["--help", "-h"]);
+const topLevel = new Set<string>([...HELP, "help", "-v"]);
 for (const line of USAGE.split("\n")) {
   const [, first = "", rest = ""] = USAGE_LINE.exec(line) ?? [];
-  if (first.startsWith("-")) globals.add(first);
+  if (first.startsWith("-")) topLevel.add(first);
   else if (first) commands.set(first, new Set([...(commands.get(first) ?? []), ...flagsIn(rest)]));
 }
 
@@ -38,8 +39,20 @@ function flagsIn(text: string): string[] {
 
 type Invocation = { line: number; command: string; flags: string[] };
 
+function joined(text: string): { offset: number; row: string }[] {
+  const rows: { offset: number; row: string }[] = [];
+  let open = false;
+  text.split("\n").forEach((row, offset) => {
+    const last = rows.at(-1);
+    if (open && last) last.row = `${last.row.slice(0, -1)} ${row}`;
+    else rows.push({ offset, row });
+    open = row.endsWith("\\");
+  });
+  return rows;
+}
+
 function invocations(text: string, line: number): Invocation[] {
-  return text.split("\n").flatMap((row, offset) =>
+  return joined(text).flatMap(({ offset, row }) =>
     row
       .replace(/(^|\s)#.*$/, "")
       .replace(/^\s*-?\s*run:/, "")
@@ -81,13 +94,15 @@ function found(markdown: string): Invocation[] {
 
 function problems(file: string, markdown: string): string[] {
   return found(markdown).flatMap(({ line, command, flags }) => {
-    const any = PLACEHOLDER.test(command) || command.startsWith("-");
-    const known = any ? new Set<string>() : commands.get(command);
+    const top = command === "help" || command.startsWith("-");
+    const any = top || PLACEHOLDER.test(command);
+    const own = commands.get(command);
+    const known = top ? topLevel : any ? HELP : own && new Set([...own, ...HELP]);
     if (known === undefined)
       return [`${file}:${line} runs keypin ${command}, a command keypin doesn't have. ${FIX}`];
     const named = any ? "keypin" : `keypin ${command}`;
     return flags
-      .filter((flag) => !globals.has(flag) && !known.has(flag))
+      .filter((flag) => !known.has(flag))
       .map((flag) => `${file}:${line} runs ${named} ${flag}, a flag ${named} doesn't have. ${FIX}`);
   });
 }
@@ -103,7 +118,7 @@ describe("keypin commands in the docs", () => {
       "status",
       "unregister",
     ]);
-    expect([...globals].sort()).toEqual(["--help", "--version"]);
+    expect([...topLevel].sort()).toEqual(["--help", "--version", "-h", "-v", "help"]);
     expect(docs.flatMap(({ markdown }) => found(markdown)).length).toBeGreaterThanOrEqual(60);
   });
 
@@ -119,6 +134,9 @@ describe("keypin commands in the docs", () => {
       "keypin init",
       "npx keypin@latest status --bogus # comment --ignored",
       "npm install -g keypin && keypin run -- node app.js",
+      "keypin rotate API_KEY \\",
+      "  --profile prod \\",
+      "  --force",
       "```",
       "",
       "```yaml",
@@ -126,6 +144,7 @@ describe("keypin commands in the docs", () => {
       "```",
       "",
       "`keypin <command> --force`, `keypin --help`, `keypin check --json`, `git config user.name keypin`",
+      "`keypin help`, `keypin status -h`, `keypin -v`, `keypin status --version`",
     ].join("\n");
     expect(problems("page.md", markdown).map((problem) => problem.replace(` ${FIX}`, ""))).toEqual([
       "page.md:1 runs keypin import, a command keypin doesn't have.",
@@ -133,8 +152,10 @@ describe("keypin commands in the docs", () => {
       "page.md:4 runs keypin init, a command keypin doesn't have.",
       "page.md:5 runs keypin status --bogus, a flag keypin status doesn't have.",
       "page.md:6 runs keypin run, a command keypin doesn't have.",
-      "page.md:10 runs keypin rotate --all, a flag keypin rotate doesn't have.",
-      "page.md:13 runs keypin --force, a flag keypin doesn't have.",
+      "page.md:7 runs keypin rotate --force, a flag keypin rotate doesn't have.",
+      "page.md:13 runs keypin rotate --all, a flag keypin rotate doesn't have.",
+      "page.md:16 runs keypin --force, a flag keypin doesn't have.",
+      "page.md:17 runs keypin status --version, a flag keypin status doesn't have.",
     ]);
   });
 });

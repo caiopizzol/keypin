@@ -1122,7 +1122,7 @@ describe("keypin rotate in a real terminal", () => {
       );
       expect(result.effects).toHaveLength(4);
       expect(result.effects[0]).toMatch(
-        /^google create projects\/481537286014\/locations\/global\/keys\/google-maps-api-key-prod-[\d-]+-[0-9a-f]{6} "GOOGLE_MAPS_API_KEY prod [\d-]+ [\d:]+ [0-9a-f]{6}" with \{"apiTargets":\[\{"service":"maps-backend\.googleapis\.com"\}\],"browserKeyRestrictions":\{"allowedReferrers":\["https:\/\/acme\.example\/\*","\*\.acme\.example\/\*"\]\}\}$/,
+        /^google create projects\/481537286014\/locations\/global\/keys\/billing-google-maps-api-key-prod-[\dt-]+z-[0-9a-f]{6} "billing GOOGLE_MAPS_API_KEY prod \d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z [0-9a-f]{6}" with \{"apiTargets":\[\{"service":"maps-backend\.googleapis\.com"\}\],"browserKeyRestrictions":\{"allowedReferrers":\["https:\/\/acme\.example\/\*","\*\.acme\.example\/\*"\]\}\}$/,
       );
       expect(result.effects.slice(1)).toEqual([
         "1password update my.1password.com/Private/maps api key (26 chars)",
@@ -1294,7 +1294,7 @@ describe("keypin rotate in a real terminal", () => {
       });
       expect(result.exit).toBe(1);
       expect(result.screen).toMatch(
-        /^Stopped: keypin didn't get the new key back\. OpenAI may have made the key before the reply was lost\. Only this run uses the name "OPENAI_API_KEY prod \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [0-9a-f]{6}": delete a key with that name in project billing at https:\/\/platform\.openai\.com\/settings\/organization\/api-keys before you run this again, or the rerun leaves it live\.$/m,
+        /^Stopped: keypin didn't get the new key back\. OpenAI may have made the key before the reply was lost\. Only this run uses the name "billing OPENAI_API_KEY prod \d{4}-\d{2}-\d{2}T\d{2}:\d{2}Z [0-9a-f]{6}": delete a key with that name in project billing at https:\/\/platform\.openai\.com\/settings\/organization\/api-keys before you run this again, or the rerun leaves it live\.$/m,
       );
       expect(result.effects).toEqual(["openai create key_new1 for svc_verify"]);
       clean(result);
@@ -1590,7 +1590,7 @@ describe("keypin rotate in a real terminal", () => {
       });
       expect(result.exit).toBe(1);
       expect(result.screen).toMatch(
-        /^Stopped: keypin didn't get the new key back\. Resend may have made the key before the reply was lost\. Only this run uses the name "RESEND_API_KEY prod \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [0-9a-f]{6}": delete a key with that name at https:\/\/resend\.com\/api-keys before you run this again, or the rerun leaves it live\.$/m,
+        /^Stopped: keypin didn't get the new key back\. Resend may have made the key before the reply was lost\. Only this run uses the name "billing RESEND_API_KEY prod \d{4}-\d{2}-\d{2}T\d{2}:… [0-9a-f]{6}": delete a key with that name at https:\/\/resend\.com\/api-keys before you run this again, or the rerun leaves it live\.$/m,
       );
       expect(result.screen).not.toContain("Nothing was created");
       expect(result.effects).toEqual(["resend create re-new-1"]);

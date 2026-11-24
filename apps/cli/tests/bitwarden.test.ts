@@ -250,7 +250,7 @@ describe("keypin with Bitwarden Secrets Manager", () => {
   test("rotate saves the new key in the secret, with today in its note", async () => {
     const run = project({ map: ISSUER_MAP });
     expect(await cli(["rotate", "STRIPE_API_KEY"], run.deps)).toBe(0);
-    expect(run.issued).toEqual(["create STRIPE_API_KEY prod 2026-11-09 12:00:00 a1b2c3"]);
+    expect(run.issued).toEqual(["create billing STRIPE_API_KEY prod 2026-11-09T12:00Z a1b2c3"]);
     expect(run.store.effects).toEqual(["bitwarden update STRIPE_API_KEY"]);
     expect(run.store.load()[0]).toMatchObject({
       value: ISSUED,

@@ -41,6 +41,7 @@ export {
 } from "./destination";
 export {
   connectIssuer,
+  fitKeyName,
   type IssuerKind,
   type IssuerKinds,
   type IssuerReader,

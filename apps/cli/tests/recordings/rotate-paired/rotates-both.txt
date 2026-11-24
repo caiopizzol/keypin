@@ -76,7 +76,7 @@ Plan
   - Keys                  revoke the old key AKID-0, after a second y
   GitHub acme/api gets API_SECRET and API_KEY_ID one write after the other; a run that starts between them reads a mismatched pair. Pause new runs there until the rotation finishes.
 
-ok     Keys  created API_SECRET prod 2026-11-09 12:00:00 a1b2c3 (AKID-1)
+ok     Keys  created billing API_SECRET prod 2026-11-09T12:00Z a1b2c3 (AKID-1)
 ok     1Password  op://Private/api secret/credential  saved, rotated 2026-11-09
 ok     1Password  op://Private/api key id/credential  saved, rotated 2026-11-09
 ok     Cloudflare  api       wrote API_SECRET, API_KEY_ID in one version

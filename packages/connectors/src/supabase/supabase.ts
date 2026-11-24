@@ -1,5 +1,6 @@
 import {
   type Fetch,
+  fitKeyName,
   type IssuedKey,
   type Issuer,
   type IssuerCheck,
@@ -250,13 +251,11 @@ function secretKeys(body: unknown): Listed[] {
 }
 
 function fitName(name: string): string {
-  const words = name
+  const words = fitKeyName(name, NAME_LIMIT - 1)
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
-  return words.length < NAME_LIMIT && /^[a-z]/.test(words)
-    ? words
-    : `_${words.slice(-(NAME_LIMIT - 1))}`;
+  return /^[a-z]/.test(words) ? words : `_${words}`;
 }
 
 function failure(

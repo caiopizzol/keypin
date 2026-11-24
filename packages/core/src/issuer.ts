@@ -60,3 +60,10 @@ export function readsAdminExpiry(kinds: IssuerKinds, spec: IssuerSpec): boolean 
 export function idKeyOf(kinds: readonly IssuerRules[], spec: IssuerSpec): KeyId | null {
   return kinds.find((k) => k.kind === spec.kind)?.idKey?.(spec) ?? null;
 }
+
+export function fitKeyName(name: string, limit: number): string {
+  if (name.length <= limit) return name;
+  const space = name.lastIndexOf(" ");
+  const runTag = space > 0 && name.length - space < limit / 2 ? name.slice(space) : "";
+  return `${name.slice(0, limit - runTag.length - 1).trimEnd()}…${runTag}`;
+}

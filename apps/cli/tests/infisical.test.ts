@@ -404,7 +404,7 @@ describe("keypin with Infisical", () => {
   test("rotate saves the new key to the Infisical secret and never signs in to 1Password", async () => {
     const run = project({ map: ISSUER_MAP, env: { KEYPIN_1PASSWORD: "service-account" } });
     expect(await cli(["rotate", "STRIPE_API_KEY"], run.deps)).toBe(0);
-    expect(run.issued).toEqual(["create STRIPE_API_KEY prod 2026-11-09 12:00:00 a1b2c3"]);
+    expect(run.issued).toEqual(["create billing STRIPE_API_KEY prod 2026-11-09T12:00Z a1b2c3"]);
     expect(run.store.effects).toEqual(["infisical update billing/prod/STRIPE_API_KEY"]);
     expect(run.store.load()[0]?.secret).toEqual({ value: ISSUED, rotated: "2026-11-09" });
     expect(run.destinations.log).toEqual([
@@ -439,7 +439,7 @@ describe("keypin with Infisical", () => {
     test("keeps the new key, doesn't say to delete it, and exits 3", async () => {
       const { infisical, held, code } = await heldRotation();
       expect(code).toBe(3);
-      expect(held.issued).toEqual(["create STRIPE_API_KEY prod 2026-11-09 12:00:00 a1b2c3"]);
+      expect(held.issued).toEqual(["create billing STRIPE_API_KEY prod 2026-11-09T12:00Z a1b2c3"]);
       expect(held.store.effects.at(-1)).toBe("infisical hold update billing/prod/STRIPE_API_KEY");
       expect(infisical.heldByPolicy?.[0]?.secret.value).toBe(SECOND);
       expect(held.stderr.text).toContain("Infisical holds the change for approval");

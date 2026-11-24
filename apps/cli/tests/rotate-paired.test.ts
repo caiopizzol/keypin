@@ -87,7 +87,7 @@ function pairedIssuer(options: IssuerOptions) {
       made.count++;
       const id = `AKID-${made.count}`;
       live.add(id);
-      log.push(`create ${name.split(" ")[0]} -> ${id}`);
+      log.push(`create ${name.split(" ")[1]} -> ${id}`);
       return { id, secret: new Secret(NEW(made.count)) };
     },
     async revoke(id) {

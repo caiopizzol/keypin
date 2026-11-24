@@ -228,19 +228,23 @@ describe("create", () => {
   test("creates a secret key with a name Supabase accepts and reveals its value", async () => {
     const { issuer, requests, world, effects } = supabase();
     await issuer.checkAccount(null, new Secret(BACKEND));
-    const created = await issuer.create("SUPABASE_SECRET_KEY prod 2026-11-16 21:49:07 a1b2c3");
+    const created = await issuer.create("web SUPABASE_SECRET_KEY prod 2026-11-16T21:49Z a1b2c3");
     expect(created.id).toBe("key-new-1");
     expect(created.secret.reveal()).toBe(`${PREFIX}1_c4e1`);
     expect(requests.at(-1)).toBe(`POST /v1/projects/${REF}/api-keys?reveal=true`);
     expect(world.load().keys.at(-1)?.name).toBe(
-      "supabase_secret_key_prod_2026_11_16_21_49_07_a1b2c3",
+      "web_supabase_secret_key_prod_2026_11_16t21_49z_a1b2c3",
     );
     expect(effects).toEqual(["supabase create key-new-1"]);
   });
 
   test.each([
     ["9_KEYS prod", "_9_keys_prod"],
-    [`${"H".repeat(40)}${"T".repeat(40)}`, `_${"h".repeat(23)}${"t".repeat(40)}`],
+    [
+      "orbit-ci PULLFROG_OPENAI_API_KEY production 2026-11-24T16:12Z 668dbf",
+      "orbit_ci_pullfrog_openai_api_key_production_2026_11_24t_668dbf",
+    ],
+    [`${"9".repeat(70)} a1b2c3`, `_${"9".repeat(55)}_a1b2c3`],
   ])("fits %s to Supabase's name rules", async (name, fitted) => {
     const { issuer, world } = supabase();
     await issuer.checkAccount(null, new Secret(BACKEND));

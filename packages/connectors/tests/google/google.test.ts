@@ -396,6 +396,9 @@ describe("key IDs", () => {
     const id = keyIdOf(`${"İ".repeat(30)} KEY prod 2026-11-17T12:00Z a1b2c3`);
     expect(id).toMatch(/^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/);
     expect(id.endsWith("-a1b2c3")).toBe(true);
+    expect(keyIdOf(`${"İ".repeat(24)} KEY prod 2026-11-17T12:00Z a1b2c3`)).toMatch(
+      /^[i-]+-2026-11-17t12-00z-a1b2c3$/,
+    );
   });
 });
 

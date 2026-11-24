@@ -1,6 +1,6 @@
 # Rotating a key
 
-`keypin rotate <VARIABLE>` makes a new key at the provider, publishes it, and revokes the old one after you approve.
+`keypin rotate <VARIABLE>` makes a new key at the provider and publishes it to the key's destinations.
 
 Add an `issuer` to the key's `[tool.keypin.<profile>.<KEY>]` table so keypin can make the new key, at Resend,
 [Neon](#neon), [OpenAI](#openai), [Supabase](#supabase), [Cloudflare](#cloudflare), [OpenRouter](#openrouter),

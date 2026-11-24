@@ -2074,7 +2074,7 @@ describe("keypin check's prerequisites", () => {
     [
       "no-wrangler",
       "not installed",
-      "install wrangler in the project (npm i -D wrangler), then run wrangler login, or set KEYPIN_CLOUDFLARE_API_TOKEN",
+      "install wrangler in the project (npm i -D wrangler), then run npx wrangler login, or set KEYPIN_CLOUDFLARE_API_TOKEN",
     ],
     [
       "old-wrangler",
@@ -2115,6 +2115,8 @@ describe("keypin check's prerequisites", () => {
     const bare = `name = "billing-worker"\naccount_id = "${ACCOUNT}"\n`;
     expect(await cloudflare(TEMPLATE, bare)).toEqual({ signIn: false, reads: [] });
     expect((await cloudflare(PUBLISHED, bare)).signIn).toBe(true);
+    const noAccount = `name = "billing-worker"\n\n[secrets]\nrequired = ["RESEND_API_KEY"]\n`;
+    expect(await cloudflare(TEMPLATE, noAccount)).toEqual({ signIn: false, reads: [] });
   });
 
   test("nothing to list once the logins exist and a vault item was read", async () => {

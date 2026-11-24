@@ -32,9 +32,13 @@ async function signInPrerequisites(signIn: CloudflareSignIn): Promise<Prerequisi
         {
           ...step,
           status: "not installed",
-          fix: `install wrangler ${failed.install}, then run wrangler login, or set ${API_TOKEN_VARIABLE}`,
+          fix: `install wrangler ${failed.advice.install}, then run ${failed.advice.login}, or set ${API_TOKEN_VARIABLE}`,
           title: "Install wrangler and sign in to Cloudflare",
-          body: [`Install wrangler ${failed.install}, then run:`, "  wrangler login", or],
+          body: [
+            `Install wrangler ${failed.advice.install}, then run:`,
+            `  ${failed.advice.login}`,
+            or,
+          ],
         },
       ];
     if (kind === "not-logged-in")

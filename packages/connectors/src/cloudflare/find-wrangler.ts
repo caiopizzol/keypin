@@ -2,15 +2,30 @@ import { access, constants, readdir } from "node:fs/promises";
 import { delimiter, dirname, join, relative, resolve, sep } from "node:path";
 import { WRANGLER_FILES } from "./wrangler";
 
-const NPM = "npm i -D wrangler";
-const PNPM = "pnpm add -D wrangler";
-export const INSTALL_IN_PROJECT = `in the project (${NPM})`;
+export interface InstallAdvice {
+  readonly install: string;
+  readonly login: string;
+}
 
-const LOCKFILES: readonly (readonly [string, string])[] = [
+interface Manager {
+  readonly add: string;
+  readonly run: string;
+}
+
+const NPM: Manager = { add: "npm i -D wrangler", run: "npx wrangler" };
+const PNPM: Manager = { add: "pnpm add -D wrangler", run: "pnpm exec wrangler" };
+const BUN: Manager = { add: "bun add -d wrangler", run: "bunx wrangler" };
+
+export const INSTALL_IN_PROJECT: InstallAdvice = {
+  install: `in the project (${NPM.add})`,
+  login: `${NPM.run} login`,
+};
+
+const LOCKFILES: readonly (readonly [string, Manager])[] = [
   ["pnpm-lock.yaml", PNPM],
-  ["yarn.lock", "yarn add -D wrangler"],
-  ["bun.lock", "bun add -d wrangler"],
-  ["bun.lockb", "bun add -d wrangler"],
+  ["yarn.lock", { add: "yarn add -D wrangler", run: "yarn wrangler" }],
+  ["bun.lock", BUN],
+  ["bun.lockb", BUN],
   ["package-lock.json", NPM],
 ];
 
@@ -20,11 +35,7 @@ export async function configFolders(folder: string): Promise<string[]> {
     const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
     if (entries.some((entry) => entry.isFile() && WRANGLER_FILES.includes(entry.name)))
       found.push(dir);
-    const folders = entries
-      .filter((e) => e.isDirectory() && e.name !== "node_modules" && !e.name.startsWith("."))
-      .map((e) => e.name)
-      .sort();
-    for (const name of folders) await visit(join(dir, name));
+    for (const name of await folders(dir)) await visit(join(dir, name));
   };
   await visit(folder);
   return found;
@@ -42,6 +53,7 @@ export async function wranglers(
       .split(delimiter)
       .filter(Boolean)
       .map((dir) => resolve(dir, "wrangler")),
+    ...(await workspaces(folder)).map((dir) => join(dir, "node_modules", ".bin", "wrangler")),
   ];
   const found: string[] = [];
   for (const candidate of new Set(candidates))
@@ -53,20 +65,45 @@ export async function findWrangler(folder: string, path: string): Promise<string
   return (await wranglers(folder, path, await configFolders(folder)))[0] ?? null;
 }
 
-export async function installAdvice(folder: string, configs: readonly string[]): Promise<string> {
+export async function installAdvice(
+  folder: string,
+  configs: readonly string[],
+): Promise<InstallAdvice> {
   let at = shared(configs) ?? folder;
   while (at !== folder && !(await exists(join(at, "package.json")))) at = dirname(at);
-  const command = await lockfileCommand(at);
-  const workspace = command === PNPM && (await exists(join(at, "pnpm-workspace.yaml")));
-  return `in ${at === folder ? "the project" : relative(folder, at)} (${workspace ? "pnpm add -D -w wrangler" : command})`;
+  const manager = await lockfileManager(at);
+  const workspace = manager === PNPM && (await exists(join(at, "pnpm-workspace.yaml")));
+  const where = at === folder ? null : relative(folder, at);
+  return {
+    install: `in ${where ?? "the project"} (${workspace ? "pnpm add -D -w wrangler" : manager.add})`,
+    login: `${where === null ? "" : `cd ${where} && `}${manager.run} login`,
+  };
 }
 
-async function lockfileCommand(from: string): Promise<string> {
+async function lockfileManager(from: string): Promise<Manager> {
   for (let dir = from; ; dir = dirname(dir)) {
-    for (const [lockfile, command] of LOCKFILES)
-      if (await exists(join(dir, lockfile))) return command;
+    for (const [lockfile, manager] of LOCKFILES)
+      if (await exists(join(dir, lockfile))) return manager;
     if (dirname(dir) === dir) return NPM;
   }
+}
+
+async function workspaces(folder: string): Promise<string[]> {
+  const found: string[] = [];
+  for (const group of await folders(folder)) {
+    found.push(join(folder, group));
+    for (const member of await folders(join(folder, group)))
+      found.push(join(folder, group, member));
+  }
+  return found;
+}
+
+async function folders(dir: string): Promise<string[]> {
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  return entries
+    .filter((e) => e.isDirectory() && e.name !== "node_modules" && !e.name.startsWith("."))
+    .map((e) => e.name)
+    .sort();
 }
 
 function upward(from: string, to: string | null): string[] {

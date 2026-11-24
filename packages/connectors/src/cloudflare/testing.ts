@@ -92,7 +92,7 @@ export function fakeSignIn(
 ): CloudflareSignIn {
   if (state === "oauth" || state === "api-token") return { via: state, token: async () => token };
   const messages: Record<SignInProblem, string> = {
-    "no-wrangler": `keypin can't find wrangler in the project's node_modules or on PATH; install it ${INSTALL_IN_PROJECT} and run wrangler login, or set ${API_TOKEN_VARIABLE}`,
+    "no-wrangler": `keypin can't find wrangler in the project's node_modules or on PATH; install it ${INSTALL_IN_PROJECT.install} and run ${INSTALL_IN_PROJECT.login}, or set ${API_TOKEN_VARIABLE}`,
     "old-wrangler": `wrangler 4.20.0 can't give keypin its login; upgrade wrangler to ${FIRST_AUTH_TOKEN} or later`,
     "not-logged-in": `wrangler isn't signed in; run wrangler login, or set ${API_TOKEN_VARIABLE}`,
     failed:

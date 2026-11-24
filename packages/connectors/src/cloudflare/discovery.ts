@@ -76,7 +76,7 @@ export const wranglerDiscovery: Discovery<WranglerHost> = {
     }
     const discovered = {
       files: used,
-      used: workers.some((worker) => needsSecrets(worker, project)),
+      used: workers.some((worker) => worker.read !== null),
       about: null,
       report: {},
       needs: (view: MapView) => {

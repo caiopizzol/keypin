@@ -3,7 +3,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { devNull, tmpdir } from "node:os";
 import { join } from "node:path";
 import { isRecord, withoutSignIn } from "@keypin/core";
-import { configFolders, INSTALL_IN_PROJECT, installAdvice, wranglers } from "./find-wrangler";
+import {
+  configFolders,
+  INSTALL_IN_PROJECT,
+  type InstallAdvice,
+  installAdvice,
+  wranglers,
+} from "./find-wrangler";
 
 export const API_TOKEN_VARIABLE = "KEYPIN_CLOUDFLARE_API_TOKEN";
 export const FIRST_AUTH_TOKEN = "4.57.0";
@@ -23,12 +29,12 @@ export type SignInProblem = "no-wrangler" | "old-wrangler" | "not-logged-in" | "
 
 export class CloudflareSignInFailed extends Error {
   readonly kind: SignInProblem;
-  readonly install: string;
+  readonly advice: InstallAdvice;
 
-  constructor(message: string, kind: SignInProblem, install = INSTALL_IN_PROJECT) {
+  constructor(message: string, kind: SignInProblem, advice = INSTALL_IN_PROJECT) {
     super(message);
     this.kind = kind;
-    this.install = install;
+    this.advice = advice;
   }
 }
 
@@ -74,11 +80,11 @@ async function oauthToken(options: SignInOptions): Promise<string> {
   const configs = await configFolders(options.folder);
   const found = await wranglers(options.folder, options.env.PATH ?? "", configs);
   if (!found.length) {
-    const install = await installAdvice(options.folder, configs);
+    const advice = await installAdvice(options.folder, configs);
     throw new CloudflareSignInFailed(
-      `keypin can't find wrangler in the project's node_modules or on PATH; install it ${install} and run wrangler login, or set ${API_TOKEN_VARIABLE}`,
+      `keypin can't find wrangler in the project's node_modules or on PATH; install it ${advice.install} and run ${advice.login}, or set ${API_TOKEN_VARIABLE}`,
       "no-wrangler",
-      install,
+      advice,
     );
   }
   const logs = await mkdtemp(join(tmpdir(), "keypin-wrangler-"));

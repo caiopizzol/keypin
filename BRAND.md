@@ -126,7 +126,8 @@ Essence: one key, changed everywhere.
 The name is always lowercase: keypin.
 
 A narrated film may say keypin "uses a map", as a spoken metaphor for `secretspec.toml`, with the file's name on
-screen. Written copy always says `secretspec.toml`.
+screen. Its captions and transcript follow the narration word for word; all other written copy says
+`secretspec.toml`.
 
 ### Tonal Rules
 

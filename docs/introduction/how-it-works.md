@@ -15,16 +15,14 @@ flowchart LR
 
 Give a key an `issuer`, such as Resend, Neon or OpenAI, and `keypin rotate` creates a new key at the provider,
 saves it to your vault and publishes it to each destination `secretspec.toml` lists for that key and profile. Its
-plan says whether keypin revokes the old key after a second `y`, or leaves it for you to delete, as on a first
-Resend rotation. See [Rotating a key](../guides/rotating-a-key.md).
+plan says whether it revokes the old key after a second `y`. See [Rotating a key](../guides/rotating-a-key.md).
 
 `keypin status` shows which keys are due, in every project. [Scheduled rotation](../guides/scheduled-rotation.md)
 rotates them in your GitHub Actions.
 
 ## Your vault holds the values
 
-Each value is kept once, in your vault. keypin reads it only while `publish` or `rotate` needs it. A rotated date on
-the secret tells keypin when the key is due.
+Each value is kept once, in your vault. A rotated date on the secret tells keypin when the key is due.
 
 ## secretspec.toml holds names and places
 
@@ -55,8 +53,7 @@ publish = [{ to = "github-actions", repo = "me/billing" }]
 
 Here `STRIPE_KEY` has one 1Password item per profile in the `Acme` vault, `secretspec/billing/default/STRIPE_KEY`
 and `secretspec/billing/production/STRIPE_KEY`, and the production value is published to the GitHub repo
-`me/billing`. keypin rejects a field it doesn't know and a `<...>` left in a value. Every field keypin reads is in
-[secretspec.toml](../reference/secretspec-toml.md).
+`me/billing`. Every field keypin reads is in [secretspec.toml](../reference/secretspec-toml.md).
 
 ## Profiles
 
@@ -73,5 +70,5 @@ another. Each profile reads its own vault item, so your laptop never needs the p
 ## keypin asks first
 
 `publish` and `rotate` show a plan with the account they reached at each destination. A first write, a changed
-account or a changed vault item waits for your `y`. keypin never deletes a copy it published, and keeps no value on your machine
-([Files and state](../reference/files-and-state.md)).
+account or a changed vault item waits for your `y`. keypin never deletes a copy it published, and keeps no value on
+your machine ([Files and state](../reference/files-and-state.md)).

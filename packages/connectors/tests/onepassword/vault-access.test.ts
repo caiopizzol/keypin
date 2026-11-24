@@ -28,7 +28,7 @@ function backendWith(
 }
 
 describe("notes on the vaults keypin looked up", () => {
-  test("a vault of type everyone gets one note naming its items, whatever its name", async () => {
+  test("a vault of type everyone gets one note, whatever its name", async () => {
     const { backend } = backendWith(
       [{ title: "Company", vaultType: "everyone" }],
       [inVault("Company", "a"), inVault("Company", "b")],
@@ -36,7 +36,7 @@ describe("notes on the vaults keypin looked up", () => {
     const refs = [ref("Company", "a"), ref("company", "b")];
     for (const each of refs) await backend.itemIds(each);
     expect(await backend.notes?.(refs)).toEqual([
-      "1Password vault \"Company\" (1Password account acme.1password.com) is the account's default Shared vault. A service account can't be granted it, so scheduled rotation can't read op://Company/a/password, op://company/b/password; move them to a vault you create (docs/guides/service-accounts.md)",
+      "1Password vault \"Company\" (1Password account acme.1password.com) is the account's default Shared vault. A service account can't be granted it, so scheduled rotation can't read the keys there; move them to a vault you create (docs/guides/service-accounts.md)",
     ]);
   });
 

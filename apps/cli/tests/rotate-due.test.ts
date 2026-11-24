@@ -945,7 +945,7 @@ describe("keypin rotate --check, the setup check a workflow runs before the firs
     const run = ci(w);
     expect(await run.run("--check")).toBe(1);
     expect(run.stderr.text).toContain(
-      "Note: 1Password vault \"Shared\" (1Password account my.1password.com) is the account's default Shared vault. A service account can't be granted it, so scheduled rotation can't read op://Shared/mailer resend key/credential, op://Shared/resend admin key/credential; move them to a vault you create (docs/guides/service-accounts.md)\n\nFix what failed above",
+      "Note: 1Password vault \"Shared\" (1Password account my.1password.com) is the account's default Shared vault. A service account can't be granted it, so scheduled rotation can't read the keys there; move them to a vault you create (docs/guides/service-accounts.md)\n\nFix what failed above",
     );
     expect(onePassword.calls.lists.vaults).toBe(1);
   });

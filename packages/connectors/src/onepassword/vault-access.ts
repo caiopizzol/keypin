@@ -1,7 +1,6 @@
 import {
   account,
   accountName,
-  format,
   named,
   type OnePasswordRef,
   type OnePasswordScope,
@@ -29,17 +28,14 @@ export async function sharedVaultNotes(
   refs: readonly OnePasswordRef[],
   listed: (account: string) => Promise<ListedVault[] | null>,
 ): Promise<string[]> {
-  const found = new Map<string, { vault: ListedVault; ref: OnePasswordRef; items: Set<string> }>();
+  const found = new Map<string, { vault: ListedVault; ref: OnePasswordRef }>();
   for (const ref of refs) {
     const [vault, ...more] = named((await listed(ref.account)) ?? [], ref.vault);
     if (!vault || more.length || vault.vaultType !== "everyone") continue;
-    const id = JSON.stringify([ref.account, vault.id]);
-    const seen = found.get(id) ?? { vault, ref, items: new Set<string>() };
-    seen.items.add(format(ref));
-    found.set(id, seen);
+    found.set(JSON.stringify([ref.account, vault.id]), { vault, ref });
   }
-  return [...found.values()].map(({ vault, ref, items }) => {
-    const them = items.size === 1 ? "it" : "them";
-    return `1Password vault "${vault.title}" (${account(ref)}) is the account's default Shared vault. A service account can't be granted it, so scheduled rotation can't read ${[...items].join(", ")}; move ${them} to a vault you create (docs/guides/service-accounts.md)`;
-  });
+  return [...found.values()].map(
+    ({ vault, ref }) =>
+      `1Password vault "${vault.title}" (${account(ref)}) is the account's default Shared vault. A service account can't be granted it, so scheduled rotation can't read the keys there; move them to a vault you create (docs/guides/service-accounts.md)`,
+  );
 }

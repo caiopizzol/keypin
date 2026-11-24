@@ -38,7 +38,7 @@ check github-actions:acme/billing
 --- stdout ---
 billing /work/billing · read 0 env files, 0 wrangler configs, 0 workflows
 ok     1 key, 2 destinations. Everything checks out.
-Note: 1Password vault "Shared" (1Password account my.1password.com) is the account's default Shared vault. A service account can't be granted it, so scheduled rotation can't read op://Shared/billing stripe api key/password; move it to a vault you create (docs/guides/service-accounts.md)
+Note: 1Password vault "Shared" (1Password account my.1password.com) is the account's default Shared vault. A service account can't be granted it, so scheduled rotation can't read the keys there; move them to a vault you create (docs/guides/service-accounts.md)
 
 --- stderr ---
 ok     Looked up 1 item in 1Password account my.1password.com, not the values

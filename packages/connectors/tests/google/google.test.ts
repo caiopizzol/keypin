@@ -28,7 +28,7 @@ const OLD: FakeGoogleKey = {
   displayName: "Maps web",
   restrictions: RESTRICTIONS,
 };
-const NAME = "GOOGLE_MAPS_API_KEY prod 2026-11-17 12:00:00 a1b2c3";
+const NAME = "web GOOGLE_MAPS_API_KEY prod 2026-11-17T12:00Z a1b2c3";
 
 function google(
   keys: FakeGoogleKey[] = [OLD],
@@ -91,7 +91,7 @@ describe("Google Cloud issuer", () => {
     );
     const created = await subject.issuer.create(NAME);
     expect(created.id).toBe(
-      "projects/481537286014/locations/global/keys/google-maps-api-key-prod-2026-11-17-12-00-00-a1b2c3",
+      "projects/481537286014/locations/global/keys/web-google-maps-api-key-prod-2026-11-17t12-00z-a1b2c3",
     );
     expect(created.secret.equals(new Secret(`${PREFIX}1x`))).toBe(true);
     const post = subject.requests.find((r) => r.method === "POST" && r.path.endsWith("/keys"));
@@ -100,7 +100,7 @@ describe("Google Cloud issuer", () => {
       restrictions: RESTRICTIONS,
     });
     expect(subject.issuer.label(created.id)).toBe(
-      "google-maps-api-key-prod-2026-11-17-12-00-00-a1b2c3",
+      "web-google-maps-api-key-prod-2026-11-17t12-00z-a1b2c3",
     );
   });
 
@@ -174,7 +174,7 @@ describe("Google Cloud issuer", () => {
     expect(failed).not.toBeInstanceOf(NothingChanged);
     expect(failed.message).toBe("Google Cloud hasn't finished creating the key after 60 seconds");
     expect(subject.issuer.lostCreate(NAME)).toBe(
-      'Google Cloud may have made the key, or may still be making it. Only this run uses key ID google-maps-api-key-prod-2026-11-17-12-00-00-a1b2c3 and the name "GOOGLE_MAPS_API_KEY prod 2026-11-17 12:00:00 a1b2c3": delete that key at https://console.cloud.google.com/apis/credentials?project=481537286014 before you run this again, or the rerun leaves it live.',
+      'Google Cloud may have made the key, or may still be making it. Only this run uses key ID web-google-maps-api-key-prod-2026-11-17t12-00z-a1b2c3 and the name "web GOOGLE_MAPS_API_KEY prod 2026-11-17T12:00Z a1b2c3": delete that key at https://console.cloud.google.com/apis/credentials?project=481537286014 before you run this again, or the rerun leaves it live.',
     );
   });
 
@@ -376,18 +376,29 @@ describe("Google Cloud issuer refusals", () => {
 
 describe("key IDs", () => {
   test("keypin's name becomes a valid key ID", () => {
-    expect(keyIdOf(NAME)).toBe("google-maps-api-key-prod-2026-11-17-12-00-00-a1b2c3");
+    expect(keyIdOf(NAME)).toBe("web-google-maps-api-key-prod-2026-11-17t12-00z-a1b2c3");
   });
 
-  test("a long name keeps its end, which holds the date and tag", () => {
-    const id = keyIdOf(`${"VERY_LONG_".repeat(8)}KEY prod 2026-11-17 12:00:00 a1b2c3`);
-    expect(id).toMatch(/^k-[a-z0-9-]{1,59}[a-z0-9]$/);
-    expect(id.length).toBeLessThanOrEqual(63);
-    expect(id.endsWith("2026-11-17-12-00-00-a1b2c3")).toBe(true);
+  test("a long name keeps its start, the time and the run's tag", () => {
+    expect(keyIdOf(`web ${"VERY_LONG_".repeat(8)}KEY prod 2026-11-17T12:00Z a1b2c3`)).toBe(
+      "web-very-long-very-long-very-long-ver-2026-11-17t12-00z-a1b2c3",
+    );
+    expect(keyIdOf(`9web ${"VERY_LONG_".repeat(8)} prod 2026-11-17T12:00Z a1b2c3`)).toBe(
+      "k-9web-very-long-very-long-very-long-2026-11-17t12-00z-a1b2c3",
+    );
   });
 
   test("a name that starts with a digit gets a letter first", () => {
     expect(keyIdOf("1PASSWORD_KEY dev")).toBe("k-1password-key-dev");
+  });
+
+  test("a project name that grows when lowercased still fits in 63 characters", () => {
+    const id = keyIdOf(`${"İ".repeat(30)} KEY prod 2026-11-17T12:00Z a1b2c3`);
+    expect(id).toMatch(/^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/);
+    expect(id.endsWith("-a1b2c3")).toBe(true);
+    expect(keyIdOf(`${"İ".repeat(24)} KEY prod 2026-11-17T12:00Z a1b2c3`)).toMatch(
+      /^[i-]+-2026-11-17t12-00z-a1b2c3$/,
+    );
   });
 });
 

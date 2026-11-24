@@ -1,5 +1,6 @@
 import {
   type Fetch,
+  fitKeyName,
   type IssuedKey,
   type Issuer,
   type IssuerCheck,
@@ -162,7 +163,7 @@ export class GoogleIssuer implements Issuer {
     if (typeof bearer !== "string") throw new NothingChanged(`${bearer.reason}: ${bearer.fix}`);
     const parent = `projects/${copy.project}/locations/global`;
     const body = {
-      displayName: name.slice(0, KEY_ID_LIMIT),
+      displayName: fitKeyName(name, KEY_ID_LIMIT),
       ...(Object.keys(copy.restrictions).length ? { restrictions: copy.restrictions } : {}),
     };
     const created = await this.#request("POST", `${parent}/keys?keyId=${keyIdOf(name)}`, body);
@@ -194,7 +195,7 @@ export class GoogleIssuer implements Issuer {
   }
 
   lostCreate(name: string): string {
-    return `Google Cloud may have made the key, or may still be making it. Only this run uses key ID ${keyIdOf(name)} and the name "${name.slice(0, KEY_ID_LIMIT)}": delete that key at ${this.dashboard()} before you run this again, or the rerun leaves it live.`;
+    return `Google Cloud may have made the key, or may still be making it. Only this run uses key ID ${keyIdOf(name)} and the name "${fitKeyName(name, KEY_ID_LIMIT)}": delete that key at ${this.dashboard()} before you run this again, or the rerun leaves it live.`;
   }
 
   async revoke(id: string): Promise<"revoked" | "already gone"> {
@@ -358,10 +359,11 @@ function counted(n: number, one: string, many: string): string[] {
 }
 
 export function keyIdOf(name: string): string {
-  const slug = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  if (slug.length <= KEY_ID_LIMIT && /^[a-z]/.test(slug)) return slug;
-  return `k-${slug.slice(-(KEY_ID_LIMIT - 2)).replace(/^-+/, "")}`;
+  const slug = (text: string) =>
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  const whole = fitKeyName(name, KEY_ID_LIMIT, slug);
+  return /^[a-z]/.test(whole) ? whole : `k-${fitKeyName(name, KEY_ID_LIMIT - 2, slug)}`;
 }

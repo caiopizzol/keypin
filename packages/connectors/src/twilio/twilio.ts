@@ -1,5 +1,6 @@
 import {
   type Fetch,
+  fitKeyName,
   type IssuedKey,
   type Issuer,
   type IssuerCheck,
@@ -168,7 +169,7 @@ export class TwilioIssuer implements Issuer {
     if ("facts" in admin) throw new NothingChanged(`${admin.reason}: ${admin.fix}`);
     const form: Record<string, string> = {
       AccountSid: target.account,
-      FriendlyName: friendly(name),
+      FriendlyName: fitKeyName(name, NAME_LIMIT),
       ...(target.policy === null
         ? {}
         : { KeyType: "restricted", Policy: JSON.stringify({ allow: target.policy }) }),
@@ -192,7 +193,7 @@ export class TwilioIssuer implements Issuer {
   }
 
   lostCreate(name: string): string {
-    return `Twilio may have made the key before the reply was lost. Only this run uses the name "${friendly(name)}": delete the API key with that name${this.#target ? ` in account ${this.#target.account}` : ""} at ${DASHBOARD} before you run this again, or the rerun leaves it live.`;
+    return `Twilio may have made the key before the reply was lost. Only this run uses the name "${fitKeyName(name, NAME_LIMIT)}": delete the API key with that name${this.#target ? ` in account ${this.#target.account}` : ""} at ${DASHBOARD} before you run this again, or the rerun leaves it live.`;
   }
 
   async revoke(id: string): Promise<"revoked" | "already gone"> {
@@ -284,10 +285,6 @@ function policyOf(body: Record<string, unknown>): string[] | null {
   const policy = body.policy;
   if (!isRecord(policy) || !Array.isArray(policy.allow)) return null;
   return policy.allow.filter((p): p is string => typeof p === "string");
-}
-
-function friendly(name: string): string {
-  return name.length > NAME_LIMIT ? name.slice(-NAME_LIMIT).trimStart() : name;
 }
 
 function answered(reply: Reply): string {

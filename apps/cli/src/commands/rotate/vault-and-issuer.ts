@@ -165,15 +165,12 @@ export async function checkIssuer(
 }
 
 export async function createKey(
-  { key, owner, deps, out }: Job,
+  { map, key, owner, deps, out }: Job,
   issuer: Issuer,
 ): Promise<IssuedKey | { unchanged: boolean; name: string }> {
   const where = issuer.describe();
-  const now = deps.now();
-  const time = [now.getHours(), now.getMinutes(), now.getSeconds()]
-    .map((n) => String(n).padStart(2, "0"))
-    .join(":");
-  const name = `${key.name} ${owner.environment} ${localDay(now)} ${time} ${deps.tag()}`;
+  const minute = deps.now().toISOString().slice(0, 16);
+  const name = `${map.project} ${key.name} ${owner.environment} ${minute}Z ${deps.tag()}`;
   try {
     return await out.step(
       `${where}  creating ${name}`,

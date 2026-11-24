@@ -28,7 +28,7 @@ Plan
 
 secretspec.toml publishes SESSION_SECRET (prod) nowhere, and no workflow in this repo runs secretspec run for prod. Check what uses it before you revoke the old key.
 
-ok     random  created SESSION_SECRET prod 2026-11-09 12:00:00 a1b2c3
+ok     random  created billing SESSION_SECRET prod 2026-11-09T12:00Z a1b2c3
 ok     1Password  op://Private/session secret/credential  saved, rotated 2026-11-09
 
 Rotated SESSION_SECRET (prod): the new key is in 1Password.

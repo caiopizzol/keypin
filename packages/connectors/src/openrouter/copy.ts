@@ -1,3 +1,5 @@
+import { fitKeyName } from "@keypin/core";
+
 const NAME_LIMIT = 256;
 const DAY = 86_400_000;
 
@@ -40,5 +42,5 @@ export function timestamp(ms: number): string {
 }
 
 export function fitName(name: string): string {
-  return name.length <= NAME_LIMIT ? name : `…${name.slice(name.length - NAME_LIMIT + 1)}`;
+  return fitKeyName(name, NAME_LIMIT);
 }

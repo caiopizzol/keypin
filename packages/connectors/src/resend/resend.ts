@@ -1,5 +1,6 @@
 import {
   type Fetch,
+  fitKeyName,
   type IssuedKey,
   type Issuer,
   type IssuerCheck,
@@ -12,8 +13,7 @@ import {
 const API = "https://api.resend.com";
 const NAME_LIMIT = 50;
 
-const fitName = (name: string) =>
-  name.length <= NAME_LIMIT ? name : `…${name.slice(name.length - NAME_LIMIT + 1)}`;
+const fitName = (name: string) => fitKeyName(name, NAME_LIMIT);
 const DASHBOARD = "https://resend.com/api-keys";
 const DOMAINS = "https://resend.com/domains";
 

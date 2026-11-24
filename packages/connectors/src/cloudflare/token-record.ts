@@ -1,4 +1,4 @@
-import { isRecord, objectField, type Secret } from "@keypin/core";
+import { fitKeyName, isRecord, objectField, type Secret } from "@keypin/core";
 
 export const DAY = 86_400_000;
 const NAME_LIMIT = 120;
@@ -109,5 +109,5 @@ export function timestamp(ms: number): string {
 }
 
 export function fitName(name: string): string {
-  return name.length <= NAME_LIMIT ? name : `…${name.slice(name.length - NAME_LIMIT + 1)}`;
+  return fitKeyName(name, NAME_LIMIT);
 }

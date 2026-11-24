@@ -60,3 +60,24 @@ export function readsAdminExpiry(kinds: IssuerKinds, spec: IssuerSpec): boolean 
 export function idKeyOf(kinds: readonly IssuerRules[], spec: IssuerSpec): KeyId | null {
   return kinds.find((k) => k.kind === spec.kind)?.idKey?.(spec) ?? null;
 }
+
+export function fitKeyName(
+  name: string,
+  limit: number,
+  normalize: (name: string) => string = (same) => same,
+): string {
+  if (normalize(name).length <= limit) return normalize(name);
+  const kept = [2, 1]
+    .map((count) => name.split(" ").slice(1).slice(-count).join(" "))
+    .find((end) => end && end.length < limit / 2);
+  const end = kept ? ` ${kept}` : "";
+  for (let room = limit - end.length - 1; room >= 0; room--) {
+    const start = name
+      .slice(0, room)
+      .replace(/[\uD800-\uDBFF]$/, "")
+      .trimEnd();
+    const fitted = normalize(`${start}…${end}`);
+    if (fitted.length <= limit) return fitted;
+  }
+  return normalize(end.trimStart());
+}

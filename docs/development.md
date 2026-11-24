@@ -56,8 +56,8 @@ broken link or a page keypin.dev can't build.
   `scripts/file-sizes.json` with its line count and why, so reviewers see each change to its size.
 - README.md and skills/keypin/SKILL.md grow by at most 5 lines per PR (`scripts/check-docs-growth.ts`), per
   [AGENTS.md](../AGENTS.md). Remove a line for each one you add, or add a `Docs-Growth: <reason>` trailer to a commit.
-- Every export outside a package entry point is imported somewhere, tests included, and every file and dependency
-  is used ([knip](https://knip.dev)). Remove the `export`, the file or the dependency rather than ignore it in `knip.json`.
+- Every export outside an entry file (a package entry point, a test or a script) is imported somewhere, and every
+  file and dependency is used ([knip](https://knip.dev)). Remove the `export`, the file or the dependency rather than ignore it in `knip.json`.
 
 ## Binary and npm packages
 

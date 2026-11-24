@@ -13,8 +13,8 @@ import type { Generation } from "./secret";
 import { type KeyOwner, ownedBy } from "./state";
 
 type ApprovalReason = "no receipt" | "new destination" | "account changed" | "item changed";
-export type WriteReason = ApprovalReason | "different generation";
-export type SkipReason = "receipt already has this generation";
+type WriteReason = ApprovalReason | "different generation";
+type SkipReason = "receipt already has this generation";
 
 interface Approval {
   reason: ApprovalReason;

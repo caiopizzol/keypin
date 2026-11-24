@@ -18,12 +18,12 @@ export interface SecretspecRun {
   checkouts: Checkout[];
 }
 
-export interface Checkout {
+interface Checkout {
   repository: string | null;
   path: string | null;
 }
 
-export interface SecretUse {
+interface SecretUse {
   environment: string | null;
   secrets: string[];
   fromCaller: boolean;

@@ -24,7 +24,7 @@ export interface JsonReply {
   code: string | null;
 }
 
-export function endpoint(service: string, region: string): string {
+function endpoint(service: string, region: string): string {
   return `https://${service}.${region}.amazonaws.com${region.startsWith("cn-") ? ".cn" : ""}/`;
 }
 

@@ -1,6 +1,6 @@
 import { type Fetch, isRecord, parseObject } from "@keypin/core";
 
-export const API = "https://api.cloudflare.com/client/v4";
+const API = "https://api.cloudflare.com/client/v4";
 
 export interface Reply {
   status: number;

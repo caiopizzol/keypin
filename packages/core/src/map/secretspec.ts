@@ -11,7 +11,7 @@ export const SECRETSPEC_FILE = "secretspec.toml";
 const DEFAULT = "default";
 const SCHEME = /^([a-z][a-z0-9.-]*)(?:\+[a-z0-9.-]+)?:\/\//i;
 
-export interface Declared {
+interface Declared {
   readonly profile: Environment;
   readonly name: string;
   readonly ref: KeyRef;

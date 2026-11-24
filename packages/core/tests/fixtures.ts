@@ -7,31 +7,6 @@ import type { Files, KeyEntry, Receipt } from "../src/index";
 
 export const MAP_FILE = "/work/web/secretspec.toml";
 
-export const VALID_MAP = `
-[project]
-name = "billing"
-revision = "1.0"
-
-[providers]
-vault = "onepassword://my.1password.com@Private"
-
-[defaults]
-providers = ["vault"]
-
-[profiles.dev]
-SESSION_SECRET = { description = "SESSION_SECRET", ref = { item = "web dev session secret", field = "password" } }
-
-[profiles.prod]
-SESSION_SECRET = { description = "SESSION_SECRET", ref = { item = "web prod session secret", field = "password" } }
-
-[tool.keypin.prod.SESSION_SECRET]
-rotate_every = "180d"
-publish = [
-  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "web" },
-  { to = "github-actions", repo = "acme/web" },
-]
-`;
-
 export const KEY: KeyEntry = {
   name: "STRIPE_API_KEY",
   rotateEvery: { text: "365d", days: 365 },

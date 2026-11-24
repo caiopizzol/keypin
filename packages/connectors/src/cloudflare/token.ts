@@ -17,7 +17,7 @@ const WRANGLER_CREDENTIALS = [
   "CF_EMAIL",
 ];
 
-export type SignInVia = "api-token" | "oauth";
+type SignInVia = "api-token" | "oauth";
 
 export type SignInProblem = "no-wrangler" | "old-wrangler" | "not-logged-in" | "failed";
 

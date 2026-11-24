@@ -14,7 +14,7 @@ import type {
 import type { Self } from "./self";
 import type { SignIn } from "./sign-in";
 
-export interface Child {
+interface Child {
   exited: Promise<number>;
   kill(signal: NodeJS.Signals): void;
 }
@@ -93,7 +93,7 @@ export interface Deps {
   ask(question: string): Promise<string>;
 }
 
-export interface VaultHost {
+interface VaultHost {
   readonly signIn: SignIn | null;
   readonly env: Readonly<Record<string, string | undefined>>;
 }
@@ -106,7 +106,7 @@ export interface Publisher {
   workerSignIn: WorkerSignIn | null;
 }
 
-export interface WorkerSignIn {
+interface WorkerSignIn {
   readonly via: "oauth" | "api-token";
   token(): Promise<string>;
 }

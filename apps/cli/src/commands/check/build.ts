@@ -1,4 +1,4 @@
-import { dirname } from "node:path";
+import { basename, dirname } from "node:path";
 import {
   checkId,
   findGaps,
@@ -30,7 +30,7 @@ import { versionNotes } from "../../versions";
 export async function build(
   folder: string,
   deps: Deps,
-): Promise<{ report: Report; steps: Step[]; read: string }> {
+): Promise<{ report: Report; steps: Step[]; read: string; title: string }> {
   const out = output(deps.stderr, deps.styled.stderr, deps.columns);
   const steps: Step[] = [];
   const problem = (
@@ -116,7 +116,13 @@ export async function build(
     const counts = scanned.read.map(({ noun, count: n }) => count(n, noun)).join(", ");
     const read = [`read ${counts}`, ...scanned.about].join("; ");
     const fixes = gaps?.fixes ?? [];
-    return { report, steps: plan(report, all, fixes, gaps?.providers ?? null, empty), read };
+    const name = parsed?.ok ? parsed.map.project : basename(root);
+    const title = name.replace(
+      /\p{Cc}/gu,
+      (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
+    );
+    const planned = plan(report, all, fixes, gaps?.providers ?? null, empty);
+    return { report, steps: planned, read, title };
   };
   if (!found || !parsed) {
     problem(

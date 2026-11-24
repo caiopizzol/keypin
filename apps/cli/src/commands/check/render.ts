@@ -1,4 +1,3 @@
-import { basename } from "node:path";
 import { count, type Output, tilde } from "../../output";
 import { type Report, ITEM_NOTE } from "./report";
 import { type Step } from "./steps";
@@ -7,6 +6,7 @@ export const THEN = "Then run keypin check again.";
 
 export function render(
   report: Report,
+  title: string,
   read: string,
   steps: Step[],
   out: Output,
@@ -14,7 +14,7 @@ export function render(
 ): string {
   const { bold, dim, mark } = out;
   const { notScanned } = report.read;
-  const lines = [`${bold(basename(report.folder))} ${dim(`${report.folder} · ${read}`)}`];
+  const lines = [`${bold(title)} ${dim(`${report.folder} · ${read}`)}`];
   if (notScanned.length)
     lines.push(dim(`Not scanned (own git repository): ${notScanned.join(", ")}`));
   if (steps.length) {

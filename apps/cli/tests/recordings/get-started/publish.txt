@@ -18,7 +18,7 @@ Write 1 secret? [y/N]
 
 --- stderr ---
 
-STRIPE_API_KEY production  from op://Private/secretspec/billing/production/STRIPE_API_KEY/value in 1Password's default account
+STRIPE_API_KEY production  from Private › secretspec/billing/production/STRIPE_API_KEY › value in 1Password's default account
 ok     GitHub  acme/billing  as acme, account acme
 
 ok     Read 1 value from 1Password's default account

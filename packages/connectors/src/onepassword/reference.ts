@@ -31,9 +31,12 @@ export function parse(rest: string): OnePasswordReference | string {
   };
 }
 
+const REFERABLE = /^[A-Za-z0-9 ._-]+$/;
+
 export function format(ref: OnePasswordReference): string {
   const parts = [ref.vault, ref.item, ...(ref.section === null ? [] : [ref.section]), ref.field];
-  return `${SCHEME}${parts.join("/")}`;
+  if (parts.every((part) => REFERABLE.test(part))) return `${SCHEME}${parts.join("/")}`;
+  return parts.join(" › ");
 }
 
 export function account(ref: Pick<OnePasswordRef, "account">): string {

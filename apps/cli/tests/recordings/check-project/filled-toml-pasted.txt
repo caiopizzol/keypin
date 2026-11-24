@@ -130,7 +130,7 @@ check cloudflare-worker:billing-worker
       "key": "STRIPE_API_KEY",
       "environment": "production",
       "from": {
-        "reference": "op://Private/secretspec/billing/production/STRIPE_API_KEY/value",
+        "reference": "Private › secretspec/billing/production/STRIPE_API_KEY › value",
         "ok": true,
         "problem": null
       },
@@ -152,7 +152,7 @@ check cloudflare-worker:billing-worker
       "key": "RESEND_API_KEY",
       "environment": "production",
       "from": {
-        "reference": "op://Private/secretspec/billing/production/RESEND_API_KEY/value",
+        "reference": "Private › secretspec/billing/production/RESEND_API_KEY › value",
         "ok": true,
         "problem": null
       },

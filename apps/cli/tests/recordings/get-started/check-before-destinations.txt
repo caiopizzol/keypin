@@ -20,12 +20,12 @@ billing /work/billing · read 0 env files, 1 wrangler config, 1 workflow; GitHub
 1 Sign in to Cloudflare
     wrangler login
   Or set KEYPIN_CLOUDFLARE_API_TOKEN to a Cloudflare API token.
-2 Fix the vault item op://Private/secretspec/billing/production/DATABASE_URL/value
+2 Fix the vault item Private › secretspec/billing/production/DATABASE_URL › value
   No item "secretspec/billing/production/DATABASE_URL".
   Used by DATABASE_URL (production).
   Each profile has its own items. Save the production value:
     secretspec set DATABASE_URL --profile production
-3 Fix the vault item op://Private/secretspec/billing/production/RESEND_API_KEY/value
+3 Fix the vault item Private › secretspec/billing/production/RESEND_API_KEY › value
   No item "secretspec/billing/production/RESEND_API_KEY".
   Used by RESEND_API_KEY (production).
   Each profile has its own items. Save the production value:

@@ -35,8 +35,8 @@ Without an issuer, rotate by hand:
 1. Make a new value at the provider.
 2. Save it with `secretspec set <VARIABLE> --profile production`, and set its rotated date to today. For a `ref`
    secretspec only reads, such as an
-   [AWS Secrets Manager `ref`](../integrations/vaults/aws-secrets-manager.md#addresses), change it in the vault and
-   set the date as that page says.
+   [AWS Secrets Manager `ref`](../integrations/vaults/aws-secrets-manager.md#addresses), change it in the vault,
+   keeping a JSON secret's other keys, and set the date as that page says.
 3. Run `keypin publish <VARIABLE>`.
 4. Once everything uses the new value, revoke the old one at the provider.
 

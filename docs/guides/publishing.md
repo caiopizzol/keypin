@@ -104,7 +104,8 @@ project = "acme/billing"
   project, or Owner on a group. A CI/CD job token can't change variables. keypin doesn't sign in with
   `GITLAB_TOKEN`. Add `host` for a self-managed instance, and `environment_scope` to write a project variable for
   one environment instead of `*`. A new variable is also hidden. GitLab can't hide a variable that already exists,
-  so keypin masks it and leaves its other settings, such as protected, alone. The next pipeline uses the new value.
+  so keypin masks it and leaves its other settings, such as protected, alone. GitLab masks only a value of 8 or more
+  characters without spaces or line breaks, and keypin won't write any other. The next pipeline uses the new value.
 
 ## Steps
 

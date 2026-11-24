@@ -12,11 +12,11 @@ import { describeRef, sameAccount, sameField, sameRef } from "./reference";
 import type { Generation } from "./secret";
 import { type KeyOwner, ownedBy } from "./state";
 
-export type ApprovalReason = "no receipt" | "new destination" | "account changed" | "item changed";
+type ApprovalReason = "no receipt" | "new destination" | "account changed" | "item changed";
 export type WriteReason = ApprovalReason | "different generation";
 export type SkipReason = "receipt already has this generation";
 
-export interface Approval {
+interface Approval {
   reason: ApprovalReason;
   approval: string;
 }
@@ -43,7 +43,7 @@ export interface RemovedDestination {
   lastReceipt: { generation: Generation; at: string; destinationAccount: string };
 }
 
-export interface PublishPlan {
+interface PublishPlan {
   keyId: KeyId;
   environment: Environment;
   generation: Generation;
@@ -61,7 +61,7 @@ export interface PlanInput {
   receipts: readonly Receipt[];
 }
 
-export interface ReadPlanInput extends PlanInput {
+interface ReadPlanInput extends PlanInput {
   generation: Generation;
   ids: ItemIds | null;
 }

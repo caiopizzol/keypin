@@ -6,19 +6,19 @@ export interface Credentials {
   readonly token?: string;
 }
 
-export interface Unsigned {
+interface Unsigned {
   readonly method: string;
   readonly url: string;
   readonly headers: Readonly<Record<string, string>>;
   readonly body: string;
 }
 
-export interface Scope {
+interface Scope {
   readonly region: string;
   readonly service: string;
 }
 
-export interface Signing {
+interface Signing {
   canonicalRequest: string;
   stringToSign: string;
   signature: string;
@@ -31,7 +31,7 @@ const sha256 = (data: string) => createHash("sha256").update(data, "utf8").diges
 const hmac = (key: Buffer | string, data: string) =>
   createHmac("sha256", key).update(data, "utf8").digest();
 
-export function amzDate(now: Date): string {
+function amzDate(now: Date): string {
   return now.toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
 }
 

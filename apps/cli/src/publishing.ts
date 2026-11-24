@@ -140,7 +140,7 @@ export interface Write {
   together?: Together;
 }
 
-export interface WriteJob {
+interface WriteJob {
   key: KeyEntry;
   environment: Environment;
   mapFile: string;

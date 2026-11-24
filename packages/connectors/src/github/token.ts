@@ -3,7 +3,7 @@ import { withoutSignIn } from "@keypin/core";
 
 const NO_REFRESH = "--no-refresh";
 
-export interface GhTokenOptions {
+interface GhTokenOptions {
   signIn: readonly string[];
   refresh?: boolean;
 }

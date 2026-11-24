@@ -4,7 +4,7 @@ export const TOKEN_VARIABLE = "KEYPIN_SUPABASE_ACCESS_TOKEN";
 
 export class SupabaseSignInFailed extends Error {}
 
-export interface SupabaseSignIn {
+interface SupabaseSignIn {
   token(): Promise<string>;
 }
 

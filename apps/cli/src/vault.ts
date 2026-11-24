@@ -19,7 +19,7 @@ export function closeVault(deps: { vault(): VaultBackend }): Promise<void> {
     .catch(() => undefined);
 }
 
-export type Vaults = Readonly<Record<string, () => VaultBackend>>;
+type Vaults = Readonly<Record<string, () => VaultBackend>>;
 
 export function routedVault(vaults: Vaults): VaultBackend {
   const opened = new Set<() => VaultBackend>();

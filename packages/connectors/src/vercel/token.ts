@@ -3,7 +3,7 @@ export const TOKENS_PAGE = "https://vercel.com/account/tokens";
 
 export class VercelSignInFailed extends Error {}
 
-export interface VercelSignIn {
+interface VercelSignIn {
   token(): Promise<string>;
 }
 

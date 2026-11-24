@@ -5,8 +5,8 @@ const URI = /^onepassword(\+[^:]*)?:\/\/(.*)$/is;
 const SHAPE = "onepassword://<vault>, or onepassword://<sign-in address>@<vault>";
 const REF_FIELDS = ["item", "field", "section", "vault"];
 
-export const CONVENTION_FIELD = "value";
-export const CREATED_FIELD = "password";
+const CONVENTION_FIELD = "value";
+const CREATED_FIELD = "password";
 
 export function locate({ uri, project, profile, key, ref }: SecretspecAt): OnePasswordRef | string {
   const [, variant, rest = ""] = URI.exec(uri) ?? [];

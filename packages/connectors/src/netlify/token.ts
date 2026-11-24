@@ -3,7 +3,7 @@ export const TOKENS_PAGE = "https://app.netlify.com/user/applications#personal-a
 
 export class NetlifySignInFailed extends Error {}
 
-export interface NetlifySignIn {
+interface NetlifySignIn {
   token(): Promise<string>;
 }
 

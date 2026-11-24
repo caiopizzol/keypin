@@ -3,11 +3,11 @@ import type { Credentials } from "./sigv4";
 
 export const KEY_ID = "AWS_ACCESS_KEY_ID";
 export const SECRET_KEY = "AWS_SECRET_ACCESS_KEY";
-export const SESSION_TOKEN = "AWS_SESSION_TOKEN";
+const SESSION_TOKEN = "AWS_SESSION_TOKEN";
 export const PROFILE = "AWS_PROFILE";
 export const ROLE_ARN = "KEYPIN_AWS_ROLE_ARN";
 export const AUDIENCE = "KEYPIN_AWS_AUDIENCE";
-export const DEFAULT_AUDIENCE = "sts.amazonaws.com";
+const DEFAULT_AUDIENCE = "sts.amazonaws.com";
 const CREDENTIALS_FILE = "AWS_SHARED_CREDENTIALS_FILE";
 const CONFIG_FILE = "AWS_CONFIG_FILE";
 

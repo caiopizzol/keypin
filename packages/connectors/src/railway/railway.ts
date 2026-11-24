@@ -26,7 +26,7 @@ const UPSERT = `mutation variableUpsert($input: VariableUpsertInput!) {
   variableUpsert(input: $input)
 }`;
 
-export interface RailwayVariablesOptions {
+interface RailwayVariablesOptions {
   project: string;
   environment: string;
   service: string;

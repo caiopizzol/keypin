@@ -13,7 +13,7 @@ const ACCOUNT_ID = /^[0-9a-f]{32}$/;
 const WORKER = /^[A-Za-z0-9_-]+$/;
 const DENIED = [401, 403];
 
-export interface WorkerSecretOptions {
+interface WorkerSecretOptions {
   account: string;
   worker: string;
   token: () => Promise<string>;

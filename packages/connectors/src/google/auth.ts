@@ -68,7 +68,7 @@ export function serviceAccount(admin: Secret, fix: string): ServiceAccount | Ref
   return { email, keyId, key };
 }
 
-export type AccessToken = { token: string; until: number } | Refusal;
+type AccessToken = { token: string; until: number } | Refusal;
 
 export async function accessToken(
   fetch: Fetch,
@@ -116,7 +116,7 @@ export async function accessToken(
   throw new Error(`Google POST ${TOKEN_URL} returned HTTP ${response.status}`);
 }
 
-export interface SessionOptions {
+interface SessionOptions {
   admin: () => Promise<Secret>;
   fetch: Fetch;
   now: () => Date;

@@ -3,7 +3,7 @@ export const TOKENS_PAGE = "https://fly.io/tokens";
 
 export class FlySignInFailed extends Error {}
 
-export interface FlySignIn {
+interface FlySignIn {
   token(): Promise<string>;
 }
 

@@ -7,7 +7,7 @@ import type { Table } from "./table";
 
 type Fail = (where: string, message: string) => void;
 
-export interface Tool {
+interface Tool {
   readonly keys: KeyEntry[];
   readonly ignore: readonly string[];
 }

@@ -16,7 +16,7 @@ export const REBUILD =
   "Netlify uses the new value only from the next build and deploy; redeploy to use it";
 const SCOPES = ["builds", "functions", "runtime"];
 
-export interface NetlifyEnvOptions {
+interface NetlifyEnvOptions {
   team: string;
   project: string;
   context: string;

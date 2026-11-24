@@ -46,7 +46,7 @@ const REVOKE_WAIT_MS = 5000;
 
 type Json = Record<string, unknown>;
 
-export interface DopplerOptions {
+interface DopplerOptions {
   idToken?: IdToken;
   warn?: (text: string) => void;
 }

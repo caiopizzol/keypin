@@ -4,7 +4,7 @@ export const PERMISSION = "deployment:env:write";
 
 export class ConvexSignInFailed extends Error {}
 
-export interface ConvexSignIn {
+interface ConvexSignIn {
   key(): Promise<string>;
 }
 
@@ -27,7 +27,7 @@ export function signInProblem(env: Readonly<Record<string, string | undefined>>)
   return `keypin signs in to Convex with ${TOKEN_VARIABLE}, which ${set}${ambient}. Generate a deploy key with ${PERMISSION} in the deployment's settings (${SETTINGS_PAGE}) and set ${TOKEN_VARIABLE}; keypin doesn't read the npx convex login`;
 }
 
-export type KeyKind =
+type KeyKind =
   | { kind: "deployment"; type: string; name: string }
   | { kind: "admin"; name: string }
   | { kind: "project" }

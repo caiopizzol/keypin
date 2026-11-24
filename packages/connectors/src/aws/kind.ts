@@ -19,7 +19,7 @@ export const awsIssuer: IssuerKind<AwsSpec> = {
     new AwsIssuer({ admin: async () => admin, ...(fetch === undefined ? {} : { fetch }) }),
 };
 
-export interface SecretsManagerHost {
+interface SecretsManagerHost {
   readonly env: Readonly<Record<string, string | undefined>>;
 }
 

@@ -3,7 +3,7 @@ export const TOKENS_PAGE = "https://railway.com/account/tokens";
 
 export class RailwaySignInFailed extends Error {}
 
-export interface RailwaySignIn {
+interface RailwaySignIn {
   token(): Promise<string>;
 }
 

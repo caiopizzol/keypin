@@ -153,7 +153,7 @@ export async function writeStatus(deps: Deps, map: KeysMap, keepDates: boolean):
   return true;
 }
 
-export function refsOf(maps: readonly KeysMap[]): KeyRef[] {
+function refsOf(maps: readonly KeysMap[]): KeyRef[] {
   return maps.flatMap((map) =>
     map.keys.flatMap((key) => Object.values(key.environments).flatMap((e) => (e ? [e.ref] : []))),
   );

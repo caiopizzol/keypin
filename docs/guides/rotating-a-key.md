@@ -18,37 +18,31 @@ admin = "op://Acme/resend admin key/credential"
 permission = "sending_access"
 ```
 
-- `admin`: a full-access key from the same Resend team, in its own vault item, to create and delete keys. It's a
-  reference in keypin's own syntax to one secret in the key's vault, not a provider URI; see
-  [keypin's settings](../reference/secretspec-toml.md#toolkeypin) and your vault's page.
-- `permission`: what the new key may do, `full_access` or `sending_access`. Add `domain_id` to limit a sending key
-  to one domain.
+- `admin`: a full-access key from the same Resend team, in its own vault item. It's a reference to one secret in the
+  key's vault, not a provider URI; see [keypin's settings](../reference/secretspec-toml.md#toolkeypin).
+- `permission`: `full_access` or `sending_access`. Add `domain_id` to limit a sending key to one domain.
 
-`rotate` uses the `production` profile, or the last profile; `--profile <name>` picks another. It checks every
-account, shows a plan and asks `y`. It then creates the key, saves it to your vault with today's rotated date, and
-publishes it like `keypin publish` to its [destinations](publishing.md#destinations), if it has any. For a key with
-none, the plan lists the workflows that run `secretspec run` for the profile. A listed one may not read the key,
-and a call inside a script isn't found, so check what uses the key before the old one goes. It asks a
-second `y` before it deletes the old key, and only if every destination got the new one. A rerun picks up where a
-failed or declined run stopped; if the key it made leaked, `--discard` makes a fresh one instead. When keypin doesn't know the old key's ID at the provider,
-as on a first Resend rotation, the plan says the old key stays: delete it there once nothing uses it.
-`--plan` runs the checks and shows the plan, then stops like [`publish --plan`](publishing.md#--plan). To rotate
-on a schedule in GitHub Actions, see [Scheduled rotation](scheduled-rotation.md).
+`rotate` uses the `production` profile, or the last profile; `--profile <name>` picks another. After you answer `y`
+to its plan, it creates the key, saves it to your vault with today's rotated date, and publishes it to its
+[destinations](publishing.md#destinations). It revokes the old key after a second `y`, and only if every destination
+got the new one. For a key with no destinations, check what reads it before the old one goes: the plan lists only
+workflows that run `secretspec run`, not a call inside a script. `keypin --help` covers `--plan`, `--discard` and
+rerunning a failed rotation. To rotate on a schedule, see [Scheduled rotation](scheduled-rotation.md).
 
 Without an issuer, rotate by hand:
 
 1. Make a new value at the provider.
-2. Save it in your vault with `secretspec set <VARIABLE> --profile production`, and set its rotated date to today.
-   secretspec only reads some `ref`s, such as an
-   [AWS Secrets Manager `ref`](../integrations/vaults/aws-secrets-manager.md#addresses): change those in the vault,
-   keeping a JSON secret's other keys, and set the date as your vault's page says.
+2. Save it with `secretspec set <VARIABLE> --profile production`, and set its rotated date to today. For a `ref`
+   secretspec only reads, such as an
+   [AWS Secrets Manager `ref`](../integrations/vaults/aws-secrets-manager.md#addresses), change it in the vault and
+   set the date as that page says.
 3. Run `keypin publish <VARIABLE>`.
 4. Once everything uses the new value, revoke the old one at the provider.
 
 ## Neon
 
-After a Neon password reset, the old password stops working on the next connection, so keypin switches `DATABASE_URL` between two login roles
-instead. Create them once with SQL, members of one group role so they keep the same grants:
+A Neon password reset stops the old password on the next connection, so keypin switches `DATABASE_URL` between two
+login roles. Create them once with SQL, members of one group role so they keep the same grants:
 
 ```sql
 CREATE ROLE app NOLOGIN;  -- grant the app's privileges to this role
@@ -70,17 +64,14 @@ roles = ["app_a", "app_b"]
 ```
 
 `admin` is a [Neon API key](https://neon.com/docs/manage/api-keys) with Editor or Admin access to the project.
-`rotate` resets the password of the role the vault's URL doesn't use and saves your URL with that role. Revoking resets the old role's
-password, so every connection string with that role stops working, not only this key. keypin refuses a file where two
-keys' issuers share a role, such as a pooled and a direct URL; give the direct URL its own two roles. Each reset drops
-every open connection to the compute, whatever its role, so apps must reconnect. A table belongs to the role that
-creates it, so run migrations after `SET ROLE app`.
+Revoking resets the old role's password, so every connection string with that role stops working. A pooled and a
+direct URL each need their own two roles. Each reset drops every open connection to the compute, so apps must
+reconnect. Run migrations after `SET ROLE app`, so tables belong to the group role.
 
 ## OpenAI
 
-keypin makes the new key for the service account that owns the vault's key, in the same project, then deletes the old
-key. OpenAI's Admin API can't make a key for a user, so keypin refuses a user-owned key: replace it once with a
-service-account key from the project's API keys page.
+OpenAI's Admin API can't make a key for a user, so keypin rotates only a service account's key: replace a user-owned
+key once with a service-account key from the project's API keys page.
 
 ```toml
 [profiles.production]
@@ -95,9 +86,9 @@ scopes = []
 
 - `admin`: an [Admin key](https://platform.openai.com/settings/organization/admin-keys) with write access to projects.
 - `scopes`: the new key's scopes, such as `["api.responses.write"]`, or `[]` for all permissions. OpenAI doesn't
-  show a key's scopes, so keypin can't copy them; set this to match the old key.
+  show a key's scopes, so set this to match the old key.
 
-If the old key expires, the new one gets the same lifetime.
+The new key gets the old key's lifetime.
 
 ## Supabase
 
@@ -116,9 +107,7 @@ Read-write and **API Key Secrets** Read on the project. `project_ref` is the 20 
 
 keypin won't rotate the secret key named `default`: Edge Functions that use `withSupabase({ auth: 'secret' })` accept
 only that key, and a deleted key can't come back. Give each app its own named key, and rotate that. Each new key
-gets a new name, so a function that checks `auth: 'secret:<name>'` rejects it. keypin also refuses a legacy
-`service_role` key; move to a secret key with
-[Supabase's guide](https://supabase.com/docs/guides/security/rotate-leaked-api-keys).
+gets a new name, so a function that checks `auth: 'secret:<name>'` rejects it.
 
 ## Cloudflare
 
@@ -136,15 +125,10 @@ admin = "op://Acme/cloudflare token maker/credential"
 its own vault item. For an account API token (`cfat_`), add `account_id` and use an admin token with
 **Account API Tokens** Edit on that account; the API calls it Account API Tokens Write.
 
-keypin finds the vault's token with Cloudflare's verify endpoint, makes a new token with the same policies, IP
-filter and lifetime (and its start date, if still ahead), then deletes the old one. It doesn't use Roll, which stops the old token at once.
-The plan names the permissions it copies, and warns about Admin and API Tokens Edit (or Write) ones. A deploy token
-needs the [Workers role](https://developers.cloudflare.com/workers/authorization/workers/) Admin to create a Worker,
-and Editor to deploy one that exists, so once the Worker exists, replace an Admin token with an Editor one.
-
-`rotate --check` fails when the new token would expire before the next rotation: give the token a longer lifetime, or
-a shorter `rotate_every`. `--due` and `--check` also fail when the admin token expires within 7 days of the key's
-next due date.
+The new token gets the old one's policies, IP filter and lifetime. Give the token a lifetime longer than its
+`rotate_every`. A deploy token needs the [Workers role](https://developers.cloudflare.com/workers/authorization/workers/)
+Admin to create a Worker, and Editor to deploy one that exists, so once the Worker exists, replace an Admin token with
+an Editor one.
 
 ## OpenRouter
 
@@ -158,11 +142,9 @@ admin = "op://Acme/openrouter management key/credential"
 ```
 
 `admin` is a read/write [management key](https://openrouter.ai/settings/management-keys), in its own vault item,
-for the organization or the key's workspace. keypin finds the vault's key by the label OpenRouter shows for it, and
-gives the new key the same credit limit, reset, BYOK setting, lifetime and workspace. A limit that never resets starts
-again at $0 spent on the new key; the old key keeps its credit until you revoke it. keypin refuses a disabled key, and
-a key with its own guardrail, or a BYOK provider key or observability destination limited to it, since the new
-key wouldn't get them.
+for the organization or the key's workspace. The new key gets the old key's credit limit, reset, BYOK setting,
+lifetime and workspace. A limit that never resets starts again at $0 spent on the new key; the old key keeps its
+credit until you revoke it.
 
 ## Google Cloud
 
@@ -178,14 +160,13 @@ admin = "op://Acme/google key maker/credential"
 project_number = "481537286014"
 ```
 
-`project_number` is the project's number, digits only, from its Dashboard; Google names keys by number, not by
-project ID. `admin` is a service account's [JSON key](https://cloud.google.com/iam/docs/keys-create-delete), the whole
-file, in its own vault item. Give it **API Keys Admin** (`roles/serviceusage.apiKeysAdmin`) on that project, and
-turn on the API Keys API in the service account's project. keypin doesn't use gcloud logins.
+`project_number` is the project's number, digits only, from its Dashboard, not its project ID. `admin` is a service
+account's [JSON key](https://cloud.google.com/iam/docs/keys-create-delete), the whole file, in its own vault item.
+Give it **API Keys Admin** (`roles/serviceusage.apiKeysAdmin`) on that project, and turn on the API Keys API in the
+service account's project. keypin doesn't use gcloud logins.
 
-keypin finds the vault's key from its value, makes a key in the same project with the same API restrictions and
-application restrictions (websites, IP addresses, Android or iOS apps), then deletes the old one. A key with no
-restrictions gets a key with none. Google Cloud keeps a deleted key for 30 days, so you can restore it.
+The new key gets the old key's API and application restrictions. Google Cloud keeps a deleted key for 30 days, so
+you can restore it.
 
 ## Google Cloud service account keys
 
@@ -204,10 +185,6 @@ admin = "op://Acme/google key admin/credential"
 `admin` is another service account's JSON key, in its own vault item, with **Service Account Key Admin**
 (`roles/iam.serviceAccountKeyAdmin`) on the service account you rotate. Turn on the IAM API in the admin's project.
 
-keypin finds the key by the `client_email` and `private_key_id` in the file, then makes a new key file for the same
-service account. A service account holds at most 10 keys, so keypin stops when it has no room. To revoke, keypin
-disables the old key, then deletes it. It refuses a key you uploaded yourself.
-
 Organizations created since May 2024 block new keys with the `iam.disableServiceAccountKeyCreation` policy. To
 rotate, an organization policy admin must turn it off for the project.
 
@@ -224,14 +201,11 @@ admin = "op://Acme/elevenlabs admin key/credential"
 
 `admin` is a workspace admin's API key, in its own vault item; a restricted one needs access to service accounts.
 ElevenLabs' API makes keys only for [service accounts](https://elevenlabs.io/docs/overview/administration/workspaces/service-accounts),
-so keypin refuses a key that belongs to a person: replace it once with a service account key. The free plan has no
-service accounts, so rotation needs a plan that includes them.
+so replace a key that belongs to a person once with a service account key. The free plan has no service accounts.
+Give the key the **User** read permission, and each app its own service account.
 
-keypin asks ElevenLabs which service account the vault's key belongs to, so the key needs the **User** read
-permission. It refuses a service account with more than one active key, since it can't tell which one the vault holds:
-give each app its own service account. The new key gets the old key's permissions, credit limit, IP allowlist,
-concurrency limits and lifetime. A credit limit starts unspent on the new key. keypin refuses a disabled key, and a
-key with a Professional Voice Clone limit, since the new key wouldn't get it.
+The new key gets the old key's permissions, credit limit, IP allowlist, concurrency limits and lifetime. A credit
+limit starts unspent on the new key.
 
 ## AWS
 
@@ -253,11 +227,8 @@ publishes both. A destination without batch writes, such as GitHub Actions, gets
 new runs there until the rotation finishes.
 
 `admin` holds the JSON that `aws iam create-access-key --user-name <admin user>` prints, for an IAM user of its own
-that may list, create, update and delete access keys.
-
-keypin checks that the vault's ID and secret work together, then makes a key for the same IAM user. AWS allows two
-keys per user, so keypin stops if the user already has a second one. To revoke, it deactivates the old key, then
-deletes it.
+that may list, create, update and delete access keys. The new key is for the same IAM user, and AWS allows two per
+user, so that user must have no second key.
 
 ## SendGrid
 
@@ -271,8 +242,7 @@ admin = "op://Acme/sendgrid admin key/credential"
 ```
 
 `admin` is an API key with **API Keys** Full Access, in its own vault item. A key can't give more than it has,
-so it also needs every scope of the key you rotate; a Full Access key has them all. keypin finds the vault's key by
-the ID in its value (`SG.<id>.<secret>`) and gives the new key the same scopes.
+so it also needs every scope of the key you rotate; a Full Access key has them all. The new key gets the same scopes.
 
 For a subuser's key, add `subuser = "<username>"` and use a key from the parent account. For an EU regional
 subuser, add `region = "eu"`.
@@ -294,12 +264,12 @@ key_id = "TWILIO_API_KEY"
 ```
 
 `admin` holds JSON with `TWILIO_ACCOUNT_SID` and either `TWILIO_AUTH_TOKEN`, or `TWILIO_API_KEY` and
-`TWILIO_API_SECRET` of a Main key or a Restricted key that may create, read and delete API keys. A Standard key
-can't manage keys. For a subaccount's key, use the subaccount's own SID and credential.
+`TWILIO_API_SECRET` of a Main key or a Restricted key that may create, read and delete API keys. For a subaccount's
+key, use the subaccount's own SID and credential.
 
-The new key gets the old key's type, and a Restricted key's permissions. A Restricted key needs `/twilio/phone-numbers/available-numbers/list`, which
-keypin uses to check its secret. keypin refuses a Main key, which Twilio's API can't
-make. It doesn't rotate `TWILIO_AUTH_TOKEN`.
+The new key gets the old key's type, and a Restricted key's permissions. A Restricted key needs
+`/twilio/phone-numbers/available-numbers/list`, which keypin uses to check its secret. keypin doesn't rotate
+`TWILIO_AUTH_TOKEN`.
 
 ## xAI
 
@@ -314,10 +284,7 @@ admin = "op://Acme/xai management key/credential"
 
 `admin` is a [management key](https://console.x.ai/team/default/management-keys), not an API key, made by a team
 admin, for the key's team or its organization. It needs to list, create and delete API keys, and to check their
-propagation. keypin asks xAI which key and team the vault's key is, so there's no team ID to set.
-
-The new key gets the old key's ACLs, rate limits and lifetime. keypin waits until xAI reports it on every cluster
-before saving it; if that takes over a minute, keypin deletes it and nothing changes. keypin refuses a disabled key.
+propagation. There's no team ID to set. The new key gets the old key's ACLs, rate limits and lifetime.
 
 ## MongoDB Atlas
 
@@ -339,9 +306,7 @@ the project, and `client_id` is its client ID. keypin doesn't take API keys, whi
 
 A changed password stops the old one at once, so keypin makes a second database user instead: user `app` becomes
 `app-b`, then `app-a`, then `app-b` again. The new user gets the old user's roles, scopes, labels and description, and
-the vault's connection string keeps its hosts, database and options with the new username and password. keypin
-deletes the old user after the second `y`. It refuses users that sign in with X.509, AWS IAM, LDAP or OIDC, and
-temporary users.
+the connection string keeps its hosts, database and options.
 
 ## random
 
@@ -355,10 +320,10 @@ AUTH_SECRET = { description = "Session signing secret" }
 kind = "random"
 ```
 
-`rotate` makes 32 random bytes in base64, like `openssl rand -base64 32`; add `encoding = "hex"` for hex. The new
-value replaces the old one, so anything signed with the old one stops working: with JWT sessions, everyone signs in
-again. There's nothing to revoke, so `rotate` asks one `y`. It refuses a vault that holds changes for approval.
+`rotate` makes 32 random bytes in base64, like `openssl rand -base64 32`; add `encoding = "hex"` for hex. Anything
+signed with the old value stops working: with JWT sessions, everyone signs in again. There's nothing to revoke, so
+`rotate` asks one `y`.
 
-keypin refuses `BETTER_AUTH_SECRET` and `BETTER_AUTH_SECRETS`: Better Auth encrypts stored data with them, and a new
-value can't read it. Better Auth also reads `AUTH_SECRET`, so don't rotate that with `random` in a Better Auth app. Add a version to [`BETTER_AUTH_SECRETS`](https://better-auth.com/docs/reference/options#secrets)
-by hand instead.
+Better Auth encrypts stored data with its secret, and a new value can't read it. keypin refuses `BETTER_AUTH_SECRET`
+and `BETTER_AUTH_SECRETS`; don't rotate `AUTH_SECRET` with `random` in a Better Auth app either. Add a version to
+[`BETTER_AUTH_SECRETS`](https://better-auth.com/docs/reference/options#secrets) by hand instead.

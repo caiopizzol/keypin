@@ -129,7 +129,7 @@ export function plan(
     else
       steps.push({
         order: ORDER.map,
-        title: "Map a key",
+        title: "Declare a key",
         body: [`${report.map} declares no keys yet.`, "  secretspec add --help"],
         covers: [empty],
       });

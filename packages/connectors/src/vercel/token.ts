@@ -21,7 +21,7 @@ export function vercelSignIn(env: Readonly<Record<string, string | undefined>>):
 export function signInProblem(env: Readonly<Record<string, string | undefined>>): string {
   const set = env[TOKEN_VARIABLE] === undefined ? "isn't set" : "is set but empty";
   const ambient = env.VERCEL_TOKEN
-    ? `; VERCEL_TOKEN is set, but keypin doesn't sign in with it, so it stays a key your map can hold`
+    ? `; VERCEL_TOKEN is set, but keypin doesn't sign in with it, so it stays a key secretspec.toml can declare`
     : "";
   return `keypin signs in to Vercel with ${TOKEN_VARIABLE}, which ${set}${ambient}. Create a token at ${TOKENS_PAGE} for the project's team and set ${TOKEN_VARIABLE}; keypin doesn't read the vercel login`;
 }

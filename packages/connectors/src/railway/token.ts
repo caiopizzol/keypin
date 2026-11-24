@@ -22,7 +22,7 @@ export function signInProblem(env: Readonly<Record<string, string | undefined>>)
   const set = env[TOKEN_VARIABLE] === undefined ? "isn't set" : "is set but empty";
   const ambient = ["RAILWAY_TOKEN", "RAILWAY_API_TOKEN"].filter((name) => env[name]);
   const note = ambient.length
-    ? `; ${ambient.join(" and ")} ${ambient.length > 1 ? "are" : "is"} set, but keypin doesn't sign in with ${ambient.length > 1 ? "them" : "it"}, so ${ambient.length > 1 ? "they stay keys" : "it stays a key"} your map can hold`
+    ? `; ${ambient.join(" and ")} ${ambient.length > 1 ? "are" : "is"} set, but keypin doesn't sign in with ${ambient.length > 1 ? "them" : "it"}, so ${ambient.length > 1 ? "they stay keys" : "it stays a key"} secretspec.toml can declare`
     : "";
   return `keypin signs in to Railway with ${TOKEN_VARIABLE}, which ${set}${note}. Create a workspace or account token at ${TOKENS_PAGE}, or a project token for the environment in the project's settings, and set ${TOKEN_VARIABLE}; keypin doesn't read the railway login`;
 }

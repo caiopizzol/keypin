@@ -58,6 +58,8 @@ broken link or a page keypin.dev can't build.
   [AGENTS.md](../AGENTS.md). Remove a line for each one you add, or add a `Docs-Growth: <reason>` trailer to a commit.
 - Every export outside an entry file (a package entry point, a test or a script) is imported somewhere, and every
   file and dependency is used ([knip](https://knip.dev)). Remove the `export`, the file or the dependency rather than ignore it in `knip.json`.
+- `bun run test` fails when docs code runs a `keypin` command or flag that the usage text in `apps/cli/src/cli.ts`
+  lacks (`apps/cli/tests/docs-commands.test.ts`). Fix the doc, or the usage text.
 
 ### Files keypin reads back
 

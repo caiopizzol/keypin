@@ -80,7 +80,8 @@ show a plan and wait for you to answer `y`.
 keypin rotate <VARIABLE>                 # replace a key at its provider, then publish it
 keypin rotate --due                      # rotate every key that is due
 keypin status                            # every project's keys, and when each is due for rotation
-keypin publish <VARIABLE> | --all        # write production keys to their destinations
+keypin publish <VARIABLE>                # write a production key to its destinations
+keypin publish --all                     # write every production key to its destinations
 keypin check [folder]                    # report one project; writes nothing
 keypin unregister [folder]               # stop listing a project
 ```

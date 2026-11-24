@@ -22,6 +22,8 @@ const KEYPIN = /^keypin(@\S+)?$/;
 const FLAG = /^--?[a-z]/i;
 const PLACEHOLDER = /^<[^>]+>$/;
 const USAGE_LINE = /^ {2}keypin (\S+)(.*)$/;
+const COMMENT = /(^|\s)#.*$/;
+const CONTINUED = /(^|[^\\])(\\\\)*\\$/;
 const FIX = "Fix the doc, or the usage text in apps/cli/src/cli.ts.";
 
 const commands = new Map<string, Set<string>>();
@@ -46,7 +48,7 @@ function joined(text: string): { offset: number; row: string }[] {
     const last = rows.at(-1);
     if (open && last) last.row = `${last.row.slice(0, -1)} ${row}`;
     else rows.push({ offset, row });
-    open = row.endsWith("\\");
+    open = CONTINUED.test(row.replace(COMMENT, ""));
   });
   return rows;
 }
@@ -54,7 +56,7 @@ function joined(text: string): { offset: number; row: string }[] {
 function invocations(text: string, line: number): Invocation[] {
   return joined(text).flatMap(({ offset, row }) =>
     row
-      .replace(/(^|\s)#.*$/, "")
+      .replace(COMMENT, "")
       .replace(/^\s*-?\s*run:/, "")
       .split(SEPARATOR)
       .flatMap((segment) => {
@@ -137,6 +139,10 @@ describe("keypin commands in the docs", () => {
       "keypin rotate API_KEY \\",
       "  --profile prod \\",
       "  --force",
+      "echo done # note \\",
+      "keypin import .env",
+      "echo a\\\\",
+      "keypin sync",
       "```",
       "",
       "```yaml",
@@ -153,9 +159,11 @@ describe("keypin commands in the docs", () => {
       "page.md:5 runs keypin status --bogus, a flag keypin status doesn't have.",
       "page.md:6 runs keypin run, a command keypin doesn't have.",
       "page.md:7 runs keypin rotate --force, a flag keypin rotate doesn't have.",
-      "page.md:13 runs keypin rotate --all, a flag keypin rotate doesn't have.",
-      "page.md:16 runs keypin --force, a flag keypin doesn't have.",
-      "page.md:17 runs keypin status --version, a flag keypin status doesn't have.",
+      "page.md:11 runs keypin import, a command keypin doesn't have.",
+      "page.md:13 runs keypin sync, a command keypin doesn't have.",
+      "page.md:17 runs keypin rotate --all, a flag keypin rotate doesn't have.",
+      "page.md:20 runs keypin --force, a flag keypin doesn't have.",
+      "page.md:21 runs keypin status --version, a flag keypin status doesn't have.",
     ]);
   });
 });

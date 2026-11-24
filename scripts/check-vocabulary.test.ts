@@ -53,11 +53,12 @@ describe("vocabularyProblems", () => {
     expect(
       problems({
         "README.md":
-          '<p align="center">\n  <a href="https://example.com/sync">Sync a key</a>\n</p>\n\n    keypin sync\n',
+          '<p data-step="rotate > sync" align="center">\n  <a href="https://example.com/sync">Sync a key</a>\n</p>\n\n    keypin sync\n\n> ```sh\n> keypin sync\n> ```\n',
       }),
     ).toEqual([
       'README.md:2: say "publish", not "Sync". See BRAND.md#vocabulary.',
       'README.md:5: say "publish", not "sync". See BRAND.md#vocabulary.',
+      'README.md:8: say "publish", not "sync". See BRAND.md#vocabulary.',
     ]);
   });
 

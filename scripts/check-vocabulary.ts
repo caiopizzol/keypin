@@ -37,13 +37,14 @@ function files(root: string): string[] {
 
 type Passage = { line: number; text: string };
 
-const FENCE = /^\s*(?:```|~~~)/;
+const FENCE = /^[\s>]*(?:```|~~~)/;
+const TAG = /<(?:[^>"']|"[^"]*"|'[^']*')*>/g;
 
 function visible(node: Nodes, lines: string[]): Passage[] {
   const line = node.position?.start.line ?? 1;
   if (node.type === "text" || node.type === "inlineCode") return [{ line, text: node.value }];
   if (node.type === "html")
-    return [{ line, text: node.value.replace(/<[^>]*>/g, (tag) => tag.replace(/[^\n]+/g, " ")) }];
+    return [{ line, text: node.value.replace(TAG, (tag) => tag.replace(/[^\n]+/g, " ")) }];
   if (node.type === "code")
     return [{ line: FENCE.test(lines[line - 1] ?? "") ? line + 1 : line, text: node.value }];
   return [];

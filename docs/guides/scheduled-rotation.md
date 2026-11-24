@@ -163,14 +163,14 @@ jobs:
       - name: Restore keypin state
         run: |
           git fetch --no-tags origin "$STATE_BRANCH"
-          git checkout FETCH_HEAD -- .keypin
+          git update-ref refs/keypin/state FETCH_HEAD
+          git checkout refs/keypin/state -- .keypin
           git reset --quiet -- .keypin
       # setup-node through keypin rotate, then:
       - name: Save keypin state
         if: always()
         run: |
-          git fetch --no-tags origin "$STATE_BRANCH"
-          git worktree add --quiet --detach "$RUNNER_TEMP/state" FETCH_HEAD
+          git worktree add --quiet --detach "$RUNNER_TEMP/state" refs/keypin/state
           cp .keypin/rotation.json .keypin/status.json "$RUNNER_TEMP/state/.keypin/"
           cd "$RUNNER_TEMP/state"
           git add .keypin
@@ -190,7 +190,9 @@ git switch -
 ```
 
 Before a later `keypin rotate` on your laptop, restore `.keypin/` with
-`git fetch origin keypin/state && git checkout FETCH_HEAD -- .keypin`, and afterward commit it to that branch.
+`git fetch origin keypin/state && git checkout FETCH_HEAD -- .keypin`, and afterward commit it to that branch. Don't
+run it while the workflow runs: the save step commits on the state it restored, so a run that changed state then
+fails to push rather than overwrite yours.
 
 ## Other vaults
 

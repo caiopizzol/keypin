@@ -62,7 +62,8 @@ the keys of `[profiles.default]`. `keypin publish` and `keypin rotate` use `prod
 another. Each profile reads its own vault item, so your laptop never needs the production value.
 
 1Password grants access to a whole vault, so anyone who can read the `default` items in `Acme` can read the
-`production` ones too, and so can a CI token with access to it. To keep production apart, give it its own vault:
+`production` ones too, and so can a CI token with access to it. To keep production apart, move its items to a vault
+that only the people and automation that need them can open, and point the profile at it:
 
 ```toml
 [providers]

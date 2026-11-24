@@ -20,13 +20,13 @@ another vault, see [Other vaults](#other-vaults).
    1Password shows the token only once; this saves it without printing it:
 
    ```sh
-   op service-account create "acme-web rotation" --vault "Acme:read_items,write_items" --raw |
+   op service-account create "acme-web rotation" --vault "Acme:read_items,write_items" --expires-in 89d --raw |
      gh secret set OP_SERVICE_ACCOUNT_TOKEN --env rotation -R acme/web
    ```
 
-   This token never expires. `--expires-in` must be under 90 days, and keypin can't read when it ends, so with it,
-   [set a reminder](service-accounts.md#expiry) to replace the token before then. Admin keys stay in the vault, not
-   in repo secrets.
+   1Password allows `--expires-in` only under 90 days, and keypin can't read when it ends, so
+   [set a reminder](service-accounts.md#expiry) to replace the token before then. Without `--expires-in`, the token
+   keeps write access to the vault until you delete it. Admin keys stay in the vault, not in repo secrets.
 
 4. Create a fine-grained GitHub token for this repository only, with the Secrets permission set to Read and write,
    and save it as the secret `KEYPIN_GITHUB_TOKEN` in `rotation`. Keys published to an environment also need

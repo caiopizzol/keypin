@@ -40,16 +40,11 @@ The provider is `bws://<project ID>`, with the ID from the project's page in Sec
 your own server, put its host before the ID, as `bws://vault.bitwarden.eu@<project ID>`. Without it, keypin uses
 `vault.bitwarden.com`.
 
-`bw://` is Bitwarden's Password Manager, which keypin doesn't read, so keypin refuses it. keypin also refuses a URI
-that names more than a project.
-
 ## Addresses
 
 - **Without `ref`:** the secret named `<KEY>` in the project. The profile isn't part of the name, so every profile on
   one provider reads the same secret: give each profile its own provider, as above.
-- **With `ref`:** `item` is the secret's name. keypin refuses `field`, `section`, `vault` and `version`.
-
-keypin refuses a name that two secrets in the project share.
+- **With `ref`:** `item` is the secret's name, which no other secret in the project may share.
 
 An issuer's `admin` is a reference in keypin's own syntax, `bitwarden://<project>/<NAME>`, with the project's name,
 or its ID if two projects share the name. keypin reads it from the key's own server.

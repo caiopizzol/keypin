@@ -42,15 +42,14 @@ SHARED_CA = { description = "CA bundle", ref = { item = "shared/SHARED_CA" } }
 ```
 
 The provider is `doppler://<project>`, or `doppler://<project>/<config>` to name the config. Without a config, the
-profile names it. Project and config names use only lowercase letters, digits, `-` and `_`. keypin refuses a user,
-port or query in the URI.
+profile names it. Project and config names use only lowercase letters, digits, `-` and `_`.
 
 ## Addresses
 
 - **Without `ref`:** the secret `<KEY>` in the provider's config, else in the config named after the profile. In the
   example, `STRIPE_KEY` is in `dev` for `dev`, and in `prd` for `production`.
 - **With `ref`:** `item` is `<config>/<NAME>`, or `<NAME>` in the same config as without `ref`. `SHARED_CA` is in the
-  config `shared`. keypin refuses any field but `item`.
+  config `shared`.
 
 A secret name uses uppercase letters, digits and `_`, not starting with a digit. Doppler reserves `DOPPLER_PROJECT`,
 `DOPPLER_CONFIG` and `DOPPLER_ENVIRONMENT`.

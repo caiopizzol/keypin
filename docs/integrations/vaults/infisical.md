@@ -12,7 +12,7 @@ keypin signs in as a machine identity:
   secret.
 - **An access token**, for another auth method such as Kubernetes or AWS: set `INFISICAL_TOKEN` or
   `INFISICAL_UNIVERSAL_AUTH_ACCESS_TOKEN`, for example to `$(infisical login --method=<method> ... --silent --plain)`.
-  keypin uses the client ID and secret when both are set, and refuses a token that isn't a machine identity's.
+  keypin uses the client ID and secret when both are set.
 - **GitHub Actions OIDC:** see [Signing in from GitHub Actions](#signing-in-from-github-actions).
 
 secretspec reads `INFISICAL_CLIENT_ID` and `INFISICAL_CLIENT_SECRET` instead; only `INFISICAL_TOKEN` works for both.
@@ -41,18 +41,16 @@ The provider is `infisical://<host>/<project ID>`, with the server's host, such 
 without it, the profile does. `?path=<folder>` sets the folder secretspec keeps its secrets under, `/secretspec` by
 default.
 
-keypin refuses a URI without a host, since CI and the console can't see the `INFISICAL_DOMAIN` secretspec would use,
-and `tls=false`: keypin signs in only over https.
+Write the host in the URI: CI and the console can't see the `INFISICAL_DOMAIN` secretspec would use. keypin signs in
+only over https, so it refuses `tls=false`.
 
 ## Addresses
 
 - **Without `ref`:** the secret `<KEY>` in the folder `<path>/<project>/<profile>`. In the example,
   `STRIPE_KEY` is in `/secretspec/billing/production`, environment `production`, and `SENTRY_DSN` in
-  `/apps/billing/production`, environment `prod`. keypin refuses a project or profile name with characters other than
-  letters, digits, `-` and `_`.
+  `/apps/billing/production`, environment `prod`.
 - **With `ref`:** `item` is the secret's name, with its folder before it. `/billing/RESEND` is `RESEND` in
-  `/billing`; `team/RESEND` is in `<path>/team`; a bare `RESEND` is in `<path>`. keypin refuses any field but `item`,
-  and a `version`: keypin rotates the secret, and secretspec only reads a pinned version.
+  `/billing`; `team/RESEND` is in `<path>/team`; a bare `RESEND` is in `<path>`.
 
 An issuer's `admin` is a reference in keypin's own syntax, not a provider URI: `infisical://<project>/<environment>/<NAME>`,
 with the project's slug or ID and any folders before the name. keypin reads it from the key's own server.

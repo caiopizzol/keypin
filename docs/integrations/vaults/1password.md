@@ -36,8 +36,6 @@ account, write `onepassword://<account>@<vault>`, such as `onepassword://acme.1p
 address at the top left of the 1Password app, or an account ID. A team shares one account, and each member signs in
 to it.
 
-keypin refuses a URI that names more than a vault, and `onepassword+token://` for now.
-
 ## Addresses
 
 - **Without `ref`:** the item `secretspec/<project>/<profile>/<KEY>`, such as `secretspec/billing/default/STRIPE_KEY`,
@@ -48,8 +46,8 @@ keypin refuses a URI that names more than a vault, and `onepassword+token://` fo
 
 1Password's **Copy Secret Reference** gives `op://<vault>/<item>/<field>`; write it as
 `ref = { vault = "<vault>", item = "<item>", field = "<field>" }`. keypin matches a vault, item or field by its name
-or ID, ignoring case, and refuses a name that two of them share. Any field except `rotated` can hold the value. For
-the item's notes, use the field `notesPlain`. keypin doesn't read one-time passwords, files or empty values.
+or ID, ignoring case. Any field except `rotated` can hold the value; for the item's notes, use the field
+`notesPlain`.
 
 An issuer's `admin` is a 1Password secret reference, `op://<vault>/<item>/<field>`, or
 `op://<vault>/<item>/<section>/<field>`, in the key's own account.

@@ -45,14 +45,9 @@ A secret that is only in GitHub or Cloudflare can't be read back, so create a ne
 keypin publish STRIPE_API_KEY --plan
 ```
 
-The plan reads:
+The plan ends:
 
 ```
-STRIPE_API_KEY production  from op://Private/secretspec/billing/production/STRIPE_API_KEY/value in 1Password's default account
-ok     GitHub  acme/billing  as acme, account acme
-
-ok     Read 1 value from 1Password's default account
-
 Plan  generation bed8b08f2e36d8ba
   + GitHub  acme/billing  first write  needs approval
 
@@ -62,10 +57,8 @@ To approve, run this in a terminal:
   cd /work/billing && keypin publish STRIPE_API_KEY
 ```
 
-The plan shows the account keypin reached at each destination and every write; `--plan` writes nothing. To publish,
-run the printed command, `keypin publish STRIPE_API_KEY`, in a terminal and answer `y`. A first write, a changed
-account or a changed vault item always needs that `y` in a terminal. `keypin publish --all` publishes every key with
-a destination in the profile, with one plan.
+To publish, run the printed command in a terminal and answer `y`. `keypin publish --all` publishes every key with a
+destination in the profile, with one plan.
 
 Some hosts use a new value only after a redeploy; see [Publishing](../guides/publishing.md).
 
@@ -74,8 +67,7 @@ Some hosts use a new value only after a redeploy; see [Publishing](../guides/pub
 Each key is now in your vault and at every destination. To rotate one:
 
 - [Rotating a key](../guides/rotating-a-key.md): give a key such as `RESEND_API_KEY` an `issuer`, and keypin makes
-  the new key, publishes it, and revokes the old one after you approve. On the first rotation keypin can't tell which
-  Resend key is the old one, so it leaves it active: delete it at Resend once nothing uses it. keypin can't make
-  Stripe keys: rotate `STRIPE_API_KEY` by hand, as that guide says.
+  the new key, publishes it, and revokes the old one after you approve. keypin can't make Stripe keys: rotate
+  `STRIPE_API_KEY` by hand, as that guide says.
 - `keypin status` shows when each key is due, in every project.
 - [Scheduled rotation](../guides/scheduled-rotation.md) rotates keys in your GitHub Actions.

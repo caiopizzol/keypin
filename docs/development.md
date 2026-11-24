@@ -58,6 +58,8 @@ broken link or a page keypin.dev can't build.
   [AGENTS.md](../AGENTS.md). Remove a line for each one you add, or add a `Docs-Growth: <reason>` trailer to a commit.
 - Every export outside an entry file (a package entry point, a test or a script) is imported somewhere, and every
   file and dependency is used ([knip](https://knip.dev)). Remove the `export`, the file or the dependency rather than ignore it in `knip.json`.
+- Docs and CLI recordings avoid the words [BRAND.md](../BRAND.md#vocabulary) says keypin never uses for its concepts.
+  `bun run test` fails on one (`scripts/check-vocabulary.test.ts`) and names the word to use.
 
 ### Files keypin reads back
 

@@ -186,6 +186,19 @@ export async function rotateDue(context: Context, flags: Flags, path: string): P
   return worst(codes);
 }
 
+function readRefs(
+  map: Context["map"],
+  environment: string,
+  picked: readonly DueChoice[],
+): KeyRef[] {
+  const checked = new Set(picked.map((choice) => choice.keyId));
+  return map.keys.flatMap((key) => {
+    const entry = key.environments[environment];
+    if (!entry?.issuer || !checked.has(key.name)) return [];
+    return [entry.ref, ...(entry.issuer.admin ? [entry.issuer.admin] : [])];
+  });
+}
+
 export async function checkDue(context: Context, path: string): Promise<number> {
   const { map, environment, deps, out } = context;
   const metadata = await readDates(deps, dueRefs(map, environment));
@@ -253,6 +266,8 @@ export async function checkDue(context: Context, path: string): Promise<number> 
       codes.push(1);
     }
   }
+  for (const note of (await deps.vault().notes?.(readRefs(map, environment, picked))) ?? [])
+    out.line(`\n${out.dim(`Note: ${note}`)}`);
   const code = worst(codes);
   out.line(
     code === 0

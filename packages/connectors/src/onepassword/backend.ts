@@ -23,12 +23,21 @@ import {
   decode,
   decodeScope,
   format,
+  named,
   type OnePasswordRef,
   type OnePasswordScope,
   sameName,
 } from "./reference";
-import { type Connect, type Field, type FullItem, RateLimited, type SdkClient } from "./sdk";
+import {
+  type Connect,
+  type Field,
+  type FullItem,
+  type ListedVault,
+  RateLimited,
+  type SdkClient,
+} from "./sdk";
 import { desktopConnect } from "./desktop";
+import { noVault, sharedVaultNotes, type SignInMode } from "./vault-access";
 
 const VALUE_FIELD = "password";
 const ROTATED = "rotated";
@@ -36,13 +45,7 @@ const NOTES = "notesPlain";
 
 const UNIX_SECONDS = /^\d+$/;
 
-type Listed = { id: string; title: string };
 type ItemOverview = Awaited<ReturnType<SdkClient["items"]["list"]>>[number];
-
-const BUILT_IN = ["private", "personal", "employee"];
-const DEFAULT_SHARED = "shared";
-
-export type SignInMode = "desktop" | "service-account";
 
 export function onePasswordBackend(
   connect: Connect = desktopConnect,
@@ -50,7 +53,7 @@ export function onePasswordBackend(
   { tokenIgnored = false } = {},
 ): VaultBackend {
   const clients = new Map<string, Promise<SdkClient>>();
-  const vaultLists = new WeakMap<SdkClient, Promise<Listed[]>>();
+  const vaultLists = new WeakMap<SdkClient, Promise<ListedVault[]>>();
   const itemLists = new WeakMap<SdkClient, Map<string, Promise<ItemOverview[]>>>();
 
   function sdkError(error: unknown): unknown {
@@ -60,7 +63,7 @@ export function onePasswordBackend(
     return new Error(`1Password's rate limit was reached: ${inner}${limits}`);
   }
 
-  function vaults(sdk: SdkClient): Promise<Listed[]> {
+  function vaults(sdk: SdkClient): Promise<ListedVault[]> {
     let pending = vaultLists.get(sdk);
     if (!pending) {
       pending = sdk.vaults.list().catch((error: unknown) => {
@@ -92,6 +95,11 @@ export function onePasswordBackend(
       lists.set(vault, pending);
     }
     return pending;
+  }
+
+  async function listedBefore(account: string): Promise<ListedVault[] | null> {
+    const sdk = await clients.get(account)?.catch(() => null);
+    return (sdk && (await vaultLists.get(sdk)?.catch(() => null))) ?? null;
   }
 
   function client(account: string): Promise<SdkClient> {
@@ -222,6 +230,14 @@ export function onePasswordBackend(
       }));
     },
 
+    async notes(given) {
+      if (mode === "service-account") return [];
+      return sharedVaultNotes(
+        given.flatMap((ref) => decode(ref) ?? []),
+        listedBefore,
+      );
+    },
+
     async metadata(given): Promise<VaultMetadata> {
       const ref = own(given);
       const item = await get(ref);
@@ -229,18 +245,6 @@ export function onePasswordBackend(
       return { rotated: rotated === null ? null : toDay(rotated, ref) };
     },
   };
-}
-
-function noVault(scope: OnePasswordScope, mode: SignInMode): string {
-  const account = accountName(scope.account);
-  if (mode === "desktop") return `${account} has no vault "${scope.vault}"`;
-  const move =
-    "move the item to a vault you create, update its vault in secretspec.toml, and grant the service account read access to that vault";
-  if (BUILT_IN.includes(scope.vault.toLowerCase()))
-    return `${account}: service accounts can't open the built-in vault "${scope.vault}"; ${move}`;
-  if (scope.vault.toLowerCase() === DEFAULT_SHARED)
-    return `${account}: the vault "${scope.vault}" isn't visible to this service account. If it's the default Shared vault, service accounts can't open it; ${move}. If you created it, the service account wasn't granted it`;
-  return `${account}: the vault "${scope.vault}" isn't visible to this service account (it may not exist, or wasn't granted)`;
 }
 
 function own(ref: KeyRef): OnePasswordRef {
@@ -258,14 +262,6 @@ function ownScope(scope: VaultScope): OnePasswordScope {
 
 function where(ref: OnePasswordRef): string {
   return `${format(ref)} (${account(ref)})`;
-}
-
-function named<T extends { id: string; title: string }>(candidates: T[], name: string): T[] {
-  const wanted = name.toLowerCase();
-  return candidates.filter(
-    (candidate) =>
-      candidate.id.toLowerCase() === wanted || candidate.title.toLowerCase() === wanted,
-  );
 }
 
 function isNotes(item: FullItem, ref: OnePasswordRef): boolean {

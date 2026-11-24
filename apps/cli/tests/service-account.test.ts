@@ -33,7 +33,7 @@ function sdk(items: string[] = ["billing stripe api key"]) {
     vaults: {
       list: async () => {
         calls.push("vaults.list");
-        return [{ id: "deploy", title: "Deploy" }];
+        return [{ id: "deploy", title: "Deploy", vaultType: "userCreated" }];
       },
     },
     items: {

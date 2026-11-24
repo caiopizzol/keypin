@@ -47,6 +47,14 @@ export function accountName(account: string): string {
 export const sameName = (a: string | null, b: string | null) =>
   a === b || (a !== null && b !== null && a.toLowerCase() === b.toLowerCase());
 
+export function named<T extends { id: string; title: string }>(candidates: T[], name: string): T[] {
+  const wanted = name.toLowerCase();
+  return candidates.filter(
+    (candidate) =>
+      candidate.id.toLowerCase() === wanted || candidate.title.toLowerCase() === wanted,
+  );
+}
+
 export function decode(value: unknown): OnePasswordRef | null {
   if (!isRecord(value) || value.kind !== "1password") return null;
   const { account, vault, item, section = null, field = "password", fallback } = value;

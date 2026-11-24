@@ -10,7 +10,9 @@ import {
   onePasswordBackend,
   requireDesktopApp,
 } from "@keypin/connectors/onepassword";
+import { fakeOnePassword, field, item } from "@keypin/connectors/onepassword/testing";
 import { cli } from "../src/cli";
+import { routedVault } from "../src/vault";
 import { destination as realDestination, signInNames } from "../src/start";
 import type { Deps } from "../src/deps";
 import {
@@ -188,7 +190,9 @@ publish = [{ to = "github-actions", repo = "acme/billing" }]
     const titles = ["billing stripe api key"];
     const backend = () =>
       onePasswordBackend(async () => ({
-        vaults: { list: async () => [{ id: "vault-1", title: "Private" }] },
+        vaults: {
+          list: async () => [{ id: "vault-1", title: "Private", vaultType: "personal" as const }],
+        },
         items: {
           list: async () => {
             sdk.push("list");
@@ -314,6 +318,21 @@ publish = [{ to = "github-actions", repo = "acme/billing" }]
     await cli(["check", "--json"], run.deps);
     const data = report(run.stdout.text.slice(run.stdout.text.indexOf("{")));
     expect(data.problems).toHaveLength(1);
+  });
+
+  test("keys in the account's default Shared vault get a note that scheduled rotation can't read them", async () => {
+    const stored = {
+      ...item("billing stripe api key", [field("password", "Concealed", SENTINEL)]),
+      vaultId: "vault-Shared",
+    };
+    const backend = onePasswordBackend(async () => fakeOnePassword([stored]).client);
+    const vault = routedVault({ "1password": () => backend });
+    const run = setup({
+      map: BILLING_MAP.replace("@Private", "@Shared"),
+      deps: { vault: () => vault },
+    });
+    const given = { "1Password vaults": 'Private (type "personal"), Shared (type "everyone")' };
+    expect(await run.record("default-shared-vault", ["check"], { given })).toBe(0);
   });
 
   test("an account the 1Password app doesn't have says to fix the map, not the app", async () => {

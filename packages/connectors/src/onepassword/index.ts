@@ -1,4 +1,5 @@
-export { onePasswordBackend, type SignInMode } from "./backend";
+export { onePasswordBackend } from "./backend";
+export { type SignInMode } from "./vault-access";
 export { defaultAccount, withDefaultAccount } from "./default-account";
 export { desktopConnect, desktopLibrary, requireDesktopApp, sandboxedApp } from "./desktop";
 export { RateLimited, tokenClient } from "./sdk";

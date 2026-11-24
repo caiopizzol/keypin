@@ -1,0 +1,45 @@
+$ keypin check
+exit 0
+
+--- file secretspec.toml ---
+
+[project]
+name = "billing"
+revision = "1.0"
+
+[providers]
+vault = "onepassword://my.1password.com@Shared"
+
+[defaults]
+providers = ["vault"]
+
+[profiles.dev]
+STRIPE_API_KEY = { description = "STRIPE_API_KEY", ref = { item = "billing stripe api key", field = "password" } }
+
+[profiles.prod]
+STRIPE_API_KEY = { description = "STRIPE_API_KEY", ref = { item = "billing stripe api key", field = "password" } }
+
+[tool.keypin.prod.STRIPE_API_KEY]
+rotate_every = "365d"
+publish = [
+  { to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" },
+  { to = "github-actions", repo = "acme/billing" },
+]
+
+--- given 1Password vaults ---
+"Private (type \"personal\"), Shared (type \"everyone\")"
+
+--- calls vault ---
+
+--- calls destination ---
+check cloudflare-worker:billing-worker
+check github-actions:acme/billing
+
+--- stdout ---
+billing /work/billing · read 0 env files, 0 wrangler configs, 0 workflows
+ok     1 key, 2 destinations. Everything checks out.
+Note: 1Password vault "Shared" (1Password account my.1password.com) is the account's default Shared vault. A service account can't be granted it, so scheduled rotation can't read the keys there; move them to a vault you create (docs/guides/service-accounts.md)
+
+--- stderr ---
+ok     Looked up 1 item in 1Password account my.1password.com, not the values
+ok     Checked 2 accounts

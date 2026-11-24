@@ -218,6 +218,13 @@ export class AwsIssuer implements Issuer {
     return this.#delete(target, id);
   }
 
+  async has(id: string): Promise<boolean> {
+    const target = this.#target;
+    if (!target)
+      throw new Error("refusing to look up an AWS access key: checkAccount hasn't passed");
+    return ACCESS_KEY_ID.test(id) && (await this.#listed(target.user)).some((k) => k.id === id);
+  }
+
   async #listed(user: string): Promise<Listed[]> {
     const list = await this.#iam("ListAccessKeys", { UserName: user });
     if (list.status !== 200) throw new Error(returned("ListAccessKeys", list));

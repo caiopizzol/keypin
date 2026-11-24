@@ -161,7 +161,7 @@ describe("keypin rotate --approve-revoke with a changed .keypin/rotation.json", 
     const w = await waitingForApproval();
     w.unproven();
     const stopped =
-      "Stopped: .keypin/rotation.json has no proof that this rotation replaced key key_old of service account billing-bot: an older keypin recorded it, or someone removed the proof. Nothing was revoked. Once nothing uses key key_old of service account billing-bot, delete it at https://platform.openai.com/settings/organization/api-keys, then run this again to record it:";
+      "Stopped: .keypin/rotation.json names key key_old of service account billing-bot as the old key without a proof, so keypin can't confirm it: an older keypin recorded it, or someone removed the proof. Nothing was revoked. Check which key this rotation replaced at https://platform.openai.com/settings/organization/api-keys, and delete it once nothing uses it. If it's key key_old of service account billing-bot, run this again to record it:";
     for (const answers of [[], ["y"]]) {
       const refused = await w.run(["--approve-revoke"], answers);
       expect(refused.code).toBe(1);
@@ -179,13 +179,13 @@ describe("keypin rotate --approve-revoke with a changed .keypin/rotation.json", 
     expect(w.effects).toEqual(["openai create key_new1 for svc_bot"]);
   });
 
-  test("a recorded new key that isn't the vault's fails the account check", async () => {
+  test("a recorded new key that isn't the vault's steers nothing and revokes nothing", async () => {
     const w = await waitingForApproval();
-    w.tamper({ id: "svc_web/key_web", old: "svc_web/key_web" });
+    w.tamper({ id: "svc_web/key_web" });
     const refused = await w.run(["--approve-revoke"]);
     expect(refused.code).toBe(1);
     expect(refused.stderr).toContain(
-      "key key_web, the one keypin recorded for the vault's value, is another key in project proj_1",
+      `Stopped: keypin won't revoke key key_old of service account billing-bot: keypin's record of this rotation doesn't match the vault's value. Nothing was revoked. ${NAMES}`,
     );
     expect(w.effects).toEqual(["openai create key_new1 for svc_bot"]);
   });

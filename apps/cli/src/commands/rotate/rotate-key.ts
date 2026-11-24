@@ -189,12 +189,12 @@ export async function rotateLocked(job: Job): Promise<number> {
   }
   if (next.action === "create" && !(await vaultTakesWrites(job))) return 1;
 
-  const inVault =
-    next.action === "resume"
+  const recordedId = next.action === "resume" ? next.issued.id : next.current;
+  const inVault = !read.pair
+    ? await proven(recordedId)
+    : next.action === "resume"
       ? next.issued.id
-      : read.pair
-        ? keyIdText(read.pair.secret)
-        : next.current;
+      : keyIdText(read.pair.secret);
   const check = await checkIssuer(issuer, inVault, read.secret, out, spec.admin !== undefined);
   const checked = await checkAccounts(key, entry, deps, out, job.label);
   if (!check || !checked) {

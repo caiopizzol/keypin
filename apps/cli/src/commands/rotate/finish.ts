@@ -267,10 +267,10 @@ async function unproven(job: Job, ready: Ready, issued: Issued, state: State): P
     return 0;
   }
   const again = issuer.has
-    ? `, then run this again to record it:\n  ${commandLine(job.deps, "rotate", job.args)}`
-    : ".";
+    ? ` If it's key ${old}, run this again to record it:\n  ${commandLine(job.deps, "rotate", job.args)}`
+    : "";
   job.out.line(
-    `Stopped: ${ROTATION_FILE} has no proof that this rotation replaced key ${old}: an older keypin recorded it, or someone removed the proof. Nothing was revoked. Once nothing uses key ${old}, delete it at ${issuer.dashboard()}${again}`,
+    `Stopped: ${ROTATION_FILE} names key ${old} as the old key without a proof, so keypin can't confirm it: an older keypin recorded it, or someone removed the proof. Nothing was revoked. Check which key this rotation replaced at ${issuer.dashboard()}, and delete it once nothing uses it.${again}`,
   );
   return 1;
 }

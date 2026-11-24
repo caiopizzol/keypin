@@ -182,6 +182,16 @@ describe("AWS IAM issuer", () => {
     expect(subject.world.load().keys).toEqual(ROTATED);
   });
 
+  test("has lists the vault user's keys once checkAccount passes, and only then", async () => {
+    const subject = aws(ROTATED);
+    await expect(subject.issuer.has(APP_ID)).rejects.toThrow("checkAccount hasn't passed");
+    await checked(subject, NEW_ID, NEW_SECRET);
+    expect(await subject.issuer.has(APP_ID)).toBe(true);
+    expect(await subject.issuer.has(ADMIN_ID)).toBe(false);
+    expect(await subject.issuer.has("not-a-key-id")).toBe(false);
+    expect(subject.effects).toEqual([]);
+  });
+
   test("stops before creating when the user already has a second key", async () => {
     const other: FakeAwsKey = {
       id: "AKIAOTHEROTHEROTHER1",

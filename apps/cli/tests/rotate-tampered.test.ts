@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vite-plus/test";
+import { assert, describe, expect, test } from "vite-plus/test";
 import { type Fetch, isRecord, type KeyRef, type VaultBackend } from "@keypin/core";
 import { day } from "@keypin/core/testing";
 import { GitHubSecretDestination } from "@keypin/connectors/github";
@@ -185,6 +185,52 @@ describe("keypin rotate --approve-revoke with a changed .keypin/rotation.json", 
     expect(w.rotation()).toMatchObject({ issued: [{ old: { revoked: true } }] });
     expect(w.effects).toEqual(["openai create key_new1 for svc_bot"]);
     expect(w.keys.load().live.map((key) => key.id)).toContain("key_old");
+  });
+
+  test("the manual path keeps the same-key refusal and the warning for removed destinations", async () => {
+    const same = await waitingForApproval();
+    same.tamper({ old: "svc_bot/key_new1" });
+    same.unproven();
+    const refused = await same.run(["--approve-revoke"], ["y"]);
+    expect(refused.code).toBe(1);
+    expect(refused.stderr).toContain(
+      `Stopped: keypin won't revoke key svc_bot/key_new1: it's the key the vault holds. Nothing was revoked. ${NAMES}`,
+    );
+    expect(same.rotation()).toMatchObject({ issued: [{ old: { revoked: false } }] });
+
+    const moved = await waitingForApproval();
+    moved.unproven();
+    const file = moved.rotation();
+    assert(isRecord(file) && Array.isArray(file.issued) && Array.isArray(file.published));
+    const issued: unknown = file.issued[0];
+    assert(isRecord(issued) && isRecord(issued.old));
+    file.published.push({
+      key: "API_KEY",
+      environment: "prod",
+      destination: "github-actions:acme/web:API_KEY",
+      account: "acme",
+      generation: issued.old.generation,
+      at: "2026-08-01T12:00:00.000Z",
+      approved: "0".repeat(16),
+    });
+    moved.repo.contents.set(ROTATION, `${JSON.stringify(file, null, 2)}\n`);
+    const warned = await moved.run(["--approve-revoke"]);
+    expect(warned.code).toBe(1);
+    expect(warned.stderr).toContain(
+      "Not in secretspec.toml any more, so keypin didn't write them; they may still use the old key:\n  - github-actions:acme/web:API_KEY",
+    );
+  });
+
+  test("--discard on a rotation with no proof replaces the key instead of asking about a delete", async () => {
+    const w = await waitingForApproval();
+    w.unproven();
+    const discarded = await w.run(["API_KEY", "--discard"], ["y", "n"]);
+    expect(discarded.stderr).not.toContain("Did you delete the old key yourself?");
+    expect(discarded.stderr).toContain("Discarding key");
+    expect(w.effects).toEqual([
+      "openai create key_new1 for svc_bot",
+      "openai create key_new2 for svc_bot",
+    ]);
   });
 
   test("ElevenLabs, which can't tell two live keys apart, still gets the manual path", async () => {

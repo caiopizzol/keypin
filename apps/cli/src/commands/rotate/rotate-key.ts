@@ -9,7 +9,6 @@ import {
   issuedFor,
   type ItemIds,
   type KeyEntry,
-  keyIdText,
   loadState,
   messageOf,
   nextRotation,
@@ -70,6 +69,7 @@ import {
   provenId,
   settlesUnproven,
   migrationNote,
+  idInVault,
 } from "./unfinished-rotation";
 import { pairChecks } from "./pair-checks";
 import { readerRows, unreadNote } from "./readers";
@@ -182,16 +182,13 @@ export async function rotateLocked(job: Job): Promise<number> {
     );
     return 1;
   }
-  const settled = onlyRevoke ? await settlesUnproven(job, issuer, next, read.secret, state) : null;
-  if (settled !== null) return settled;
+  const lost = [...removed, ...(pairNow?.removed ?? [])];
+  const settled =
+    onlyRevoke && (await settlesUnproven(job, issuer, next, read.secret, state, lost));
+  if (typeof settled === "number") return settled;
   if (next.action === "create" && !(await vaultTakesWrites(job))) return 1;
 
-  const recordedId = next.action === "resume" ? next.issued.id : next.current;
-  const inVault = !read.pair
-    ? await proven(recordedId)
-    : next.action === "resume"
-      ? next.issued.id
-      : keyIdText(read.pair.secret);
+  const inVault = await idInVault(next, recorded, read.secret, read.pair?.secret ?? null);
   const check = await checkIssuer(issuer, inVault, read.secret, out, spec.admin !== undefined);
   const checked = await checkAccounts(key, entry, deps, out, job.label);
   if (!check || !checked) {
@@ -221,7 +218,7 @@ export async function rotateLocked(job: Job): Promise<number> {
     issuer,
     checked,
     pairChecked: pairChecks(job, checked),
-    removed: [...removed, ...(pairNow?.removed ?? [])],
+    removed: lost,
   };
   if (next.action === "resume" && check.gone !== undefined) {
     if (job.approve) {

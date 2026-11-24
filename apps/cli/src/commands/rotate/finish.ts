@@ -1,5 +1,4 @@
 import {
-  removedBehind,
   generationOf,
   proves,
   RevokeRefused,
@@ -17,7 +16,7 @@ import { commandLine, confirmed, NEEDS_APPROVAL, planOnly } from "../../approval
 import { showPlan, showRemoved, writeEach, writesFor } from "../../publishing";
 import { type Job, type Ready } from "./job";
 import { saveId, itemIdsAfterSave } from "./vault-and-issuer";
-import { unprovenRevoke } from "./unfinished-rotation";
+import { unprovenRevoke, warnBehind } from "./unfinished-rotation";
 import {
   revokeRow,
   revokeWhen,
@@ -148,28 +147,7 @@ async function revokeOld(
   const { issuer } = ready;
   const where = issuer.describe();
   out.line(`\nRotated ${out.bold(key.name)} (${owner.environment}): ${reached(job)}`);
-  const recorded = removedBehind(
-    job.committed,
-    job.map,
-    deps.destinations,
-    owner,
-    issued.generation,
-  )
-    .filter((p) => !ready.removed.some((r) => r.destinationId === p.destination))
-    .map((p) => ({
-      destinationId: p.destination,
-      lastReceipt: { generation: p.generation, at: p.at, destinationAccount: "unknown" },
-    }));
-  const behind = [
-    ...ready.removed.filter((r) => r.lastReceipt.generation !== issued.generation),
-    ...recorded,
-  ];
-  if (behind.length) {
-    out.line(
-      "Not in secretspec.toml any more, so keypin didn't write them; they may still use the old key:",
-    );
-    showRemoved(out, behind);
-  }
+  const behind = warnBehind(job, ready.removed, issued.generation);
   const old = issued.old.id;
   const revoke = issuer.revoke?.bind(issuer);
   if (!revoke) {

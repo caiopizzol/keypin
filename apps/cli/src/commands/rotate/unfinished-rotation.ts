@@ -2,11 +2,14 @@ import {
   type Issued,
   type Issuer,
   type IssuerSpec,
+  keyIdText,
   type NextRotation,
   ownedBy,
   type PlanStep,
   proves,
   recordIssued,
+  type RemovedDestination,
+  removedBehind,
   saveState,
   type Secret,
   type State,
@@ -16,7 +19,8 @@ import { commandLine } from "../../approval";
 import { confirm } from "../../output";
 import { ROTATION_FILE } from "../../project";
 import { type Job, terminalArgs } from "./job";
-import { shown } from "./messages";
+import { revokeRefused, shown } from "./messages";
+import { showRemoved } from "../../publishing";
 
 export function revokeOnly(
   next: NextRotation,
@@ -85,6 +89,10 @@ export async function unprovenRevoke(
 ): Promise<number> {
   const { deps, out } = job;
   const old = shown(issuer, issued.old.id ?? "");
+  if (issued.old.id === issued.id) {
+    out.line(revokeRefused(issuer, issued.old.id, "it's the key the vault holds"));
+    return 1;
+  }
   out.line(
     `${ROTATION_FILE} names key ${old} as the old key without a proof, so keypin can't confirm it and won't revoke it: an older keypin recorded it, or someone removed the proof. Check which key this rotation replaced at ${issuer.dashboard()}, and delete it yourself once nothing uses it.`,
   );
@@ -110,8 +118,43 @@ export async function settlesUnproven(
   next: NextRotation,
   vault: Secret,
   state: State,
+  removed: readonly RemovedDestination[],
 ): Promise<number | null> {
-  if (job.due || job.plan || next.action !== "resume") return null;
+  if (job.due || job.plan || job.discard || next.action !== "resume") return null;
   if ((await proves(next.issued, vault, "new")) !== undefined) return null;
+  warnBehind(job, removed, next.issued.generation);
   return unprovenRevoke(job, issuer, next.issued, state);
+}
+
+export function warnBehind(
+  { committed, map, deps, owner, out }: Job,
+  removed: readonly RemovedDestination[],
+  generation: string,
+): RemovedDestination[] {
+  const recorded = removedBehind(committed, map, deps.destinations, owner, generation)
+    .filter((p) => !removed.some((r) => r.destinationId === p.destination))
+    .map((p) => ({
+      destinationId: p.destination,
+      lastReceipt: { generation: p.generation, at: p.at, destinationAccount: "unknown" },
+    }));
+  const behind = [...removed.filter((r) => r.lastReceipt.generation !== generation), ...recorded];
+  if (behind.length) {
+    out.line(
+      "Not in secretspec.toml any more, so keypin didn't write them; they may still use the old key:",
+    );
+    showRemoved(out, behind);
+  }
+  return behind;
+}
+
+export async function idInVault(
+  next: NextRotation,
+  recorded: Issued | undefined,
+  vault: Secret,
+  pair: Secret | null,
+): Promise<string | null> {
+  if (pair) return next.action === "resume" ? next.issued.id : keyIdText(pair);
+  const id =
+    next.action === "resume" ? next.issued.id : next.action === "create" ? next.current : null;
+  return provenId(recorded, id, vault);
 }

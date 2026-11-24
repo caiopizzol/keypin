@@ -30,8 +30,7 @@ function fields(value: unknown, path: string, into: Map<string, boolean>): Map<s
 function dropped(released: string, now: string): string[] {
   const current = fields(JSON.parse(now), "", new Map());
   const emptied = [...current].flatMap(([path, empty]) => (empty ? [path] : []));
-  const under = (path: string, parent: string) =>
-    path.startsWith(`${parent}.`) || path.startsWith(`${parent}[]`);
+  const under = (path: string, parent: string) => path.startsWith(`${parent}[]`);
   return [...fields(JSON.parse(released), "", new Map()).keys()].filter(
     (path) => !current.has(path) && !emptied.some((parent) => under(path, parent)),
   );
@@ -48,10 +47,14 @@ describe("files the released keypin reads", () => {
     },
   );
 
-  test("an empty list may drop its items' fields, an empty object or null may not", () => {
+  test("only an empty list may drop fields, and only its items' fields", () => {
     const before = JSON.stringify({ issued: [{ old: { id: "a" } }], held: { at: 1 } });
     expect(dropped(before, JSON.stringify({ issued: [], held: { at: 2 } }))).toEqual([]);
     expect(dropped(before, JSON.stringify({ issued: [{ old: {} }], held: null }))).toEqual([
+      "issued[].old.id",
+      "held.at",
+    ]);
+    expect(dropped(before, JSON.stringify({ issued: [{ old: [] }], held: [] }))).toEqual([
       "issued[].old.id",
       "held.at",
     ]);

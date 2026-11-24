@@ -24,7 +24,7 @@ export type ProblemKind =
   | "missing-receipt"
   | "stale-receipt";
 
-export interface Problem {
+interface Problem {
   kind: ProblemKind;
   severity: "problem" | "notice";
   project: string;
@@ -34,7 +34,7 @@ export interface Problem {
   message: string;
 }
 
-export interface DestinationRow {
+interface DestinationRow {
   destinationId: string;
   account: string;
   receipt: { generation: Generation; at: string; publisher: string } | null;

@@ -15,7 +15,7 @@ import { type Issued, issuedFor, type KeyOwner, recordIssued, type State } from 
 
 const ROTATION_FILE_VERSION = 1;
 
-export interface CommittedIssued {
+interface CommittedIssued {
   key: KeyId;
   environment: Environment;
   issuer: string;

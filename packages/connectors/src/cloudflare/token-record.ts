@@ -3,7 +3,7 @@ import { isRecord, objectField, type Secret } from "@keypin/core";
 export const DAY = 86_400_000;
 const NAME_LIMIT = 120;
 
-export interface Policy {
+interface Policy {
   effect: string;
   resources: Record<string, unknown>;
   permission_groups: { id: string }[];

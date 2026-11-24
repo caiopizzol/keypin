@@ -31,7 +31,7 @@ export interface FakeItem {
   public?: true;
 }
 
-export interface Place {
+interface Place {
   check?: { reason: string; fix?: string; publisher?: string; destinationAccount?: string | null };
   write?: string;
 }

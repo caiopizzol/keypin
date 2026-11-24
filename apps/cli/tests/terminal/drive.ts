@@ -3,12 +3,13 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { type ParseArgsOptionsConfig, parseArgs, stripVTControlCharacters } from "node:util";
 import { SANDBOX_MARKER, scenarios, valuesOf } from "./scenarios";
 
 const HERE = dirname(new URL(import.meta.url).pathname);
 const REPO = resolve(HERE, "../../../..");
-const CHILD = join(HERE, "child.ts");
+const CHILD = fileURLToPath(new URL("child.ts", import.meta.url));
 const PROMPT = "[y/N] ";
 const ESC = "\x1b";
 const STYLE = new RegExp(`${ESC}\\[[0-9;]*m`, "g");

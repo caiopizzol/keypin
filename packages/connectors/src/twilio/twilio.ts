@@ -19,8 +19,8 @@ import {
   type Refusal,
 } from "./admin";
 
-export const API = "https://api.twilio.com";
-export const IAM = "https://iam.twilio.com";
+const API = "https://api.twilio.com";
+const IAM = "https://iam.twilio.com";
 const NAME_LIMIT = 64;
 const NOT_AUTHORIZED = 70051;
 

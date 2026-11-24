@@ -26,7 +26,7 @@
   ],
   "type": "module",
   "scripts": {
-    "check": "vp check && ! git grep --untracked -nE '(oxlint|eslint)-(disable|enable)' -- '*.ts' && sh scripts/check-lockfile.sh && sh scripts/check-typescript-only.sh && bun scripts/check-action-pins.ts && bun scripts/check-connectors.ts && bun scripts/check-provider-literals.ts && bun scripts/check-file-size.ts && bun scripts/check-docs-growth.ts",
+    "check": "vp check && ! git grep --untracked -nE '(oxlint|eslint)-(disable|enable)' -- '*.ts' && sh scripts/check-lockfile.sh && sh scripts/check-typescript-only.sh && bun scripts/check-action-pins.ts && bun scripts/check-connectors.ts && bun scripts/check-provider-literals.ts && bun scripts/check-file-size.ts && bun scripts/check-docs-growth.ts && knip-bun",
     "test": "bun --bun vp test",
     "check-recordings": "bun scripts/check-recordings.ts",
     "typecheck": "vp run -r typecheck && tsc -p scripts",
@@ -38,6 +38,7 @@
     "@types/bun": "1.4.4",
     "@types/mdast": "4.0.4",
     "github-slugger": "2.0.0",
+    "knip": "6.48.0",
     "mdast-util-to-string": "4.0.0",
     "remark-gfm": "4.0.1",
     "remark-parse": "11.0.0",

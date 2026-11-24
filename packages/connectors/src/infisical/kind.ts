@@ -12,7 +12,7 @@ import {
 import type { InfisicalRef, InfisicalReference } from "./reference";
 import { infisicalVaultRules } from "./rules";
 
-export interface InfisicalHost {
+interface InfisicalHost {
   readonly env: Readonly<Record<string, string | undefined>>;
 }
 

@@ -8,11 +8,11 @@ export function vaultKindOf<V extends VaultRules>(vaults: readonly V[], kind: st
   return found;
 }
 
-export function byKind<V extends VaultRules>(vaults: readonly V[]): V[] {
+function byKind<V extends VaultRules>(vaults: readonly V[]): V[] {
   return vaults.toSorted((a, b) => (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0));
 }
 
-export function referenceSchemes(vaults: readonly VaultRules[]): string {
+function referenceSchemes(vaults: readonly VaultRules[]): string {
   return byKind(vaults)
     .map((vault) => vault.scheme)
     .join(" or ");

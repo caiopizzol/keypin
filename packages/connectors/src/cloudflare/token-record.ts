@@ -9,7 +9,7 @@ export interface Policy {
   permission_groups: { id: string }[];
 }
 
-export interface Token {
+interface Token {
   id: string;
   name: string;
   status: string;
@@ -29,11 +29,7 @@ export interface Copy {
   lifetime: number | null;
 }
 
-export type TokenKind =
-  | "Global API Key"
-  | "wrangler login token"
-  | "account API token"
-  | "user API token";
+type TokenKind = "Global API Key" | "wrangler login token" | "account API token" | "user API token";
 
 export function tokenKind(current: Secret): TokenKind | null {
   if (current.reveal().startsWith("cfk_")) return "Global API Key";
@@ -76,7 +72,7 @@ export function parseToken(body: Record<string, unknown>, id: string): Token | n
   };
 }
 
-export function parsePolicy(item: unknown): Policy | null {
+function parsePolicy(item: unknown): Policy | null {
   if (!isRecord(item) || typeof item.effect !== "string" || !isRecord(item.resources)) return null;
   if (!Array.isArray(item.permission_groups) || !item.permission_groups.length) return null;
   const groups = item.permission_groups.map((group: unknown) =>

@@ -3,7 +3,7 @@ import type { Json } from "./response";
 
 export const ROTATED = "rotated";
 
-export interface Metadata {
+interface Metadata {
   key: string;
   value: string;
   isEncrypted?: boolean;

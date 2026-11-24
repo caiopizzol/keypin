@@ -13,15 +13,15 @@ export type SignInVia = "token" | "glab";
 
 export class GitLabSignInFailed extends Error {}
 
-export interface GitLabSignIn {
+interface GitLabSignIn {
   readonly via: SignInVia;
   token(): Promise<string>;
 }
 
 export type Glab = (args: string[], env: Record<string, string>) => Promise<GlabRun>;
-export type GlabRun = { ok: boolean; stdout: string; missing: boolean };
+type GlabRun = { ok: boolean; stdout: string; missing: boolean };
 
-export interface SignInOptions {
+interface SignInOptions {
   env: Readonly<Record<string, string | undefined>>;
   signIn: readonly string[];
   host: string;
@@ -52,7 +52,7 @@ async function glabToken({ env, signIn, host, glab = runGlab }: SignInOptions): 
   throw new GitLabSignInFailed(signInProblem(env, host, asked.missing ? "missing" : "signed out"));
 }
 
-export function signInProblem(
+function signInProblem(
   env: Readonly<Record<string, string | undefined>>,
   host: string,
   glab: "missing" | "signed out",

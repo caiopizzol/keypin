@@ -20,7 +20,7 @@ const MAX_SECRETS = 100;
 type Reply = { status: number; headers: Headers; body: Record<string, unknown> };
 type Refusal = { reason: string; fix: string };
 
-export interface GitHubSecretOptions {
+interface GitHubSecretOptions {
   repo: string;
   environment?: string;
   login?: string | null;

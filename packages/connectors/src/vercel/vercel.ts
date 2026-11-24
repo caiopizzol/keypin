@@ -15,7 +15,7 @@ const API = "https://api.vercel.com";
 export const REDEPLOY = "Vercel uses the new value only in new deployments; redeploy to use it";
 const SECRET = { type: "sensitive", visibility: "secret" };
 
-export interface VercelEnvOptions {
+interface VercelEnvOptions {
   team: string;
   project: string;
   environment: string;

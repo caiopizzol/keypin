@@ -35,7 +35,7 @@ export interface CloudflareSignIn {
   token(): Promise<string>;
 }
 
-export interface SignInOptions {
+interface SignInOptions {
   env: Readonly<Record<string, string | undefined>>;
   signIn: readonly string[];
   folder: string;
@@ -126,7 +126,7 @@ export function findWrangler(folder: string, path: string): string | null {
   return wranglers(folder, path)[0] ?? null;
 }
 
-export function wranglers(folder: string, path: string): string[] {
+function wranglers(folder: string, path: string): string[] {
   const found: string[] = [];
   for (let dir = folder; ; dir = dirname(dir)) {
     found.push(join(dir, "node_modules", ".bin", "wrangler"));

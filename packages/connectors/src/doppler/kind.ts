@@ -11,7 +11,7 @@ import {
 import type { DopplerRef } from "./reference";
 import { dopplerVaultRules } from "./rules";
 
-export interface DopplerHost {
+interface DopplerHost {
   readonly env: Readonly<Record<string, string | undefined>>;
 }
 

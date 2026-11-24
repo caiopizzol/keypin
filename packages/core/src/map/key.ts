@@ -24,7 +24,7 @@ export interface MapContext {
   vaults: readonly VaultRules[];
 }
 
-export interface ToolEntry {
+interface ToolEntry {
   entry: EnvEntry;
   rotateEvery: string | undefined;
 }

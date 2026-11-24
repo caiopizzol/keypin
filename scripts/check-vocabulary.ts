@@ -37,19 +37,22 @@ function files(root: string): string[] {
 
 type Passage = { line: number; text: string };
 
+const FENCE = /^\s*(?:```|~~~)/;
+
+function visible(node: Nodes, lines: string[]): Passage[] {
+  const line = node.position?.start.line ?? 1;
+  if (node.type === "text" || node.type === "inlineCode") return [{ line, text: node.value }];
+  if (node.type === "html")
+    return [{ line, text: node.value.replace(/<[^>]*>/g, (tag) => tag.replace(/[^\n]+/g, " ")) }];
+  if (node.type === "code")
+    return [{ line: FENCE.test(lines[line - 1] ?? "") ? line + 1 : line, text: node.value }];
+  return [];
+}
+
 function passages(file: string, source: string): Passage[] {
-  if (!file.endsWith(".md"))
-    return source.split("\n").map((text, index) => ({ line: index + 1, text }));
-  return walk(parser.parse(source)).flatMap((node) =>
-    node.type === "text" || node.type === "inlineCode" || node.type === "code"
-      ? [
-          {
-            line: (node.position?.start.line ?? 1) + (node.type === "code" ? 1 : 0),
-            text: node.value,
-          },
-        ]
-      : [],
-  );
+  const lines = source.split("\n");
+  if (!file.endsWith(".md")) return lines.map((text, index) => ({ line: index + 1, text }));
+  return walk(parser.parse(source)).flatMap((node) => visible(node, lines));
 }
 
 export function vocabularyProblems(root: string): string[] {

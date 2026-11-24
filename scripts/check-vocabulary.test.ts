@@ -49,6 +49,18 @@ describe("vocabularyProblems", () => {
     ]);
   });
 
+  test("visible HTML text and indented code count, at their own lines; HTML attributes don't", () => {
+    expect(
+      problems({
+        "README.md":
+          '<p align="center">\n  <a href="https://example.com/sync">Sync a key</a>\n</p>\n\n    keypin sync\n',
+      }),
+    ).toEqual([
+      'README.md:2: say "publish", not "Sync". See BRAND.md#vocabulary.',
+      'README.md:5: say "publish", not "sync". See BRAND.md#vocabulary.',
+    ]);
+  });
+
   test("each banned word, in any case, names the file, line and the word to use", () => {
     expect(
       problems({

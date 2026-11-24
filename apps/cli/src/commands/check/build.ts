@@ -117,7 +117,10 @@ export async function build(
     const read = [`read ${counts}`, ...scanned.about].join("; ");
     const fixes = gaps?.fixes ?? [];
     const name = parsed?.ok ? parsed.map.project : basename(root);
-    const title = /\p{Cc}/u.test(name) ? JSON.stringify(name) : name;
+    const title = name.replace(
+      /\p{Cc}/gu,
+      (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`,
+    );
     const planned = plan(report, all, fixes, gaps?.providers ?? null, empty);
     return { report, steps: planned, read, title };
   };

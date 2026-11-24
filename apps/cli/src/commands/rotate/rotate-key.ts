@@ -45,8 +45,8 @@ import {
   saveId,
   itemIdsAfterSave,
   vaultTakesWrites,
-  issuerLists,
   revokeOrphan,
+  stillHeld,
 } from "./vault-and-issuer";
 import {
   row,
@@ -63,7 +63,14 @@ import {
   shortLifetime,
 } from "./messages";
 import { routineWrites } from "./routine-check";
-import { revokeOnly, resetHeld, neverSaved, provenId, unsignedStop } from "./unfinished-rotation";
+import {
+  revokeOnly,
+  resetHeld,
+  neverSaved,
+  provenId,
+  settlesUnproven,
+  unsignedStop,
+} from "./unfinished-rotation";
 import { pairChecks } from "./pair-checks";
 import { readerRows, unreadNote } from "./readers";
 
@@ -148,22 +155,9 @@ export async function rotateLocked(job: Job): Promise<number> {
   const issuer = deps.issuer(spec, read.admin);
   const proven = (id: string | null) => provenId(recorded, id, read.secret);
   if (next.action === "wait") {
-    const held = next.issued;
-    const listed = await issuerLists(issuer, held.id, read.secret, out);
-    if (listed === null) return 1;
-    if (listed) {
-      say(
-        `\nStopped: ${vaultName(entry.ref, deps.vaults)} still holds the change that saves key ${shown(issuer, held.id)} for approval. Nothing was created.`,
-      );
-      say(heldSteps(job, issuer, held.id));
-      return NEEDS_APPROVAL;
-    }
-    say(
-      out.dim(
-        `\nKey ${shown(issuer, held.id)} is gone from ${issuer.describe()}, so keypin creates a new one.`,
-      ),
-    );
-    next = { action: "create", current: held.old.id, abandoned: null };
+    const stopped = await stillHeld(job, issuer, next.issued, read.secret);
+    if (stopped !== null) return stopped;
+    next = { action: "create", current: next.issued.old.id, abandoned: null };
   }
   if (next.action === "resume" && (next.issued.held || next.issued.unsaved)) {
     next = { action: "resume", issued: { ...next.issued, held: false, unsaved: false } };
@@ -179,7 +173,8 @@ export async function rotateLocked(job: Job): Promise<number> {
     );
     return 1;
   }
-  if (job.approve && !revokeOnly(next, counted, idSaved)) {
+  const onlyRevoke = revokeOnly(next, counted, idSaved);
+  if (job.approve && !onlyRevoke) {
     say(
       next.action === "resume" && waitsForRevoke(next.issued)
         ? `Stopped: not every destination has the new key ${shown(issuer, next.issued.id)}, so keypin won't revoke the old one. Run keypin rotate --due to publish it first. Nothing was revoked.`
@@ -187,6 +182,8 @@ export async function rotateLocked(job: Job): Promise<number> {
     );
     return 1;
   }
+  const settled = onlyRevoke ? await settlesUnproven(job, issuer, next, read.secret, state) : null;
+  if (settled !== null) return settled;
   if (next.action === "create" && !(await vaultTakesWrites(job))) return 1;
 
   const recordedId = next.action === "resume" ? next.issued.id : next.current;

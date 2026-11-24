@@ -1,6 +1,7 @@
 import {
   formatReference,
   HeldForApproval,
+  type Issued,
   WriteRefused,
   type IssuedKey,
   type Issuer,
@@ -17,9 +18,9 @@ import {
 } from "@keypin/core";
 import { type Output } from "../../output";
 import { approval } from "../../sign-in";
-import { commandLine, withoutPlan } from "../../approval";
+import { commandLine, NEEDS_APPROVAL, withoutPlan } from "../../approval";
 import { type Pair, type Job } from "./job";
-import { revokeRefused, shown } from "./messages";
+import { heldSteps, revokeRefused, shown } from "./messages";
 
 export async function itemIdsAfterSave({
   entry,
@@ -91,7 +92,31 @@ export async function vaultTakesWrites({ entry, pair, deps, out }: Job): Promise
   }
 }
 
-export async function issuerLists(
+export async function stillHeld(
+  job: Job,
+  issuer: Issuer,
+  held: Issued,
+  current: Secret,
+): Promise<number | null> {
+  const { entry, deps, out } = job;
+  const listed = await issuerLists(issuer, held.id, current, out);
+  if (listed === null) return 1;
+  if (listed) {
+    out.line(
+      `\nStopped: ${vaultName(entry.ref, deps.vaults)} still holds the change that saves key ${shown(issuer, held.id)} for approval. Nothing was created.`,
+    );
+    out.line(heldSteps(job, issuer, held.id));
+    return NEEDS_APPROVAL;
+  }
+  out.line(
+    out.dim(
+      `\nKey ${shown(issuer, held.id)} is gone from ${issuer.describe()}, so keypin creates a new one.`,
+    ),
+  );
+  return null;
+}
+
+async function issuerLists(
   issuer: Issuer,
   id: string,
   current: Secret,

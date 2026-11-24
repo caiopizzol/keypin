@@ -18,7 +18,7 @@ export async function packRules(): Promise<string> {
     version: root.version,
     private: true,
     description:
-      "keypin's rules for keypin.toml, without the CLI: read a map and answer what it means.",
+      "keypin's rules for secretspec.toml, without the CLI: read the file and answer what it means.",
     license: root.license,
     homepage: root.homepage,
     bugs: root.bugs,

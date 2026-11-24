@@ -34,19 +34,17 @@ STRIPE_KEY = { description = "Stripe" }
 DB_PASSWORD = { description = "Database password", ref = { item = "prod/db-credentials", field = "password" } }
 ```
 
-The provider is `awssm://<region>`, with an optional `?prefix=<prefix>` for the secrets secretspec names. keypin
-refuses a URI without a region, since CI and the console can't see the region secretspec would take from your
-environment, and a URI with a path or a `<profile>@`: keypin signs in only with the credentials in its environment, so
-set `AWS_PROFILE` where keypin runs instead. `kms_key_id` and `tag.*` apply only when secretspec creates a secret, so
-keypin ignores them.
+The provider is `awssm://<region>`, with an optional `?prefix=<prefix>` for the secrets secretspec names. Write the
+region: CI and the console can't see the one secretspec would take from your environment. Set `AWS_PROFILE` where
+keypin runs instead of a `<profile>@` in the URI. keypin ignores `kms_key_id` and `tag.*`, which apply only when
+secretspec creates a secret.
 
 ## Addresses
 
 - **Without `ref`:** the whole secret `[<prefix>/]secretspec/<project>/<profile>/<KEY>`. In the example, `STRIPE_KEY`
   is `acme/secretspec/billing/production/STRIPE_KEY`.
 - **With `ref`:** `item` is the secret's name, and `field` reads one key of a JSON secret. keypin rotates it in
-  place, though secretspec only reads it. keypin refuses an ARN, so write the name, without the 6-character suffix,
-  and any field but `item` and `field`.
+  place, though secretspec only reads it. Write the name, not an ARN, without the 6-character suffix.
 
 An issuer's `admin` is a reference in keypin's own syntax, not a provider URI: `awssm://<region>/<secret name>`, with
 `:<key>` after the name to read one key of a JSON secret.

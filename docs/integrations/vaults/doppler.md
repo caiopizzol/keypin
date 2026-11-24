@@ -42,15 +42,14 @@ SHARED_CA = { description = "CA bundle", ref = { item = "shared/SHARED_CA" } }
 ```
 
 The provider is `doppler://<project>`, or `doppler://<project>/<config>` to name the config. Without a config, the
-profile names it. Project and config names use only lowercase letters, digits, `-` and `_`. keypin refuses a user,
-port or query in the URI.
+profile names it. Project and config names use only lowercase letters, digits, `-` and `_`.
 
 ## Addresses
 
 - **Without `ref`:** the secret `<KEY>` in the provider's config, else in the config named after the profile. In the
   example, `STRIPE_KEY` is in `dev` for `dev`, and in `prd` for `production`.
 - **With `ref`:** `item` is `<config>/<NAME>`, or `<NAME>` in the same config as without `ref`. `SHARED_CA` is in the
-  config `shared`. keypin refuses any field but `item`.
+  config `shared`.
 
 A secret name uses uppercase letters, digits and `_`, not starting with a digit. Doppler reserves `DOPPLER_PROJECT`,
 `DOPPLER_CONFIG` and `DOPPLER_ENVIRONMENT`.
@@ -60,10 +59,10 @@ An issuer's `admin` is a reference in keypin's own syntax, not a provider URI: `
 ## Rotated date
 
 Doppler keeps no rotated date on a secret, so `keypin status` can't tell when a Doppler key is due, and
-[scheduled rotation](../../guides/scheduled-rotation.md) never rotates one: `keypin rotate --check` fails for a key
-with a `rotate_every`. [`rotate_every`](../../reference/secretspec-toml.md#toolkeypin) applies to the key name in
-every profile, so set it to `"never"` or remove it wherever it's set, which stops scheduled rotation in every
-profile, or keep the key in a vault that keeps dates. Then rotate it by hand. To be reminded, set a
+[scheduled rotation](../../guides/scheduled-rotation.md) never rotates one. `keypin rotate --check` fails for a key
+with a [`rotate_every`](../../reference/secretspec-toml.md#toolkeypin), which applies in every profile: set it to
+`"never"` or remove it, or keep the key in a vault that keeps dates. Rotate it by hand with
+`keypin rotate <KEY> --profile <name>`, and set a
 [secret reminder](https://docs.doppler.com/docs/secrets#secret-reminders) in Doppler.
 
 ## Permissions

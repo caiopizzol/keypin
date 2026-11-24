@@ -21,10 +21,9 @@ Without `KEYPIN_1PASSWORD=service-account`, keypin uses the desktop app even whe
 `OP_SERVICE_ACCOUNT_TOKEN` too, so the same token lets a CI job run `secretspec run`.
 
 When the provider names an account by its sign-in address, such as `onepassword://acme.1password.com@Billing`,
-keypin checks the token's sign-in address against it before it reads, and refuses another account. A token has no
-account name or ID, so keypin can't check an account written as a name or ID. Individual accounts share
-`my.1password.com`, `my.1password.ca` and `my.1password.eu`, so keypin can't prove those either. In these cases, and
-without an account in the provider, the vaults you granted the service account are what limit it.
+keypin checks the token against it before it reads. It can't check an account written as a name or ID, or an
+individual account on `my.1password.com`, `my.1password.ca` or `my.1password.eu`. There, and without an account in
+the provider, only the vaults you granted the service account limit it.
 
 1Password limits each token to 1,000 reads and 100 writes an hour on individual, Families and Teams accounts (10,000
 and 1,000 on Business), and all service accounts together to 1,000 requests a day (5,000 on Teams, 50,000 on
@@ -33,4 +32,4 @@ Business). See [rate limits](https://www.1password.dev/service-accounts/rate-lim
 ## Expiry
 
 1Password can't tell keypin when a service account expires, so set a reminder to replace it before the date you gave
-`--expires-in`. Once one is deleted, every run fails and says how to replace it.
+`--expires-in`.

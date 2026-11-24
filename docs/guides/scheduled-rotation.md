@@ -1,9 +1,8 @@
 # Scheduled rotation
 
-A GitHub Actions workflow in your repository can rotate keys on a schedule. It runs on your runners, never on a
-keypin server. keypin creates each new key, saves it to your vault and publishes it, then stops: the old key keeps
-working until a person approves deleting it. The setup below is for keys kept in 1Password and published to GitHub
-Actions; for another vault, see [Other vaults](#other-vaults).
+A GitHub Actions workflow in your repository rotates each due key on a schedule, and the old key keeps working until
+a person approves revoking it. The setup below is for keys kept in 1Password and published to GitHub Actions; for
+another vault, see [Other vaults](#other-vaults).
 
 ## Setup
 
@@ -22,17 +21,16 @@ Actions; for another vault, see [Other vaults](#other-vaults).
      gh secret set OP_SERVICE_ACCOUNT_TOKEN --env rotation -R acme/web
    ```
 
-   Without `--expires-in`, it never expires; with it, [set a reminder](service-accounts.md#expiry) to make a new one
-   before that day. keypin reads each admin key from the vault, so it isn't a secret of its own.
+   With `--expires-in`, [set a reminder](service-accounts.md#expiry) to make a new one before that day. Admin keys
+   stay in the vault, not in repo secrets.
 
 4. Create a fine-grained GitHub token for this repository only, with the Secrets permission set to Read and write,
    and save it as the secret `KEYPIN_GITHUB_TOKEN` in `rotation`. Keys published to an environment also need
    Environments set to Read and write. The workflow's own `GITHUB_TOKEN` can't write secrets.
-5. Add the workflow below as `.github/workflows/rotate-keys.yml`. Pin the keypin version you run on your laptop;
-   `keypin check` notes when they differ. It runs daily at 06:17 UTC, though GitHub can delay or skip a scheduled run;
-   change the [schedule](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
-   to run at other times. `GH_CONFIG_DIR` and `--insecure-storage` keep `gh`'s login in the job's temporary folder,
-   which the runner empties after the job, not on a self-hosted runner's disk or keyring.
+5. Add the workflow below as `.github/workflows/rotate-keys.yml`, pinned to the keypin version you run on your
+   laptop. It runs daily at 06:17 UTC; change the
+   [schedule](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
+   to run at other times.
 6. Every run, manual ones too, pushes `.keypin/` to the default branch with the workflow's `GITHUB_TOKEN`, which a
    rule requiring a pull request or a status check rejects. Keep the branch free of such a rule, or give
    `KEYPIN_GITHUB_TOKEN` Contents write from an account that may bypass it, pass it to checkout as `token:`, and add
@@ -51,8 +49,7 @@ Actions; for another vault, see [Other vaults](#other-vaults).
    added to your `[providers]`), or it can read `KEYPIN_GITHUB_TOKEN`. In step 3, pipe the token to
    `secretspec set OP_SERVICE_ACCOUNT_TOKEN --profile rotation`, and give each item a
    [rotated date](../integrations/vaults/1password.md#rotated-date). Without a `production` profile, put this one
-   above the last, which `publish` and `rotate` use. A scheduled run can't read that vault, so it notes it couldn't
-   refresh these two dates and keeps the last ones in `.keypin/status.json`; the rotation itself still runs.
+   above the last, which `publish` and `rotate` use.
 
    ```toml
    [providers]
@@ -161,11 +158,8 @@ access to the keys and their admin keys. Because the job sets `environment: rota
 `OP_SERVICE_ACCOUNT_TOKEN`, which then needn't be ignored. With Bitwarden Secrets Manager, save `BWS_ACCESS_TOKEN` as
 an Actions secret, set it in their place, and ignore it instead.
 
-Doppler keeps no rotated date, so `rotate --due` never rotates a Doppler key, and `--check` fails for one with a
-`rotate_every`. [`rotate_every`](../reference/secretspec-toml.md#toolkeypin) applies to the key name in every
-profile, so set it to `"never"` or remove it wherever it's set, which stops scheduled rotation in every profile, or
-keep the key in a vault that keeps dates. Rotate it by hand with `keypin rotate <KEY> --profile <name>`. A job can
-still sign in to Doppler with [OIDC](../integrations/vaults/doppler.md#signing-in-from-github-actions) to publish.
+Doppler keeps no rotated date, so scheduled rotation never rotates a Doppler key; see
+[Doppler](../integrations/vaults/doppler.md#rotated-date).
 
 ## Runs
 
@@ -180,12 +174,9 @@ date. A [service account](service-accounts.md#expiry)'s expiry can't be read.
 
 GitHub emails a failed scheduled run only to the account that last changed the `schedule` or re-enabled the workflow,
 and only if it turned on Actions [notifications](https://docs.github.com/en/actions/concepts/workflows-and-actions/notifications-for-workflow-runs).
-To approve, run the workflow with **approve revoke** checked, and a key to approve only that one. keypin deletes an
-old key only if every destination got the new one, and only in a terminal if a destination taken out of
-`secretspec.toml` may still use it. Resend can't tell keypin which key the vault holds, so keypin never revokes the
-key a first rotation replaces: once nothing uses it, delete it at Resend yourself. Later rotations wait for approval.
+To approve, run the workflow with **approve revoke** checked, and a key to approve only that one. keypin never
+revokes the Resend key a first rotation replaces: once nothing uses it, delete it at Resend yourself.
 
-Each run pushes `.keypin/rotation.json`, what the next run needs to continue, and `.keypin/status.json`, each key's last
-rotation for the hosted console. Neither holds a value or a vault reference. `rotation.json` holds the provider's ID
-for the new and the old key, which can name a project or service account, and a short hash of each key. In a public
-repository, anyone can see which keys exist and when an old one still works.
+Each run pushes `.keypin/rotation.json` and `.keypin/status.json` ([Files and state](../reference/files-and-state.md)).
+Neither holds a value, but `rotation.json` holds each key's provider ID, which can name a project or service account.
+In a public repository, anyone can see which keys exist and when an old one still works.

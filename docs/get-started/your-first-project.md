@@ -1,8 +1,6 @@
 # Your first project
 
-`secretspec init` writes `secretspec.toml`. `keypin check` reports what the project uses and what to do next. By the
-end of [Ship to production](ship-to-production.md), each key is in your vault and keypin can publish it everywhere
-it's used. Rotating a key takes an [issuer](../guides/rotating-a-key.md) too.
+`secretspec init` writes `secretspec.toml`, and `keypin check` reports what the project uses and what to do next.
 
 ## Declare the keys
 
@@ -62,4 +60,4 @@ Do the steps in order:
 4. Add the production keys: [Ship to production](ship-to-production.md).
 
 A `Not checked:` line means `check` couldn't read something: it's unverified, not missing. Run `keypin check` again
-after each change; it exits 0 when everything checks out. `--json` prints the report for scripts and agents.
+after each change; it exits 0 when everything checks out.

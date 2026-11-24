@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import type { KeyRef, VaultBackend } from "@keypin/core";
+import { isRecord, type KeyRef, type VaultBackend } from "@keypin/core";
 import { day } from "@keypin/core/testing";
 import { GitHubSecretDestination } from "@keypin/connectors/github";
 import { type FakeGitHub, githubFetch } from "@keypin/connectors/github/testing";
@@ -260,6 +260,24 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
     );
     const printed = [first.stderr.text, approve.stderr.text, committed].join("\n");
     for (const value of [OLD, ADMIN, w.value()]) expect(printed).not.toContain(value);
+  });
+
+  test("a finished rotation with no proof stops an unattended run before it creates a key", async () => {
+    const w = await rotatedOnceOnALaptop();
+    const file = parseJson(w.repo.contents.get(ROTATION) ?? "null");
+    assert(isRecord(file) && Array.isArray(file.issued));
+    for (const issued of file.issued) if (isRecord(issued)) delete issued.proof;
+    w.repo.contents.set(ROTATION, `${JSON.stringify(file, null, 2)}\n`);
+    const run = ci(w);
+    expect(await run.run("--due", "--yes")).toBe(1);
+    expect(run.stderr.text).toContain(
+      `Stopped: .keypin/rotation.json records key re-new-1 for the vault's value without a proof, and Resend can't confirm which key the vault holds. Run this once in a terminal to check the plan before keypin creates a key:\n  ${RERUN} rotate RESEND_API_KEY\nNothing was created.`,
+    );
+    expect(w.effects).toEqual(["resend create re-new-1"]);
+
+    const person = machine(w, { terminal: true, answers: ["y"] });
+    expect(await person.run("--due")).toBe(0);
+    expect(w.effects).toEqual(["resend create re-new-1", "resend create re-new-2"]);
   });
 
   test("outside GitHub Actions, the waiting old key comes with the command that approves it", async () => {

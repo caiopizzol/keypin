@@ -63,7 +63,7 @@ import {
   shortLifetime,
 } from "./messages";
 import { routineWrites } from "./routine-check";
-import { revokeOnly, resetHeld, neverSaved, provenId } from "./unfinished-rotation";
+import { revokeOnly, resetHeld, neverSaved, provenId, unsignedStop } from "./unfinished-rotation";
 import { pairChecks } from "./pair-checks";
 import { readerRows, unreadNote } from "./readers";
 
@@ -201,6 +201,7 @@ export async function rotateLocked(job: Job): Promise<number> {
     say("\nStopped: an account check failed. Nothing was created and nothing was written.");
     return 1;
   }
+  if (unsignedStop(job, issuer, next, inVault, check.currentId)) return 1;
   const reset = resetHeld(
     issuer,
     spec,

@@ -157,26 +157,27 @@ describe("keypin rotate --approve-revoke with a changed .keypin/rotation.json", 
     }
   });
 
-  test("a rotation with no proof is never revoked, and is recorded once the key is gone", async () => {
+  test("a rotation with no proof is never revoked: a person records a manual delete", async () => {
     const w = await waitingForApproval();
     w.unproven();
-    const stopped =
-      "Stopped: .keypin/rotation.json names key key_old of service account billing-bot as the old key without a proof, so keypin can't confirm it: an older keypin recorded it, or someone removed the proof. Nothing was revoked. Check which key this rotation replaced at https://platform.openai.com/settings/organization/api-keys, and delete it once nothing uses it. If it's key key_old of service account billing-bot, run this again to record it:";
-    for (const answers of [[], ["y"]]) {
-      const refused = await w.run(["--approve-revoke"], answers);
-      expect(refused.code).toBe(1);
-      expect(refused.stderr).toContain(stopped);
-    }
-    expect(w.effects).toEqual(["openai create key_new1 for svc_bot"]);
-
-    w.keys.save({ ...w.keys.load(), live: w.keys.load().live.filter((k) => k.id !== "key_old") });
-    const recorded = await w.run(["--approve-revoke"]);
-    expect(recorded.code).toBe(0);
-    expect(recorded.stderr).toContain(
-      "Key key_old of service account billing-bot is gone from OpenAI, so keypin records it as revoked.",
+    const named =
+      ".keypin/rotation.json names key key_old of service account billing-bot as the old key without a proof, so keypin can't confirm it and won't revoke it: an older keypin recorded it, or someone removed the proof. Check which key this rotation replaced at https://platform.openai.com/settings/organization/api-keys, and delete it yourself once nothing uses it.";
+    const unattended = await w.run(["--approve-revoke"]);
+    expect(unattended.code).toBe(1);
+    expect(unattended.stderr).toContain(
+      `${named}\nStopped. Nothing was revoked. Once you've deleted it, run this in a terminal to record it:`,
     );
+    const declined = await w.run(["--approve-revoke"], ["n"]);
+    expect(declined.code).toBe(1);
+    expect(declined.stderr).toContain("Nothing was recorded.");
+    expect(w.rotation()).toMatchObject({ issued: [{ old: { revoked: false } }] });
+
+    const confirmed = await w.run(["--approve-revoke"], ["y"]);
+    expect(confirmed.code).toBe(0);
+    expect(confirmed.stderr).toContain("Recorded the old key as revoked. keypin deleted nothing.");
     expect(w.rotation()).toMatchObject({ issued: [{ old: { revoked: true } }] });
     expect(w.effects).toEqual(["openai create key_new1 for svc_bot"]);
+    expect(w.keys.load().live.map((key) => key.id)).toContain("key_old");
   });
 
   test("a recorded new key that isn't the vault's steers nothing and revokes nothing", async () => {

@@ -1,5 +1,6 @@
 import {
   type Issued,
+  type Issuer,
   type IssuerSpec,
   type NextRotation,
   ownedBy,
@@ -9,6 +10,10 @@ import {
   type State,
   waitsForRevoke,
 } from "@keypin/core";
+import { commandLine } from "../../approval";
+import { ROTATION_FILE } from "../../project";
+import { type Job, terminalArgs } from "./job";
+import { shown } from "./messages";
 
 export function revokeOnly(
   next: NextRotation,
@@ -54,4 +59,20 @@ export async function provenId(
   if (id === recorded.id && (await proves(recorded, vault, "new"))) return id;
   if (id === recorded.old.id && (await proves(recorded, vault, "old"))) return id;
   return null;
+}
+
+export function unsignedStop(
+  job: Job,
+  issuer: Issuer,
+  next: NextRotation,
+  inVault: string | null,
+  named: string | undefined,
+): boolean {
+  const recorded = next.action === "create" ? next.current : null;
+  if (job.pair || recorded === null || inVault !== null || named !== undefined) return false;
+  if (job.deps.isTerminal) return false;
+  job.out.line(
+    `\nStopped: ${ROTATION_FILE} records key ${shown(issuer, recorded)} for the vault's value without a proof, and ${issuer.describe()} can't confirm which key the vault holds. Run this once in a terminal to check the plan before keypin creates a key:\n  ${commandLine(job.deps, "rotate", terminalArgs(job.args))}\nNothing was created.`,
+  );
+  return true;
 }

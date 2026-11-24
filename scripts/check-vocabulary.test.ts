@@ -37,6 +37,18 @@ describe("vocabularyProblems", () => {
     ).toEqual([]);
   });
 
+  test("a phrase wrapped across lines fails at its first line, and a link's URL passes", () => {
+    expect(
+      problems({
+        "docs/guides/publishing.md":
+          "# Publishing\n\nSee the [fork guide](https://docs.github.com/syncing-a-fork) for each env\nvar in the\nmap.\n",
+      }),
+    ).toEqual([
+      'docs/guides/publishing.md:3: say "key", not "env var". See BRAND.md#vocabulary.',
+      'docs/guides/publishing.md:4: say "secretspec.toml", not "the map". See BRAND.md#vocabulary.',
+    ]);
+  });
+
   test("each banned word, in any case, names the file, line and the word to use", () => {
     expect(
       problems({

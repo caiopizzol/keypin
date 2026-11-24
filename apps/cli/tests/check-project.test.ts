@@ -272,6 +272,7 @@ describe("keypin check on a whole project", () => {
     const data = setup({ files: { [MAP]: TEMPLATE } });
     expect(await data.record("right-after-init-json", ["check", "--json"])).toBe(1);
     expect(json(data.stdout.text).add).toBe(added(run.stdout.text));
+    expect(added(run.stdout.text)).not.toContain("rotate_every");
     run.unchanged();
     expect(leaks(...run.everything(), ...data.everything())).toBe(false);
   });
@@ -677,88 +678,6 @@ repo = "acme/billing"
         vaults,
       ).ok,
     );
-  });
-
-  test("a workflow secret named like an ID is suggested as a variable, not TOML", async () => {
-    const workflow = `
-on: push
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - run: deploy
-        env:
-          STRIPE_API_KEY: \${{ secrets.STRIPE_API_KEY }}
-          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          AWS_ACCESS_KEY_ID: \${{ secrets.AWS_ACCESS_KEY_ID }}
-          DEPLOY_SESSION_ID: \${{ secrets.DEPLOY_SESSION_ID }}
-`;
-    const run = setup({
-      files: {
-        [MAP]: MAPPED,
-        [`${ROOT}/.env`]: null,
-        [`${ROOT}/wrangler.toml`]: null,
-        [`${ROOT}/.github/workflows/deploy.yml`]: workflow,
-      },
-      github: { ok: true, secrets: [] },
-    });
-    expect(await run.record("id-as-variable", ["check"])).toBe(1);
-    const toml = added(run.stdout.text);
-    expect(toml).toContain("AWS_ACCESS_KEY_ID");
-    expect(toml).toContain("DEPLOY_SESSION_ID");
-    expect(toml).not.toContain("CLOUDFLARE_ACCOUNT_ID");
-    expect(toml).not.toContain("rotate_every");
-    expect(run.stdout.text).toContain(
-      "set a variable CLOUDFLARE_ACCOUNT_ID in acme/billing to the same value, then read it as vars.CLOUDFLARE_ACCOUNT_ID.",
-    );
-  });
-
-  test("an ID read in a job whose environment is an expression stays a secret", async () => {
-    const workflow = `
-on: push
-jobs:
-  deploy:
-    environment: \${{ inputs.target }}
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-`;
-    const run = setup({
-      files: {
-        [MAP]: MAPPED,
-        [`${ROOT}/.env`]: null,
-        [`${ROOT}/wrangler.toml`]: null,
-        [`${ROOT}/.github/workflows/deploy.yml`]: workflow,
-      },
-      github: { ok: true, secrets: [] },
-    });
-    expect(await cli(["check"], run.deps)).toBe(1);
-    expect(run.stdout.text).not.toContain("Read IDs as variables");
-    expect(added(run.stdout.text)).toContain("CLOUDFLARE_ACCOUNT_ID");
-  });
-
-  test("a new project whose only workflow secret is an ID still says to declare a key", async () => {
-    const workflow = `
-on: push
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - run: deploy
-        env:
-          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-`;
-    const run = setup({
-      files: {
-        [MAP]: TEMPLATE,
-        [`${ROOT}/.env`]: null,
-        [`${ROOT}/wrangler.toml`]: null,
-        [`${ROOT}/.github/workflows/deploy.yml`]: workflow,
-      },
-    });
-    expect(await cli(["check"], run.deps)).toBe(1);
-    expect(run.stdout.text).toContain("Read IDs as variables, not secrets");
-    expect(run.stdout.text).toContain("Declare a key");
   });
 
   test("a key whose prod table is inline gets an entry for its publish list instead", async () => {

@@ -61,6 +61,21 @@ Each secretspec profile is a set of keys, such as `default` for your laptop and 
 the keys of `[profiles.default]`. `keypin publish` and `keypin rotate` use `production`; `--profile <name>` picks
 another. Each profile reads its own vault item, so your laptop never needs the production value.
 
+1Password grants access to a whole vault, so anyone who can read the `default` items in `Acme` can read the
+`production` ones too, and so can a CI token with access to it. To keep production apart, give it its own vault:
+
+```toml
+[providers]
+dev = "onepassword://Acme-dev"
+prod = "onepassword://Acme-prod"
+
+[profiles.default.defaults]
+providers = ["dev"]
+
+[profiles.production.defaults]
+providers = ["prod"]
+```
+
 ## How a key reaches your code
 
 - `secretspec run -- <command>` starts your command with the keys as environment variables, on your laptop or in a

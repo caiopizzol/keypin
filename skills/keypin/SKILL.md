@@ -18,6 +18,7 @@ keypin reads values from the vault only while a command needs them. secretspec, 
 - 1Password asks the user to approve each command, unless the machine uses a service account
   (`KEYPIN_1PASSWORD=service-account`). If a command waits, tell the user. Never set `KEYPIN_1PASSWORD`,
   `OP_SERVICE_ACCOUNT_TOKEN` or another vault's credentials yourself.
+- secretspec refuses an agent that gives no reason: add `--reason "<why>"` to each `secretspec` command you run.
 - Put keypin's fields only in `[tool.keypin]` tables, never in a key's entry under `[profiles]`.
 - Run `keypin --help` first, and use only what it lists.
 

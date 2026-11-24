@@ -21,7 +21,7 @@ function fields(value: unknown, path: string, into: Map<string, boolean>): Map<s
           ([name, item]) => [path ? `${path}.${name}` : name, item] as const,
         )
       : [];
-  const empty = value === null || (typeof value === "object" && children.length === 0);
+  const empty = Array.isArray(value) && value.length === 0;
   if (path) into.set(path, into.get(path) === true || empty);
   for (const [child, item] of children) fields(item, child, into);
   return into;
@@ -43,10 +43,19 @@ describe("files the released keypin reads", () => {
     async (format) => {
       expect(
         dropped(released(format), (await written())[format]),
-        "keep writing these fields, empty, for a release; see docs/development.md#files-keypin-reads-back",
+        "keep writing these fields, see docs/development.md#files-keypin-reads-back",
       ).toEqual([]);
     },
   );
+
+  test("an empty list may drop its items' fields, an empty object or null may not", () => {
+    const before = JSON.stringify({ issued: [{ old: { id: "a" } }], held: { at: 1 } });
+    expect(dropped(before, JSON.stringify({ issued: [], held: { at: 2 } }))).toEqual([]);
+    expect(dropped(before, JSON.stringify({ issued: [{ old: {} }], held: null }))).toEqual([
+      "issued[].old.id",
+      "held.at",
+    ]);
+  });
 
   test("this keypin reads the released state, registry and rotation files", async () => {
     const disk = fakeFiles(Object.fromEntries(FORMATS.map((f) => [f, released(f)])));

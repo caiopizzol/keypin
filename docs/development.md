@@ -61,10 +61,11 @@ broken link or a page keypin.dev can't build.
 
 ### Files keypin reads back
 
-Another keypin version may read the state, registry, rotation and status files this one writes. When you drop a field,
-keep writing it empty for at least one release. `packages/core/tests/formats.test.ts` fails when a field of the files
+Another keypin version may read the state, registry, rotation and status files this one writes. When a field is no longer
+needed, keep writing it, with a value older readers accept such as `[]`, until the oldest keypin you support reads the
+file without it. `packages/core/tests/formats.test.ts` fails when a field of the files
 in `packages/core/tests/formats/` goes missing. After each release, run `bun packages/core/tests/formats.ts` to record
-its files. Delete a field from them only after a release has written it empty.
+its files. Delete a field from them only when you stop writing it under that rule.
 
 ## Binary and npm packages
 

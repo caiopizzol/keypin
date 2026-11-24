@@ -379,17 +379,23 @@ describe("key IDs", () => {
     expect(keyIdOf(NAME)).toBe("web-google-maps-api-key-prod-2026-11-17t12-00z-a1b2c3");
   });
 
-  test("a long name keeps its start and the run's tag", () => {
+  test("a long name keeps its start, the time and the run's tag", () => {
     expect(keyIdOf(`web ${"VERY_LONG_".repeat(8)}KEY prod 2026-11-17T12:00Z a1b2c3`)).toBe(
-      "web-very-long-very-long-very-long-very-long-very-long-v-a1b2c3",
+      "web-very-long-very-long-very-long-ver-2026-11-17t12-00z-a1b2c3",
     );
     expect(keyIdOf(`9web ${"VERY_LONG_".repeat(8)} prod 2026-11-17T12:00Z a1b2c3`)).toBe(
-      "k-9web-very-long-very-long-very-long-very-long-very-lon-a1b2c3",
+      "k-9web-very-long-very-long-very-long-2026-11-17t12-00z-a1b2c3",
     );
   });
 
   test("a name that starts with a digit gets a letter first", () => {
     expect(keyIdOf("1PASSWORD_KEY dev")).toBe("k-1password-key-dev");
+  });
+
+  test("a project name that grows when lowercased still fits in 63 characters", () => {
+    const id = keyIdOf(`${"İ".repeat(30)} KEY prod 2026-11-17T12:00Z a1b2c3`);
+    expect(id).toMatch(/^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/);
+    expect(id.endsWith("-a1b2c3")).toBe(true);
   });
 });
 

@@ -359,11 +359,11 @@ function counted(n: number, one: string, many: string): string[] {
 }
 
 export function keyIdOf(name: string): string {
-  const slug = (limit: number) =>
-    fitKeyName(name, limit)
+  const slug = (text: string) =>
+    text
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "");
-  const whole = slug(KEY_ID_LIMIT);
-  return /^[a-z]/.test(whole) ? whole : `k-${slug(KEY_ID_LIMIT - 2)}`;
+  const whole = fitKeyName(name, KEY_ID_LIMIT, slug);
+  return /^[a-z]/.test(whole) ? whole : `k-${fitKeyName(name, KEY_ID_LIMIT - 2, slug)}`;
 }

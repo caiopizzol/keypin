@@ -483,7 +483,7 @@ describe("keypin rotate", () => {
     expect(keys.load().live).toEqual(["key-0", "re-new-1"]);
     expect(run.stderr.text).not.toContain("Nothing was created");
     expect(run.stderr.text).toContain(
-      'Stopped: keypin didn\'t get the new key back. Resend may have made the key before the reply was lost. Only this run uses the name "billing RESEND_API_KEY prod 2026-11-09T12:… a1b2c3": delete a key with that name at https://resend.com/api-keys before you run this again, or the rerun leaves it live.',
+      'Stopped: keypin didn\'t get the new key back. Resend may have made the key before the reply was lost. Only this run uses the name "billing RESEND_API_KEY p… 2026-11-09T12:00Z a1b2c3": delete a key with that name at https://resend.com/api-keys before you run this again, or the rerun leaves it live.',
     );
     expect(run.vault.values.get("mailer resend key")).toBe(OLD);
   });
@@ -502,7 +502,7 @@ describe("keypin rotate", () => {
     expect(await run.run()).toBe(1);
     expect(run.stderr.text).not.toContain("Nothing was created");
     expect(run.stderr.text).toContain(
-      'Only this run uses the name "billing RESEND_API_KEY prod 2026-11-09T12:… a1b2c3": delete a key with that name at https://resend.com/api-keys before you run this again',
+      'Only this run uses the name "billing RESEND_API_KEY p… 2026-11-09T12:00Z a1b2c3": delete a key with that name at https://resend.com/api-keys before you run this again',
     );
   });
 

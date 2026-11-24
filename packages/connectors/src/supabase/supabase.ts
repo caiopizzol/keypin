@@ -251,10 +251,12 @@ function secretKeys(body: unknown): Listed[] {
 }
 
 function fitName(name: string): string {
-  const words = fitKeyName(name, NAME_LIMIT - 1)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+  const words = fitKeyName(name, NAME_LIMIT - 1, (text) =>
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, ""),
+  );
   return /^[a-z]/.test(words) ? words : `_${words}`;
 }
 

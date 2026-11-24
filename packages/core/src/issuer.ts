@@ -61,9 +61,28 @@ export function idKeyOf(kinds: readonly IssuerRules[], spec: IssuerSpec): KeyId 
   return kinds.find((k) => k.kind === spec.kind)?.idKey?.(spec) ?? null;
 }
 
-export function fitKeyName(name: string, limit: number): string {
+export function fitKeyName(
+  name: string,
+  limit: number,
+  normalize: (name: string) => string = (same) => same,
+): string {
+  for (let room = limit; room > 0; room--) {
+    const fitted = normalize(cutKeyName(name, room));
+    if (fitted.length <= limit) return fitted;
+  }
+  return "";
+}
+
+function cutKeyName(name: string, limit: number): string {
   if (name.length <= limit) return name;
-  const space = name.lastIndexOf(" ");
-  const runTag = space > 0 && name.length - space < limit / 2 ? name.slice(space) : "";
-  return `${name.slice(0, limit - runTag.length - 1).trimEnd()}…${runTag}`;
+  const words = name.split(" ").slice(1);
+  const kept = [2, 1]
+    .map((count) => words.slice(-count).join(" "))
+    .find((end) => end && end.length < limit / 2);
+  const end = kept ? ` ${kept}` : "";
+  const start = name
+    .slice(0, limit - end.length - 1)
+    .replace(/[\uD800-\uDBFF]$/, "")
+    .trimEnd();
+  return `${start}…${end}`;
 }

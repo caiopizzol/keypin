@@ -240,9 +240,10 @@ describe("create", () => {
 
   test.each([
     ["9_KEYS prod", "_9_keys_prod"],
+    [`${"İ".repeat(40)} KEY prod 2026-11-24T16:12Z a1b2c3`, `${"i_".repeat(28)}a1b2c3`],
     [
       "orbit-ci PULLFROG_OPENAI_API_KEY production 2026-11-24T16:12Z 668dbf",
-      "orbit_ci_pullfrog_openai_api_key_production_2026_11_24t_668dbf",
+      "orbit_ci_pullfrog_openai_api_key_prod_2026_11_24t16_12z_668dbf",
     ],
     [`${"9".repeat(70)} a1b2c3`, `_${"9".repeat(55)}_a1b2c3`],
   ])("fits %s to Supabase's name rules", async (name, fitted) => {

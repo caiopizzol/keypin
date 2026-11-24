@@ -368,7 +368,7 @@ describe("create", () => {
     expect(effects).toHaveLength(1);
   });
 
-  test("a long name is cut to Cloudflare's 120 characters, keeping its start and the run's tag", async () => {
+  test("a long name is cut to Cloudflare's 120 characters, keeping its start, the time and the run's tag", async () => {
     const { issuer, requests } = cloudflare();
     await issuer.checkAccount(null, new Secret(VAULT));
     const name = `web ${"A".repeat(120)} prod 2026-11-17T09:30Z 3f9a2c`;
@@ -379,7 +379,7 @@ describe("create", () => {
     );
     const sent = body.name;
     expect(sent).toHaveLength(120);
-    expect(sent).toBe(`web ${"A".repeat(108)}… 3f9a2c`);
+    expect(sent).toBe(`web ${"A".repeat(90)}… 2026-11-17T09:30Z 3f9a2c`);
     expect(issuer.lostCreate(name)).toContain(`"${sent}"`);
   });
 

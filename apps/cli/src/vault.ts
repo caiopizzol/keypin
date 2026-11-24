@@ -38,6 +38,17 @@ export function routedVault(vaults: Vaults): VaultBackend {
     checkWrite: async (ref) => of(ref).checkWrite?.(ref),
     list: (scope) => of(scope).list(scope),
     metadata: (ref) => of(ref).metadata(ref),
+    notes: async (refs) => {
+      const kinds = [...new Set(refs.map((ref) => ref.kind))];
+      const notes = await Promise.all(
+        kinds.map(async (kind) => {
+          const open = vaults[kind];
+          if (!open || !opened.has(open)) return [];
+          return (await open().notes?.(refs.filter((ref) => ref.kind === kind))) ?? [];
+        }),
+      );
+      return notes.flat();
+    },
     close: async () => {
       const open = [...opened];
       opened.clear();

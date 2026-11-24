@@ -222,7 +222,10 @@ function client(account: string, scenario: Scenario): SdkClient {
     return saved.length;
   };
   return {
-    vaults: { list: async () => vaults().map((title) => ({ id: title, title })) },
+    vaults: {
+      list: async () =>
+        vaults().map((title) => ({ id: title, title, vaultType: "userCreated" as const })),
+    },
     items: {
       list: async (vault) =>
         itemsOf(account, vault, scenario).map((item) => ({

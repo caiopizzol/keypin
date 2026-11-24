@@ -180,6 +180,7 @@ export async function build(
     },
     approval(deps, refs),
   );
+  report.notes.push(...((await deps.vault().notes?.(refs)) ?? []));
 
   const placeOf = (target: PublishTarget) => checkId(target, deps.destinations);
   for (const { entry } of entries)

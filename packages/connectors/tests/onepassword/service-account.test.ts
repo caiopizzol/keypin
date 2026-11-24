@@ -28,7 +28,7 @@ function fakeSdk(vaults = ["Deploy"], create = () => {}) {
     vaults: {
       list: async () => {
         calls.push("vaults.list");
-        return vaults.map((title) => ({ id: `vault-${title}`, title }));
+        return vaults.map((title) => ({ id: `vault-${title}`, title, vaultType: "userCreated" }));
       },
     },
     items: {

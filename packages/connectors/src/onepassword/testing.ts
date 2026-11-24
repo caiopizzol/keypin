@@ -1,4 +1,11 @@
-import type { CreateParams, Field, FullItem, SdkClient } from "./sdk";
+import type { CreateParams, Field, FullItem, ListedVault, SdkClient } from "./sdk";
+
+type FakeVault = string | Omit<ListedVault, "id">;
+
+const VAULTS: FakeVault[] = [
+  { title: "Private", vaultType: "personal" },
+  { title: "Shared", vaultType: "everyone" },
+];
 
 export function field(title: string, fieldType: Field["fieldType"], value: string): Field {
   return { id: title, title, fieldType, value };
@@ -22,7 +29,7 @@ export function item(title: string, fields: Field[], id = `id-${title}`): FullIt
   };
 }
 
-export function fakeOnePassword(items: FullItem[] = [], vaults = ["Private", "Shared"]) {
+export function fakeOnePassword(items: FullItem[] = [], vaults = VAULTS) {
   const calls: {
     create: CreateParams[];
     put: FullItem[];
@@ -36,10 +43,11 @@ export function fakeOnePassword(items: FullItem[] = [], vaults = ["Private", "Sh
     vaults: {
       list: async () => {
         calls.lists.vaults += 1;
-        return vaults.map((title, index) => ({
-          id: index === 0 ? "vault-1" : `vault-${title}`,
-          title,
-        }));
+        return vaults.map((vault, index) => {
+          const { title, vaultType } =
+            typeof vault === "string" ? { title: vault, vaultType: "userCreated" as const } : vault;
+          return { id: index === 0 ? "vault-1" : `vault-${title}`, title, vaultType };
+        });
       },
     },
     items: {

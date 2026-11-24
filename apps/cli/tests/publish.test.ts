@@ -911,7 +911,9 @@ describe("a destination only takes a value without approval when it came from th
       updatedAt: new Date("2026-11-09T12:00:00Z"),
     };
     const backend = onePasswordBackend(async () => ({
-      vaults: { list: async () => [{ id: "vault-1", title: "Private" }] },
+      vaults: {
+        list: async () => [{ id: "vault-1", title: "Private", vaultType: "personal" as const }],
+      },
       items: {
         list: async () => [{ id: stored.id, title: stored.title, tags: [], updatedAt: new Date() }],
         get: async () => stored,

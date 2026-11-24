@@ -6,6 +6,7 @@ import type {
   ItemFieldType,
   ItemOverview,
   VaultOverview,
+  VaultType,
 } from "@1password/sdk";
 
 export type Field = Omit<ItemField, "fieldType"> & { fieldType: `${ItemFieldType}` };
@@ -20,8 +21,10 @@ export type CreateParams = Omit<ItemCreateParams, "category" | "fields"> & {
   fields?: Field[];
 };
 
+export type ListedVault = Pick<VaultOverview, "id" | "title"> & { vaultType: `${VaultType}` };
+
 export interface SdkClient {
-  vaults: { list(): Promise<Pick<VaultOverview, "id" | "title">[]> };
+  vaults: { list(): Promise<ListedVault[]> };
   items: {
     list(vaultId: string): Promise<Pick<ItemOverview, "id" | "title" | "tags" | "updatedAt">[]>;
     get(vaultId: string, itemId: string): Promise<FullItem>;

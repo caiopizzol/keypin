@@ -67,6 +67,7 @@ export interface VaultBackend {
   checkWrite?(ref: KeyRef): Promise<void>;
   list(scope: VaultScope): Promise<VaultItem[]>;
   metadata(ref: KeyRef): Promise<VaultMetadata>;
+  notes?(refs: readonly KeyRef[]): Promise<readonly string[]>;
   close?(): Promise<void>;
 }
 

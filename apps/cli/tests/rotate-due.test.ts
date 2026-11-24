@@ -3,7 +3,8 @@ import { isRecord, type KeyRef, type VaultBackend } from "@keypin/core";
 import { day } from "@keypin/core/testing";
 import { GitHubSecretDestination } from "@keypin/connectors/github";
 import { type FakeGitHub, githubFetch } from "@keypin/connectors/github/testing";
-import { onePasswordRef } from "@keypin/connectors/onepassword";
+import { onePasswordBackend, onePasswordRef } from "@keypin/connectors/onepassword";
+import { fakeOnePassword, field, item } from "@keypin/connectors/onepassword/testing";
 import { memoryKeys, resendFetch } from "@keypin/connectors/resend/testing";
 import { cli } from "../src/cli";
 import { NEEDS_APPROVAL } from "../src/approval";
@@ -924,6 +925,29 @@ describe("keypin rotate --check, the setup check a workflow runs before the firs
     expect(run.stderr.text).toContain(
       "Publish RESEND_API_KEY from your laptop (keypin publish RESEND_API_KEY --profile dev), run keypin rotate --due --profile dev there",
     );
+  });
+
+  test("notes keys in the account's default Shared vault, which a service account can't be granted", async () => {
+    const shared = (title: string, value: string) => ({
+      ...item(title, [
+        field("credential", "Concealed", value),
+        field("rotated", "Date", "2026-08-01"),
+      ]),
+      vaultId: "vault-Shared",
+    });
+    const onePassword = fakeOnePassword([
+      shared(ITEM, OLD),
+      shared("resend admin key", ADMIN),
+      shared("stripe key", "sk_x"),
+    ]);
+    const w = await world(MAP.replaceAll("Private", "Shared"));
+    w.vault = onePasswordBackend(async () => onePassword.client);
+    const run = ci(w);
+    expect(await run.run("--check")).toBe(1);
+    expect(run.stderr.text).toContain(
+      "Note: 1Password vault \"Shared\" (1Password account my.1password.com) is the account's default Shared vault. A service account can't be granted it, so scheduled rotation can't read op://Shared/mailer resend key/credential, op://Shared/resend admin key/credential; move them to a vault you create (docs/guides/service-accounts.md)\n\nFix what failed above",
+    );
+    expect(onePassword.calls.lists.vaults).toBe(1);
   });
 
   test("takes only --profile", async () => {

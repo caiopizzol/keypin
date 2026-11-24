@@ -713,6 +713,30 @@ jobs:
     );
   });
 
+  test("an ID read in a job whose environment is an expression stays a secret", async () => {
+    const workflow = `
+on: push
+jobs:
+  deploy:
+    environment: \${{ inputs.target }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+`;
+    const run = setup({
+      files: {
+        [MAP]: MAPPED,
+        [`${ROOT}/.env`]: null,
+        [`${ROOT}/wrangler.toml`]: null,
+        [`${ROOT}/.github/workflows/deploy.yml`]: workflow,
+      },
+      github: { ok: true, secrets: [] },
+    });
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(run.stdout.text).not.toContain("Read IDs as variables");
+    expect(added(run.stdout.text)).toContain("CLOUDFLARE_ACCOUNT_ID");
+  });
+
   test("a new project whose only workflow secret is an ID still says to declare a key", async () => {
     const workflow = `
 on: push

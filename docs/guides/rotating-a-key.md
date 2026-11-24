@@ -1,11 +1,12 @@
 # Rotating a key
 
-Add an `issuer` to a key's `[tool.keypin.<profile>.<KEY>]` table to let `keypin rotate <VARIABLE>` make the new
-key, at Resend, [Neon](#neon), [OpenAI](#openai), [Supabase](#supabase), [Cloudflare](#cloudflare),
-[OpenRouter](#openrouter), [Google Cloud](#google-cloud) (API keys and
-[service account keys](#google-cloud-service-account-keys)), [ElevenLabs](#elevenlabs), [AWS](#aws),
-[SendGrid](#sendgrid), [Twilio](#twilio), [xAI](#xai) or [MongoDB Atlas](#mongodb-atlas), or make it yourself with
-[`random`](#random):
+`keypin rotate <VARIABLE>` makes a new key at the provider, publishes it, and revokes the old one after you approve.
+
+Add an `issuer` to the key's `[tool.keypin.<profile>.<KEY>]` table so keypin can make the new key, at Resend,
+[Neon](#neon), [OpenAI](#openai), [Supabase](#supabase), [Cloudflare](#cloudflare), [OpenRouter](#openrouter),
+[Google Cloud](#google-cloud) (API keys and [service account keys](#google-cloud-service-account-keys)),
+[ElevenLabs](#elevenlabs), [AWS](#aws), [SendGrid](#sendgrid), [Twilio](#twilio), [xAI](#xai) or
+[MongoDB Atlas](#mongodb-atlas), or make it yourself with [`random`](#random):
 
 ```toml
 [profiles.production]

@@ -1,5 +1,7 @@
 # Troubleshooting
 
+Fixes for problems that keypin's errors don't cover.
+
 ## `wrangler dev`
 
 `wrangler dev` gives the Worker an environment variable only when its name is in the config's `secrets.required`,

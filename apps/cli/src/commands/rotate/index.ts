@@ -70,7 +70,11 @@ export async function rotate(args: string[], deps: Deps): Promise<number> {
         : values.due
           ? await rotateDue(context, flags, path)
           : await rotateLocked({ ...jobFor(context, keyId ?? "", flags), path });
-    if (values.plan || values.check || (!approve && !values.due && committed === null)) return code;
+    if (values.plan || values.check) return code;
+    if (!approve && !values.due && committed === null) {
+      if (code === 0) out.line(notRecorded(envArgs));
+      return code;
+    }
     return (await commitState(context, file, path)) ? code : 1;
   });
 }
@@ -87,4 +91,9 @@ async function commitState(context: Context, file: string, path: string): Promis
     out.line(`keypin couldn't write ${ROTATION_FILE}: ${messageOf(error)}`);
     return false;
   }
+}
+
+function notRecorded(envArgs: readonly string[]): string {
+  const due = ["keypin rotate --due", ...envArgs].join(" ");
+  return `\nThis rotation is recorded only on this machine: ${ROTATION_FILE} doesn't exist. For scheduled rotation, run ${due} and commit .keypin/.`;
 }

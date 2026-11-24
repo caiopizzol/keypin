@@ -60,6 +60,8 @@ ok     GitHub  acme/app  wrote AUTH_SECRET
 Rotated AUTH_SECRET (prod): the new key is in 1Password and the destination in secretspec.toml.
 Nothing to revoke: the old value stops working once your apps use the new one.
 
+This rotation is recorded only on this machine: .keypin/rotation.json doesn't exist. For scheduled rotation, run keypin rotate --due and commit .keypin/.
+
 --- wrote /home/me/.config/keypin/registry.json ---
 {
   "version": 1,

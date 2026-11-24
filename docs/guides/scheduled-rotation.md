@@ -32,9 +32,8 @@ another vault, see [Other vaults](#other-vaults).
    [schedule](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
    to run at other times.
 6. Every run, manual ones too, pushes `.keypin/` to the default branch with the workflow's `GITHUB_TOKEN`, which a
-   rule requiring a pull request or a status check rejects. Keep the branch free of such a rule, or give
-   `KEYPIN_GITHUB_TOKEN` Contents write from an account that may bypass it, pass it to checkout as `token:`, and add
-   `paths-ignore: [".keypin/**"]` to your `on: push` workflows. Anyone with that token can then push code there.
+   rule requiring a pull request or a status check rejects. Keep the branch free of such a rule, or keep `.keypin/` on
+   [a branch of its own](#a-protected-default-branch).
 7. `keypin check` asks for the workflow's two secrets. The simple way is to
    [ignore](../reference/secretspec-toml.md#toolkeypin) them:
 
@@ -145,6 +144,55 @@ jobs:
           for try in 1 2 3; do git pull --rebase && git push && exit 0; sleep 10; done
           exit 1
 ```
+
+## A protected default branch
+
+When a rule on the default branch rejects the workflow's push, keep `.keypin/` on a branch no rule covers, such as
+`keypin/state`. The [console](https://keypin.dev/console/) reads `.keypin/status.json` from the default branch, so it
+then shows no rotation dates for this repository.
+
+In the workflow, add `STATE_BRANCH` to the job, restore `.keypin/` after checkout, and replace the last step:
+
+```yaml
+jobs:
+  rotate:
+    env:
+      STATE_BRANCH: keypin/state
+    steps:
+      # checkout, then:
+      - name: Restore keypin state
+        run: |
+          git fetch --no-tags origin "$STATE_BRANCH"
+          git update-ref refs/keypin/state FETCH_HEAD
+          git checkout refs/keypin/state -- .keypin
+          git reset --quiet -- .keypin
+      # setup-node through keypin rotate, then:
+      - name: Save keypin state
+        if: always()
+        run: |
+          git worktree add --quiet --detach "$RUNNER_TEMP/state" refs/keypin/state
+          cp .keypin/rotation.json .keypin/status.json "$RUNNER_TEMP/state/.keypin/"
+          cd "$RUNNER_TEMP/state"
+          git add .keypin
+          git diff --cached --quiet && exit 0
+          git -c user.name=keypin -c user.email=keypin@users.noreply.github.com commit --quiet -m "chore: record key rotation"
+          git push origin "HEAD:refs/heads/$STATE_BRANCH"
+```
+
+In step 8, push `.keypin/` to that branch in place of committing it to the default branch:
+
+```sh
+git switch -c keypin/state
+git add .keypin
+git commit -m "chore: record key rotation"
+git push -u origin keypin/state
+git switch -
+```
+
+Before a later `keypin rotate` on your laptop, restore `.keypin/` with
+`git fetch origin keypin/state && git checkout FETCH_HEAD -- .keypin`, and afterward commit it to that branch. Don't
+run it while the workflow runs: the save step commits on the state it restored, so a run that changed state then
+fails to push rather than overwrite yours.
 
 ## Other vaults
 

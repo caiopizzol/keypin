@@ -40,7 +40,6 @@ billing /work/billing · read 0 env files, 0 wrangler configs, 1 shelf file, 0 w
 description = "Used by shelf.json"
 
 [tool.keypin.prod.NEW_KEY]
-rotate_every = "90d"
 publish = [{ to = "shelf", account = "library", shelf = "bottom" }]
 
   Then run keypin check again.

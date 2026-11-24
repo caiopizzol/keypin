@@ -44,6 +44,7 @@ export interface Place {
   readonly onlyFrom?: OnlyFrom;
   readonly slot?: Slot;
   aside?(name: string): string;
+  variable?(name: string): string;
   matches(keyName: string, name: string): boolean;
   covers(target: PublishTarget): boolean;
   holds(name: string): boolean | null;

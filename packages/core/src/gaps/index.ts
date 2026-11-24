@@ -14,6 +14,7 @@ import { envFileSuffix } from "../dotenv";
 import { type Found, mappedIn, proposedIn } from "./places";
 import type { Fix, Gaps, LocalFile, ProjectScan } from "./report";
 import { providerLines } from "./providers";
+import { looksLikeId } from "./settings";
 import { tomlToAdd } from "./toml-to-add";
 
 const PUBLISH_PROFILE = "production";
@@ -92,7 +93,11 @@ export function findGaps(
 
   const elsewhere = (found: Found) =>
     found.place.onlyFrom ? mappedIn(keys, found.key, found.place, []) : null;
-  const missing = needs.filter((n) => n.need.mapped === null && elsewhere(n) === null);
+  const setting = (found: Found) =>
+    looksLikeId(found.need.name) ? (found.place.variable?.(found.need.name) ?? null) : null;
+  const missing = needs.filter(
+    (n) => n.need.mapped === null && elsewhere(n) === null && setting(n) === null,
+  );
   const mapText = map?.text ?? "";
   const add = tomlToAdd(missing, keys, environment, mapText);
 
@@ -149,6 +154,13 @@ export function findGaps(
           ? `${place.label} doesn't have it${place.aside?.(n.name) ?? ""}, and secretspec.toml doesn't publish it there`
           : `secretspec.toml doesn't publish it to ${place.label}`;
     const why = `${n.name}: ${uses}; ${held}`;
+    const read = setting(found);
+    if (read !== null) {
+      const line = `${n.name}: ${uses}; read it as ${read} instead`;
+      const text = `${why}. It looks like an ID, not a key: read it as ${read}, or add it to [tool.keypin] ignore`;
+      fix({ kind: "setting", text, line });
+      continue;
+    }
     const edit = add.edits.get(`${n.name} ${place.id}`);
     fix(
       edit === undefined

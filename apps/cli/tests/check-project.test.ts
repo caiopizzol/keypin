@@ -679,6 +679,36 @@ repo = "acme/billing"
     );
   });
 
+  test("a workflow secret named like an ID is suggested as a variable, not TOML", async () => {
+    const workflow = `
+on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: deploy
+        env:
+          STRIPE_API_KEY: \${{ secrets.STRIPE_API_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: \${{ secrets.AWS_ACCESS_KEY_ID }}
+`;
+    const run = setup({
+      files: {
+        [MAP]: MAPPED,
+        [`${ROOT}/.env`]: null,
+        [`${ROOT}/wrangler.toml`]: null,
+        [`${ROOT}/.github/workflows/deploy.yml`]: workflow,
+      },
+      github: { ok: true, secrets: [] },
+    });
+    expect(await run.record("id-as-variable", ["check"])).toBe(1);
+    const toml = added(run.stdout.text);
+    expect(toml).toContain("AWS_ACCESS_KEY_ID");
+    expect(toml).not.toContain("CLOUDFLARE_ACCOUNT_ID");
+    expect(toml).not.toContain("rotate_every");
+    expect(run.stdout.text).toContain("read it as vars.CLOUDFLARE_ACCOUNT_ID instead.");
+  });
+
   test("a key whose prod table is inline gets an entry for its publish list instead", async () => {
     const map = `[project]
 name = "billing"

@@ -162,7 +162,7 @@ ids billing dev resend api key
       "elsewhere": []
     }
   ],
-  "add": "[profiles.production.STRIPE_API_KEY]\ndescription = \"Used by .github/workflows/deploy.yml\"\n\n[tool.keypin.production.STRIPE_API_KEY]\nrotate_every = \"90d\"\npublish = [{ to = \"github-actions\", repo = \"acme/billing\" }]\n",
+  "add": "[profiles.production.STRIPE_API_KEY]\ndescription = \"Used by .github/workflows/deploy.yml\"\n\n[tool.keypin.production.STRIPE_API_KEY]\npublish = [{ to = \"github-actions\", repo = \"acme/billing\" }]\n",
   "providers": null,
   "unknown": [],
   "prerequisites": [

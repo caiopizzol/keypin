@@ -5,7 +5,6 @@ import type { KeyEntry, KeysMap } from "../map";
 import { isRecord } from "../record";
 import { type Found, proposedIn } from "./places";
 
-const ROTATE_EVERY = "90d";
 const FILE = "secretspec.toml";
 
 export function tomlToAdd(
@@ -52,12 +51,7 @@ export function tomlToAdd(
       own.push([`[profiles.${at}]`, `description = ${str(`Used by ${usedBy.join(", ")}`)}`]);
       declares.add(environment);
     }
-    const rotates = key?.rotateEvery || rawTool(text, id, environment);
-    own.push([
-      `[tool.keypin.${at}]`,
-      ...(rotates ? [] : [`rotate_every = ${str(ROTATE_EVERY)}`]),
-      publishList(found.map((f) => f.place)),
-    ]);
+    own.push([`[tool.keypin.${at}]`, publishList(found.map((f) => f.place))]);
     if (key && !appends(text, own)) {
       const edit = inlineEdit(
         text,

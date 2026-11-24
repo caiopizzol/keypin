@@ -36,6 +36,7 @@ export function githubPlace(
     label: `${repo ?? "the GitHub repository"}${environment === null ? "" : ` (environment ${environment})`}`,
     verb: "uses",
     fields,
+    variable: (name) => `vars.${name}`,
     ...(environment === null
       ? { aside: (name: string) => maybeEnvironment([...(declared.get(name) ?? [])]) }
       : {}),

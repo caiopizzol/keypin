@@ -41,6 +41,7 @@ export type Fix =
     }
   | { kind: "add"; text: string; why: string; key: string }
   | { kind: "edit"; text: string }
+  | { kind: "setting"; text: string; line: string }
   | { kind: "publish"; text: string; key: string; why: string; command: string };
 
 export interface Gaps {

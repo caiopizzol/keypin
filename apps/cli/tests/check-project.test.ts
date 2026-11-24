@@ -684,6 +684,10 @@ repo = "acme/billing"
     const run = setup({ files: { [MAP]: map, [`${ROOT}/.env`]: null } });
     await cli(["check"], run.deps);
     expect(run.stdout.text.split("\n")[0]).toMatch(/^acme-billing \/work\/billing · /);
+    const lines = MAPPED.replace('name = "billing"', 'name = "acme\\nbilling"');
+    const quoted = setup({ files: { [MAP]: lines, [`${ROOT}/.env`]: null } });
+    await cli(["check"], quoted.deps);
+    expect(quoted.stdout.text.split("\n")[0]).toMatch(/^"acme\\nbilling" \/work\/billing · /);
   });
 
   test("a key whose prod table is inline gets an entry for its publish list instead", async () => {

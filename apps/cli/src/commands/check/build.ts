@@ -116,7 +116,8 @@ export async function build(
     const counts = scanned.read.map(({ noun, count: n }) => count(n, noun)).join(", ");
     const read = [`read ${counts}`, ...scanned.about].join("; ");
     const fixes = gaps?.fixes ?? [];
-    const title = parsed?.ok ? parsed.map.project : basename(root);
+    const name = parsed?.ok ? parsed.map.project : basename(root);
+    const title = /\p{Cc}/u.test(name) ? JSON.stringify(name) : name;
     const planned = plan(report, all, fixes, gaps?.providers ?? null, empty);
     return { report, steps: planned, read, title };
   };

@@ -4,6 +4,7 @@ import type { VaultKinds } from "../login";
 import {
   envFileProfile,
   envFlag,
+  ignores,
   isEnvironmentName,
   isVariableName,
   type KeysMap,
@@ -32,11 +33,10 @@ export function findGaps(
   const notes: string[] = [];
   const needs: Found[] = [];
   const ignore = keys?.ignore ?? [];
-  const ignoring = (name: string) =>
-    ignore.find((each) => each.toUpperCase() === name.toUpperCase());
+  const ignoring = (name: string) => ignores(ignore, name);
   const need = (name: string, place: Place, usedBy: string) => {
     if (!isVariableName(name)) return;
-    if (ignoring(name) !== undefined) return;
+    if (ignoring(name)) return;
     const found = needs.find((n) => n.need.name === name && n.place.id === place.id);
     if (found) {
       if (!found.need.usedBy.includes(usedBy)) found.need.usedBy.push(usedBy);
@@ -74,7 +74,7 @@ export function findGaps(
       (keys?.keys ?? []).some(
         (k) => place.matches(k.name, name) && mappedIn(keys, k, place) !== null,
       ),
-    ignores: (name: string) => ignoring(name) !== undefined,
+    ignores: ignoring,
     declares: (name: string, profile: Environment) =>
       (keys?.keys ?? []).some(
         (k) => k.name.toUpperCase() === name.toUpperCase() && k.environments[profile] !== undefined,
@@ -180,7 +180,7 @@ export function findGaps(
     const other = caveat === null ? "" : `; these commands ${caveat}`;
     const names = file.names.filter(isVariableName);
     const key = (name: string) => keys?.keys.find((k) => k.name === name);
-    const unmapped = names.filter((name) => ignoring(name) === undefined && !key(name));
+    const unmapped = names.filter((name) => !ignoring(name) && !key(name));
     const elsewhere = names.filter((name) => {
       const found = key(name);
       return found !== undefined && !found.environments[env];

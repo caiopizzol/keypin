@@ -11,6 +11,7 @@ import { readTool } from "./tool";
 export { projectDefaults, SECRETSPEC_FILE } from "./secretspec";
 export {
   envFlag,
+  ignores,
   isEnvironmentName,
   isVariableName,
   pairedWith,

@@ -22,22 +22,19 @@ async function signInPrerequisites(signIn: CloudflareSignIn): Promise<Prerequisi
     await signIn.token();
     return [];
   } catch (error) {
-    const kind = error instanceof CloudflareSignInFailed ? error.kind : "failed";
+    const failed = error instanceof CloudflareSignInFailed ? error : null;
+    const kind = failed?.kind ?? "failed";
     const message = error instanceof Error ? error.message : String(error);
     const step = { name: "Cloudflare", coversFailures: true };
     const or = `Or set ${API_TOKEN_VARIABLE} to a Cloudflare API token.`;
-    if (kind === "no-wrangler")
+    if (failed?.kind === "no-wrangler")
       return [
         {
           ...step,
           status: "not installed",
-          fix: `install wrangler in the project, then run wrangler login, or set ${API_TOKEN_VARIABLE}`,
+          fix: `install wrangler ${failed.install}, then run wrangler login, or set ${API_TOKEN_VARIABLE}`,
           title: "Install wrangler and sign in to Cloudflare",
-          body: [
-            "Install wrangler in the project (npm i -D wrangler), then run:",
-            "  wrangler login",
-            or,
-          ],
+          body: [`Install wrangler ${failed.install}, then run:`, "  wrangler login", or],
         },
       ];
     if (kind === "not-logged-in")

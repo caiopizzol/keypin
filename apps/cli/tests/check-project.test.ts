@@ -2074,7 +2074,7 @@ describe("keypin check's prerequisites", () => {
     [
       "no-wrangler",
       "not installed",
-      "install wrangler in the project, then run wrangler login, or set KEYPIN_CLOUDFLARE_API_TOKEN",
+      "install wrangler in the project (npm i -D wrangler), then run wrangler login, or set KEYPIN_CLOUDFLARE_API_TOKEN",
     ],
     [
       "old-wrangler",
@@ -2089,6 +2089,32 @@ describe("keypin check's prerequisites", () => {
     });
     await cli(["check", "--json"], run.deps);
     expect(prerequisites(run.stdout.text)).toContainEqual({ name: "Cloudflare", status, fix });
+  });
+
+  test("asks for Cloudflare sign-in only when a key publishes to a Worker or a Worker requires one", async () => {
+    const cloudflare = async (map: string, wrangler?: string) => {
+      const run = setup({
+        files: {
+          [MAP]: map,
+          ...(wrangler === undefined ? {} : { [`${ROOT}/wrangler.toml`]: wrangler }),
+        },
+        deps: { workerSignIn: () => fakeSignIn("not-logged-in") },
+      });
+      await cli(["check"], run.deps);
+      return {
+        signIn: steps(run.stdout.text).some((step) => step.endsWith("Sign in to Cloudflare")),
+        reads: run.calls.filter((call) => call.startsWith("worker ")),
+      };
+    };
+    const ignored = `${TEMPLATE}\n[tool.keypin]\nignore = ["RESEND_API_KEY"]\n`;
+    expect(await cloudflare(ignored)).toEqual({ signIn: false, reads: [] });
+    expect(await cloudflare(TEMPLATE)).toEqual({
+      signIn: true,
+      reads: [`worker ${ACCOUNT} billing-worker`],
+    });
+    const bare = `name = "billing-worker"\naccount_id = "${ACCOUNT}"\n`;
+    expect(await cloudflare(TEMPLATE, bare)).toEqual({ signIn: false, reads: [] });
+    expect((await cloudflare(PUBLISHED, bare)).signIn).toBe(true);
   });
 
   test("nothing to list once the logins exist and a vault item was read", async () => {

@@ -56,6 +56,11 @@ async function project(fake: FakeWrangler = {}) {
   return { root, seen };
 }
 
+async function config(root: string, at: string) {
+  await mkdir(join(root, at), { recursive: true });
+  await writeFile(join(root, at, "wrangler.jsonc"), "{}");
+}
+
 const failure = (promise: Promise<unknown>) =>
   promise.then(
     () => {
@@ -154,16 +159,30 @@ printf '%s' '${OAUTH}'
 
   test("finds a workspace's wrangler in a monorepo when the root has none", async () => {
     const root = await folder();
+    await config(root, "apps/api");
     const seen = await fakeWrangler(join(root, "apps", "api", "node_modules", ".bin"), {});
-    expect(findWrangler(root, "")).toBe(join(root, "apps/api/node_modules/.bin/wrangler"));
+    expect(await findWrangler(root, "")).toBe(join(root, "apps/api/node_modules/.bin/wrangler"));
     expect(
       await cloudflareSignIn({ signIn: SIGN_IN, env: { PATH: "" }, folder: root }).token(),
     ).toBe(TOKEN);
     expect(await readFile(seen, "utf8")).toContain("args=auth token --json");
   });
 
+  test("finds the wrangler a package above a nested wrangler config installs", async () => {
+    const root = await folder();
+    await config(root, "labs/apps/site");
+    await fakeWrangler(join(root, "labs", "node_modules", ".bin"), {});
+    expect(await findWrangler(root, "")).toBe(join(root, "labs/node_modules/.bin/wrangler"));
+    await fakeWrangler(join(root, "labs", "apps", "site", "node_modules", ".bin"), {});
+    expect(await findWrangler(root, "")).toBe(
+      join(root, "labs/apps/site/node_modules/.bin/wrangler"),
+    );
+  });
+
   test("in a monorepo, skips a workspace's wrangler too old for auth token and uses the next", async () => {
     const root = await folder();
+    await config(root, "apps/admin");
+    await config(root, "apps/api");
     await fakeWrangler(join(root, "apps", "admin", "node_modules", ".bin"), {
       version: "4.20.0",
       exit: 1,
@@ -177,10 +196,14 @@ printf '%s' '${OAUTH}'
     expect(await readFile(seen, "utf8")).toContain("args=auth token --json");
   });
 
-  test("skips a wrangler in a dot folder of a workspace group", async () => {
+  test("looks only next to wrangler configs outside dot folders and node_modules", async () => {
     const root = await folder();
+    await fakeWrangler(join(root, "apps", "api", "node_modules", ".bin"), {});
+    await config(root, "apps/.cache");
     await fakeWrangler(join(root, "apps", ".cache", "node_modules", ".bin"), {});
-    expect(findWrangler(root, "")).toBeNull();
+    await config(root, "node_modules/pkg");
+    await fakeWrangler(join(root, "node_modules", "pkg", "node_modules", ".bin"), {});
+    expect(await findWrangler(root, "")).toBeNull();
   });
 
   test("uses the project's wrangler before the one on PATH, from a subfolder too", async () => {
@@ -191,7 +214,7 @@ printf '%s' '${OAUTH}'
     });
     const sub = join(root, "apps", "web");
     await mkdir(sub, { recursive: true });
-    expect(findWrangler(sub, onPath)).toBe(join(root, "node_modules/.bin/wrangler"));
+    expect(await findWrangler(sub, onPath)).toBe(join(root, "node_modules/.bin/wrangler"));
     expect(
       await cloudflareSignIn({ signIn: SIGN_IN, env: { PATH: onPath }, folder: sub }).token(),
     ).toBe(TOKEN);
@@ -211,7 +234,7 @@ printf '%s' '${OAUTH}'
     process.chdir(tools);
     try {
       const bare = await folder();
-      expect(findWrangler(bare, "bin")).toBe(join(tools, "bin", "wrangler"));
+      expect(await findWrangler(bare, "bin")).toBe(join(tools, "bin", "wrangler"));
       expect(
         await cloudflareSignIn({ signIn: SIGN_IN, env: { PATH: "bin" }, folder: bare }).token(),
       ).toBe(TOKEN);
@@ -227,8 +250,45 @@ printf '%s' '${OAUTH}'
       cloudflareSignIn({ signIn: SIGN_IN, env: { PATH: await folder() }, folder: bare }).token(),
     );
     expect(error).toBeInstanceOf(CloudflareSignInFailed);
-    expect(error).toMatchObject({ kind: "no-wrangler" });
-    expect(String(error)).toContain("install it and run wrangler login");
+    expect(error).toMatchObject({
+      kind: "no-wrangler",
+      install: "in the project (npm i -D wrangler)",
+    });
+    expect(String(error)).toContain(
+      "install it in the project (npm i -D wrangler) and run wrangler login",
+    );
+  });
+
+  test.each([
+    ["pnpm-lock.yaml", "pnpm add -D wrangler"],
+    ["yarn.lock", "yarn add -D wrangler"],
+    ["bun.lock", "bun add -d wrangler"],
+    ["bun.lockb", "bun add -d wrangler"],
+  ])("with %s, says to install wrangler with %s", async (lockfile, command) => {
+    const root = await folder();
+    await writeFile(join(root, lockfile), "");
+    const error = await failure(
+      cloudflareSignIn({ signIn: SIGN_IN, env: { PATH: "" }, folder: root }).token(),
+    );
+    expect(error).toMatchObject({ kind: "no-wrangler", install: `in the project (${command})` });
+  });
+
+  test("says to install wrangler in the package that holds the wrangler configs", async () => {
+    const root = await folder();
+    await writeFile(join(root, "pnpm-lock.yaml"), "");
+    await writeFile(join(root, "package.json"), "{}");
+    await config(root, "labs/apps/site");
+    await config(root, "labs/apps/api");
+    await writeFile(join(root, "labs", "package.json"), "{}");
+    const error = await failure(
+      cloudflareSignIn({ signIn: SIGN_IN, env: { PATH: "" }, folder: root }).token(),
+    );
+    expect(error).toMatchObject({ install: "in labs (pnpm add -D wrangler)" });
+    await writeFile(join(root, "labs", "pnpm-workspace.yaml"), "packages: [apps/*]\n");
+    const again = await failure(
+      cloudflareSignIn({ signIn: SIGN_IN, env: { PATH: "" }, folder: root }).token(),
+    );
+    expect(again).toMatchObject({ install: "in labs (pnpm add -D -w wrangler)" });
   });
 
   test("a wrangler without auth token says which version to upgrade to", async () => {

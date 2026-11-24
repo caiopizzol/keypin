@@ -5,9 +5,9 @@ export {
   CloudflareSignInFailed,
   cloudflareSignIn,
   FIRST_AUTH_TOKEN,
-  findWrangler,
   type SignInProblem,
 } from "./token";
+export { findWrangler } from "./find-wrangler";
 export { CloudflareReader } from "./list";
 export { calledAcross, wranglerWorkers } from "./wrangler";
 export { cloudflareWorker, type WorkerHost, type WorkerPublisher } from "./kind";

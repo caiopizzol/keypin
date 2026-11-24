@@ -1,5 +1,6 @@
 import { access, constants, readdir } from "node:fs/promises";
 import { delimiter, dirname, join, relative, resolve, sep } from "node:path";
+import { shellWord } from "@keypin/core";
 import { WRANGLER_FILES } from "./wrangler";
 
 export interface InstallAdvice {
@@ -76,7 +77,7 @@ export async function installAdvice(
   const where = at === folder ? null : relative(folder, at);
   return {
     install: `in ${where ?? "the project"} (${workspace ? "pnpm add -D -w wrangler" : manager.add})`,
-    login: `${where === null ? "" : `cd ${where} && `}${manager.run} login`,
+    login: `cd ${shellWord(at)} && ${manager.run} login`,
   };
 }
 

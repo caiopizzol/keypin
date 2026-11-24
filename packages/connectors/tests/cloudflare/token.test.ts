@@ -262,10 +262,13 @@ printf '%s' '${OAUTH}'
     expect(error).toBeInstanceOf(CloudflareSignInFailed);
     expect(error).toMatchObject({
       kind: "no-wrangler",
-      advice: { install: "in the project (npm i -D wrangler)", login: "npx wrangler login" },
+      advice: {
+        install: "in the project (npm i -D wrangler)",
+        login: `cd ${bare} && npx wrangler login`,
+      },
     });
     expect(String(error)).toContain(
-      "install it in the project (npm i -D wrangler) and run npx wrangler login",
+      `install it in the project (npm i -D wrangler) and run cd ${bare} && npx wrangler login`,
     );
   });
 
@@ -282,8 +285,17 @@ printf '%s' '${OAUTH}'
     );
     expect(error).toMatchObject({
       kind: "no-wrangler",
-      advice: { install: `in the project (${command})`, login },
+      advice: { install: `in the project (${command})`, login: `cd ${root} && ${login}` },
     });
+  });
+
+  test("quotes a folder with a space in the login command", async () => {
+    const root = join(await folder(), "my project");
+    await mkdir(root);
+    const error = await failure(
+      cloudflareSignIn({ signIn: SIGN_IN, env: { PATH: "" }, folder: root }).token(),
+    );
+    expect(error).toMatchObject({ advice: { login: `cd '${root}' && npx wrangler login` } });
   });
 
   test("says to install wrangler in the package that holds the wrangler configs", async () => {
@@ -299,7 +311,7 @@ printf '%s' '${OAUTH}'
     expect(error).toMatchObject({
       advice: {
         install: "in labs (pnpm add -D wrangler)",
-        login: "cd labs && pnpm exec wrangler login",
+        login: `cd ${join(root, "labs")} && pnpm exec wrangler login`,
       },
     });
     await writeFile(join(root, "labs", "pnpm-workspace.yaml"), "packages: [apps/*]\n");

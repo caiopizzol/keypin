@@ -22,7 +22,7 @@ const KEYPIN = /^keypin(@\S+)?$/;
 const FLAG = /^--?[a-z]/i;
 const PLACEHOLDER = /^<[^>]+>$/;
 const USAGE_LINE = /^ {2}keypin (\S+)(.*)$/;
-const COMMENT = /(^|\s)#.*$/;
+const COMMENT = /(^|(?<!\\)\s)#.*$/;
 const CONTINUED = /(^|[^\\])(\\\\)*\\$/;
 const FIX = "Fix the doc, or the usage text in apps/cli/src/cli.ts.";
 
@@ -143,6 +143,8 @@ describe("keypin commands in the docs", () => {
       "keypin import .env",
       "echo a\\\\",
       "keypin sync",
+      "echo issue\\ #123",
+      "keypin import .env",
       "```",
       "",
       "```yaml",
@@ -161,9 +163,10 @@ describe("keypin commands in the docs", () => {
       "page.md:7 runs keypin rotate --force, a flag keypin rotate doesn't have.",
       "page.md:11 runs keypin import, a command keypin doesn't have.",
       "page.md:13 runs keypin sync, a command keypin doesn't have.",
-      "page.md:17 runs keypin rotate --all, a flag keypin rotate doesn't have.",
-      "page.md:20 runs keypin --force, a flag keypin doesn't have.",
-      "page.md:21 runs keypin status --version, a flag keypin status doesn't have.",
+      "page.md:15 runs keypin import, a command keypin doesn't have.",
+      "page.md:19 runs keypin rotate --all, a flag keypin rotate doesn't have.",
+      "page.md:22 runs keypin --force, a flag keypin doesn't have.",
+      "page.md:23 runs keypin status --version, a flag keypin status doesn't have.",
     ]);
   });
 });

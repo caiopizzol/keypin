@@ -205,12 +205,7 @@ async function revokeOld(
     );
     return 1;
   }
-  if (proof === undefined && !deps.isTerminal) {
-    out.line(
-      `Stopped: ${ROTATION_FILE} doesn't prove this rotation replaced key ${shown(issuer, old)}, because an older keypin recorded it, so keypin won't revoke it without a terminal. Nothing was revoked. Once nothing uses it, run this in a terminal:\n  ${commandLine(deps, "rotate", asked)}`,
-    );
-    return 1;
-  }
+  if (proof === undefined) return unproven(job, ready, issued, state);
   if (job.approve && !deps.isTerminal && behind.length) {
     out.line(
       `Stopped: something no longer in secretspec.toml may still use the old key ${shown(issuer, old)}, so keypin won't revoke it without a terminal. Nothing was revoked. Once nothing uses it, run this in a terminal:\n  ${commandLine(deps, "rotate", asked)}`,
@@ -223,11 +218,7 @@ async function revokeOld(
     );
     return NEEDS_APPROVAL;
   }
-  if (proof === undefined)
-    out.line(
-      `${ROTATION_FILE} doesn't prove this rotation replaced key ${shown(issuer, old)}: check it's the old key before you revoke it.`,
-    );
-  if (!job.approve || behind.length || proof === undefined) {
+  if (!job.approve || behind.length) {
     out.line(`The old key ${shown(issuer, old)} still works. Revoke it once nothing uses it.`);
     if (!(await confirm(deps, `Revoke the old key at ${where}?`))) {
       out.line(later);
@@ -260,4 +251,26 @@ async function revokeOld(
     recordIssued(state, { ...issued, old: { ...issued.old, revoked: true } }),
   );
   return 0;
+}
+
+async function unproven(job: Job, ready: Ready, issued: Issued, state: State): Promise<number> {
+  const { issuer } = ready;
+  const old = shown(issuer, issued.old.id ?? "");
+  const gone = issuer.has && issued.old.id !== null && !(await issuer.has(issued.old.id));
+  if (gone) {
+    job.out.line(`Key ${old} is gone from ${issuer.describe()}, so keypin records it as revoked.`);
+    await saveState(
+      job.deps.files,
+      job.path,
+      recordIssued(state, { ...issued, old: { ...issued.old, revoked: true } }),
+    );
+    return 0;
+  }
+  const again = issuer.has
+    ? `, then run this again to record it:\n  ${commandLine(job.deps, "rotate", job.args)}`
+    : ".";
+  job.out.line(
+    `Stopped: ${ROTATION_FILE} has no proof that this rotation replaced key ${old}: an older keypin recorded it, or someone removed the proof. Nothing was revoked. Once nothing uses key ${old}, delete it at ${issuer.dashboard()}${again}`,
+  );
+  return 1;
 }

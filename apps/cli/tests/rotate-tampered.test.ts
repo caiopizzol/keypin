@@ -157,22 +157,26 @@ describe("keypin rotate --approve-revoke with a changed .keypin/rotation.json", 
     }
   });
 
-  test("a rotation an older keypin recorded waits for a terminal, where a y revokes it", async () => {
+  test("a rotation with no proof is never revoked, and is recorded once the key is gone", async () => {
     const w = await waitingForApproval();
     w.unproven();
-    const refused = await w.run(["--approve-revoke"]);
-    expect(refused.code).toBe(1);
-    expect(refused.stderr).toContain(
-      "Stopped: .keypin/rotation.json doesn't prove this rotation replaced key key_old of service account billing-bot, because an older keypin recorded it, so keypin won't revoke it without a terminal. Nothing was revoked.",
-    );
+    const stopped =
+      "Stopped: .keypin/rotation.json has no proof that this rotation replaced key key_old of service account billing-bot: an older keypin recorded it, or someone removed the proof. Nothing was revoked. Once nothing uses key key_old of service account billing-bot, delete it at https://platform.openai.com/settings/organization/api-keys, then run this again to record it:";
+    for (const answers of [[], ["y"]]) {
+      const refused = await w.run(["--approve-revoke"], answers);
+      expect(refused.code).toBe(1);
+      expect(refused.stderr).toContain(stopped);
+    }
     expect(w.effects).toEqual(["openai create key_new1 for svc_bot"]);
 
-    const person = await w.run(["--approve-revoke"], ["y"]);
-    expect(person.code).toBe(0);
-    expect(person.stderr).toContain(
-      ".keypin/rotation.json doesn't prove this rotation replaced key key_old of service account billing-bot: check it's the old key before you revoke it.",
+    w.keys.save({ ...w.keys.load(), live: w.keys.load().live.filter((k) => k.id !== "key_old") });
+    const recorded = await w.run(["--approve-revoke"]);
+    expect(recorded.code).toBe(0);
+    expect(recorded.stderr).toContain(
+      "Key key_old of service account billing-bot is gone from OpenAI, so keypin records it as revoked.",
     );
-    expect(w.effects).toEqual(["openai create key_new1 for svc_bot", "openai revoke key_old"]);
+    expect(w.rotation()).toMatchObject({ issued: [{ old: { revoked: true } }] });
+    expect(w.effects).toEqual(["openai create key_new1 for svc_bot"]);
   });
 
   test("a recorded new key that isn't the vault's fails the account check", async () => {

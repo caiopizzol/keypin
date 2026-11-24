@@ -88,7 +88,7 @@ function setup(options: Setup = {}) {
         wrote: changes(before, disk.contents),
       })
         .replaceAll(generation, "<generation of the new value>")
-        .replace(/("new": ")[0-9a-f]{64}"/g, '$1<proof signed with the new value>"'),
+        .replace(/("(new|old)": ")[0-9a-f]{64}"/g, '$1<proof that covers the new value>"'),
     ).toMatchFileSnapshot(`./recordings/random/${name}.txt`);
     return exit;
   };

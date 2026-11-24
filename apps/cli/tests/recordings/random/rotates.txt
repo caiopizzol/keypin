@@ -120,8 +120,8 @@ This rotation is recorded only on this machine: .keypin/rotation.json doesn't ex
         "revoked": true
       },
       "proof": {
-        "new": "<proof signed with the new value>",
-        "old": "1e2a149d357472beacbaf7b0b085707ef28a2c2050c661accdab597d488d3c45"
+        "new": "<proof that covers the new value>",
+        "old": "<proof that covers the new value>"
       }
     }
   ],

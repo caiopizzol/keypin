@@ -310,6 +310,12 @@ describe(".keypin/rotation.json", () => {
       false,
     );
     expect(await proves({ ...back, id: "key-other" }, replaced, "old")).toBe(false);
+    const swapped = { ...back, proof: { new: proven.proof.old, old: proven.proof.old } };
+    expect(
+      await proves(swapped, replaced, "new"),
+      "an old-key proof never proves the new key",
+    ).toBe(false);
+    expect(await proves({ ...back, generation: back.old.generation }, created, "new")).toBe(false);
     expect(await proves(ISSUED, created, "new")).toBeUndefined();
     expect(JSON.stringify(file)).not.toContain("sentinel");
   });

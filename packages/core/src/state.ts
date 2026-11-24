@@ -188,17 +188,30 @@ export function isProof(value: unknown): value is Proof {
   return isRecord(value) && isText(value.new) && isText(value.old);
 }
 
-type Proven = Pick<Issued, "keyId" | "environment" | "issuer" | "id" | "at"> & {
+type Proven = Pick<Issued, "keyId" | "environment" | "issuer" | "id" | "generation" | "at"> & {
   old: Pick<Issued["old"], "id" | "generation">;
 };
 
-function proofText(i: Proven): string {
-  return JSON.stringify([i.keyId, i.environment, i.issuer, i.id, i.at, i.old.id, i.old.generation]);
+function proofText(i: Proven, role: keyof Proof): string {
+  return JSON.stringify([
+    "keypin rotation proof 1",
+    role,
+    i.keyId,
+    i.environment,
+    i.issuer,
+    i.id,
+    i.generation,
+    i.at,
+    i.old.id,
+    i.old.generation,
+  ]);
 }
 
 export async function proofFor(issued: Proven, created: Secret, replaced: Secret): Promise<Proof> {
-  const text = proofText(issued);
-  return { new: await signedBy(created, text), old: await signedBy(replaced, text) };
+  return {
+    new: await signedBy(created, proofText(issued, "new")),
+    old: await signedBy(replaced, proofText(issued, "old")),
+  };
 }
 
 export async function proves(
@@ -208,5 +221,5 @@ export async function proves(
 ): Promise<boolean | undefined> {
   const proof = issued.proof?.[holds];
   if (proof === undefined) return undefined;
-  return proof === (await signedBy(vault, proofText(issued)));
+  return proof === (await signedBy(vault, proofText(issued, holds)));
 }

@@ -194,7 +194,7 @@ export async function rotateLocked(job: Job): Promise<number> {
       ? next.issued.id
       : read.pair
         ? keyIdText(read.pair.secret)
-        : await proven(next.current);
+        : next.current;
   const check = await checkIssuer(issuer, inVault, read.secret, out, spec.admin !== undefined);
   const checked = await checkAccounts(key, entry, deps, out, job.label);
   if (!check || !checked) {

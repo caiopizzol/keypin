@@ -156,8 +156,9 @@ export function findGaps(
     const why = `${n.name}: ${uses}; ${held}`;
     const read = setting(found);
     if (read !== null) {
-      const line = `${n.name}: ${uses}; read it as ${read} instead`;
-      const text = `${why}. It looks like an ID, not a key: read it as ${read}, or add it to [tool.keypin] ignore`;
+      const move = `set a variable ${n.name} in ${place.label} to the same value, then read it as ${read}`;
+      const line = `${n.name}: ${uses}; ${move}`;
+      const text = `${why}. It looks like an ID, not a key: ${move}, or add it to [tool.keypin] ignore`;
       fix({ kind: "setting", text, line });
       continue;
     }

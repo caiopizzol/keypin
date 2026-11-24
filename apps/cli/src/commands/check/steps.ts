@@ -104,7 +104,7 @@ export function plan(
     );
   const settings = of("setting");
   if (settings.length)
-    all(ORDER.add, "Read IDs as variables, not secrets", settings, [
+    all(ORDER.edit, "Read IDs as variables, not secrets", settings, [
       ...settings.map((fix) => sentence(fix.line)),
       "These look like IDs, not keys, so they needn't be secrets. Or add them to [tool.keypin] ignore.",
     ]);

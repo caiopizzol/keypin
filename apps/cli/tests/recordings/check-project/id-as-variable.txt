@@ -16,6 +16,7 @@ jobs:
           STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          DEPLOY_SESSION_ID: ${{ secrets.DEPLOY_SESSION_ID }}
 
 --- file secretspec.toml ---
 [project]
@@ -68,6 +69,7 @@ billing /work/billing · read 1 env file, 0 wrangler configs, 1 workflow; GitHub
 1 Add the production keys to secretspec.toml
   STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there.
   AWS_ACCESS_KEY_ID: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there.
+  DEPLOY_SESSION_ID: .github/workflows/deploy.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there.
   Add this at the end of secretspec.toml:
 
 [profiles.prod.STRIPE_API_KEY]
@@ -82,9 +84,15 @@ description = "Used by .github/workflows/deploy.yml"
 [tool.keypin.prod.AWS_ACCESS_KEY_ID]
 publish = [{ to = "github-actions", repo = "acme/billing" }]
 
+[profiles.prod.DEPLOY_SESSION_ID]
+description = "Used by .github/workflows/deploy.yml"
+
+[tool.keypin.prod.DEPLOY_SESSION_ID]
+publish = [{ to = "github-actions", repo = "acme/billing" }]
+
   Then run keypin check again.
 2 Read IDs as variables, not secrets
-  CLOUDFLARE_ACCOUNT_ID: .github/workflows/deploy.yml uses it; read it as vars.CLOUDFLARE_ACCOUNT_ID instead.
+  CLOUDFLARE_ACCOUNT_ID: .github/workflows/deploy.yml uses it; set a variable CLOUDFLARE_ACCOUNT_ID in acme/billing to the same value, then read it as vars.CLOUDFLARE_ACCOUNT_ID.
   These look like IDs, not keys, so they needn't be secrets. Or add them to [tool.keypin] ignore.
 
 --- stderr ---

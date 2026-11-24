@@ -6,6 +6,7 @@ import {
   type MapView,
   messageOf,
   type Place,
+  type ProjectReader,
   type StoreRead,
 } from "@keypin/core";
 import {
@@ -56,7 +57,7 @@ export const wranglerDiscovery: Discovery<WranglerHost> = {
       for (const worker of parsed.workers) {
         const label = `the secrets of the Worker ${worker.worker ?? `in ${config}`}`;
         let read: StoreRead | null = null;
-        if (worker.required?.length) {
+        if (needsSecrets(worker, project)) {
           if (!worker.worker) project.unknown(label, `${config} names no Worker`);
           else if (!worker.account)
             project.unknown(
@@ -75,7 +76,7 @@ export const wranglerDiscovery: Discovery<WranglerHost> = {
     }
     const discovered = {
       files: used,
-      used: project.found.length > 0,
+      used: workers.some((worker) => worker.read !== null),
       about: null,
       report: {},
       needs: (view: MapView) => {
@@ -86,6 +87,10 @@ export const wranglerDiscovery: Discovery<WranglerHost> = {
     return { finish: async () => discovered };
   },
 };
+
+function needsSecrets(worker: WorkerDeclaration, project: ProjectReader): boolean {
+  return worker.required?.some((name) => !project.ignores(name)) ?? false;
+}
 
 function needsOf(workers: readonly Worker[], view: MapView) {
   const environment = view.publishEnvironment;

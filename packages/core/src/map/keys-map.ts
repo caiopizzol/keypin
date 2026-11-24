@@ -24,6 +24,10 @@ export interface KeysMap {
   keys: KeyEntry[];
 }
 
+export function ignores(ignore: readonly string[], name: string): boolean {
+  return ignore.some((each) => each.toUpperCase() === name.toUpperCase());
+}
+
 export type MapResult = { ok: true; map: KeysMap } | { ok: false; errors: string[] };
 
 export function runEnvironment(map: Pick<KeysMap, "environments">): Environment {

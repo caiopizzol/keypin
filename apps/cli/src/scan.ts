@@ -4,6 +4,7 @@ import {
   envFileKind,
   envNames,
   type FolderListing,
+  ignores,
   type JobReader,
   messageOf,
   type ProjectFiles,
@@ -55,7 +56,11 @@ export interface ScanResult {
   unknowns: Unknown[];
 }
 
-export async function scanProject(deps: Deps, root: string): Promise<ScanResult> {
+export async function scanProject(
+  deps: Deps,
+  root: string,
+  ignore: readonly string[],
+): Promise<ScanResult> {
   const unknowns: Unknown[] = [];
   const kinds = deps.destinations.flatMap((kind) =>
     kind.discovery ? [{ kind: kind.kind, discovery: kind.discovery }] : [],
@@ -81,6 +86,7 @@ export async function scanProject(deps: Deps, root: string): Promise<ScanResult>
   const reader = (found: readonly string[]): ProjectReader => ({
     root,
     found,
+    ignores: (name) => ignores(ignore, name),
     read: (path) => readSource(deps, root, path, unknowns),
     list: (folder) => listing(deps, folder),
     unknown: (what, reason) => unknowns.push({ what, reason }),
@@ -118,6 +124,7 @@ export async function jobReaders(deps: Deps, root: string, profile: string): Pro
   const reader: ProjectReader = {
     root,
     found: [],
+    ignores: () => false,
     read: (path) => readSource(deps, root, path, []),
     list: (folder) => listing(deps, folder),
     unknown: () => undefined,

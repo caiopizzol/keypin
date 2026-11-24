@@ -17,6 +17,7 @@ function readers(project: string, workflow: string, files: Record<string, string
   const reader: ProjectReader = {
     root,
     found: [],
+    ignores: () => false,
     read: async (path) => disk[join(root, path)] ?? null,
     list: async (folder) => ({
       ok: true,

@@ -54,7 +54,7 @@ export async function build(
     : [];
   const signIn = mapSignIn(deps, mapped);
   const root = found ? dirname(found.file) : folder;
-  const scanned = await scanProject(deps, root);
+  const scanned = await scanProject(deps, root, parsed?.ok ? parsed.map.ignore : []);
   const head = {
     folder: root,
     map: found?.file ?? null,

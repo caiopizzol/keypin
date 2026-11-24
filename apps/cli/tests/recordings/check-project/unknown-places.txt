@@ -122,11 +122,6 @@ required = ["RESEND_API_KEY"]
   ],
   "prerequisites": [
     {
-      "name": "Cloudflare",
-      "status": "not logged in",
-      "fix": "run wrangler login, or set KEYPIN_CLOUDFLARE_API_TOKEN"
-    },
-    {
       "name": "1Password",
       "status": "not checked",
       "fix": "keypin needs the 1Password desktop app, with Settings → Developer → Integrate with other apps selected"

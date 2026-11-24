@@ -17,6 +17,7 @@ export type StoreRead =
 export interface ProjectReader {
   readonly root: string;
   readonly found: readonly string[];
+  ignores(name: string): boolean;
   read(path: string): Promise<string | null>;
   list(folder: string): Promise<FolderListing>;
   unknown(what: string, reason: string): void;

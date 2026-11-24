@@ -1,9 +1,15 @@
 import { execFile } from "node:child_process";
-import { accessSync, constants, readdirSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { devNull, tmpdir } from "node:os";
-import { delimiter, dirname, join, resolve } from "node:path";
+import { join } from "node:path";
 import { isRecord, withoutSignIn } from "@keypin/core";
+import {
+  configFolders,
+  INSTALL_IN_PROJECT,
+  type InstallAdvice,
+  installAdvice,
+  wranglers,
+} from "./find-wrangler";
 
 export const API_TOKEN_VARIABLE = "KEYPIN_CLOUDFLARE_API_TOKEN";
 export const FIRST_AUTH_TOKEN = "4.57.0";
@@ -23,10 +29,12 @@ export type SignInProblem = "no-wrangler" | "old-wrangler" | "not-logged-in" | "
 
 export class CloudflareSignInFailed extends Error {
   readonly kind: SignInProblem;
+  readonly advice: InstallAdvice;
 
-  constructor(message: string, kind: SignInProblem) {
+  constructor(message: string, kind: SignInProblem, advice = INSTALL_IN_PROJECT) {
     super(message);
     this.kind = kind;
+    this.advice = advice;
   }
 }
 
@@ -69,12 +77,16 @@ async function oauthToken(options: SignInOptions): Promise<string> {
       `keypin can't run wrangler on Windows yet; set ${API_TOKEN_VARIABLE} to a Cloudflare API token`,
       "failed",
     );
-  const found = wranglers(options.folder, options.env.PATH ?? "");
-  if (!found.length)
+  const configs = await configFolders(options.folder);
+  const found = await wranglers(options.folder, options.env.PATH ?? "", configs);
+  if (!found.length) {
+    const advice = await installAdvice(options.folder, configs);
     throw new CloudflareSignInFailed(
-      `keypin can't find wrangler in the project's node_modules or on PATH; install it and run wrangler login, or set ${API_TOKEN_VARIABLE}`,
+      `keypin can't find wrangler in the project's node_modules or on PATH; install it ${advice.install} and run ${advice.login}, or set ${API_TOKEN_VARIABLE}`,
       "no-wrangler",
+      advice,
     );
+  }
   const logs = await mkdtemp(join(tmpdir(), "keypin-wrangler-"));
   try {
     let tooOld: CloudflareSignInFailed | null = null;
@@ -120,45 +132,6 @@ function wranglerEnv(
     WRANGLER_SEND_METRICS: "false",
     WRANGLER_SEND_ERROR_REPORTS: "false",
   };
-}
-
-export function findWrangler(folder: string, path: string): string | null {
-  return wranglers(folder, path)[0] ?? null;
-}
-
-function wranglers(folder: string, path: string): string[] {
-  const found: string[] = [];
-  for (let dir = folder; ; dir = dirname(dir)) {
-    found.push(join(dir, "node_modules", ".bin", "wrangler"));
-    if (dirname(dir) === dir) break;
-  }
-  for (const dir of path.split(delimiter)) if (dir) found.push(resolve(join(dir, "wrangler")));
-  for (const group of readable(folder))
-    if (group !== "node_modules" && !group.startsWith("."))
-      for (const member of readable(join(folder, group)))
-        if (!member.startsWith("."))
-          found.push(join(folder, group, member, "node_modules", ".bin", "wrangler"));
-  return [...new Set(found)].filter(executable);
-}
-
-function readable(dir: string): string[] {
-  try {
-    return readdirSync(dir, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-      .sort();
-  } catch {
-    return [];
-  }
-}
-
-function executable(path: string): boolean {
-  try {
-    accessSync(path, constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 async function whyNot(

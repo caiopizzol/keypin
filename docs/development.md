@@ -59,6 +59,14 @@ broken link or a page keypin.dev can't build.
 - Every export outside an entry file (a package entry point, a test or a script) is imported somewhere, and every
   file and dependency is used ([knip](https://knip.dev)). Remove the `export`, the file or the dependency rather than ignore it in `knip.json`.
 
+### Files keypin reads back
+
+Another keypin version may read the state, registry, rotation and status files this one writes. When a field is no longer
+needed, keep writing it, with a value older readers accept such as `[]`, until the oldest keypin you support reads the
+file without it. `packages/core/tests/formats.test.ts` fails when a field of the files
+in `packages/core/tests/formats/` goes missing. After each release, run `bun packages/core/tests/formats.ts` to record
+its files. Delete a field from them only when you stop writing it under that rule.
+
 ## Binary and npm packages
 
 keypin ships as one executable with Bun inside.

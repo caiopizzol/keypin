@@ -94,7 +94,7 @@ export default defineConfig({
   staged: {
     "*": "vp check --fix",
   },
-  fmt: {},
+  fmt: { ignorePatterns: ["packages/core/tests/formats/*.json"] },
   test: { env: { TZ: "UTC" }, snapshotEnvironment: "./scripts/recordings-environment.ts" },
   lint: {
     jsPlugins: [

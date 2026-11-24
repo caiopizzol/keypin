@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "issued": [
+    {
+      "key": "MAIL_KEY",
+      "environment": "prod",
+      "issuer": "resend",
+      "id": "re-new-1",
+      "generation": "aaaaaaaaaaaaaaaa",
+      "at": "2026-11-09T12:00:00.000Z",
+      "old": {
+        "id": "re-old-1",
+        "generation": "bbbbbbbbbbbbbbbb",
+        "revoked": false
+      },
+      "held": true,
+      "unsaved": true
+    }
+  ],
+  "published": [
+    {
+      "key": "MAIL_KEY",
+      "environment": "prod",
+      "destination": "github-actions:acme/mailer:MAIL_KEY",
+      "account": "acme",
+      "generation": "aaaaaaaaaaaaaaaa",
+      "at": "2026-11-09T12:00:01.000Z",
+      "approved": "56fd3f03e50bb33e"
+    }
+  ]
+}

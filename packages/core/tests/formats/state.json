@@ -1,0 +1,50 @@
+{
+  "version": 5,
+  "receipts": [
+    {
+      "keyId": "MAIL_KEY",
+      "environment": "prod",
+      "mapFile": "/work/mailer/secretspec.toml",
+      "source": {
+        "kind": "1password",
+        "vault": "Private",
+        "item": "mail key",
+        "section": null,
+        "field": "credential",
+        "account": "my.1password.com"
+      },
+      "sourceIds": {
+        "vault": "vault-id-1",
+        "item": "item-id-1"
+      },
+      "destinationId": "github-actions:acme/mailer:MAIL_KEY",
+      "generation": "aaaaaaaaaaaaaaaa",
+      "account": {
+        "pinned": "acme",
+        "publisher": "me@example.com",
+        "destinationAccount": "acme"
+      },
+      "at": "2026-11-09T12:00:01.000Z",
+      "evidence": {}
+    }
+  ],
+  "issued": [
+    {
+      "keyId": "MAIL_KEY",
+      "environment": "prod",
+      "mapFile": "/work/mailer/secretspec.toml",
+      "issuer": "resend",
+      "id": "re-new-1",
+      "generation": "aaaaaaaaaaaaaaaa",
+      "at": "2026-11-09T12:00:00.000Z",
+      "old": {
+        "id": "re-old-1",
+        "generation": "bbbbbbbbbbbbbbbb",
+        "revoked": false
+      },
+      "held": true,
+      "unsaved": true
+    }
+  ],
+  "operations": []
+}

@@ -679,6 +679,13 @@ repo = "acme/billing"
     );
   });
 
+  test("the header names the project by secretspec's [project] name, not its folder", async () => {
+    const map = MAPPED.replace('name = "billing"', 'name = "acme-billing"');
+    const run = setup({ files: { [MAP]: map, [`${ROOT}/.env`]: null } });
+    await cli(["check"], run.deps);
+    expect(run.stdout.text.split("\n")[0]).toMatch(/^acme-billing \/work\/billing · /);
+  });
+
   test("a key whose prod table is inline gets an entry for its publish list instead", async () => {
     const map = `[project]
 name = "billing"

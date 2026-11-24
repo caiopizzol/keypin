@@ -15,11 +15,11 @@ export async function check(args: string[], deps: Deps): Promise<number> {
   const folder = resolve(deps.cwd, positionals[0] ?? ".");
   if (!(await deps.isFolder(folder))) throw new Error(`${folder} isn't a folder`);
 
-  const { report, steps, read } = await build(folder, deps);
+  const { report, steps, read, title } = await build(folder, deps);
   deps.stdout.write(
     values.json
       ? `${JSON.stringify(report, null, 2)}\n`
-      : render(report, read, steps, output(deps.stdout, deps.styled.stdout), deps.home),
+      : render(report, title, read, steps, output(deps.stdout, deps.styled.stdout), deps.home),
   );
   return report.ok ? 0 : 1;
 }

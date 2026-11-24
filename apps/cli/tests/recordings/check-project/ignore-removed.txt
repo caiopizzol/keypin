@@ -133,14 +133,12 @@ billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub
 description = "Used by .github/workflows/deploy.yml"
 
 [tool.keypin.prod.OPENAI_API_KEY]
-rotate_every = "90d"
 publish = [{ to = "github-actions", repo = "acme/billing" }]
 
 [profiles.prod.ANTHROPIC_API_KEY]
 description = "Used by .github/workflows/deploy.yml"
 
 [tool.keypin.prod.ANTHROPIC_API_KEY]
-rotate_every = "90d"
 publish = [{ to = "github-actions", repo = "acme/billing" }]
 
   Then run keypin check again.

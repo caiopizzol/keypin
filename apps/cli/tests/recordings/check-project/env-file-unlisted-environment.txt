@@ -95,7 +95,6 @@ billing /work/billing · read 3 env files, 1 wrangler config, 1 workflow; GitHub
 description = "Used by .github/workflows/deploy.yml"
 
 [tool.keypin.prod.STRIPE_API_KEY]
-rotate_every = "90d"
 publish = [{ to = "github-actions", repo = "acme/billing" }]
 
 [profiles.prod.RESEND_API_KEY]

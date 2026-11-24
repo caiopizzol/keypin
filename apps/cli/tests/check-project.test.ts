@@ -272,6 +272,7 @@ describe("keypin check on a whole project", () => {
     const data = setup({ files: { [MAP]: TEMPLATE } });
     expect(await data.record("right-after-init-json", ["check", "--json"])).toBe(1);
     expect(json(data.stdout.text).add).toBe(added(run.stdout.text));
+    expect(added(run.stdout.text)).not.toContain("rotate_every");
     run.unchanged();
     expect(leaks(...run.everything(), ...data.everything())).toBe(false);
   });

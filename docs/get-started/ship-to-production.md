@@ -13,14 +13,12 @@ Run `keypin check`. For each secret a workflow or Worker needs, it prints the TO
 description = "Used by .github/workflows/deploy.yml"
 
 [tool.keypin.production.STRIPE_API_KEY]
-rotate_every = "90d"
 publish = [{ to = "github-actions", repo = "acme/billing" }]
 
 [profiles.production.RESEND_API_KEY]
 description = "Used by wrangler.toml"
 
 [tool.keypin.production.RESEND_API_KEY]
-rotate_every = "90d"
 publish = [{ to = "cloudflare-worker", account = "11111111111111111111111111111111", worker = "billing-worker" }]
 ```
 

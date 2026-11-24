@@ -151,7 +151,7 @@ github acme/billing as null
       "elsewhere": []
     }
   ],
-  "add": "[profiles.prod.STRIPE_API_KEY]\ndescription = \"Used by .github/workflows/deploy.yml\"\n\n[tool.keypin.prod.STRIPE_API_KEY]\nrotate_every = \"90d\"\npublish = [{ to = \"github-actions\", repo = \"acme/billing\" }]\n\n[profiles.prod.RESEND_API_KEY]\ndescription = \"Used by wrangler.toml\"\n\n[tool.keypin.prod.RESEND_API_KEY]\npublish = [{ to = \"cloudflare-worker\", account = \"11111111111111111111111111111111\", worker = \"billing-worker\" }]\n",
+  "add": "[profiles.prod.STRIPE_API_KEY]\ndescription = \"Used by .github/workflows/deploy.yml\"\n\n[tool.keypin.prod.STRIPE_API_KEY]\npublish = [{ to = \"github-actions\", repo = \"acme/billing\" }]\n\n[profiles.prod.RESEND_API_KEY]\ndescription = \"Used by wrangler.toml\"\n\n[tool.keypin.prod.RESEND_API_KEY]\npublish = [{ to = \"cloudflare-worker\", account = \"11111111111111111111111111111111\", worker = \"billing-worker\" }]\n",
   "providers": null,
   "unknown": [],
   "prerequisites": [

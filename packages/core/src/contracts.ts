@@ -38,6 +38,8 @@ export class WriteRefused extends Error {}
 
 export class NothingChanged extends Error {}
 
+export class RevokeRefused extends Error {}
+
 export class ItemMissing extends Error {}
 
 export type SignInReason =
@@ -111,7 +113,8 @@ export interface Issuer {
   checkAccount(currentId: string | null, current: Secret): Promise<IssuerCheck>;
   create(name: string): Promise<IssuedKey>;
   lostCreate?(name: string): string;
-  revoke?(id: string): Promise<"revoked" | "already gone">;
+  revoke?(id: string, current: Secret): Promise<"revoked" | "already gone">;
+  has?(id: string): Promise<boolean>;
   label?(id: string): string;
   checkAdmin?(): Promise<Expiry | null>;
   readonly createResetsOld?: true;

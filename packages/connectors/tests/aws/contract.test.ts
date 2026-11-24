@@ -37,6 +37,7 @@ describe("the issuer contract", () => {
       }),
       current: new Secret(APP_SECRET),
       currentId: APP_ID,
+      vaultId: APP_ID,
       effects,
       failCreate: () => {
         fake.failCreate = 500;

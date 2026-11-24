@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, readSecretspec, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, readSecretspec, RevokeRefused, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { AtlasIssuer, type AtlasIssuerOptions, atlasIssuer } from "../../src/mongodb-atlas/index";
 import { nextName } from "../../src/mongodb-atlas/atlas";
@@ -156,8 +156,8 @@ describe("rotation", () => {
     await passed(atlas);
     const first = await atlas.create();
     await passed(atlas, first.id, first.secret.reveal());
-    expect(await atlas.revoke("app")).toBe("revoked");
-    expect(await atlas.revoke("app")).toBe("already gone");
+    expect(await atlas.revoke("app", first.secret)).toBe("revoked");
+    expect(await atlas.revoke("app", first.secret)).toBe("already gone");
     const check = await passed(atlas, "app-b", first.secret.reveal());
     expect(check).not.toHaveProperty("currentId");
     const second = await atlas.create();
@@ -414,14 +414,88 @@ describe("create errors", () => {
   });
 
   test("a service account that can't change users", async () => {
-    const { atlas } = setup({ readOnly: true });
+    const { atlas } = setup({ readOnly: true }, {}, [APP, { ...APP, username: "app-a" }]);
     await passed(atlas);
     const error = await atlas.create().catch((e: unknown) => e);
     assert(error instanceof NothingChanged);
     expect(error.message).toContain("lacks Project Database Access Admin");
-    await expect(atlas.revoke("app")).rejects.toThrow(
-      "the service account can't delete database user app",
+    await expect(atlas.revoke("app-a", new Secret(VAULT))).rejects.toThrow(
+      "the service account can't delete database user app-a",
     );
+  });
+});
+
+describe("revoke checks the user with Atlas", () => {
+  const ADMIN: FakeAtlasUser = {
+    username: "dbadmin",
+    password: "admin_password",
+    roles: [{ roleName: "atlasAdmin", databaseName: "admin" }],
+  };
+  const deletes = (requests: Seen[]) => requests.filter((r) => r.method === "DELETE");
+
+  test("refuses the user the vault's connection string signs in as", async () => {
+    const { atlas, effects, requests } = setup();
+    await passed(atlas);
+    const error = await atlas.revoke("app", new Secret(VAULT)).catch((e: unknown) => e);
+    assert(error instanceof RevokeRefused);
+    expect(error.message).toBe("it's the database user the vault's connection string signs in as");
+    expect(deletes(requests)).toEqual([]);
+    expect(effects).toEqual([]);
+  });
+
+  test("refuses a user keypin doesn't rotate the vault's user through", async () => {
+    const { atlas, effects, requests } = setup({}, {}, [APP, ADMIN]);
+    await passed(atlas);
+    const error = await atlas.revoke("dbadmin", new Secret(VAULT)).catch((e: unknown) => e);
+    assert(error instanceof RevokeRefused);
+    expect(error.message).toBe(
+      "its name isn't app, app-a or app-b, the names keypin gives the vault's user app",
+    );
+    expect(deletes(requests)).toEqual([]);
+    expect(effects).toEqual([]);
+  });
+
+  test("a user the project doesn't have is already gone, with no delete", async () => {
+    const { atlas, requests } = setup();
+    await passed(atlas);
+    expect(await atlas.revoke("app-b", new Secret(VAULT))).toBe("already gone");
+    expect(deletes(requests)).toEqual([]);
+  });
+
+  test("checkAccount refuses a recorded user the vault doesn't sign in as, and copies nothing", async () => {
+    const { atlas, effects } = setup({}, {}, [APP, ADMIN]);
+    const check = await refused(atlas, "dbadmin");
+    expect(check.reason).toBe(
+      "user dbadmin, the one keypin recorded for the vault's value, isn't app, the user the vault's connection string signs in as",
+    );
+    expect(check.fix).toBe("check .keypin/rotation.json for a change you didn't make");
+    await expect(atlas.create()).rejects.toThrow("checkAccount hasn't passed");
+    expect(effects).toEqual([]);
+  });
+
+  test("has reads the user without checkAccount, and an Atlas error is an error", async () => {
+    const { atlas } = setup();
+    expect(await atlas.has("app")).toBe(true);
+    expect(await atlas.has("app-b")).toBe(false);
+    const { atlas: failing } = setup(
+      {},
+      {
+        fetch: async (url, init) =>
+          url.includes("/databaseUsers/")
+            ? new Response("{}", { status: 500 })
+            : atlasFetch({
+                clientId: CLIENT,
+                secret: SECRET,
+                projectId: PROJECT,
+                clusters: [],
+                world: memoryWorld([]),
+                effect: () => undefined,
+              })(url, init),
+      },
+    );
+    const error = await failing.has("app").catch((e: unknown) => e);
+    assert(error instanceof Error);
+    expect(error.message).toBe("Atlas GET /databaseUsers/admin/<username> returned HTTP 500");
   });
 });
 

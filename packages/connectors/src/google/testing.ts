@@ -42,6 +42,7 @@ export interface FakeGoogle {
   failOperation?: boolean;
   noKeyString?: boolean;
   loseCreated?: boolean;
+  refuseDelete?: boolean;
   world: { load(): GoogleWorld; save(world: GoogleWorld): void };
   effect(line: string): void;
 }
@@ -146,6 +147,8 @@ export function googleFetch(fake: FakeGoogle): Fetch {
     if (init.method === "GET" && keyString) return reply(200, { keyString: key.value });
     if (init.method === "GET") return reply(200, shown(key));
     if (init.method !== "DELETE") return refuse(405, "UNIMPLEMENTED", "method not allowed");
+    if (fake.refuseDelete)
+      return refuse(403, "PERMISSION_DENIED", "Permission 'apikeys.keys.delete' denied");
     if (key.deleteTime) return refuse(400, "FAILED_PRECONDITION", "key is already deleted");
     const gone = { ...key, deleteTime: "2026-11-17T12:00:00Z" };
     const op = `operations/akmf.p7-delete-${world.operations.length + 1}`;

@@ -319,7 +319,7 @@ export async function rotateLocked(job: Job): Promise<number> {
   );
   if (!ok) return NEEDS_APPROVAL;
 
-  if (orphan && !(await revokeOrphan(job, issuer, orphan.id))) return 1;
+  if (orphan && !(await revokeOrphan(job, issuer, orphan.id, read.secret))) return 1;
   const created = await createKey(job, issuer);
   if ("unchanged" in created) {
     if (created.unchanged) say("Stopped. Nothing was created.");
@@ -346,6 +346,7 @@ export async function rotateLocked(job: Job): Promise<number> {
       job,
       issuer,
       created.id,
+      read.secret,
       `couldn't record the new key in ${job.path}: ${messageOf(error)}`,
     );
   }
@@ -356,6 +357,7 @@ export async function rotateLocked(job: Job): Promise<number> {
       job,
       issuer,
       created.id,
+      read.secret,
       `${vaultName(entry.ref, deps.vaults)} refused to save the new key`,
       () => saveState(deps.files, job.path, state),
     );

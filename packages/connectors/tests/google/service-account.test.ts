@@ -1,5 +1,12 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, readSecretspec, parseObject, Secret } from "@keypin/core";
+import {
+  type Fetch,
+  NothingChanged,
+  readSecretspec,
+  parseObject,
+  RevokeRefused,
+  Secret,
+} from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { googleServiceAccountIssuer, ServiceAccountKeyIssuer } from "../../src/google/index";
 import {
@@ -22,6 +29,7 @@ const OLD_NAME = `projects/acme-prod/serviceAccounts/${APP}/keys/${OLD_ID}`;
 const VAULT = iamKeyFile(APP, "acme-prod", OLD_ID, "vault-pem");
 const FIRST = serviceAccountKeyId(1);
 const FIRST_NAME = `projects/acme-prod/serviceAccounts/${APP}/keys/${FIRST}`;
+const NEW = new Secret(iamKeyFile(APP, "acme-prod", FIRST, "new-pem"));
 
 function iam(keys: FakeIamKey[] = [{ id: OLD_ID }], options: Partial<FakeIam> = {}, admin = ADMIN) {
   const effects: string[] = [];
@@ -312,27 +320,104 @@ describe("Google Cloud service account key issuer", () => {
   });
 
   test("revoking disables the key, then deletes it, and a repeat is already gone", async () => {
-    const subject = iam();
+    const subject = iam([{ id: OLD_ID }, { id: FIRST }]);
     await checked(subject);
-    expect(await subject.issuer.revoke(OLD_NAME)).toBe("revoked");
+    expect(await subject.issuer.revoke(OLD_NAME, NEW)).toBe("revoked");
     const path = `/v1/projects/acme-prod/serviceAccounts/${APP}/keys/${OLD_ID}`;
     expect(subject.writes().map((r) => `${r.method} ${r.path}`)).toEqual([
       `POST ${path}:disable`,
       `DELETE ${path}`,
     ]);
-    expect(await subject.issuer.revoke(OLD_NAME)).toBe("already gone");
+    expect(await subject.issuer.revoke(OLD_NAME, NEW)).toBe("already gone");
     expect(subject.writes()).toHaveLength(2);
   });
 
   test("a key a failed run already disabled is only deleted", async () => {
     const subject = iam([{ id: OLD_ID }, { id: FIRST, disabled: true }]);
     await checked(subject);
-    expect(await subject.issuer.revoke(FIRST_NAME)).toBe("revoked");
+    expect(await subject.issuer.revoke(FIRST_NAME, new Secret(VAULT))).toBe("revoked");
     expect(subject.writes().map((r) => r.method)).toEqual(["DELETE"]);
   });
 
+  test("refuses to revoke the key in the vault's file, and sends nothing", async () => {
+    const subject = iam([{ id: OLD_ID }, { id: FIRST }]);
+    await checked(subject);
+    const before = subject.requests.length;
+    await expect(subject.issuer.revoke(OLD_NAME, new Secret(VAULT))).rejects.toThrow(
+      new RevokeRefused("it's the key the vault holds"),
+    );
+    expect(subject.requests).toHaveLength(before);
+  });
+
+  test("refuses to revoke a key of another service account, and sends nothing", async () => {
+    const other = "billing@acme-prod.iam.gserviceaccount.com";
+    const subject = iam([{ id: OLD_ID }], { manages: [APP, other] });
+    await checked(subject);
+    const before = subject.requests.length;
+    await expect(
+      subject.issuer.revoke(
+        `projects/acme-prod/serviceAccounts/${other}/keys/${FIRST}`,
+        new Secret(VAULT),
+      ),
+    ).rejects.toThrow(
+      new RevokeRefused(`it belongs to ${other}, not to ${APP}, which owns the vault's key`),
+    );
+    expect(subject.requests).toHaveLength(before);
+  });
+
+  test("refuses to revoke a key named under another project", async () => {
+    const subject = iam([{ id: OLD_ID }, { id: FIRST }]);
+    await checked(subject);
+    await expect(
+      subject.issuer.revoke(
+        `projects/acme-old/serviceAccounts/${APP}/keys/${FIRST}`,
+        new Secret(VAULT),
+      ),
+    ).rejects.toThrow(
+      new RevokeRefused(
+        "it's in project acme-old, not in project acme-prod, which owns the vault's key",
+      ),
+    );
+    expect(subject.writes()).toEqual([]);
+  });
+
+  test("refuses to revoke the key keypin signs in with", async () => {
+    const own = serviceAccountKeyId(0xadd);
+    const admin = serviceAccountJson(APP, PRIVATE_KEY, own);
+    const subject = iam([{ id: OLD_ID }, { id: own }], { serviceAccount: APP }, admin);
+    await checked(subject);
+    await expect(
+      subject.issuer.revoke(
+        `projects/acme-prod/serviceAccounts/${APP}/keys/${own}`,
+        new Secret(VAULT),
+      ),
+    ).rejects.toThrow(new RevokeRefused("it's the key keypin signs in with"));
+    expect(subject.writes()).toEqual([]);
+  });
+
+  test("refuses a recorded key that isn't the one in the vault's file", async () => {
+    const subject = iam([{ id: OLD_ID }, { id: FIRST }]);
+    const check = await refused(subject, VAULT, FIRST_NAME);
+    expect(check).toEqual({
+      ok: false,
+      facts: `keypin issued key ${FIRST} of service account ${APP}; the vault holds key ${OLD_ID}`,
+      reason: `key ${FIRST}, the one keypin recorded for the vault's value, is another key of ${APP}`,
+      fix: "check .keypin/rotation.json for a change you didn't make",
+    });
+    expect(subject.requests).toEqual([]);
+  });
+
+  test("has throws a plain error when the admin can't read the key", async () => {
+    const subject = iam([{ id: OLD_ID }], { manages: [] });
+    await expect(subject.issuer.has(OLD_NAME)).rejects.toThrow(
+      new Error(
+        `the admin service account can't read key ${OLD_ID} of ${APP}: put a JSON key of a service account with the Service Account Key Admin role in the admin item; create one at https://console.cloud.google.com/iam-admin/serviceaccounts, or delete the key at https://console.cloud.google.com/iam-admin/serviceaccounts`,
+      ),
+    );
+  });
+
   test("a delete that fails after the disable says the key no longer works", async () => {
-    const subject = iam();
+    const subject = iam([{ id: OLD_ID }, { id: FIRST }]);
     await checked(subject);
     const inner = iamFetch(subject.fake);
     const failing = new ServiceAccountKeyIssuer({
@@ -345,7 +430,7 @@ describe("Google Cloud service account key issuer", () => {
           : inner(url, init),
     });
     await failing.checkAccount(null, new Secret(VAULT));
-    await expect(failing.revoke(OLD_NAME)).rejects.toThrow(
+    await expect(failing.revoke(OLD_NAME, NEW)).rejects.toThrow(
       `keypin disabled key ${OLD_ID} of ${APP}, so it no longer works, but couldn't delete it (Google DELETE <account>/keys/<id> returned HTTP 500 INTERNAL): delete it at https://console.cloud.google.com/iam-admin/serviceaccounts?project=acme-prod`,
     );
   });

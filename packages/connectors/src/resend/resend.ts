@@ -7,6 +7,7 @@ import {
   isRecord,
   NothingChanged,
   parseObject,
+  RevokeRefused,
   Secret,
 } from "@keypin/core";
 
@@ -155,14 +156,24 @@ export class ResendIssuer implements Issuer {
     return `Resend may have made the key before the reply was lost. Only this run uses the name "${fitName(name)}": delete a key with that name at ${DASHBOARD} before you run this again, or the rerun leaves it live.`;
   }
 
-  async revoke(id: string): Promise<"revoked" | "already gone"> {
+  async revoke(id: string, current: Secret): Promise<"revoked" | "already gone"> {
     if (!this.#passed)
       throw new Error("refusing to revoke a Resend key: checkAccount hasn't passed");
+    if (!(await this.has(id))) return "already gone";
+    const vault = await this.#vaultKey(current);
+    if (vault.kind === "listed" && !vault.ids.includes(id))
+      throw new RevokeRefused("it belongs to the admin key's team, not to the vault key's team");
     const path = `/api-keys/${encodeURIComponent(id)}`;
     const deleted = await this.#request("DELETE", path);
     if (deleted.status === 404) return "already gone";
     if (deleted.status !== 200) throw failure("DELETE", "/api-keys/<id>", deleted);
     return "revoked";
+  }
+
+  async has(id: string): Promise<boolean> {
+    const list = await this.#request("GET", "/api-keys");
+    if (list.status !== 200) throw failure("GET", "/api-keys", list);
+    return keysOf(list).some((key) => key.id === id);
   }
 
   async #vaultKey(

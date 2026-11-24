@@ -10,6 +10,7 @@ import {
   localDay,
   messageOf,
   NothingChanged,
+  RevokeRefused,
   Secret,
   vaultAccounts,
   vaultName,
@@ -18,7 +19,7 @@ import { type Output } from "../../output";
 import { approval } from "../../sign-in";
 import { commandLine, withoutPlan } from "../../approval";
 import { type Pair, type Job } from "./job";
-import { shown } from "./messages";
+import { revokeRefused, shown } from "./messages";
 
 export async function itemIdsAfterSave({
   entry,
@@ -48,14 +49,19 @@ export async function saveId(job: Job, pair: Pair, issuer: Issuer, id: string): 
   return false;
 }
 
-export async function revokeOrphan(job: Job, issuer: Issuer, id: string): Promise<boolean> {
+export async function revokeOrphan(
+  job: Job,
+  issuer: Issuer,
+  id: string,
+  current: Secret,
+): Promise<boolean> {
   const where = issuer.describe();
   const revoke = issuer.revoke?.bind(issuer);
   if (!revoke) return true;
   try {
     await job.out.step(
       `${where}  revoking ${shown(issuer, id)}`,
-      () => revoke(id),
+      () => revoke(id, current),
       (result) => ({
         ok: true,
         text: `${where}  ${result === "revoked" ? "revoked" : "already gone:"} ${shown(issuer, id)}`,
@@ -63,6 +69,10 @@ export async function revokeOrphan(job: Job, issuer: Issuer, id: string): Promis
     );
     return true;
   } catch (error) {
+    if (error instanceof RevokeRefused) {
+      job.out.line(`${revokeRefused(issuer, id, error.message)} Nothing was created.`);
+      return false;
+    }
     job.out.line(
       `    ${messageOf(error)}\nStopped. Nothing was created. Delete key ${shown(issuer, id)} at ${issuer.dashboard()}, or run this again.`,
     );
@@ -88,6 +98,7 @@ export async function issuerLists(
   out: Output,
 ): Promise<boolean | null> {
   try {
+    if (issuer.has) return await issuer.has(id);
     const check = await issuer.checkAccount(id, current);
     return check.ok && check.gone === undefined;
   } catch (error) {
@@ -198,6 +209,7 @@ export async function undoCreate(
   job: Job,
   issuer: Issuer,
   id: string,
+  current: Secret,
   stopped: string,
   forget: () => Promise<unknown> = async () => {},
 ): Promise<number> {
@@ -215,7 +227,7 @@ export async function undoCreate(
   try {
     await out.step(
       `${where}  revoking the new key ${shown(issuer, id)}`,
-      () => revoke(id),
+      () => revoke(id, current),
       () => ({ ok: true, text: `${where}  revoked the new key ${shown(issuer, id)}` }),
     );
   } catch (error) {

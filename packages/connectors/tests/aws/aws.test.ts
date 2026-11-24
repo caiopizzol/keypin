@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, readSecretspec, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, readSecretspec, RevokeRefused, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { AwsIssuer, awsIssuer } from "../../src/aws/index";
 import {
@@ -18,6 +18,9 @@ const APP_SECRET = "app/secret/value/0001";
 const ADMIN_KEY: FakeAwsKey = { id: ADMIN_ID, secret: ADMIN_SECRET, user: "keypin-admin" };
 const APP_KEY: FakeAwsKey = { id: APP_ID, secret: APP_SECRET, user: "app" };
 const NEW_ID = "AKIANEW0000000000001";
+const NEW_SECRET = "new/secret/1x";
+const NEW_KEY: FakeAwsKey = { id: NEW_ID, secret: NEW_SECRET, user: "app" };
+const ROTATED = [ADMIN_KEY, APP_KEY, NEW_KEY];
 
 function aws(
   keys: FakeAwsKey[] = [ADMIN_KEY, APP_KEY],
@@ -122,34 +125,61 @@ describe("AWS IAM issuer", () => {
   });
 
   test("revokes by deactivating, then deleting", async () => {
-    const subject = aws();
-    await checked(subject);
-    expect(await subject.issuer.revoke(APP_ID)).toBe("revoked");
+    const subject = aws(ROTATED);
+    await checked(subject, NEW_ID, NEW_SECRET);
+    expect(await subject.issuer.revoke(APP_ID, new Secret(NEW_SECRET))).toBe("revoked");
     expect(subject.actions.slice(-2).map((a) => [a.action, a.params])).toEqual([
       ["UpdateAccessKey", { UserName: "app", AccessKeyId: APP_ID, Status: "Inactive" }],
       ["DeleteAccessKey", { UserName: "app", AccessKeyId: APP_ID }],
     ]);
     expect(subject.effects).toEqual([`aws delete app/${APP_ID}`]);
-    expect(await subject.issuer.revoke(APP_ID)).toBe("already gone");
+    expect(await subject.issuer.revoke(APP_ID, new Secret(NEW_SECRET))).toBe("already gone");
   });
 
   test("a revoke that stopped after deactivating finishes on the next run", async () => {
-    const subject = aws(undefined, { failDelete: true });
-    await checked(subject);
-    await expect(subject.issuer.revoke(APP_ID)).rejects.toThrow(
+    const subject = aws(ROTATED, { failDelete: true });
+    await checked(subject, NEW_ID, NEW_SECRET);
+    await expect(subject.issuer.revoke(APP_ID, new Secret(NEW_SECRET))).rejects.toThrow(
       "keypin deactivated access key AKIAAPPAPPAPPAPP0001, so it no longer works, but couldn't delete it",
     );
     expect(subject.world.load().keys.find((k) => k.id === APP_ID)?.status).toBe("Inactive");
     subject.fake.failDelete = false;
-    expect(await subject.issuer.revoke(APP_ID)).toBe("revoked");
+    expect(await subject.issuer.revoke(APP_ID, new Secret(NEW_SECRET))).toBe("revoked");
     expect(subject.world.load().keys.some((k) => k.id === APP_ID)).toBe(false);
   });
 
   test("on resume, checks the new pair and revokes the old key it still lists", async () => {
-    const subject = aws([ADMIN_KEY, APP_KEY, { id: NEW_ID, secret: "new/secret/1x", user: "app" }]);
-    const check = await checked(subject, NEW_ID, "new/secret/1x");
+    const subject = aws(ROTATED);
+    const check = await checked(subject, NEW_ID, NEW_SECRET);
     expect(check.currentId).toBe(NEW_ID);
-    expect(await subject.issuer.revoke(APP_ID)).toBe("revoked");
+    expect(await subject.issuer.revoke(APP_ID, new Secret(NEW_SECRET))).toBe("revoked");
+  });
+
+  test("refuses to revoke the key the vault holds, and sends no change", async () => {
+    const subject = aws(ROTATED);
+    await checked(subject, NEW_ID, NEW_SECRET);
+    const revoked = subject.issuer.revoke(NEW_ID, new Secret(NEW_SECRET));
+    await expect(revoked).rejects.toThrow(new RevokeRefused("it's the key the vault holds"));
+    expect(subject.actions.map((a) => a.action)).not.toContain("UpdateAccessKey");
+    expect(subject.effects).toEqual([]);
+  });
+
+  test("refuses to revoke when the vault's value is none of the user's keys", async () => {
+    const subject = aws(ROTATED);
+    await checked(subject, NEW_ID, NEW_SECRET);
+    await expect(subject.issuer.revoke(APP_ID, new Secret("other/secret"))).rejects.toThrow(
+      new RevokeRefused("keypin can't tell which key of IAM user app the vault holds"),
+    );
+    expect(subject.actions.map((a) => a.action)).not.toContain("UpdateAccessKey");
+    expect(subject.effects).toEqual([]);
+  });
+
+  test("a key of another IAM user is out of reach, so revoke leaves it alone", async () => {
+    const subject = aws(ROTATED);
+    await checked(subject, NEW_ID, NEW_SECRET);
+    expect(await subject.issuer.revoke(ADMIN_ID, new Secret(NEW_SECRET))).toBe("already gone");
+    expect(subject.actions.map((a) => a.action)).not.toContain("UpdateAccessKey");
+    expect(subject.world.load().keys).toEqual(ROTATED);
   });
 
   test("stops before creating when the user already has a second key", async () => {
@@ -176,7 +206,7 @@ describe("AWS IAM issuer", () => {
     const orphan: FakeAwsKey = { id: "AKIAORPHANORPHANORP1", secret: "orphan", user: "app" };
     const subject = aws([ADMIN_KEY, APP_KEY, orphan]);
     await checked(subject);
-    expect(await subject.issuer.revoke(orphan.id)).toBe("revoked");
+    expect(await subject.issuer.revoke(orphan.id, new Secret(APP_SECRET))).toBe("revoked");
     const created = await subject.issuer.create();
     expect(created.id).toBe(NEW_ID);
   });
@@ -295,9 +325,9 @@ describe("AWS IAM issuer", () => {
   });
 
   test("an admin key that can't deactivate a key says to delete it by hand", async () => {
-    const subject = aws(undefined, { denied: ["UpdateAccessKey"] });
-    await checked(subject);
-    await expect(subject.issuer.revoke(APP_ID)).rejects.toThrow(
+    const subject = aws(ROTATED, { denied: ["UpdateAccessKey"] });
+    await checked(subject, NEW_ID, NEW_SECRET);
+    await expect(subject.issuer.revoke(APP_ID, new Secret(NEW_SECRET))).rejects.toThrow(
       "the admin key can't deactivate access key AKIAAPPAPPAPPAPP0001 of IAM user app",
     );
   });
@@ -340,7 +370,9 @@ describe("AWS IAM issuer", () => {
     const subject = aws();
     await refused(subject, APP_ID, "wrong");
     await expect(subject.issuer.create()).rejects.toThrow("checkAccount");
-    await expect(subject.issuer.revoke(APP_ID)).rejects.toThrow("checkAccount");
+    await expect(subject.issuer.revoke(APP_ID, new Secret(APP_SECRET))).rejects.toThrow(
+      "checkAccount",
+    );
   });
 });
 

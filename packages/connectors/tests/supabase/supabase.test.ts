@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { NothingChanged, readSecretspec, Secret } from "@keypin/core";
+import { NothingChanged, readSecretspec, RevokeRefused, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { SupabaseIssuer, supabaseIssuer } from "../../src/supabase/index";
 import {
@@ -14,6 +14,7 @@ const ADMIN = "sbp_admin_sentinel_7d3a";
 const PREFIX = "sb_secret_issued_sentinel_";
 const BACKEND = "sb_secret_backendsentinel_5e2c";
 const DEFAULT = "sb_secret_defaultsentinel_8b1f";
+const NEXT = "sb_secret_nextkeysentinel_4f2a";
 const KEYS: SupabaseKey[] = [
   { id: "key-default", name: "default", type: "secret", value: DEFAULT },
   { id: "key-backend", name: "backend", type: "secret", value: BACKEND },
@@ -117,7 +118,9 @@ describe("checkAccount", () => {
       fix: `create a secret key with its own name for this app at https://supabase.com/dashboard/project/${REF}/settings/api-keys, put it in the vault and publish it, then rotate that one; see https://supabase.com/docs/guides/functions/auth#service-to-service-calls`,
     });
     await expect(issuer.create("KEY prod")).rejects.toThrow("checkAccount hasn't passed");
-    await expect(issuer.revoke("key-default")).rejects.toThrow("checkAccount hasn't passed");
+    await expect(issuer.revoke("key-default", new Secret(DEFAULT))).rejects.toThrow(
+      "checkAccount hasn't passed",
+    );
     expect(effects).toEqual([]);
     expectNoSecret(check);
   });
@@ -131,7 +134,9 @@ describe("checkAccount", () => {
     assert(!check.ok);
     expect(check.reason).toContain("custom secret_jwt_template");
     await expect(issuer.create("KEY prod")).rejects.toThrow("checkAccount hasn't passed");
-    await expect(issuer.revoke("key-backend")).rejects.toThrow("checkAccount hasn't passed");
+    await expect(issuer.revoke("key-backend", new Secret(BACKEND))).rejects.toThrow(
+      "checkAccount hasn't passed",
+    );
     expect(effects).toEqual([]);
     expectNoSecret(check);
   });
@@ -177,6 +182,18 @@ describe("checkAccount", () => {
       reason:
         "Supabase doesn't list key key-gone, the one keypin issued last, but lists the vault's key as backend",
     });
+  });
+
+  test("a recorded key that isn't the vault's key is refused", async () => {
+    const { issuer, effects } = supabase();
+    const check = await issuer.checkAccount("key-default", new Secret(BACKEND));
+    expect(check).toMatchObject({
+      ok: false,
+      reason: `key default, the one keypin recorded for the vault's value, is another key in project ${REF}`,
+      fix: "check .keypin/rotation.json for a change you didn't make",
+    });
+    await expect(issuer.create("KEY prod")).rejects.toThrow("checkAccount hasn't passed");
+    expect(effects).toEqual([]);
   });
 
   test.each([
@@ -316,20 +333,65 @@ describe("create", () => {
 });
 
 describe("revoke", () => {
-  test("deletes the key, and a missing key is already gone", async () => {
-    const { issuer, effects } = supabase();
-    await issuer.checkAccount(null, new Secret(BACKEND));
-    expect(await issuer.revoke("key-backend")).toBe("revoked");
-    expect(await issuer.revoke("key-backend")).toBe("already gone");
+  const vault = new Secret(NEXT);
+  const rotated: SupabaseKey[] = [
+    ...KEYS,
+    { id: "key-next", name: "next", type: "secret", value: NEXT },
+  ];
+
+  test("deletes the retired key, and a missing key is already gone", async () => {
+    const { issuer, effects } = supabase({}, rotated);
+    await issuer.checkAccount("key-next", vault);
+    expect(await issuer.revoke("key-backend", vault)).toBe("revoked");
+    expect(await issuer.revoke("key-backend", vault)).toBe("already gone");
     expect(effects).toEqual(["supabase revoke key-backend"]);
   });
 
-  test("never deletes the key named default", async () => {
-    const { issuer, effects } = supabase();
-    await issuer.checkAccount(null, new Secret(BACKEND));
-    await expect(issuer.revoke("key-default")).rejects.toThrow(
-      "keypin won't delete Supabase key key-default: it's the secret key named default",
+  test("refuses the key the vault holds, and deletes nothing", async () => {
+    const { issuer, requests } = supabase({}, rotated);
+    await issuer.checkAccount("key-next", vault);
+    await expect(issuer.revoke("key-next", vault)).rejects.toThrow(
+      new RevokeRefused("it's the key the vault holds"),
     );
+    expect(requests.some((request) => request.startsWith("DELETE"))).toBe(false);
+  });
+
+  test("never deletes the key named default", async () => {
+    const { issuer, effects } = supabase({}, rotated);
+    await issuer.checkAccount("key-next", vault);
+    await expect(issuer.revoke("key-default", vault)).rejects.toThrow(
+      new RevokeRefused("it's the secret key named default"),
+    );
+    expect(effects).toEqual([]);
+  });
+
+  test("refuses a publishable or legacy key", async () => {
+    const { issuer, effects } = supabase({}, rotated);
+    await issuer.checkAccount("key-next", vault);
+    for (const id of ["key-web", "service_role"])
+      await expect(issuer.revoke(id, vault)).rejects.toThrow(
+        new RevokeRefused("it isn't a secret key"),
+      );
+    expect(effects).toEqual([]);
+  });
+
+  test("refuses when no listed key, or more than one, starts like the vault's key", async () => {
+    const twin: SupabaseKey = {
+      id: "key-twin",
+      name: "twin",
+      type: "secret",
+      value: `${NEXT.slice(0, 15)}twinsentinel_0c3d`,
+    };
+    const { issuer, effects, world } = supabase({}, rotated);
+    await issuer.checkAccount("key-next", vault);
+    const refused = new RevokeRefused(
+      `keypin can't tell which key in project ${REF} the vault holds`,
+    );
+    await expect(
+      issuer.revoke("key-backend", new Secret("sb_secret_unlistedsentinel_7e5b")),
+    ).rejects.toThrow(refused);
+    world.save({ keys: [...rotated, twin], created: 0 });
+    await expect(issuer.revoke("key-backend", vault)).rejects.toThrow(refused);
     expect(effects).toEqual([]);
   });
 });

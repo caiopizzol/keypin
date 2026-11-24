@@ -5,11 +5,11 @@ import {
   type IssuerCheck,
   isRecord,
   NothingChanged,
-  objectField,
   parseObject,
+  RevokeRefused,
   Secret,
 } from "@keypin/core";
-import { apiDisabled, call, disabledIn, type Reply, returned } from "./api";
+import { apiDisabled, blockedBy, call, disabledIn, type Reply, returned } from "./api";
 import {
   accessToken,
   adminFix,
@@ -28,10 +28,6 @@ const ADMIN_FIX = adminFix(ROLE);
 const LIMIT = 10;
 const KEY_NAME =
   /^projects\/([a-z0-9-]+)\/serviceAccounts\/([^/?#@]+@[^/?#@]+)\/keys\/([0-9a-f]+)$/;
-const POLICIES = new Set([
-  "constraints/iam.disableServiceAccountKeyCreation",
-  "constraints/iam.managed.disableServiceAccountKeyCreation",
-]);
 const KEY_FILE = "put the service account's whole JSON key file in the vault";
 const WAITS_MS = [1000, 2000, 4000, 8000, 15000, 30000, 30000, 30000];
 const WAITED_MS = WAITS_MS.reduce((sum, ms) => sum + ms, 0);
@@ -115,6 +111,13 @@ export class ServiceAccountKeyIssuer implements Issuer {
         facts: `${which}; the vault holds a key of ${vault.email}`,
         reason: "the vault's key belongs to another service account than the key keypin issued",
         fix: `put the key your apps use in the vault, then run this again`,
+      };
+    if (key.id !== vault.id)
+      return {
+        ok: false,
+        facts: `${which}; the vault holds key ${vault.id}`,
+        reason: `key ${key.id}, the one keypin recorded for the vault's value, is another key of ${key.email}`,
+        fix: `check .keypin/rotation.json for a change you didn't make`,
       };
     if (admin.email === key.email && admin.keyId === key.id)
       return {
@@ -207,7 +210,7 @@ export class ServiceAccountKeyIssuer implements Issuer {
 
   async #discard(key: KeyName, why: string): Promise<never> {
     try {
-      await this.revoke(nameOf(key));
+      await this.#delete(key);
     } catch {
       throw new Error(
         `${why}, and keypin couldn't delete it: run gcloud iam service-accounts keys delete ${key.id} --iam-account=${key.email}, then run this again`,
@@ -227,24 +230,36 @@ export class ServiceAccountKeyIssuer implements Issuer {
     return `Google may have made a key for ${target.email} before the reply was lost, and keys have no name to find it by. Run gcloud iam service-accounts keys list --iam-account=${target.email} --managed-by=user: keep ${target.ids.join(", ")}, and delete any other key with gcloud iam service-accounts keys delete <ID> --iam-account=${target.email} before you run this again.`;
   }
 
-  async revoke(id: string): Promise<"revoked" | "already gone"> {
+  async revoke(id: string, current: Secret): Promise<"revoked" | "already gone"> {
     if (!this.#target)
       throw new Error(
         "refusing to delete a Google Cloud service account key: checkAccount hasn't passed",
       );
     const key = parseName(id);
     if (key === null) return "already gone";
-    const bearer = await this.#session.bearer();
-    if (typeof bearer !== "string") throw new Error(`${bearer.reason}: ${bearer.fix}`);
-    const path = `${keysOf(key)}/${key.id}`;
-    const read = await call(this.#fetch, bearer, "GET", path);
-    if (read.status === 404) return this.#forget(key, "already gone");
-    if (read.status === 401 || read.status === 403)
-      throw new Error(
-        `the admin service account can't read key ${key.id} of ${key.email}: ${ADMIN_FIX}, or delete the key at ${this.dashboard()}`,
+    const vault = vaultKey(current);
+    if ("facts" in vault) throw new RevokeRefused("keypin can't tell which key the vault holds");
+    if (key.email !== vault.email)
+      throw new RevokeRefused(
+        `it belongs to ${key.email}, not to ${vault.email}, which owns the vault's key`,
       );
-    if (read.status !== 200) throw new Error(returned("GET", "<account>/keys/<id>", read));
-    if (read.body.disabled !== true) {
+    if (key.project !== "-" && vault.project !== "-" && key.project !== vault.project)
+      throw new RevokeRefused(
+        `it's in project ${key.project}, not in project ${vault.project}, which owns the vault's key`,
+      );
+    if (key.id === vault.id) throw new RevokeRefused("it's the key the vault holds");
+    const admin = await this.#session.account();
+    if (!("facts" in admin) && admin.email === key.email && admin.keyId === key.id)
+      throw new RevokeRefused("it's the key keypin signs in with");
+    return this.#delete(key);
+  }
+
+  async #delete(key: KeyName): Promise<"revoked" | "already gone"> {
+    const read = await this.#read(key);
+    if (read === null) return this.#forget(key, "already gone");
+    const bearer = await this.#bearer();
+    const path = `${keysOf(key)}/${key.id}`;
+    if (read.disabled !== true) {
       const off = await call(this.#fetch, bearer, "POST", `${path}:disable`, {});
       if (off.status === 404) return this.#forget(key, "already gone");
       if (off.status !== 200)
@@ -257,6 +272,28 @@ export class ServiceAccountKeyIssuer implements Issuer {
     throw new Error(
       `keypin disabled key ${key.id} of ${key.email}, so it no longer works, but couldn't delete it (${returned("DELETE", "<account>/keys/<id>", deleted)}): delete it at ${this.dashboard()}`,
     );
+  }
+
+  async has(id: string): Promise<boolean> {
+    const key = parseName(id);
+    return key !== null && (await this.#read(key)) !== null;
+  }
+
+  async #read(key: KeyName): Promise<Record<string, unknown> | null> {
+    const read = await call(this.#fetch, await this.#bearer(), "GET", `${keysOf(key)}/${key.id}`);
+    if (read.status === 404) return null;
+    if (read.status === 401 || read.status === 403)
+      throw new Error(
+        `the admin service account can't read key ${key.id} of ${key.email}: ${ADMIN_FIX}, or delete the key at ${this.dashboard()}`,
+      );
+    if (read.status !== 200) throw new Error(returned("GET", "<account>/keys/<id>", read));
+    return read.body;
+  }
+
+  async #bearer(): Promise<string> {
+    const bearer = await this.#session.bearer();
+    if (typeof bearer !== "string") throw new Error(`${bearer.reason}: ${bearer.fix}`);
+    return bearer;
   }
 
   #forget<T>(key: KeyName, result: T): T {
@@ -363,19 +400,6 @@ function listed(body: Record<string, unknown>): Listed[] {
       },
     ];
   });
-}
-
-function blockedBy(reply: Reply): string | null {
-  const details = objectField(reply.body, "error").details;
-  if (!Array.isArray(details)) return null;
-  for (const detail of details) {
-    if (!isRecord(detail) || !Array.isArray(detail.violations)) continue;
-    for (const violation of detail.violations) {
-      const type = isRecord(violation) ? violation.type : undefined;
-      if (typeof type === "string" && POLICIES.has(type)) return type.replace(/^constraints\//, "");
-    }
-  }
-  return null;
 }
 
 function shown(key: Listed): string {

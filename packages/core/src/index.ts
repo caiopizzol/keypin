@@ -17,6 +17,7 @@ export {
   ItemMissing,
   type KeyRef,
   NothingChanged,
+  RevokeRefused,
   type Receipt,
   SignInFailed,
   type SignInReason,

@@ -7,9 +7,11 @@ import {
   isRecord,
   NothingChanged,
   parseObject,
+  RevokeRefused,
   Secret,
 } from "@keypin/core";
-import { hostsOf, type MongoUri, parseUri, withUser } from "./uri";
+import { codeOf, failure, type Reply } from "./reply";
+import { connectionStrings, hostsOf, type MongoUri, parseUri, withUser } from "./uri";
 
 const CLOUD = "https://cloud.mongodb.com";
 const API = `${CLOUD}/api/atlas/v2`;
@@ -38,11 +40,6 @@ export interface AtlasIssuerOptions {
   password?: () => string;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
-}
-
-interface Reply {
-  status: number;
-  body: Record<string, unknown>;
 }
 
 interface Copy {
@@ -111,6 +108,13 @@ export class AtlasIssuer implements Issuer {
         reason: `the vault's connection string signs in with ${mechanism || "an external authSource"}, which has no password keypin can rotate`,
         fix: "keypin rotates only password (SCRAM) users",
       };
+    if (currentId !== null && currentId !== uri.username)
+      return {
+        ok: false,
+        facts,
+        reason: `user ${currentId}, the one keypin recorded for the vault's value, isn't ${uri.username}, the user the vault's connection string signs in as`,
+        fix: `check .keypin/rotation.json for a change you didn't make`,
+      };
     const clusters = await this.#clustersFor(uri.hosts);
     const cluster = clusters[0];
     if (!cluster)
@@ -128,7 +132,7 @@ export class AtlasIssuer implements Issuer {
         fix: "put a connection string from one cluster's Connect dialog in the vault",
       };
 
-    const source = currentId ?? uri.username;
+    const source = uri.username;
     const which = currentId === null ? "the vault's user" : "the one keypin created last time";
     const found = await this.#user(source);
     if (!found)
@@ -224,9 +228,26 @@ export class AtlasIssuer implements Issuer {
     return `MongoDB Atlas may have created database user ${target} before the reply was lost. Nothing uses it yet. Delete it at ${this.dashboard()}, then run this again; keypin won't create a user that already exists.`;
   }
 
-  async revoke(id: string): Promise<"revoked" | "already gone"> {
+  async has(id: string): Promise<boolean> {
+    return (await this.#user(id)) !== null;
+  }
+
+  async revoke(id: string, current: Secret): Promise<"revoked" | "already gone"> {
     if (!this.#copy)
       throw new Error("refusing to delete an Atlas database user: checkAccount hasn't passed");
+    const vault = parseUri(current.reveal())?.username;
+    if (!vault)
+      throw new RevokeRefused(
+        "keypin can't tell which database user the vault's value signs in as",
+      );
+    if (!(await this.has(id))) return "already gone";
+    if (id === vault)
+      throw new RevokeRefused("it's the database user the vault's connection string signs in as");
+    const base = baseName(vault);
+    if (baseName(id) !== base)
+      throw new RevokeRefused(
+        `its name isn't ${base}, ${base}-a or ${base}-b, the names keypin gives the vault's user ${vault}`,
+      );
     const deleted = await this.#delete(id);
     if (deleted === null)
       throw new Error(
@@ -364,26 +385,8 @@ export class AtlasIssuer implements Issuer {
 }
 
 export function nextName(username: string): string {
-  const base = username.replace(/-[ab]$/, "");
+  const base = baseName(username);
   return username.endsWith("-b") ? `${base}-a` : `${base}-b`;
 }
 
-function connectionStrings(value: unknown): string[] {
-  if (typeof value === "string") return [value];
-  if (Array.isArray(value)) return value.flatMap(connectionStrings);
-  return isRecord(value) ? Object.values(value).flatMap(connectionStrings) : [];
-}
-
-function failure(
-  method: string,
-  path: string,
-  reply: Reply,
-  type: new (message: string) => Error = Error,
-): Error {
-  return new type(`Atlas ${method} ${path} returned HTTP ${reply.status}${codeOf(reply)}`);
-}
-
-function codeOf(reply: Reply): string {
-  const code = reply.body.errorCode;
-  return typeof code === "string" && /^[A-Z_]+$/.test(code) ? ` ${code}` : "";
-}
+const baseName = (username: string) => username.replace(/-[ab]$/, "");

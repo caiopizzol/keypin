@@ -3,6 +3,10 @@
     "lines": 408,
     "why": "dopplerBackend is one closure: sign-in, reads and writes share its credentials, fetch, session and strict state, so splitting it means threading that state through every helper."
   },
+  "packages/connectors/src/google/service-account.ts": {
+    "lines": 408,
+    "why": "GoogleServiceAccountIssuer is one class: checkAccount, create, has and revoke share its admin sign-in, target account and the vault key file it checks against, so splitting it means threading that state through every helper."
+  },
   "packages/connectors/src/infisical/backend.ts": {
     "lines": 460,
     "why": "infisicalBackend is one closure: requests, sign-in, token revoke and sessions share its fetch, sleep, warn and strict state, so splitting it means threading that state through every helper."

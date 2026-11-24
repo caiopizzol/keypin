@@ -6,6 +6,7 @@ import {
   isRecord,
   NothingChanged,
   parseObject,
+  RevokeRefused,
   Secret,
 } from "@keypin/core";
 
@@ -77,7 +78,15 @@ export class SendGridIssuer implements Issuer {
       };
     const facts = `the admin key manages API keys${this.#subuser === undefined ? "" : ` of subuser ${this.#subuser}`}`;
 
-    const id = currentId ?? idIn(current);
+    const held = idIn(current);
+    if (currentId !== null && held !== null && currentId !== held)
+      return {
+        ok: false,
+        facts,
+        reason: `key ${currentId}, the one keypin recorded for the vault's value, is another key: the vault holds key ${held}`,
+        fix: "check .keypin/rotation.json for a change you didn't make",
+      };
+    const id = currentId ?? held;
     if (id === null)
       return {
         ok: false,
@@ -156,9 +165,19 @@ export class SendGridIssuer implements Issuer {
     return `SendGrid may have made the key before the reply was lost. Only this run uses the name "${name}": delete a key with that name${this.#subuser === undefined ? "" : ` in subuser ${this.#subuser}`} at ${DASHBOARD} before you run this again, or the rerun leaves it live.`;
   }
 
-  async revoke(id: string): Promise<"revoked" | "already gone"> {
+  async revoke(id: string, current: Secret): Promise<"revoked" | "already gone"> {
     if (this.#scopes === null)
       throw new Error("refusing to revoke a SendGrid key: checkAccount hasn't passed");
+    const held = idIn(current);
+    if (id === held) throw new RevokeRefused("it's the key the vault holds");
+    if (id === idIn(await this.#adminKey())) throw new RevokeRefused("it's the admin key");
+    if (!(await this.has(id))) return "already gone";
+    if (held === null)
+      throw new RevokeRefused(
+        `keypin can't tell which key in the ${this.#account()} the vault holds`,
+      );
+    if (!(await this.has(held)))
+      throw new RevokeRefused(`it's in the ${this.#account()}, and the vault's key ${held} isn't`);
     const deleted = await this.#request("DELETE", `/v3/api_keys/${encodeURIComponent(id)}`);
     if (deleted.status === 404) return "already gone";
     if (deleted.status === 401 || deleted.status === 403)
@@ -168,6 +187,13 @@ export class SendGridIssuer implements Issuer {
     if (deleted.status !== 204 && deleted.status !== 200)
       throw failure("DELETE", "/v3/api_keys/<id>", deleted);
     return "revoked";
+  }
+
+  async has(id: string): Promise<boolean> {
+    const found = await this.#request("GET", `/v3/api_keys/${encodeURIComponent(id)}`);
+    if (found.status === 404 || found.status === 400) return false;
+    if (found.status !== 200) throw failure("GET", "/v3/api_keys/<id>", found);
+    return true;
   }
 
   #account(): string {

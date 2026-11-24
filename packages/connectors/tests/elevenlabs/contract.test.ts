@@ -24,6 +24,8 @@ describe("the issuer contract", () => {
         fetch: elevenlabsFetch(fake),
       }),
       current: new Secret(VAULT),
+      currentId: "sa_app/key_old",
+      vaultId: "sa_app/key_old",
       effects,
       failCreate: () => {
         fake.failCreate = 500;
@@ -46,7 +48,7 @@ describe("the fake ElevenLabs", () => {
     });
     expect((await issuer.checkAccount(null, new Secret(VAULT))).ok).toBe(true);
     const first = await issuer.create("first");
-    expect(await issuer.revoke("sa_app/key_old")).toBe("revoked");
+    expect(await issuer.revoke("sa_app/key_old", first.secret)).toBe("revoked");
     const second = await issuer.create("second");
     expect(second.id).not.toBe(first.id);
     expect(second.secret.equals(first.secret)).toBe(false);

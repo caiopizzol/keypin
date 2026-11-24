@@ -22,6 +22,7 @@ describe("the issuer contract", () => {
         fetch: openrouterFetch(fake),
       }),
       current: new Secret(VAULT),
+      vaultId: "hash_old",
       effects,
       failCreate: () => {
         fake.failCreate = 500;
@@ -43,7 +44,8 @@ describe("the fake OpenRouter", () => {
     });
     expect((await issuer.checkAccount(null, new Secret(VAULT))).ok).toBe(true);
     const first = await issuer.create("first");
-    expect(await issuer.revoke("hash_old")).toBe("revoked");
+    expect((await issuer.checkAccount(first.id, first.secret)).ok).toBe(true);
+    expect(await issuer.revoke("hash_old", first.secret)).toBe("revoked");
     const second = await issuer.create("second");
     expect(second.id).not.toBe(first.id);
     expect(second.secret.equals(first.secret)).toBe(false);

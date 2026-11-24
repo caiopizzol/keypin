@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, readSecretspec, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, readSecretspec, RevokeRefused, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { OpenAIIssuer, openaiIssuer } from "../../src/openai/index";
 import {
@@ -15,6 +15,12 @@ const PREFIX = "sk-svcacct-issued-sentinel-";
 const VAULT = "sk-svcacct-vault-sentinel-2f4b";
 const BOT = { type: "service_account", id: "svc_bot", name: "billing-bot" } as const;
 const OLD: FakeOpenAIKey = { id: "key_old", name: "prod", value: VAULT, owner: BOT };
+const NEXT: FakeOpenAIKey = {
+  id: "key_new",
+  name: "prod 2",
+  value: "sk-svcacct-new-sentinel-8a3c",
+  owner: BOT,
+};
 
 function openai(
   keys: FakeOpenAIKey[] = [OLD],
@@ -157,6 +163,22 @@ describe("checkAccount", () => {
     expect(effects).toEqual(["openai create key_new1 for svc_bot"]);
   });
 
+  test("a recorded key that isn't the vault's key is refused, so create can't move to its service account", async () => {
+    const OTHER: FakeOpenAIKey = {
+      id: "key_web",
+      name: "web",
+      value: "sk-svcacct-web-sentinel-1d9e",
+      owner: { type: "service_account", id: "svc_web", name: "web-app" },
+    };
+    const { issuer } = openai([OLD, OTHER]);
+    const check = await issuer.checkAccount("svc_web/key_web", new Secret(VAULT));
+    assert(!check.ok);
+    expect(check.reason).toBe(
+      "key key_web, the one keypin recorded for the vault's value, is another key in project billing",
+    );
+    await expect(issuer.create("API_KEY prod")).rejects.toThrow("checkAccount");
+  });
+
   test("an ID keypin didn't write is refused", async () => {
     const { issuer } = openai();
     const check = await issuer.checkAccount("key_old", new Secret(VAULT));
@@ -295,39 +317,88 @@ describe("create", () => {
 });
 
 describe("revoke", () => {
-  test("deletes the project key by its ID", async () => {
-    const { issuer, requests, effects } = openai();
-    await issuer.checkAccount(null, new Secret(VAULT));
-    expect(await issuer.revoke("svc_bot/key_old")).toBe("revoked");
+  const vault = new Secret(NEXT.value);
+
+  test("deletes the retired key of the vault key's service account", async () => {
+    const { issuer, requests, effects } = openai([OLD, NEXT]);
+    await issuer.checkAccount("svc_bot/key_new", vault);
+    expect(await issuer.revoke("svc_bot/key_old", vault)).toBe("revoked");
     expect(requests.at(-1)).toMatchObject({
       method: "DELETE",
       path: "/v1/organization/projects/proj_1/api_keys/key_old",
     });
     expect(effects).toEqual(["openai revoke key_old"]);
-    expect(await issuer.revoke("svc_bot/key_old")).toBe("already gone");
+    expect(await issuer.revoke("svc_bot/key_old", vault)).toBe("already gone");
   });
 
-  test("the id is one path segment", async () => {
-    const { issuer, requests } = openai();
-    await issuer.checkAccount(null, new Secret(VAULT));
-    expect(await issuer.revoke("svc_bot/key/../x")).toBe("already gone");
-    expect(requests.at(-1)?.path).toBe("/v1/organization/projects/proj_1/api_keys/key%2F..%2Fx");
+  test("a key the project doesn't list is already gone, and nothing is deleted", async () => {
+    const { issuer, requests } = openai([OLD, NEXT]);
+    await issuer.checkAccount("svc_bot/key_new", vault);
+    expect(await issuer.revoke("svc_bot/key/../x", vault)).toBe("already gone");
+    expect(requests.some((request) => request.method === "DELETE")).toBe(false);
+  });
+
+  test("refuses the key the vault holds, whatever service account the ID names", async () => {
+    const { issuer, effects } = openai([OLD, NEXT]);
+    await issuer.checkAccount("svc_bot/key_new", vault);
+    for (const id of ["svc_bot/key_new", "svc_other/key_new"]) {
+      const failed = await issuer.revoke(id, vault).catch((error: unknown) => error);
+      assert(failed instanceof RevokeRefused);
+      expect(failed.message).toBe("it's the key the vault holds");
+    }
+    expect(effects).toEqual([]);
+  });
+
+  test("refuses a key of another service account or a user in the project", async () => {
+    const OTHER: FakeOpenAIKey = {
+      id: "key_web",
+      name: "web",
+      value: "sk-svcacct-web-sentinel-1d9e",
+      owner: { type: "service_account", id: "svc_web", name: "web-app" },
+    };
+    const PERSON: FakeOpenAIKey = {
+      id: "key_ana",
+      name: "ana",
+      value: "sk-proj-ana-sentinel-6b7f",
+      owner: { type: "user", id: "user_ana", name: "Ana" },
+    };
+    const { issuer, effects } = openai([OLD, NEXT, OTHER, PERSON]);
+    await issuer.checkAccount("svc_bot/key_new", vault);
+    await expect(issuer.revoke("svc_bot/key_web", vault)).rejects.toThrow(
+      new RevokeRefused(
+        "it belongs to service account web-app, not to service account billing-bot, which owns the vault's key",
+      ),
+    );
+    await expect(issuer.revoke("svc_bot/key_ana", vault)).rejects.toThrow(
+      "it belongs to user Ana, not to service account billing-bot",
+    );
+    expect(effects).toEqual([]);
+  });
+
+  test("refuses when no listed key matches the vault's value", async () => {
+    const { issuer, effects, store } = openai([OLD, NEXT]);
+    await issuer.checkAccount("svc_bot/key_new", vault);
+    store.save({ live: [OLD], created: 0 });
+    expect(await issuer.revoke("svc_bot/key_old", vault).catch((error: unknown) => error)).toEqual(
+      new RevokeRefused("keypin can't tell which key in project billing the vault holds"),
+    );
+    expect(effects).toEqual([]);
   });
 
   test("an admin key that can't delete says where to delete it", async () => {
-    const { fake } = openai();
+    const { fake } = openai([OLD, NEXT]);
     const served = openaiFetch(fake);
     const issuer = withFetch(async (url, init) =>
       init.method === "DELETE" ? new Response("{}", { status: 403 }) : served(url, init),
     );
     await issuer.checkAccount(null, new Secret(VAULT));
-    await expect(issuer.revoke("svc_bot/key_old")).rejects.toThrow(
+    await expect(issuer.revoke("svc_bot/key_old", new Secret(NEXT.value))).rejects.toThrow(
       "or delete key key_old at https://platform.openai.com/settings/organization/api-keys",
     );
   });
 
   test("another failure throws, without the admin key", async () => {
-    const { fake } = openai();
+    const { fake } = openai([OLD, NEXT]);
     const served = openaiFetch(fake);
     const issuer = withFetch(async (url, init) =>
       init.method === "DELETE"
@@ -335,7 +406,9 @@ describe("revoke", () => {
         : served(url, init),
     );
     await issuer.checkAccount(null, new Secret(VAULT));
-    const failed = await issuer.revoke("svc_bot/key_old").catch((error: unknown) => error);
+    const failed = await issuer
+      .revoke("svc_bot/key_old", new Secret(NEXT.value))
+      .catch((error: unknown) => error);
     assert(failed instanceof Error);
     expect(failed.message).toBe(
       "OpenAI DELETE /organization/projects/<project_id>/api_keys/<id> returned HTTP 500",

@@ -6,6 +6,7 @@ import {
   type IssuerCheck,
   isRecord,
   NothingChanged,
+  RevokeRefused,
   Secret,
 } from "@keypin/core";
 import { type Reply, supabaseRequest, TOKEN_DOCS, TOKENS } from "./api";
@@ -35,7 +36,6 @@ export class SupabaseIssuer implements Issuer {
   readonly #fetch: Fetch;
   #key: Promise<Secret> | undefined;
   #passed = false;
-  #defaults = new Set<string>();
 
   constructor(options: SupabaseIssuerOptions) {
     this.#admin = options.admin;
@@ -63,7 +63,6 @@ export class SupabaseIssuer implements Issuer {
     const list = await this.#request("GET", this.#keys(""));
     if (list.status !== 200) return this.#refused(list);
     const keys = secretKeys(list.body);
-    this.#defaults = new Set(keys.filter((key) => key.name === DEFAULT).map((key) => key.id));
     const facts = `project ${this.#ref} has ${keys.length} secret key${keys.length === 1 ? "" : "s"}`;
     const matches = keys.filter((key) => current.reveal().startsWith(key.prefix));
     if (matches.length > 1)
@@ -92,6 +91,13 @@ export class SupabaseIssuer implements Issuer {
         fix: `check project_ref in secretspec.toml; if the key was deleted, put the key your apps use in the vault, then run this again`,
       };
     }
+    if (currentId !== null && old !== held)
+      return {
+        ok: false,
+        facts,
+        reason: `key ${old.name}, the one keypin recorded for the vault's value, is another key in project ${this.#ref}`,
+        fix: "check .keypin/rotation.json for a change you didn't make",
+      };
     if (!isDefaultTemplate(old.template))
       return {
         ok: false,
@@ -153,17 +159,35 @@ export class SupabaseIssuer implements Issuer {
     return `Supabase may have made the key before the reply was lost. Only this run uses the name "${fitName(name)}": delete a secret key with that name at ${this.dashboard()} before you run this again, or the rerun leaves it live.`;
   }
 
-  async revoke(id: string): Promise<"revoked" | "already gone"> {
+  async revoke(id: string, current: Secret): Promise<"revoked" | "already gone"> {
     if (!this.#passed)
       throw new Error("refusing to delete a Supabase key: checkAccount hasn't passed");
-    if (this.#defaults.has(id))
-      throw new Error(
-        `keypin won't delete Supabase key ${id}: it's the secret key named ${DEFAULT}`,
+    const listed = await this.#listed();
+    if (!lists(listed, id)) return "already gone";
+    const keys = secretKeys(listed);
+    const target = keys.find((key) => key.id === id);
+    if (!target) throw new RevokeRefused("it isn't a secret key");
+    const held = keys.filter((key) => current.reveal().startsWith(key.prefix));
+    if (held.length !== 1)
+      throw new RevokeRefused(
+        `keypin can't tell which key in project ${this.#ref} the vault holds`,
       );
+    if (held[0] === target) throw new RevokeRefused("it's the key the vault holds");
+    if (target.name === DEFAULT) throw new RevokeRefused(`it's the secret key named ${DEFAULT}`);
     const deleted = await this.#request("DELETE", this.#keys(`/${encodeURIComponent(id)}`));
     if (deleted.status === 404) return "already gone";
     if (deleted.status !== 200) throw failure("DELETE", "/api-keys/<id>", deleted);
     return "revoked";
+  }
+
+  async has(id: string): Promise<boolean> {
+    return lists(await this.#listed(), id);
+  }
+
+  async #listed(): Promise<Record<string, unknown>[]> {
+    const list = await this.#request("GET", this.#keys(""));
+    if (list.status !== 200) throw failure("GET", "/api-keys", list);
+    return Array.isArray(list.body) ? list.body.filter(isRecord) : [];
   }
 
   #refused(reply: Reply): IssuerCheck {
@@ -233,6 +257,10 @@ function isDefaultTemplate(template: unknown): boolean {
 
 function isSecretKey(value: string): boolean {
   return value.startsWith(SECRET) && /^[A-Za-z0-9_-]+$/.test(value);
+}
+
+function lists(keys: Record<string, unknown>[], id: string): boolean {
+  return keys.some((key) => key.id === id);
 }
 
 function secretKeys(body: unknown): Listed[] {

@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, readSecretspec, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, readSecretspec, RevokeRefused, Secret } from "@keypin/core";
 import { onePasswordVault } from "@keypin/connectors/onepassword";
 import { XaiIssuer, xaiIssuer } from "../../src/xai/index";
 import { type FakeXai, type FakeXaiKey, memoryWorld, xaiFetch } from "../../src/xai/testing";
@@ -8,6 +8,7 @@ const ADMIN = "xai-token-mgmt-sentinel-5c1f";
 const PREFIX = "xai-issued-sentinel-";
 const VAULT = "xai-vault-sentinel-2f4b";
 const OLD: FakeXaiKey = { id: "key_old", name: "prod", value: VAULT };
+const NEXT: FakeXaiKey = { id: "key_next", name: "prod 2", value: "xai-next-sentinel-8a3c" };
 const NOW = new Date("2026-11-17T12:00:00Z");
 
 function xai(keys: FakeXaiKey[] = [OLD], options: Partial<FakeXai> = {}) {
@@ -210,6 +211,31 @@ describe("checkAccount", () => {
     ]);
     const check = await issuer.checkAccount("team_1/key_new1", new Secret(VAULT));
     expect(check.ok).toBe(true);
+  });
+
+  test("a recorded key in another team is refused, so create can't move to that team", async () => {
+    const { issuer, effects } = xai([OLD, { ...NEXT, team: "team_2" }], {
+      scope: "organization",
+      teams: ["team_1", "team_2"],
+    });
+    const check = await issuer.checkAccount("team_2/key_next", new Secret(VAULT));
+    assert(!check.ok);
+    expect(check.reason).toBe(
+      "team team_2 lists key key_next, the one keypin recorded for the vault's value, but not the vault's key key_old",
+    );
+    expect(check.fix).toBe("check .keypin/rotation.json for a change you didn't make");
+    await expect(issuer.create("x")).rejects.toThrow("checkAccount hasn't passed");
+    expect(effects).toEqual([]);
+  });
+
+  test("a recorded key that isn't the vault's copies the vault's key, not the recorded one", async () => {
+    const { issuer } = xai([
+      { ...OLD, acls: ["api-key:endpoint:chat"] },
+      { ...NEXT, acls: ["api-key:model:*", "api-key:endpoint:*"], qpm: 900 },
+    ]);
+    const check = await issuer.checkAccount("team_1/key_next", new Secret(VAULT));
+    assert(check.ok);
+    expect(check.notes?.create).toBe("with ACLs api-key:endpoint:chat; no rate limits; no expiry");
   });
 
   test("a key with no ACLs is refused, since its copy couldn't call anything", async () => {
@@ -446,34 +472,94 @@ describe("create", () => {
 });
 
 describe("revoke", () => {
-  test("deletes the key by its ID", async () => {
-    const { issuer, requests, effects } = xai();
-    await issuer.checkAccount(null, new Secret(VAULT));
-    expect(await issuer.revoke("team_1/key_old")).toBe("revoked");
+  const vault = new Secret(NEXT.value);
+
+  test("deletes the retired key of the vault key's team", async () => {
+    const { issuer, requests, effects } = xai([OLD, NEXT]);
+    await issuer.checkAccount("team_1/key_next", vault);
+    expect(await issuer.revoke("team_1/key_old", vault)).toBe("revoked");
     expect(requests.at(-1)).toMatchObject({
       method: "DELETE",
       url: "management-api.x.ai/auth/api-keys/key_old",
     });
     expect(effects).toEqual(["xai revoke key_old"]);
-    expect(await issuer.revoke("team_1/key_old")).toBe("already gone");
+    expect(await issuer.revoke("team_1/key_old", vault)).toBe("already gone");
+  });
+
+  test("a key the team doesn't list is already gone, and nothing is deleted", async () => {
+    const { issuer, requests } = xai([OLD, NEXT]);
+    await issuer.checkAccount("team_1/key_next", vault);
+    expect(await issuer.revoke("team_1/key_gone", vault)).toBe("already gone");
+    expect(requests.some((request) => request.method === "DELETE")).toBe(false);
+  });
+
+  test("refuses the key the vault holds, whatever team the ID names", async () => {
+    const { issuer, effects } = xai([OLD, NEXT]);
+    await issuer.checkAccount("team_1/key_next", vault);
+    for (const id of ["team_1/key_next", "team_2/key_next"]) {
+      const failed = await issuer.revoke(id, vault).catch((error: unknown) => error);
+      assert(failed instanceof RevokeRefused);
+      expect(failed.message).toBe("it's the key the vault holds");
+    }
+    expect(effects).toEqual([]);
+  });
+
+  test("refuses a key of another team, even with an organization management key", async () => {
+    const { issuer, effects, requests } = xai(
+      [OLD, NEXT, { id: "key_web", name: "web", value: "xai-web-sentinel-1d9e", team: "team_2" }],
+      {
+        scope: "organization",
+        teams: ["team_1", "team_2"],
+      },
+    );
+    await issuer.checkAccount("team_1/key_next", vault);
+    await expect(issuer.revoke("team_2/key_web", vault)).rejects.toThrow(
+      new RevokeRefused(
+        "it belongs to team team_2, not to team team_1, which owns the vault's key",
+      ),
+    );
+    expect(await issuer.revoke("team_1/key_web", vault)).toBe("already gone");
+    expect(requests.some((request) => request.method === "DELETE")).toBe(false);
+    expect(effects).toEqual([]);
+  });
+
+  test("refuses when xAI doesn't accept the vault's key", async () => {
+    const { issuer, effects } = xai([OLD, NEXT]);
+    await issuer.checkAccount("team_1/key_next", vault);
+    await expect(issuer.revoke("team_1/key_old", new Secret("xai-gone-0000"))).rejects.toThrow(
+      new RevokeRefused("xAI doesn't accept the vault's key"),
+    );
+    expect(effects).toEqual([]);
   });
 
   test("a management key that can't delete says where to delete it", async () => {
-    const { issuer } = xai([OLD], { denied: ["delete"] });
+    const { issuer } = xai([OLD, NEXT], { denied: ["delete"] });
     await issuer.checkAccount(null, new Secret(VAULT));
-    await expect(issuer.revoke("team_1/key_old")).rejects.toThrow(
+    await expect(issuer.revoke("team_1/key_old", vault)).rejects.toThrow(
       'can\'t delete key "prod" (HTTP 403): give it that permission at https://console.x.ai/team/default/management-keys, or delete the key at https://console.x.ai/team/default/api-keys',
     );
   });
 
   test("another failure throws, without the management key", async () => {
+    const { fake } = xai([OLD, NEXT]);
     const issuer = withFetch(
-      routed((_url, method) => (method === "DELETE" ? json(500, { error: ADMIN }) : null)),
+      routed((_url, method) => (method === "DELETE" ? json(500, { error: ADMIN }) : null), fake),
     );
     await issuer.checkAccount(null, new Secret(VAULT));
-    const failed = await issuer.revoke("team_1/key_old").catch((error: unknown) => error);
+    const failed = await issuer.revoke("team_1/key_old", vault).catch((error: unknown) => error);
     assert(failed instanceof Error);
     expect(failed.message).toBe("xAI DELETE /auth/api-keys/<id> returned HTTP 500");
+    expectNoSecret(failed);
+  });
+});
+
+describe("has", () => {
+  test("a team the management key can't list throws, without the management key", async () => {
+    const { issuer, requests } = xai([OLD, { ...NEXT, team: "team_2" }]);
+    const failed = await issuer.has("team_2/key_next").catch((error: unknown) => error);
+    assert(failed instanceof Error);
+    expect(failed.message).toBe("xAI GET /auth/teams/<team_id>/api-keys returned HTTP 403");
+    expect(requests.some((request) => request.method === "DELETE")).toBe(false);
     expectNoSecret(failed);
   });
 });

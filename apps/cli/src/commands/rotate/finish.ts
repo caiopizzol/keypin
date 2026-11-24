@@ -1,6 +1,7 @@
 import {
   removedBehind,
   generationOf,
+  RevokeRefused,
   type Issued,
   messageOf,
   type PlanStep,
@@ -23,6 +24,7 @@ import {
   shown,
   apartNote,
   reached,
+  revokeRefused,
   waitsNotice,
 } from "./messages";
 
@@ -48,7 +50,7 @@ export async function resume(
   const unsavedId = pair !== null && !writes.idSaved;
   const all = [...steps, ...pairSteps];
   const published = all.every((step) => step.action === "skip") && !unsavedId;
-  if (published && !job.plan) return revokeOld(job, ready, issued, state);
+  if (published && !job.plan) return revokeOld(job, ready, issued, secret, state);
   const old = issued.old.revoked ? null : issued.old.id;
   out.line("\nPlan");
   showPlan(out, [
@@ -130,10 +132,16 @@ export async function publishThenRevoke(
     );
     return 1;
   }
-  return revokeOld(job, ready, issued, written.state);
+  return revokeOld(job, ready, issued, secret, written.state);
 }
 
-async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): Promise<number> {
+async function revokeOld(
+  job: Job,
+  ready: Ready,
+  issued: Issued,
+  current: Secret,
+  state: State,
+): Promise<number> {
   const { key, owner, deps, out } = job;
   const { issuer } = ready;
   const where = issuer.describe();
@@ -173,6 +181,10 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
     );
     return 0;
   }
+  if (old === issued.id) {
+    out.line(revokeRefused(issuer, old, "it's the key the vault holds"));
+    return 1;
+  }
   const asked = job.args.filter((arg) => arg !== "--yes");
   const later = `To revoke it later, run this in a terminal:\n  ${commandLine(deps, "rotate", asked)}`;
   if (job.due && !deps.isTerminal) {
@@ -202,13 +214,17 @@ async function revokeOld(job: Job, ready: Ready, issued: Issued, state: State): 
   try {
     await out.step(
       `${where}  revoking ${shown(issuer, old)}`,
-      () => revoke(old),
+      () => revoke(old, current),
       (result) => ({
         ok: true,
         text: `${where}  ${result === "revoked" ? "revoked" : "already gone:"} ${shown(issuer, old)}`,
       }),
     );
   } catch (error) {
+    if (error instanceof RevokeRefused) {
+      out.line(revokeRefused(issuer, old, error.message));
+      return 1;
+    }
     out.line(`    ${messageOf(error)}`);
     out.line(
       `Stopped: the old key ${shown(issuer, old)} may still work. To try again, run:\n  ${commandLine(deps, "rotate", job.args)}`,

@@ -1,5 +1,5 @@
 import { assert, describe, expect, test } from "vite-plus/test";
-import { type Fetch, NothingChanged, Secret } from "@keypin/core";
+import { type Fetch, NothingChanged, RevokeRefused, Secret } from "@keypin/core";
 import { ElevenLabsIssuer } from "../../src/elevenlabs/index";
 import {
   type FakeElevenLabs,
@@ -13,6 +13,18 @@ const PREFIX = "sk_issued_sentinel_";
 const VAULT = "sk_vault_sentinel_2f4b";
 const PERSON = "sk_person_sentinel_8e1a";
 const OLD: FakeElevenLabsKey = { account: "sa_app", keyId: "key_old", name: "prod", value: VAULT };
+const NEXT: FakeElevenLabsKey = {
+  account: "sa_app",
+  keyId: "key_next",
+  name: "prod 2",
+  value: "sk_next_sentinel_8a3c",
+};
+const OTHER: FakeElevenLabsKey = {
+  account: "sa_other",
+  keyId: "key_web",
+  name: "web",
+  value: "sk_web_sentinel_1d9e",
+};
 const ACCOUNTS = [
   { id: "sa_app", name: "app" },
   { id: "sa_other", name: "other" },
@@ -207,6 +219,18 @@ describe("checkAccount", () => {
     expect(check.reason).toContain("has no key key_gone, the one keypin issued last time");
   });
 
+  test("a recorded key of another service account is refused, so create can't move to it", async () => {
+    const { issuer, effects } = elevenlabs([OLD, OTHER]);
+    const check = await issuer.checkAccount("sa_other/key_web", new Secret(VAULT));
+    assert(!check.ok);
+    expect(check.reason).toBe(
+      'key "web", the one keypin recorded for the vault\'s value, belongs to service account "other", not to service account "app", which owns the vault\'s key',
+    );
+    expect(check.fix).toBe("check .keypin/rotation.json for a change you didn't make");
+    await expect(issuer.create("API_KEY")).rejects.toThrow("checkAccount hasn't passed");
+    expect(effects).toEqual([]);
+  });
+
   test("an admin key ElevenLabs doesn't accept says so", async () => {
     const issuer = withFetch(
       answering(401, { detail: { code: "invalid_api_key", status: "invalid_api_key" } }),
@@ -332,19 +356,56 @@ describe("create", () => {
 });
 
 describe("revoke", () => {
-  test("deletes the old key and shows it by name", async () => {
-    const { issuer, effects } = elevenlabs();
-    assert((await issuer.checkAccount(null, new Secret(VAULT))).ok);
+  const vault = new Secret(NEXT.value);
+
+  test("deletes the retired key of the vault key's service account and shows it by name", async () => {
+    const { issuer, effects } = elevenlabs([OLD, NEXT]);
+    assert((await issuer.checkAccount("sa_app/key_next", vault)).ok);
     expect(issuer.label("sa_app/key_old")).toBe('"prod"');
-    expect(await issuer.revoke("sa_app/key_old")).toBe("revoked");
+    expect(await issuer.revoke("sa_app/key_old", vault)).toBe("revoked");
     expect(effects).toEqual(["elevenlabs revoke sa_app/key_old"]);
+    expect(await issuer.revoke("sa_app/key_old", vault)).toBe("already gone");
   });
 
-  test("an ID that isn't account/key, or a missing service account, is already gone", async () => {
-    const { issuer, effects } = elevenlabs();
-    assert((await issuer.checkAccount(null, new Secret(VAULT))).ok);
-    expect(await issuer.revoke("key_old")).toBe("already gone");
-    expect(await issuer.revoke("sa_missing/key_old")).toBe("already gone");
+  test("an ID that isn't account/key, or a key the account doesn't list, is already gone", async () => {
+    const { issuer, requests } = elevenlabs([OLD, NEXT]);
+    assert((await issuer.checkAccount("sa_app/key_next", vault)).ok);
+    expect(await issuer.revoke("key_old", vault)).toBe("already gone");
+    expect(await issuer.revoke("sa_app/key_gone", vault)).toBe("already gone");
+    expect(requests.some((request) => request.method === "DELETE")).toBe(false);
+  });
+
+  test("refuses the service account's only active key, since it's the vault's", async () => {
+    const { issuer, effects } = elevenlabs([{ ...OLD, disabled: true }, NEXT]);
+    assert((await issuer.checkAccount("sa_app/key_next", vault)).ok);
+    await expect(issuer.revoke("sa_app/key_next", vault)).rejects.toThrow(
+      new RevokeRefused(
+        "it's the only active key of service account \"app\", so it's the key the vault holds",
+      ),
+    );
+    expect(effects).toEqual([]);
+  });
+
+  test("refuses a key of another service account, even one that's gone", async () => {
+    const { issuer, effects } = elevenlabs([OLD, NEXT, OTHER]);
+    assert((await issuer.checkAccount("sa_app/key_next", vault)).ok);
+    await expect(issuer.revoke("sa_other/key_web", vault)).rejects.toThrow(
+      new RevokeRefused(
+        'it belongs to service account "other", not to service account "app", which owns the vault\'s key',
+      ),
+    );
+    await expect(issuer.revoke("sa_missing/key_old", vault)).rejects.toThrow(
+      "it belongs to service account sa_missing, not to",
+    );
+    expect(effects).toEqual([]);
+  });
+
+  test("refuses when ElevenLabs won't say which service account the vault's key belongs to", async () => {
+    const { issuer, effects } = elevenlabs([OLD, { ...NEXT, permissions: ["text_to_speech"] }]);
+    assert((await issuer.checkAccount("sa_app/key_old", new Secret(VAULT))).ok);
+    await expect(issuer.revoke("sa_app/key_old", vault)).rejects.toThrow(
+      new RevokeRefused("keypin can't tell which service account the vault's key belongs to"),
+    );
     expect(effects).toEqual([]);
   });
 });

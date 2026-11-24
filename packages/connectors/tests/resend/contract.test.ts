@@ -22,6 +22,8 @@ describe("the issuer contract", () => {
         fetch: resendFetch(fake),
       }),
       current: new Secret("re_in_the_vault"),
+      vaultId: "re-old",
+      knowsVaultKey: false,
       effects,
       failCreate: () => {
         fake.failCreate = 500;
@@ -43,7 +45,7 @@ describe("the fake Resend", () => {
     });
     expect((await issuer.checkAccount("re-old", new Secret("re_in_the_vault"))).ok).toBe(true);
     const first = await issuer.create("first");
-    expect(await issuer.revoke("re-old")).toBe("revoked");
+    expect(await issuer.revoke("re-old", first.secret)).toBe("revoked");
     const second = await issuer.create("second");
     expect(second.id).not.toBe(first.id);
     expect(second.secret.equals(first.secret)).toBe(false);

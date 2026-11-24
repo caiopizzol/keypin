@@ -11,6 +11,7 @@ import {
   shellWord,
 } from "@keypin/core";
 import { type Deps } from "../../deps";
+import { ROTATION_FILE } from "../../project";
 import { commandLine, withoutPlan } from "../../approval";
 import { type Checked, type PlanRow, publishRows } from "../../publishing";
 import { type Pair, type Job, type Context, terminalArgs } from "./job";
@@ -142,6 +143,10 @@ export function revokeRow(
   return old === null
     ? row("-", issuer.describe(), "the old key stays: keypin doesn't know its ID")
     : row("-", issuer.describe(), `revoke the old key ${shown(issuer, old)}, ${when}`, detail);
+}
+
+export function revokeRefused(issuer: Issuer, id: string, reason: string): string {
+  return `Stopped: keypin won't revoke key ${shown(issuer, id)}: ${reason}. Nothing was revoked. ${ROTATION_FILE} names this key: check who changed it.`;
 }
 
 export function shown(issuer: Issuer, id: string): string {

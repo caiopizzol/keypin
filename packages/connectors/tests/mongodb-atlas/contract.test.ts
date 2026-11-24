@@ -36,6 +36,7 @@ describe("the issuer contract", () => {
       current: new Secret(
         "mongodb+srv://app:in_the_vault_password@cluster0.ab1cd.mongodb.net/appdb?retryWrites=true&w=majority",
       ),
+      vaultId: "app",
       effects,
       failCreate: () => {
         fake.failCreate = 500;

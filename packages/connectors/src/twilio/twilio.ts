@@ -7,6 +7,7 @@ import {
   isRecord,
   NothingChanged,
   parseObject,
+  RevokeRefused,
   Secret,
 } from "@keypin/core";
 import {
@@ -196,12 +197,21 @@ export class TwilioIssuer implements Issuer {
     return `Twilio may have made the key before the reply was lost. Only this run uses the name "${fitKeyName(name, NAME_LIMIT)}": delete the API key with that name${this.#target ? ` in account ${this.#target.account}` : ""} at ${DASHBOARD} before you run this again, or the rerun leaves it live.`;
   }
 
-  async revoke(id: string): Promise<"revoked" | "already gone"> {
-    if (!this.#target)
-      throw new Error("refusing to delete a Twilio API key: checkAccount hasn't passed");
+  async revoke(id: string, current: Secret): Promise<"revoked" | "already gone"> {
+    const target = this.#target;
+    if (!target) throw new Error("refusing to delete a Twilio API key: checkAccount hasn't passed");
     if (!KEY_SID.test(id)) return "already gone";
     const admin = await this.#adminKey();
     if ("facts" in admin) throw new Error(`${admin.reason}: ${admin.fix}`);
+    if (id === admin.key) throw new RevokeRefused("it's the admin key");
+    if (!(await this.#found(admin, id))) return "already gone";
+    const signs = await this.#request(
+      { account: target.account, user: id, password: current.reveal(), key: id },
+      "GET",
+      `${API}/2010-04-01/Accounts/${target.account}/AvailablePhoneNumbers.json`,
+    );
+    if (signs.status >= 500) throw failure("GET", "AvailablePhoneNumbers", signs);
+    if (signs.status !== 401) throw new RevokeRefused("it's the key the vault holds");
     const deleted = await this.#request(admin, "DELETE", `${IAM}/v1/Keys/${id}`);
     if (deleted.status === 204 || deleted.status === 200) return "revoked";
     if (deleted.status === 404) return "already gone";
@@ -210,6 +220,20 @@ export class TwilioIssuer implements Issuer {
         `the admin credential can't delete API key ${id} (${answered(deleted)}): delete it at ${DASHBOARD}`,
       );
     throw failure("DELETE", "/v1/Keys/<sid>", deleted);
+  }
+
+  async has(id: string): Promise<boolean> {
+    if (!KEY_SID.test(id)) return false;
+    const admin = await this.#adminKey();
+    if ("facts" in admin) throw new Error(`${admin.reason}: ${admin.fix}`);
+    return this.#found(admin, id);
+  }
+
+  async #found(admin: Admin, id: string): Promise<boolean> {
+    const found = await this.#request(admin, "GET", `${IAM}/v1/Keys/${id}`);
+    if (found.status === 404) return false;
+    if (found.status !== 200) throw failure("GET", "/v1/Keys/<sid>", found);
+    return true;
   }
 
   async #request(

@@ -126,16 +126,14 @@ export class XaiIssuer implements Issuer {
           reason: `the vault's key ${vault.off}, and keypin won't make an active copy of it`,
           fix: `turn it back on at ${DASHBOARD}, or replace it by hand`,
         };
-      const held = vault && keys.find((key) => key.id === vault.id);
-      if (listed && vault && !held)
+      if (vault && (vault.id !== wanted || vault.team !== team))
         return {
           ok: false,
           facts,
-          reason: `team ${team} lists key ${wanted}, the one keypin recorded for the vault's value, but not the vault's key ${vault.id}`,
+          reason: `key ${wanted}, the one keypin recorded for the vault's value, is another key: the vault holds key ${vault.id} of team ${vault.team}`,
           fix: "check .keypin/rotation.json for a change you didn't make",
         };
-      if (listed)
-        return this.#pass(team, held ?? listed, `${facts}, with ${this.label(currentId)}`);
+      if (listed) return this.#pass(team, listed, `${facts}, with ${this.label(currentId)}`);
       if (!vault)
         return {
           ok: false,

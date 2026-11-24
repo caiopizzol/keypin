@@ -233,6 +233,6 @@ revokes the Resend key a first rotation replaces: once nothing uses it, delete i
 Each run pushes `.keypin/rotation.json` and `.keypin/status.json` ([Files and state](../reference/files-and-state.md)).
 Neither holds a value, but `rotation.json` holds each key's provider ID, which can name a project or service account.
 In a public repository, anyone can see which keys exist and when an old one still works. Anyone who can push
-`.keypin/` can change those IDs, so before it revokes a key, keypin asks the provider and refuses the key the vault
-holds and a key outside its project, team or service account. Resend and ElevenLabs can't always tell which key the
-vault holds.
+`.keypin/` can change those IDs, so keypin signs each rotation with the new key's value and revokes an old key only
+when that signature matches the vault's value and the provider confirms it isn't the vault's key. A rotation an older
+keypin recorded has no signature, so revoking its old key needs a `y` in a terminal.

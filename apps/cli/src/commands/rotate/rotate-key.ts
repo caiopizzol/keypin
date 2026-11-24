@@ -16,6 +16,8 @@ import {
   planNewValue,
   type PlanInput,
   planPublish,
+  proofFor,
+  proves,
   recordIssued,
   saveState,
   Secret,
@@ -61,7 +63,7 @@ import {
   shortLifetime,
 } from "./messages";
 import { routineWrites } from "./routine-check";
-import { revokeOnly, resetHeld, neverSaved } from "./unfinished-rotation";
+import { revokeOnly, resetHeld, neverSaved, provenId } from "./unfinished-rotation";
 import { pairChecks } from "./pair-checks";
 import { readerRows, unreadNote } from "./readers";
 
@@ -144,6 +146,7 @@ export async function rotateLocked(job: Job): Promise<number> {
   });
   const unfinished = next.action !== "create";
   const issuer = deps.issuer(spec, read.admin);
+  const proven = (id: string | null) => provenId(recorded, id, read.secret);
   if (next.action === "wait") {
     const held = next.issued;
     const listed = await issuerLists(issuer, held.id, read.secret, out);
@@ -191,7 +194,7 @@ export async function rotateLocked(job: Job): Promise<number> {
       ? next.issued.id
       : read.pair
         ? keyIdText(read.pair.secret)
-        : next.current;
+        : await proven(next.current);
   const check = await checkIssuer(issuer, inVault, read.secret, out, spec.admin !== undefined);
   const checked = await checkAccounts(key, entry, deps, out, job.label);
   if (!check || !checked) {
@@ -254,7 +257,10 @@ export async function rotateLocked(job: Job): Promise<number> {
   }
 
   const orphan =
-    job.pair && next.abandoned && neverSaved(next.abandoned, spec, generation, state)
+    job.pair &&
+    next.abandoned &&
+    neverSaved(next.abandoned, spec, generation, state) &&
+    (await proves(next.abandoned, read.secret, "old"))
       ? next.abandoned
       : null;
   const note =
@@ -262,7 +268,7 @@ export async function rotateLocked(job: Job): Promise<number> {
       ? abandonedNote(next.abandoned, issuer, spec, vaultName(entry.ref, deps.vaults))
       : null;
   if (note !== null) say(`\n${out.dim(note)}`);
-  const known = job.pair ? check.currentId : (next.current ?? check.currentId);
+  const known = job.pair ? check.currentId : ((await proven(next.current)) ?? check.currentId);
   const current = check.gone === undefined ? (known ?? null) : null;
   const steps = planNewValue(input, read.ids);
   const pairSteps = pairInput ? planNewValue(pairInput, read.pair?.ids ?? null) : [];
@@ -327,7 +333,7 @@ export async function rotateLocked(job: Job): Promise<number> {
     return 1;
   }
   job = { ...job, discard: false, args: withoutDiscard(job.args) };
-  const issued: Issued = {
+  const fields = {
     ...owner,
     issuer: spec.kind,
     id: created.id,
@@ -337,6 +343,7 @@ export async function rotateLocked(job: Job): Promise<number> {
       ? { id: current, generation, revoked: check.gone !== undefined }
       : { id: null, generation, revoked: true },
   };
+  const issued: Issued = { ...fields, proof: await proofFor(fields, created.secret, read.secret) };
   const mayHold = vaultKindOf(deps.vaults, entry.ref.kind).holdsWrites === true;
   const pending = mayHold ? { ...issued, held: true } : issued;
   try {

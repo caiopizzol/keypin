@@ -4,6 +4,8 @@ import {
   type NextRotation,
   ownedBy,
   type PlanStep,
+  proves,
+  type Secret,
   type State,
   waitsForRevoke,
 } from "@keypin/core";
@@ -41,4 +43,15 @@ export function neverSaved(abandoned: Issued, spec: IssuerSpec, generation: stri
     abandoned.old.generation === generation &&
     !state.receipts.some((r) => ownedBy(r, abandoned) && r.generation === abandoned.generation)
   );
+}
+
+export async function provenId(
+  recorded: Issued | undefined,
+  id: string | null,
+  vault: Secret,
+): Promise<string | null> {
+  if (!recorded || id === null) return null;
+  if (id === recorded.id && (await proves(recorded, vault, "new"))) return id;
+  if (id === recorded.old.id && (await proves(recorded, vault, "old"))) return id;
+  return null;
 }

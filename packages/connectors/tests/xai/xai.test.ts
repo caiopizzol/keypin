@@ -204,15 +204,6 @@ describe("checkAccount", () => {
     expect(effects).toEqual([]);
   });
 
-  test("a held save still passes when the vault holds the previous key, not the issued one", async () => {
-    const { issuer } = xai([
-      { ...OLD, blocked: true },
-      { id: "key_new1", name: "prod", value: "xai-new-0001" },
-    ]);
-    const check = await issuer.checkAccount("team_1/key_new1", new Secret(VAULT));
-    expect(check.ok).toBe(true);
-  });
-
   test("a recorded key in another team is refused, so create can't move to that team", async () => {
     const { issuer, effects } = xai([OLD, { ...NEXT, team: "team_2" }], {
       scope: "organization",
@@ -221,21 +212,25 @@ describe("checkAccount", () => {
     const check = await issuer.checkAccount("team_2/key_next", new Secret(VAULT));
     assert(!check.ok);
     expect(check.reason).toBe(
-      "team team_2 lists key key_next, the one keypin recorded for the vault's value, but not the vault's key key_old",
+      "key key_next, the one keypin recorded for the vault's value, is another key: the vault holds key key_old of team team_1",
     );
     expect(check.fix).toBe("check .keypin/rotation.json for a change you didn't make");
     await expect(issuer.create("x")).rejects.toThrow("checkAccount hasn't passed");
     expect(effects).toEqual([]);
   });
 
-  test("a recorded key that isn't the vault's copies the vault's key, not the recorded one", async () => {
-    const { issuer } = xai([
+  test("a recorded key that isn't the vault's is refused, even in the vault key's team", async () => {
+    const { issuer, effects } = xai([
       { ...OLD, acls: ["api-key:endpoint:chat"] },
       { ...NEXT, acls: ["api-key:model:*", "api-key:endpoint:*"], qpm: 900 },
     ]);
     const check = await issuer.checkAccount("team_1/key_next", new Secret(VAULT));
-    assert(check.ok);
-    expect(check.notes?.create).toBe("with ACLs api-key:endpoint:chat; no rate limits; no expiry");
+    assert(!check.ok);
+    expect(check.reason).toBe(
+      "key key_next, the one keypin recorded for the vault's value, is another key: the vault holds key key_old of team team_1",
+    );
+    await expect(issuer.create("x")).rejects.toThrow("checkAccount hasn't passed");
+    expect(effects).toEqual([]);
   });
 
   test("a key with no ACLs is refused, since its copy couldn't call anything", async () => {
@@ -275,7 +270,7 @@ describe("checkAccount", () => {
     const check = await issuer.checkAccount("team_1/key_gone", new Secret(VAULT));
     assert(!check.ok);
     expect(check.reason).toBe(
-      "team team_1 doesn't list key key_gone, the one keypin issued last time, but xAI still accepts the vault's key",
+      "key key_gone, the one keypin recorded for the vault's value, is another key: the vault holds key key_old of team team_1",
     );
   });
 

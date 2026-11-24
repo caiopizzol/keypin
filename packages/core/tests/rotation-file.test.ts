@@ -7,6 +7,8 @@ import {
   loadRotationFile,
   readSecretspec,
   type Progress,
+  proofFor,
+  proves,
   restoreIssued,
   restoreReceipts,
   removedBehind,
@@ -15,6 +17,7 @@ import {
   recordIssued,
   recordReceipt,
   type VaultMetadata,
+  Secret,
   writeRotationFile,
 } from "../src/index";
 import { day } from "../src/testing/day";
@@ -289,6 +292,26 @@ describe(".keypin/rotation.json", () => {
     expect(back.receipts).toMatchObject([
       { destinationId: DESTINATION, generation: ISSUED.generation, sourceIds: IDS },
     ]);
+  });
+
+  test("a fresh machine can prove which key a rotation replaced, and a changed ID fails", async () => {
+    const created = new Secret("re_new_value_sentinel_1a2b");
+    const replaced = new Secret("re_old_value_sentinel_3c4d");
+    const { map, state } = published();
+    const proven = { ...ISSUED, proof: await proofFor(ISSUED, created, replaced) };
+    const file = await rotationFile(recordIssued(state, proven), map, KINDS, null);
+    const [back] = restoreIssued(emptyState(), file, map).issued;
+    if (!back) throw new Error("nothing restored");
+    expect(back.proof).toEqual(proven.proof);
+    expect(await proves(back, created, "new")).toBe(true);
+    expect(await proves(back, replaced, "old")).toBe(true);
+    expect(await proves(back, replaced, "new")).toBe(false);
+    expect(await proves({ ...back, old: { ...back.old, id: "key-other" } }, created, "new")).toBe(
+      false,
+    );
+    expect(await proves({ ...back, id: "key-other" }, replaced, "old")).toBe(false);
+    expect(await proves(ISSUED, created, "new")).toBeUndefined();
+    expect(JSON.stringify(file)).not.toContain("sentinel");
   });
 
   test("a write approved for another vault item doesn't count on a fresh machine", async () => {

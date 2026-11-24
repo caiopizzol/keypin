@@ -421,6 +421,10 @@ const resend: Scenario = {
         generation: RESEND_OLD_GENERATION,
         at: "2026-08-01T12:00:00.000Z",
         old: { id: "re-older", generation: "0000000000000000", revoked: true },
+        proof: {
+          new: "006ff6fdd1fa6a81ad9f6a759cfac7a9100d2a5770831fd683203a866060130e",
+          old: "4a8f1dd211559e0d199556e34bbb6e0efc217cac5e4f9e99444f801bdb9a0702",
+        },
       },
     ],
   },

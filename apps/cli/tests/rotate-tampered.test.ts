@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import type { KeyRef, VaultBackend } from "@keypin/core";
+import { isRecord, type KeyRef, type VaultBackend } from "@keypin/core";
 import { day } from "@keypin/core/testing";
 import { GitHubSecretDestination } from "@keypin/connectors/github";
 import { githubFetch } from "@keypin/connectors/github/testing";
@@ -15,6 +15,12 @@ const ITEM = "mailer openai key";
 const MAP_FILE = "/work/billing/secretspec.toml";
 const ROTATION = "/work/billing/.keypin/rotation.json";
 const BOT = { type: "service_account", id: "svc_bot", name: "billing-bot" } as const;
+const SIBLING: FakeOpenAIKey = {
+  id: "key_jobs",
+  name: "jobs",
+  value: "sk-svcacct-jobs-sentinel-4e8b",
+  owner: BOT,
+};
 const WEB: FakeOpenAIKey = {
   id: "key_web",
   name: "web",
@@ -44,7 +50,7 @@ issuer = { kind = "openai", admin = "op://Private/openai admin key/credential", 
 
 async function waitingForApproval() {
   const effects: string[] = [];
-  const keys = memoryKeys([{ id: "key_old", name: "prod", value: OLD, owner: BOT }, WEB]);
+  const keys = memoryKeys([{ id: "key_old", name: "prod", value: OLD, owner: BOT }, SIBLING, WEB]);
   const openai = openaiFetch({
     admin: ADMIN,
     projectId: "proj_1",
@@ -103,7 +109,13 @@ async function waitingForApproval() {
     expect(swapped).not.toBe(text);
     repo.contents.set(ROTATION, swapped);
   };
-  return { run, effects, keys, rotation, tamper };
+  const unproven = () => {
+    const file = parseJson(repo.contents.get(ROTATION) ?? "null");
+    if (!isRecord(file) || !Array.isArray(file.issued)) throw new Error("no rotation file");
+    for (const issued of file.issued) if (isRecord(issued)) delete issued.proof;
+    repo.contents.set(ROTATION, `${JSON.stringify(file, null, 2)}\n`);
+  };
+  return { run, effects, keys, rotation, tamper, unproven };
 }
 
 const NAMES = ".keypin/rotation.json names this key: check who changed it.";
@@ -116,33 +128,51 @@ describe("keypin rotate --approve-revoke with a changed .keypin/rotation.json", 
     expect(w.rotation()).toMatchObject({ issued: [{ old: { revoked: true } }] });
   });
 
-  test("refuses the key the vault holds, under its own ID or another", async () => {
+  test("refuses the key the vault holds", async () => {
+    const w = await waitingForApproval();
+    w.tamper({ old: "svc_bot/key_new1" });
+    const refused = await w.run(["--approve-revoke"]);
+    expect(refused.code).toBe(1);
+    expect(refused.stderr).toContain(
+      `Stopped: keypin won't revoke key key_new1 of service account billing-bot: it's the key the vault holds. Nothing was revoked. ${NAMES}`,
+    );
+    expect(w.effects).toEqual(["openai create key_new1 for svc_bot"]);
+  });
+
+  test("refuses any other key, even a live one of the same service account", async () => {
     for (const [old, label] of [
-      ["svc_bot/key_new1", "key_new1 of service account billing-bot"],
       ["svc_web/key_new1", "key_new1 of service account web-app"],
+      ["svc_bot/key_jobs", "key_jobs of service account billing-bot"],
+      ["svc_bot/key_web", "key_web of service account billing-bot"],
     ] as const) {
       const w = await waitingForApproval();
       w.tamper({ old });
       const refused = await w.run(["--approve-revoke"]);
       expect(refused.code).toBe(1);
       expect(refused.stderr).toContain(
-        `Stopped: keypin won't revoke key ${label}: it's the key the vault holds. Nothing was revoked. ${NAMES}`,
+        `Stopped: keypin won't revoke key ${label}: keypin's record of this rotation doesn't match the vault's value. Nothing was revoked. ${NAMES}`,
       );
       expect(w.effects).toEqual(["openai create key_new1 for svc_bot"]);
       expect(w.rotation()).toMatchObject({ issued: [{ old: { id: old, revoked: false } }] });
     }
   });
 
-  test("refuses a key of another service account in the project", async () => {
+  test("a rotation an older keypin recorded waits for a terminal, where a y revokes it", async () => {
     const w = await waitingForApproval();
-    w.tamper({ old: "svc_bot/key_web" });
+    w.unproven();
     const refused = await w.run(["--approve-revoke"]);
     expect(refused.code).toBe(1);
     expect(refused.stderr).toContain(
-      `Stopped: keypin won't revoke key key_web of service account billing-bot: it belongs to service account web-app, not to service account billing-bot, which owns the vault's key. Nothing was revoked. ${NAMES}`,
+      "Stopped: .keypin/rotation.json doesn't prove this rotation replaced key key_old of service account billing-bot, because an older keypin recorded it, so keypin won't revoke it without a terminal. Nothing was revoked.",
     );
     expect(w.effects).toEqual(["openai create key_new1 for svc_bot"]);
-    expect(w.keys.load().live.map((key) => key.id)).toContain("key_web");
+
+    const person = await w.run(["--approve-revoke"], ["y"]);
+    expect(person.code).toBe(0);
+    expect(person.stderr).toContain(
+      ".keypin/rotation.json doesn't prove this rotation replaced key key_old of service account billing-bot: check it's the old key before you revoke it.",
+    );
+    expect(w.effects).toEqual(["openai create key_new1 for svc_bot", "openai revoke key_old"]);
   });
 
   test("a recorded new key that isn't the vault's fails the account check", async () => {

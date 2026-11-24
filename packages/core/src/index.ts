@@ -91,6 +91,8 @@ export {
   nextRotation,
   type NextRotation,
   ownedBy,
+  proofFor,
+  proves,
   receiptsFor,
   recordIssued,
   recordReceipt,

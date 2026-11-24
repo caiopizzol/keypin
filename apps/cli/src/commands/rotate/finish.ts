@@ -1,6 +1,7 @@
 import {
   removedBehind,
   generationOf,
+  proves,
   RevokeRefused,
   type Issued,
   messageOf,
@@ -12,6 +13,7 @@ import {
   vaultName,
 } from "@keypin/core";
 import { confirm } from "../../output";
+import { ROTATION_FILE } from "../../project";
 import { commandLine, confirmed, NEEDS_APPROVAL, planOnly } from "../../approval";
 import { showPlan, showRemoved, writeEach, writesFor } from "../../publishing";
 import { type Job, type Ready } from "./job";
@@ -192,6 +194,23 @@ async function revokeOld(
     waitsNotice({ ...job, environment: owner.environment }, key.name);
     return 0;
   }
+  const proof = await proves(issued, current, "new");
+  if (proof === false) {
+    out.line(
+      revokeRefused(
+        issuer,
+        old,
+        "keypin's record of this rotation doesn't match the vault's value",
+      ),
+    );
+    return 1;
+  }
+  if (proof === undefined && !deps.isTerminal) {
+    out.line(
+      `Stopped: ${ROTATION_FILE} doesn't prove this rotation replaced key ${shown(issuer, old)}, because an older keypin recorded it, so keypin won't revoke it without a terminal. Nothing was revoked. Once nothing uses it, run this in a terminal:\n  ${commandLine(deps, "rotate", asked)}`,
+    );
+    return 1;
+  }
   if (job.approve && !deps.isTerminal && behind.length) {
     out.line(
       `Stopped: something no longer in secretspec.toml may still use the old key ${shown(issuer, old)}, so keypin won't revoke it without a terminal. Nothing was revoked. Once nothing uses it, run this in a terminal:\n  ${commandLine(deps, "rotate", asked)}`,
@@ -204,7 +223,11 @@ async function revokeOld(
     );
     return NEEDS_APPROVAL;
   }
-  if (!job.approve || behind.length) {
+  if (proof === undefined)
+    out.line(
+      `${ROTATION_FILE} doesn't prove this rotation replaced key ${shown(issuer, old)}: check it's the old key before you revoke it.`,
+    );
+  if (!job.approve || behind.length || proof === undefined) {
     out.line(`The old key ${shown(issuer, old)} still works. Revoke it once nothing uses it.`);
     if (!(await confirm(deps, `Revoke the old key at ${where}?`))) {
       out.line(later);

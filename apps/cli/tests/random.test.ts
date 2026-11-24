@@ -86,7 +86,9 @@ function setup(options: Setup = {}) {
         given,
         calls: { vault: vault.log.slice(start), destination: destinations.log, asked },
         wrote: changes(before, disk.contents),
-      }).replaceAll(generation, "<generation of the new value>"),
+      })
+        .replaceAll(generation, "<generation of the new value>")
+        .replace(/("new": ")[0-9a-f]{64}"/g, '$1<proof signed with the new value>"'),
     ).toMatchFileSnapshot(`./recordings/random/${name}.txt`);
     return exit;
   };

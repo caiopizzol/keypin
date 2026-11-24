@@ -47,6 +47,14 @@ describe("files the released keypin reads", () => {
     },
   );
 
+  test.each(FORMATS)("this keypin writes the released %s file's version", async (format) => {
+    const version = (text: string): unknown => parseObject(text).version;
+    expect(
+      version((await written())[format]),
+      "the released keypin refuses another version; see docs/development.md#files-keypin-reads-back",
+    ).toEqual(version(released(format)));
+  });
+
   test("only an empty list may drop fields, and only its items' fields", () => {
     const before = JSON.stringify({ issued: [{ old: { id: "a" } }], held: { at: 1 } });
     expect(dropped(before, JSON.stringify({ issued: [], held: { at: 2 } }))).toEqual([]);

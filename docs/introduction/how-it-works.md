@@ -63,15 +63,12 @@ another. Each profile reads its own vault item, so your laptop never needs the p
 
 1Password grants access to a whole vault, so anyone who can read the `default` items in `Acme` can read the
 `production` ones too, and so can a CI token with access to it. To keep production apart, move its items to a vault
-that only the people and automation that need them can open, and point the profile at it:
+that only the people and automation that need them can open, such as `Acme-prod`, and point the profile at it:
 
 ```toml
 [providers]
-dev = "onepassword://Acme-dev"
+acme = "onepassword://Acme"
 prod = "onepassword://Acme-prod"
-
-[profiles.default.defaults]
-providers = ["dev"]
 
 [profiles.production.defaults]
 providers = ["prod"]

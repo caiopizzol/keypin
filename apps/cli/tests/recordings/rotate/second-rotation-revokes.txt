@@ -171,6 +171,8 @@ Rotated RESEND_API_KEY (prod): the new key is in 1Password and the 2 destination
 The old key key-1 still works. Revoke it once nothing uses it.
 ok     Resend  revoked key-1
 
+This rotation is recorded only on this machine: .keypin/rotation.json doesn't exist. For scheduled rotation, run keypin rotate --due and commit .keypin/.
+
 --- wrote /home/me/.local/state/keypin/state.json ---
 {
   "version": 5,

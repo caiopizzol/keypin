@@ -339,6 +339,27 @@ describe("keypin rotate", () => {
     expect(later.writes()).toEqual([]);
   });
 
+  test("without .keypin/rotation.json, says the rotation is recorded only on this machine", async () => {
+    const NOTE =
+      "This rotation is recorded only on this machine: .keypin/rotation.json doesn't exist. For scheduled rotation, run keypin rotate --due and commit .keypin/.";
+    const run = setup({ answers: ["y"] });
+    expect(await run.run()).toBe(0);
+    expect(run.stderr.text).toContain(`\n\n${NOTE}\n`);
+    expect(run.disk.contents.has("/work/billing/.keypin/rotation.json")).toBe(false);
+
+    const declined = setup({ answers: ["n"] });
+    await declined.run();
+    expect(declined.stderr.text).not.toContain(NOTE);
+
+    const disk = memoryFiles({
+      "/work/billing/secretspec.toml": MAP,
+      "/work/billing/.keypin/rotation.json": '{ "version": 1, "issued": [], "published": [] }\n',
+    });
+    const recorded = setup({ disk, answers: ["y"] });
+    expect(await recorded.run()).toBe(0);
+    expect(recorded.stderr.text).not.toContain(NOTE);
+  });
+
   test("an issuer account check that fails stops before anything is created", async () => {
     const run = setup({ failCheck: true, answers: ["y"] });
     expect(await run.run()).toBe(1);

@@ -59,6 +59,7 @@ export async function packKeypin(out = PACKAGES): Promise<string> {
     name: root.name,
     ...common,
     description: root.description,
+    keywords: root.keywords,
     bin: { keypin: "bin/keypin" },
     files: ["bin/keypin"],
     os: ["darwin", "linux"],

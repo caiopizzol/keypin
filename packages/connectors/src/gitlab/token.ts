@@ -59,7 +59,7 @@ function signInProblem(
 ): string {
   const ambient = GLAB_TOKENS.filter((name) => env[name]);
   const note = ambient.length
-    ? `; ${ambient.join(" and ")} ${ambient.length > 1 ? "are" : "is"} set, but keypin doesn't sign in with ${ambient.length > 1 ? "them" : "it"}, so ${ambient.length > 1 ? "they stay keys" : "it stays a key"} your map can hold`
+    ? `; ${ambient.join(" and ")} ${ambient.length > 1 ? "are" : "is"} set, but keypin doesn't sign in with ${ambient.length > 1 ? "them" : "it"}, so ${ambient.length > 1 ? "they stay keys" : "it stays a key"} secretspec.toml can declare`
     : "";
   const login = glab === "missing" ? "keypin can't find glab" : `glab has no token for ${host}`;
   return `${login}, and ${TOKEN_VARIABLE} isn't set${note}. Run glab auth login --hostname ${host}, or create a personal, project or group access token with the api scope (${tokensPage(host)}) and set ${TOKEN_VARIABLE}`;

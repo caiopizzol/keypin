@@ -22,7 +22,7 @@ export function convexSignIn(env: Readonly<Record<string, string | undefined>>):
 export function signInProblem(env: Readonly<Record<string, string | undefined>>): string {
   const set = env[TOKEN_VARIABLE] === undefined ? "isn't set" : "is set but empty";
   const ambient = env.CONVEX_DEPLOY_KEY
-    ? "; CONVEX_DEPLOY_KEY is set, but keypin doesn't sign in with it, so it stays a key your map can hold"
+    ? "; CONVEX_DEPLOY_KEY is set, but keypin doesn't sign in with it, so it stays a key secretspec.toml can declare"
     : "";
   return `keypin signs in to Convex with ${TOKEN_VARIABLE}, which ${set}${ambient}. Generate a deploy key with ${PERMISSION} in the deployment's settings (${SETTINGS_PAGE}) and set ${TOKEN_VARIABLE}; keypin doesn't read the npx convex login`;
 }

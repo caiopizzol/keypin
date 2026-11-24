@@ -28,6 +28,8 @@ describe("pack", () => {
     const keypin = await manifest(folder);
     expect(keypin.name).toBe("keypin");
     expect(keypin.version).toBe(root.version);
+    expect(keypin.description).toBe(root.description);
+    expect(keypin.keywords).toEqual(root.keywords);
     expect(keypin.bin).toEqual({ keypin: "bin/keypin" });
     expect(keypin.optionalDependencies).toEqual(
       Object.fromEntries(TARGETS.map((target) => [platformPackage(target), root.version])),

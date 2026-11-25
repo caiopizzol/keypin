@@ -43,6 +43,7 @@ issuer = { kind = "resend", admin = "op://Acme/resend admin/credential", permiss
       project: "web",
       environments: ["default", "production"],
       ignore: ["KEYPIN_GITHUB_TOKEN", "OP_SERVICE_ACCOUNT_TOKEN"],
+      scanFiles: null,
       keys: [
         {
           name: "STRIPE_KEY",

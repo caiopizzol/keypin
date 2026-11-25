@@ -18,6 +18,7 @@ function readers(project: string, workflow: string, files: Record<string, string
     root,
     found: [],
     ignores: () => false,
+    owns: null,
     read: async (path) => disk[join(root, path)] ?? null,
     list: async (folder) => ({
       ok: true,

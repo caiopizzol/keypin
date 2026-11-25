@@ -46,13 +46,13 @@ export function readSecretspec(
   const { environments, project } = profiles;
   const context = { environments, kinds, issuers, vaults };
   const tool = isRecord(data.tool) ? data.tool.keypin : undefined;
-  const { keys, ignore } = readTool(tool, profiles, context, fail);
+  const { keys, ignore, scanFiles } = readTool(tool, profiles, context, fail);
   sharedDestinations(keys, environments, kinds, fail);
   sharedClaims(keys, environments, issuers, fail);
   pairedKeys(keys, environments, { kinds, vaults }, fail);
   return errors.length
     ? { ok: false, errors }
-    : { ok: true, map: { file, project, environments, ignore, keys } };
+    : { ok: true, map: { file, project, environments, ignore, scanFiles, keys } };
 }
 
 function tomlProblem(error: unknown): string {

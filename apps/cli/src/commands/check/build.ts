@@ -54,7 +54,7 @@ export async function build(
     : [];
   const signIn = mapSignIn(deps, mapped);
   const root = found ? dirname(found.file) : folder;
-  const scanned = await scanProject(deps, root, parsed?.ok ? parsed.map.ignore : []);
+  const scanned = await scanProject(deps, root, parsed?.ok ? parsed.map : null);
   const head = {
     folder: root,
     map: found?.file ?? null,
@@ -98,7 +98,7 @@ export async function build(
       report.local = gaps.local;
       report.add = gaps.add;
       report.providers = gaps.providers?.toml ?? null;
-      report.problems.push(...gaps.problems);
+      report.problems.push(...scanned.problems, ...gaps.problems);
       report.notes.push(...gaps.notes);
     }
     const setup = await prerequisites(
@@ -113,7 +113,11 @@ export async function build(
     report.prerequisites = setup.map(({ name, status, fix }) => ({ name, status, fix }));
     report.ok = !report.problems.length;
     const all = [...setup.map((p) => p.step), ...steps];
-    const counts = scanned.read.map(({ noun, count: n }) => count(n, noun)).join(", ");
+    const counts = scanned.read
+      .map(({ noun, count: n, others }) =>
+        others ? `${count(n, noun)} (${others} not in scan_files)` : count(n, noun),
+      )
+      .join(", ");
     const read = [`read ${counts}`, ...scanned.about].join("; ");
     const fixes = gaps?.fixes ?? [];
     const name = parsed?.ok ? parsed.map.project : basename(root);

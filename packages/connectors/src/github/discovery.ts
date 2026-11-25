@@ -103,6 +103,7 @@ async function readWorkflows(project: ProjectReader, top: string | null): Promis
   for (const entry of listed.entries.toSorted((a, b) => a.name.localeCompare(b.name))) {
     if (entry.kind !== "file" || !/\.ya?ml$/.test(entry.name)) continue;
     const path = relative(project.root, join(dir, entry.name));
+    if (project.owns && !project.owns(path)) continue;
     const text = await project.read(path);
     const refs = text === null ? null : workflowRefs(text);
     if (refs) workflows.push({ path, refs });

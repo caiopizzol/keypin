@@ -1,4 +1,4 @@
-import { basename, join, relative } from "node:path";
+import { basename, join, matchesGlob, relative } from "node:path";
 import {
   type Discovered,
   envFileKind,
@@ -6,6 +6,7 @@ import {
   type FolderListing,
   ignores,
   type JobReader,
+  type KeysMap,
   messageOf,
   type ProjectFiles,
   type ProjectReader,
@@ -48,25 +49,35 @@ export interface Unknown {
 export interface ScanResult {
   scan: ProjectScan;
   files: Record<string, string[]>;
-  read: { noun: string; count: number }[];
+  read: { noun: string; count: number; others: number }[];
   about: string[];
   report: Record<string, unknown>;
   used: Map<string, boolean>;
   nested: string[];
   unknowns: Unknown[];
+  problems: string[];
 }
 
 export async function scanProject(
   deps: Deps,
   root: string,
-  ignore: readonly string[],
+  map: Pick<KeysMap, "ignore" | "scanFiles"> | null,
 ): Promise<ScanResult> {
+  const ignore = map?.ignore ?? [];
   const unknowns: Unknown[] = [];
   const kinds = deps.destinations.flatMap((kind) =>
     kind.discovery ? [{ kind: kind.kind, discovery: kind.discovery }] : [],
   );
   const walked = kinds.filter(({ discovery }) => discovery.files.names);
   const found = await walk(deps, root, unknowns, walked);
+  const scope = map?.scanFiles ? await scopeOf(deps, root, map.scanFiles) : null;
+  if (scope && scope.top !== root) {
+    const repo = await walk(deps, scope.top, unknowns, walked);
+    for (const [kind, paths] of repo.byKind) {
+      const fromTop = paths.map((path) => relative(root, join(scope.top, path)));
+      found.byKind.set(kind, [...new Set([...(found.byKind.get(kind) ?? []), ...fromTop])]);
+    }
+  }
 
   const tracked = await trackedFiles(deps, root, found.envFiles);
   const envFiles: ProjectScan["envFiles"] = [];
@@ -83,17 +94,27 @@ export async function scanProject(
       reason: "the folder isn't in a git repository",
     });
 
-  const reader = (found: readonly string[]): ProjectReader => ({
+  const others = new Map<string, Set<string>>();
+  const reader = (kind: string, found: readonly string[]): ProjectReader => ({
     root,
     found,
     ignores: (name) => ignores(ignore, name),
+    owns: !scope
+      ? null
+      : (path) => {
+          const file = relative(scope.top, join(root, path));
+          const globs = scope.globs.filter((glob) => matchesGlob(file, glob));
+          for (const glob of globs) scope.matched.add(glob);
+          if (!globs.length) others.set(kind, (others.get(kind) ?? new Set()).add(path));
+          return globs.length > 0;
+        },
     read: (path) => readSource(deps, root, path, unknowns),
     list: (folder) => listing(deps, folder),
     unknown: (what, reason) => unknowns.push({ what, reason }),
   });
   const scanned = [];
   for (const { kind, discovery } of kinds)
-    scanned.push(await discovery.scan(reader(found.byKind.get(kind) ?? []), deps));
+    scanned.push(await discovery.scan(reader(kind, found.byKind.get(kind) ?? []), deps));
   const discovered: Discovered[] = [];
   for (const scan of scanned) discovered.push(await scan.finish());
 
@@ -103,11 +124,16 @@ export async function scanProject(
     ...byKind.filter(({ discovery }) => !discovery.files.names),
   ];
   const files: Record<string, string[]> = { env: envFiles.map((f) => f.path) };
-  const read = [{ noun: "env file", count: envFiles.length }];
-  for (const { discovery, found } of listed) {
+  const read = [{ noun: "env file", count: envFiles.length, others: 0 }];
+  for (const { kind, discovery, found } of listed) {
     files[discovery.files.key] = [...(found?.files ?? [])];
-    read.push({ noun: discovery.files.noun, count: found?.files.length ?? 0 });
+    read.push({
+      noun: discovery.files.noun,
+      count: found?.files.length ?? 0,
+      others: others.get(kind)?.size ?? 0,
+    });
   }
+  const nouns = listed.map(({ discovery }) => discovery.files.noun).join(" or ");
   return {
     scan: { envFiles, discovered },
     files,
@@ -117,7 +143,15 @@ export async function scanProject(
     used: new Map(byKind.map(({ kind, found }) => [kind, found?.used ?? false])),
     nested: found.nested,
     unknowns,
+    problems: (scope?.globs ?? [])
+      .filter((glob) => !scope?.matched.has(glob))
+      .map((glob) => `scan_files "${glob}" matches no ${nouns}; fix or remove it`),
   };
+}
+
+async function scopeOf(deps: Deps, root: string, globs: readonly string[]) {
+  const top = (await deps.git(root, ["rev-parse", "--show-toplevel"]))?.trim() || root;
+  return { top, globs, matched: new Set<string>() };
 }
 
 export async function jobReaders(deps: Deps, root: string, profile: string): Promise<JobReader[]> {
@@ -125,6 +159,7 @@ export async function jobReaders(deps: Deps, root: string, profile: string): Pro
     root,
     found: [],
     ignores: () => false,
+    owns: null,
     read: (path) => readSource(deps, root, path, []),
     list: (folder) => listing(deps, folder),
     unknown: () => undefined,

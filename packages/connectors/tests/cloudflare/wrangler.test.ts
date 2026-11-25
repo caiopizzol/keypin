@@ -22,6 +22,21 @@ describe("wrangler configs", () => {
     expect(parsed.workers.map((w) => w.worker)).toEqual(["api", "api-internal"]);
   });
 
+  test("a binding counts only for the Worker of that name in the caller's account", () => {
+    const OTHER = "22222222222222222222222222222222";
+    const api = `name = "api"\naccount_id = "${ACCOUNT}"\n\n[env.internal]\nroutes = []\nworkers_dev = false\n`;
+    const web = (account: string) =>
+      `name = "web"\naccount_id = "${account}"\n\n[[services]]\nbinding = "API"\nservice = "api-internal"\n`;
+    const skipped = (account: string) => {
+      const configs = [{ text: web(account), config: "apps/web/wrangler.toml" }];
+      const parsed = wranglerWorkers(api, "apps/api/wrangler.toml", calledAcross(configs));
+      assert(parsed.ok);
+      return parsed.skipped;
+    };
+    expect(skipped(OTHER)).toEqual(["internal"]);
+    expect(skipped(ACCOUNT)).toEqual([]);
+  });
+
   test("reads the Worker, account, required secrets and var names from JSONC", () => {
     const parsed = wranglerWorkers(
       `{

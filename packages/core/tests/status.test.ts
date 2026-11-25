@@ -30,6 +30,7 @@ function status(rotation: Rotation | null, overrides: Partial<StatusInput> = {})
       project: "billing",
       environments: ["dev", "prod"],
       ignore: [],
+      scanFiles: null,
       keys: [{ ...KEY, rotateEvery }],
     },
   };
@@ -144,6 +145,7 @@ describe("status", () => {
         project: "billing",
         environments: ["prod"],
         ignore: [],
+        scanFiles: null,
         keys: [issued],
       },
     };
@@ -216,6 +218,7 @@ describe("status", () => {
         project: "billing",
         environments: ["dev", "prod"],
         ignore: [],
+        scanFiles: null,
         keys: [{ ...KEY, rotateEvery: null }],
       },
     };
@@ -250,6 +253,7 @@ describe("status", () => {
         project: "billing",
         environments: ["dev", "prod", "staging"],
         ignore: [],
+        scanFiles: null,
         keys: [KEY],
       },
     };
@@ -339,6 +343,7 @@ describe("status", () => {
               project: "billing",
               environments: ["dev", "prod"],
               ignore: [],
+              scanFiles: null,
               keys: [],
             },
           },

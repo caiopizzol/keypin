@@ -136,6 +136,31 @@ describe("ignore", () => {
   });
 });
 
+describe("scan_files", () => {
+  const scanning = (list: string) => `${PROFILES}\n[tool.keypin]\nscan_files = ${list}\n`;
+
+  test("is null when unset, so check reads every file", () => {
+    const result = read(PROFILES);
+    assert(result.ok);
+    expect(result.map.scanFiles).toBeNull();
+  });
+
+  test.each([[`[]`], [`[".github/workflows/billing-*.yml", "apps/api/wrangler.toml"]`]])(
+    "lists globs from the repo root: %s",
+    (list) => {
+      const result = read(scanning(list));
+      assert(result.ok);
+      expect(result.map.scanFiles).toEqual(JSON.parse(list));
+    },
+  );
+
+  test.each([[`".github/workflows/deploy.yml"`], [`[""]`], [`[1]`]])("refuses %s", (list) => {
+    expect(errorsOf(scanning(list))).toEqual([
+      `${MAP_FILE}: [tool.keypin] "scan_files" must be a list of file globs from the repo root`,
+    ]);
+  });
+});
+
 describe("publish", () => {
   test("must be a list of destination tables", () => {
     expect(errorsOf(tool(`publish = ${GITHUB}`))).toEqual([

@@ -30,17 +30,21 @@ export const wranglerDiscovery: Discovery<WranglerHost> = {
   files: { key: "wrangler", noun: "wrangler config", names: WRANGLER_FILES, skip: [".wrangler"] },
   async scan(project, host) {
     const workers: Worker[] = [];
-    const { used, ignored } = configsWranglerUses(project.found);
-    const skipped = ignored.map(
-      ({ config, used }) => `wrangler reads ${used}, not ${config}, so check ignores ${config}`,
-    );
+    const { used } = configsWranglerUses(project.found);
+    const { owns } = project;
+    const owned = owns ? project.found.filter((config) => owns(config)) : used;
+    const skipped = owns
+      ? []
+      : configsWranglerUses(project.found).ignored.map(
+          ({ config, used }) => `wrangler reads ${used}, not ${config}, so check ignores ${config}`,
+        );
     const texts: { text: string; config: string }[] = [];
-    for (const config of used) {
+    for (const config of new Set([...used, ...owned])) {
       const text = await project.read(config);
       if (text !== null) texts.push({ text, config });
     }
     const called = calledAcross(texts);
-    for (const { text, config } of texts) {
+    for (const { text, config } of texts.filter(({ config }) => owned.includes(config))) {
       const parsed = wranglerWorkers(text, config, called);
       if (!parsed.ok) {
         project.unknown(`the Workers in ${config}`, "it couldn't be parsed");
@@ -75,7 +79,7 @@ export const wranglerDiscovery: Discovery<WranglerHost> = {
       }
     }
     const discovered = {
-      files: used,
+      files: owned,
       used: workers.some((worker) => worker.read !== null),
       about: null,
       report: {},

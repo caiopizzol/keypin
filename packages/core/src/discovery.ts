@@ -18,6 +18,7 @@ export interface ProjectReader {
   readonly root: string;
   readonly found: readonly string[];
   ignores(name: string): boolean;
+  readonly owns: ((path: string) => boolean) | null;
   read(path: string): Promise<string | null>;
   list(folder: string): Promise<FolderListing>;
   unknown(what: string, reason: string): void;

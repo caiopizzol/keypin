@@ -230,11 +230,12 @@ export function findGaps(
   }
 
   const unused = ignore.filter((name) => !ignored.has(name.toUpperCase()));
-  const drop = !unused.length
-    ? ""
-    : unused.length === 1
-      ? `; ${unused[0]} isn't in any file check read, so remove it from ignore`
-      : `; ${unused.join(", ")} aren't in any file check read, so remove them from ignore`;
+  const drop =
+    !unused.length || !scan.complete
+      ? ""
+      : unused.length === 1
+        ? `; ${unused[0]} isn't in any file check read, so remove it from ignore`
+        : `; ${unused.join(", ")} aren't in any file check read, so remove them from ignore`;
   if (ignore.length)
     notes.push(
       `secretspec.toml ignores ${ignore.length} ${ignore.length === 1 ? "key" : "keys"}${drop}`,

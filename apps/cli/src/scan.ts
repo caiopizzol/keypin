@@ -135,7 +135,7 @@ export async function scanProject(
   }
   const nouns = listed.map(({ discovery }) => discovery.files.noun).join(" or ");
   return {
-    scan: { envFiles, discovered },
+    scan: { envFiles, discovered, complete: !unknowns.length },
     files,
     read,
     about: discovered.flatMap((d) => (d.about === null ? [] : [d.about])),

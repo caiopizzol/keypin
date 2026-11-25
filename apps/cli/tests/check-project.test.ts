@@ -2477,6 +2477,24 @@ required = ["WEB_KEY"]
     );
   });
 
+  test("an ignored name stays when a workflow that may use it couldn't be read", async () => {
+    const run = monorepo(`ignore = ["WEB_TOKEN"]\nscan_files = [".github/workflows/*.yml"]`);
+    const workflow = `${TOP}/.github/workflows/web-deploy.yml`;
+    const read = run.deps.files.read.bind(run.deps.files);
+    run.deps.files = {
+      ...run.deps.files,
+      read: async (path) => {
+        if (path === workflow)
+          throw Object.assign(new Error(`EACCES: permission denied, open '${path}'`), {
+            code: "EACCES",
+          });
+        return read(path);
+      },
+    };
+    await cli(["check", "--json"], run.deps);
+    expect(json(run.stdout.text).notes).toContain("secretspec.toml ignores 1 key");
+  });
+
   test("a glob that matches no file is a problem", async () => {
     const run = monorepo(`scan_files = ["billing/wrangler.toml", ".github/workflows/billing.yml"]`);
     expect(await cli(["check", "--json"], run.deps)).toBe(1);

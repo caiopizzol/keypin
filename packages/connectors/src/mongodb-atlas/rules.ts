@@ -8,6 +8,7 @@ export interface AtlasSpec extends IssuerSpec {
 
 export const atlasIssuerRules = {
   kind: "mongodb-atlas",
+  names: false,
   parse(read) {
     read.only(["client_id", "project_id"]);
     const admin = read.admin();

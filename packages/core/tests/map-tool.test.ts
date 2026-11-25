@@ -249,6 +249,28 @@ describe("issuer", () => {
     expect(errorsOf(issuer(fields))).toEqual([`${where()}issuer: ${error}`]);
   });
 
+  test("refuses a name for an issuer that doesn't name its keys", () => {
+    const text = tool(
+      `name = "acme-web-db"\nissuer = { kind = "nameless", admin = "op://Acme/a/c" }`,
+    );
+    const nameless: IssuerKind = {
+      kind: "nameless",
+      names: false,
+      parse: (read) => {
+        const admin = read.admin();
+        return admin ? { kind: "nameless", admin } : undefined;
+      },
+      connect: () => {
+        throw new Error("never connected");
+      },
+    };
+    const result = readSecretspec(text, MAP_FILE, KINDS, [...ISSUERS, nameless], VAULT_KINDS);
+    assert(!result.ok);
+    expect(result.errors).toEqual([
+      `${where()}field "name": nameless doesn't name the keys it makes; remove the name`,
+    ]);
+  });
+
   test("two issuers that rotate the same thing are refused, naming both", () => {
     const text = `${PROFILES}\n[tool.keypin.production.API_KEY]\nissuer = { kind = "claims", admin = "op://Acme/admin/credential" }\n\n[tool.keypin.production.RESEND_API_KEY]\nissuer = { kind = "claims", admin = "op://Acme/admin/credential" }\n`;
     const claims: IssuerKind = {

@@ -16,6 +16,7 @@ export interface IssuerReader extends TableReader {
 export interface IssuerRules<T extends IssuerSpec = IssuerSpec> {
   readonly kind: T["kind"];
   readonly admin?: boolean;
+  readonly names?: false;
   parse(read: IssuerReader): T | undefined;
   claims?(spec: T): readonly string[];
   idKey?(spec: T): KeyId;

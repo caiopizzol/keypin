@@ -30,6 +30,7 @@ export interface GoogleServiceAccountSpec extends IssuerSpec {
 
 export const googleServiceAccountIssuerRules = {
   kind: "google-service-account",
+  names: false,
   parse(read) {
     read.only([]);
     const admin = read.admin();

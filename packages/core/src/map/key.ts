@@ -93,7 +93,8 @@ export function validateTool(
     raw.issuer === undefined
       ? undefined
       : validateIssuer(raw.issuer, ref, context, (m) => err(`issuer: ${m}`));
-  const why = context.issuers.find((k) => k.kind === issuer?.kind)?.refuses?.(id);
+  const rules = context.issuers.find((k) => k.kind === issuer?.kind);
+  const why = rules?.refuses?.(id);
   if (issuer && why !== undefined)
     err(`issuer: ${issuer.kind} can't rotate this key, because ${why}`);
   const name = optionalString(raw, "name", err);
@@ -101,6 +102,8 @@ export function validateTool(
     err(`field "name" uses lowercase letters, digits and -, such as "acme-web-mail"`);
   else if (name !== undefined && raw.issuer === undefined)
     err(`field "name" names the key at its issuer; add an issuer, or remove the name`);
+  else if (name !== undefined && rules?.names === false)
+    err(`field "name": ${rules.kind} doesn't name the keys it makes; remove the name`);
   if (failed) return undefined;
   if (!issuer) return { entry: { ref, publish }, rotateEvery };
   const idKey = idKeyOf(context.issuers, issuer);

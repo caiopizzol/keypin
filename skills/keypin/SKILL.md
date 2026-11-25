@@ -30,11 +30,12 @@ the app with them (`secretspec run`).
 3. Ask the user in one message: which names in `local` are secrets, which vault to use, which profiles they use
    besides `default` and `production`, and whether each production secret is in the vault. A secret only in GitHub
    or Cloudflare can't be read back: the user makes a new key and saves it with `secretspec set`.
-4. With the user's agreement, paste the `providers` TOML into `secretspec.toml`, with their vault in it.
-5. Give the user the `secretspec add` and `secretspec import` commands from `notes` to run, leaving out names that
+4. With the user's agreement, add the `providers` lines to `secretspec.toml` with their vault, under any of its
+   tables the file already has.
+5. Give the user any `secretspec add` and `secretspec import` commands from `notes` to run, leaving out names that
    aren't secrets.
-6. After they run them, paste the `add` TOML from a new `keypin check --json`, with their agreement. Ask for every
-   `<...>` in one list.
+6. Run `keypin check --json` again and, with the user's agreement, add its `add` TOML. Ask for every `<...>` in one
+   list.
 
 ## Publish
 

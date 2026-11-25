@@ -266,10 +266,10 @@ describe("create", () => {
   test("a name longer than Resend's 50 characters keeps its start, the time and the run's tag", async () => {
     const { resend, requests } = issuer(happyRoutes(), { permission: "full_access" });
     await resend.checkAccount(null, VAULT);
-    await resend.create("orbit-ci PULLFROG_OPENAI_API_KEY production 2026-11-24T16:12Z 668dbf");
+    await resend.create("acme-api WEBHOOKS_OPENAI_API_KEY production 2026-01-15T09:30Z a1b2c3");
     const post = requests.find((r) => r.method === "POST");
     expect(JSON.parse(post?.body ?? "{}")).toEqual({
-      name: "orbit-ci PULLFROG_OPENAI… 2026-11-24T16:12Z 668dbf",
+      name: "acme-api WEBHOOKS_OPENAI… 2026-01-15T09:30Z a1b2c3",
       permission: "full_access",
     });
   });
@@ -319,8 +319,8 @@ describe("after a failed create", () => {
   test("a lost create names the key as Resend stores it, cut to 50 characters", () => {
     const { resend } = issuer(happyRoutes());
     expect(
-      resend.lostCreate("orbit-ci PULLFROG_OPENAI_API_KEY production 2026-11-24T16:12Z 668dbf"),
-    ).toContain('"orbit-ci PULLFROG_OPENAI… 2026-11-24T16:12Z 668dbf"');
+      resend.lostCreate("acme-api WEBHOOKS_OPENAI_API_KEY production 2026-01-15T09:30Z a1b2c3"),
+    ).toContain('"acme-api WEBHOOKS_OPENAI… 2026-01-15T09:30Z a1b2c3"');
   });
 });
 

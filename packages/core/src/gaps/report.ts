@@ -7,6 +7,7 @@ import type { ProviderLines } from "./providers";
 export interface ProjectScan {
   envFiles: { path: string; kind: EnvFileKind; names: string[]; tracked: boolean | null }[];
   discovered: readonly Discovered[];
+  complete: boolean;
 }
 
 export interface Need {

@@ -33,7 +33,12 @@ export function findGaps(
   const notes: string[] = [];
   const needs: Found[] = [];
   const ignore = keys?.ignore ?? [];
-  const ignoring = (name: string) => ignores(ignore, name);
+  const ignored = new Set<string>();
+  const ignoring = (name: string) => {
+    const hit = ignores(ignore, name);
+    if (hit) ignored.add(name.toUpperCase());
+    return hit;
+  };
   const need = (name: string, place: Place, usedBy: string) => {
     if (!isVariableName(name)) return;
     if (ignoring(name)) return;
@@ -224,8 +229,17 @@ export function findGaps(
     }
   }
 
+  const unused = ignore.filter((name) => !ignored.has(name.toUpperCase()));
+  const drop =
+    !unused.length || !scan.complete
+      ? ""
+      : unused.length === 1
+        ? `; ${unused[0]} had no effect, so remove it from ignore`
+        : `; ${unused.join(", ")} had no effect, so remove them from ignore`;
   if (ignore.length)
-    notes.push(`secretspec.toml ignores ${ignore.length} ${ignore.length === 1 ? "key" : "keys"}`);
+    notes.push(
+      `secretspec.toml ignores ${ignore.length} ${ignore.length === 1 ? "key" : "keys"}${drop}`,
+    );
 
   return {
     production: needs.map((n) => n.need),

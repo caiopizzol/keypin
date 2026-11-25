@@ -72,7 +72,8 @@ with `from` or `composed`: no vault holds it, so there's nothing to publish or r
 secretspec leaves this table alone.
 
 - `ignore`: keys a workflow or env file names that keypin shouldn't manage, such as the optional keys of a copied
-  workflow. `keypin check` leaves them out, in any profile and any case, and says how many it ignores.
+  workflow. `keypin check` leaves them out, in any profile and any case. When it reads every file, it names any
+  that had no effect.
 - `scan_files`: in a monorepo, the workflows and wrangler configs this project owns, as globs from the repo root,
   such as `[".github/workflows/billing-*.yml", "apps/billing/wrangler.toml"]`. `keypin check` reports keys only
   from those and from env files in the project's folder. Without it, check reads every workflow and the wrangler

@@ -119,7 +119,7 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
-      - run: npm install -g keypin@0.42.0 # x-release-please-version
+      - run: npm install -g keypin@0.43.0 # x-release-please-version
       - run: gh auth login --hostname github.com --with-token --insecure-storage <<< "$TOKEN"
         env:
           GH_CONFIG_DIR: ${{ runner.temp }}/gh

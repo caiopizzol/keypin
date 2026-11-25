@@ -9,6 +9,7 @@ export interface AwsSpec extends IssuerSpec {
 
 export const awsIssuerRules = {
   kind: "aws",
+  names: false,
   parse(read) {
     read.only(["key_id"]);
     const admin = read.admin();

@@ -158,14 +158,14 @@ describe("Twilio issuer", () => {
     await checked(subject);
   });
 
-  test("fits a long key name in Twilio's 64 characters, keeping its start, the time and the run's tag", async () => {
+  test("fits a long key name in Twilio's 64 characters, keeping its start and the run's tag", async () => {
     const subject = twilio();
     await checked(subject);
-    const name = "billing TWILIO_API_SECRET_FOR_THE_BILLING_SERVICE prod 2026-11-18T12:00Z ab12";
+    const name = "acme-billing-twilio-api-secret-for-the-billing-service-production-ab12cd";
     await subject.issuer.create(name);
     const sent = new URLSearchParams(subject.calls.at(-1)?.body).get("FriendlyName") ?? "";
     expect(sent).toHaveLength(64);
-    expect(sent).toBe("billing TWILIO_API_SECRET_FOR_THE_BILLIN… 2026-11-18T12:00Z ab12");
+    expect(sent).toBe("acme-billing-twilio-api-secret-for-the-billing-service-pr-ab12cd");
     expect(subject.issuer.lostCreate(name)).toContain(`"${sent}"`);
   });
 

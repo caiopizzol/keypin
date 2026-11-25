@@ -87,7 +87,7 @@ function pairedIssuer(options: IssuerOptions) {
       made.count++;
       const id = `AKID-${made.count}`;
       live.add(id);
-      log.push(`create ${name.split(" ")[1]} -> ${id}`);
+      log.push(`create ${name} -> ${id}`);
       return { id, secret: new Secret(NEW(made.count)) };
     },
     async revoke(id) {
@@ -241,7 +241,7 @@ describe("keypin rotate: a key whose ID is another key", () => {
     expect(rerun.issuer.log.slice(-4)).toEqual([
       "check AKID-0",
       "revoke AKID-1",
-      "create API_SECRET -> AKID-2",
+      "create billing-api-secret-prod-a1b2c3 -> AKID-2",
       "revoke AKID-0",
     ]);
     expect([...rerun.issuer.live]).toEqual(["AKID-2"]);
@@ -254,7 +254,7 @@ describe("keypin rotate: a key whose ID is another key", () => {
     expect(await run.rotate()).toBe(1);
     expect(run.issuer.log).toEqual([
       "check AKID-0",
-      "create API_SECRET -> AKID-1",
+      "create billing-api-secret-prod-a1b2c3 -> AKID-1",
       "revoke AKID-1",
     ]);
     expect(pairOf(run)).toEqual([OLD_SECRET, "AKID-0"]);
@@ -268,7 +268,10 @@ describe("keypin rotate: a key whose ID is another key", () => {
     async (_, failure) => {
       const first = setup({ saves: { "api key id": failure }, answers: ["y"] });
       expect(await first.rotate()).toBe(1);
-      expect(first.issuer.log).toEqual(["check AKID-0", "create API_SECRET -> AKID-1"]);
+      expect(first.issuer.log).toEqual([
+        "check AKID-0",
+        "create billing-api-secret-prod-a1b2c3 -> AKID-1",
+      ]);
       expect(pairOf(first)).toEqual([NEW(1), "AKID-0"]);
       expect(first.writes()).toEqual([]);
       expect(first.stderr.text).toContain(
@@ -309,7 +312,10 @@ describe("keypin rotate: a key whose ID is another key", () => {
       `write ${WORKER} API_SECRET API_KEY_ID in one request`,
       `write ${GITHUB} API_SECRET (${NEW(1).length} chars)`,
     ]);
-    expect(first.issuer.log).toEqual(["check AKID-0", "create API_SECRET -> AKID-1"]);
+    expect(first.issuer.log).toEqual([
+      "check AKID-0",
+      "create billing-api-secret-prod-a1b2c3 -> AKID-1",
+    ]);
 
     const rerun = first.again({ answers: ["y", "y"] });
     expect(await rerun.rotate()).toBe(0);
@@ -354,7 +360,7 @@ describe("keypin rotate: a key whose ID is another key", () => {
     expect(await next.rotate()).toBe(0);
     expect(next.issuer.log.slice(3)).toEqual([
       "check AKID-1",
-      "create API_SECRET -> AKID-2",
+      "create billing-api-secret-prod-a1b2c3 -> AKID-2",
       "revoke AKID-1",
     ]);
   });
@@ -430,7 +436,7 @@ ${PUBLISH}
     expect(await next.rotate()).toBe(0);
     expect(next.issuer.log.slice(4)).toEqual([
       "check AKID-1",
-      "create API_SECRET -> AKID-2",
+      "create billing-api-secret-prod-a1b2c3 -> AKID-2",
       "revoke AKID-1",
     ]);
   });

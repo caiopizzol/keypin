@@ -28,7 +28,8 @@ to its plan, it creates the key, saves it to your vault with today's rotated dat
 got the new one. A first Resend rotation leaves the old key: delete it at Resend once nothing uses it. For a key
 with no destinations, check what reads it before the old one goes: the plan lists only workflows that run
 `secretspec run`, not a call inside a script. `keypin --help` covers `--plan`, `--discard` and rerunning a failed
-rotation. To rotate on a schedule, see [Scheduled rotation](scheduled-rotation.md).
+rotation. To rotate on a schedule, see [Scheduled rotation](scheduled-rotation.md). To choose what the provider
+calls the new key, set [`name`](../reference/secretspec-toml.md#toolkeypin).
 
 Without an issuer, rotate by hand:
 

@@ -7,6 +7,7 @@ import {
   type Issuer,
   type IssuerCheck,
   type ItemIds,
+  keyBaseName,
   type KeyRef,
   localDay,
   messageOf,
@@ -201,12 +202,12 @@ export async function checkIssuer(
 }
 
 export async function createKey(
-  { map, key, owner, deps, out }: Job,
+  { map, key, entry, owner, deps, out }: Job,
   issuer: Issuer,
 ): Promise<IssuedKey | { unchanged: boolean; name: string }> {
   const where = issuer.describe();
-  const minute = deps.now().toISOString().slice(0, 16);
-  const name = `${map.project} ${key.name} ${owner.environment} ${minute}Z ${deps.tag()}`;
+  const base = entry.name ?? keyBaseName(map.project, key.name, owner.environment);
+  const name = `${base}-${deps.tag()}`;
   try {
     return await out.step(
       `${where}  creating ${name}`,

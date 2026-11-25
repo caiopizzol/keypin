@@ -16,6 +16,7 @@ export interface IssuerReader extends TableReader {
 export interface IssuerRules<T extends IssuerSpec = IssuerSpec> {
   readonly kind: T["kind"];
   readonly admin?: boolean;
+  readonly names?: false;
   parse(read: IssuerReader): T | undefined;
   claims?(spec: T): readonly string[];
   idKey?(spec: T): KeyId;
@@ -61,23 +62,28 @@ export function idKeyOf(kinds: readonly IssuerRules[], spec: IssuerSpec): KeyId 
   return kinds.find((k) => k.kind === spec.kind)?.idKey?.(spec) ?? null;
 }
 
+export function keyBaseName(project: string, variable: string, profile: string): string {
+  return `${project}-${variable}-${profile}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 export function fitKeyName(
   name: string,
   limit: number,
   normalize: (name: string) => string = (same) => same,
 ): string {
   if (normalize(name).length <= limit) return normalize(name);
-  const kept = [2, 1]
-    .map((count) => name.split(" ").slice(1).slice(-count).join(" "))
-    .find((end) => end && end.length < limit / 2);
-  const end = kept ? ` ${kept}` : "";
-  for (let room = limit - end.length - 1; room >= 0; room--) {
+  const tag = name.slice(name.lastIndexOf("-") + 1);
+  const end = tag.length < limit / 2 ? `-${tag}` : "";
+  for (let room = limit - end.length; room > 0; room--) {
     const start = name
       .slice(0, room)
       .replace(/[\uD800-\uDBFF]$/, "")
-      .trimEnd();
-    const fitted = normalize(`${start}…${end}`);
-    if (fitted.length <= limit) return fitted;
+      .replace(/[-_\s]+$/, "");
+    const fitted = normalize(`${start}${end}`);
+    if (start && fitted.length <= limit) return fitted;
   }
-  return normalize(end.trimStart());
+  return normalize(tag.slice(0, limit));
 }

@@ -10,6 +10,7 @@ export interface NeonSpec extends IssuerSpec {
 
 export const neonIssuerRules = {
   kind: "neon",
+  names: false,
   parse(read) {
     read.only(["project_id", "branch_id", "database", "roles"]);
     const admin = read.admin();

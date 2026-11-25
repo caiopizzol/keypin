@@ -130,7 +130,7 @@ true
 
 --- calls issuer ---
 check key-1
-create billing RESEND_API_KEY prod 2026-11-09T12:00Z a1b2c3 -> key-2
+create billing-resend-api-key-prod-a1b2c3 -> key-2
 revoke key-1
 
 --- calls vault ---
@@ -166,7 +166,7 @@ Plan
   ~ GitHub      acme/mailer  new value
   - Resend                   revoke the old key key-1, after a second y
 
-ok     Resend  created billing RESEND_API_KEY prod 2026-11-09T12:00Z a1b2c3 (key-2)
+ok     Resend  created billing-resend-api-key-prod-a1b2c3 (key-2)
 ok     1Password  op://Private/mailer resend key/credential  saved, rotated 2026-11-09
 ok     Cloudflare  mailer       wrote RESEND_API_KEY
 ok     GitHub      acme/mailer  wrote RESEND_API_KEY

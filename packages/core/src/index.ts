@@ -43,6 +43,7 @@ export {
 export {
   connectIssuer,
   fitKeyName,
+  keyBaseName,
   type IssuerKind,
   type IssuerKinds,
   type IssuerReader,

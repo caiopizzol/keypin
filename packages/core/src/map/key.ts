@@ -15,7 +15,8 @@ import {
   optionalString,
 } from "./table";
 
-export const TOOL_FIELDS: readonly string[] = ["rotate_every", "publish", "issuer"];
+export const TOOL_FIELDS: readonly string[] = ["rotate_every", "publish", "issuer", "name"];
+const KEY_NAME = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 export interface MapContext {
   environments: readonly Environment[];
@@ -92,14 +93,28 @@ export function validateTool(
     raw.issuer === undefined
       ? undefined
       : validateIssuer(raw.issuer, ref, context, (m) => err(`issuer: ${m}`));
-  const why = context.issuers.find((k) => k.kind === issuer?.kind)?.refuses?.(id);
+  const rules = context.issuers.find((k) => k.kind === issuer?.kind);
+  const why = rules?.refuses?.(id);
   if (issuer && why !== undefined)
     err(`issuer: ${issuer.kind} can't rotate this key, because ${why}`);
+  const name = optionalString(raw, "name", err);
+  if (name !== undefined && !KEY_NAME.test(name))
+    err(`field "name" uses lowercase letters, digits and -, such as "acme-web-mail"`);
+  else if (name !== undefined && raw.issuer === undefined)
+    err(`field "name" names the key at its issuer; add an issuer, or remove the name`);
+  else if (name !== undefined && rules?.names === false)
+    err(`field "name": ${rules.kind} doesn't name the keys it makes; remove the name`);
   if (failed) return undefined;
   if (!issuer) return { entry: { ref, publish }, rotateEvery };
   const idKey = idKeyOf(context.issuers, issuer);
   return {
-    entry: idKey === null ? { ref, publish, issuer } : { ref, publish, issuer, idKey },
+    entry: {
+      ref,
+      publish,
+      issuer,
+      ...(idKey === null ? {} : { idKey }),
+      ...(name === undefined ? {} : { name }),
+    },
     rotateEvery,
   };
 }

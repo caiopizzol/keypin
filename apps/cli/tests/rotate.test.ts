@@ -282,7 +282,7 @@ describe("keypin rotate", () => {
     expect(before.issuer.admins).toEqual([ADMIN]);
     expect(before.issuer.log).toEqual([
       "check none",
-      "create billing RESEND_API_KEY prod 2026-11-09T12:00Z a1b2c3 -> key-1",
+      "create billing-resend-api-key-prod-a1b2c3 -> key-1",
     ]);
     expect(before.vault.values.get("mailer resend key")).toBe(NEW(1));
     expect(before.vault.rotated).toEqual(["2026-11-09"]);
@@ -307,7 +307,7 @@ describe("keypin rotate", () => {
     ]);
     expect(again.issuer.log).toEqual([
       "check key-1",
-      "create billing RESEND_API_KEY prod 2026-11-09T12:00Z a1b2c3 -> key-2",
+      "create billing-resend-api-key-prod-a1b2c3 -> key-2",
       "revoke key-1",
     ]);
     const state = await again.state();
@@ -483,7 +483,7 @@ describe("keypin rotate", () => {
     expect(keys.load().live).toEqual(["key-0", "re-new-1"]);
     expect(run.stderr.text).not.toContain("Nothing was created");
     expect(run.stderr.text).toContain(
-      'Stopped: keypin didn\'t get the new key back. Resend may have made the key before the reply was lost. Only this run uses the name "billing RESEND_API_KEY p… 2026-11-09T12:00Z a1b2c3": delete a key with that name at https://resend.com/api-keys before you run this again, or the rerun leaves it live.',
+      'Stopped: keypin didn\'t get the new key back. Resend may have made the key before the reply was lost. Only this run uses the name "billing-resend-api-key-prod-a1b2c3": delete a key with that name at https://resend.com/api-keys before you run this again, or the rerun leaves it live.',
     );
     expect(run.vault.values.get("mailer resend key")).toBe(OLD);
   });
@@ -493,8 +493,18 @@ describe("keypin rotate", () => {
     const second = setup({ answers: ["y"], tag: "bbbbbb", failCreate: true });
     await first.run();
     await second.run();
-    expect(first.stderr.text).toContain('"billing RESEND_API_KEY prod 2026-11-09T12:00Z aaaaaa"');
-    expect(second.stderr.text).toContain('"billing RESEND_API_KEY prod 2026-11-09T12:00Z bbbbbb"');
+    expect(first.stderr.text).toContain('"billing-resend-api-key-prod-aaaaaa"');
+    expect(second.stderr.text).toContain('"billing-resend-api-key-prod-bbbbbb"');
+  });
+
+  test("a key with a name in secretspec.toml gets that name and the run's tag", async () => {
+    const named = MAP.replace('rotate_every = "90d"', 'rotate_every = "90d"\nname = "acme-mail"');
+    const run = setup({
+      answers: ["y"],
+      disk: memoryFiles({ "/work/billing/secretspec.toml": named }),
+    });
+    await run.run();
+    expect(run.issuer.log).toContain("create acme-mail-a1b2c3 -> key-1");
   });
 
   test("a create that fails at Resend's end gives the same advice", async () => {
@@ -502,7 +512,7 @@ describe("keypin rotate", () => {
     expect(await run.run()).toBe(1);
     expect(run.stderr.text).not.toContain("Nothing was created");
     expect(run.stderr.text).toContain(
-      'Only this run uses the name "billing RESEND_API_KEY p… 2026-11-09T12:00Z a1b2c3": delete a key with that name at https://resend.com/api-keys before you run this again',
+      'Only this run uses the name "billing-resend-api-key-prod-a1b2c3": delete a key with that name at https://resend.com/api-keys before you run this again',
     );
   });
 
@@ -511,7 +521,7 @@ describe("keypin rotate", () => {
     expect(await run.run()).toBe(1);
     expect(run.stderr.text).not.toContain("Nothing was created");
     expect(run.stderr.text).toContain(
-      'Stopped: keypin didn\'t get the new key back. Resend may have made the new key before this failed. Delete any key named "billing RESEND_API_KEY prod 2026-11-09T12:00Z a1b2c3" at https://resend.com/api-keys before you run this again.',
+      'Stopped: keypin didn\'t get the new key back. Resend may have made the new key before this failed. Delete any key named "billing-resend-api-key-prod-a1b2c3" at https://resend.com/api-keys before you run this again.',
     );
   });
 
@@ -535,7 +545,7 @@ describe("keypin rotate", () => {
     );
     expect(again.issuer.log).toEqual([
       "check none",
-      "create billing RESEND_API_KEY prod 2026-11-09T12:00Z a1b2c3 -> key-2",
+      "create billing-resend-api-key-prod-a1b2c3 -> key-2",
     ]);
     expect(fixed.values.get("mailer resend key")).toBe(NEW(2));
     expect((await again.state()).issued).toEqual([expect.objectContaining({ id: "key-2" })]);
@@ -588,7 +598,7 @@ describe("keypin rotate", () => {
     expect(await run.run()).toBe(1);
     expect(run.issuer.log).toEqual([
       "check none",
-      "create billing RESEND_API_KEY prod 2026-11-09T12:00Z a1b2c3 -> key-1",
+      "create billing-resend-api-key-prod-a1b2c3 -> key-1",
       "revoke key-1",
     ]);
     expect(run.vault.log.some((l) => l.startsWith("save"))).toBe(false);
@@ -710,7 +720,7 @@ describe("keypin rotate", () => {
     expect(await second.run("--yes")).toBe(NEEDS_APPROVAL);
     expect(second.issuer.log).toEqual([
       "check key-1",
-      "create billing RESEND_API_KEY prod 2026-11-09T12:00Z a1b2c3 -> key-2",
+      "create billing-resend-api-key-prod-a1b2c3 -> key-2",
     ]);
     expect(second.writes()).toHaveLength(2);
     expect(second.stderr.text).toContain(
@@ -764,7 +774,7 @@ describe("keypin rotate", () => {
     expect(await run.run()).toBe(0);
     expect(run.issuer.log).toEqual([
       "check none",
-      "create billing RESEND_API_KEY prod 2026-11-09T12:00Z a1b2c3 -> key-1",
+      "create billing-resend-api-key-prod-a1b2c3 -> key-1",
     ]);
     expect(run.vault.values.get("mailer resend key")).toBe(NEW(1));
     expect(run.vault.rotated).toEqual(["2026-11-09"]);
@@ -776,7 +786,7 @@ describe("keypin rotate", () => {
     expect(await run.run()).toBe(1);
     expect(run.issuer.log).toEqual([
       "check none",
-      "create billing RESEND_API_KEY prod 2026-11-09T12:00Z a1b2c3 -> key-1",
+      "create billing-resend-api-key-prod-a1b2c3 -> key-1",
       "revoke key-1",
     ]);
     expect(run.writes()).toEqual([]);
@@ -912,7 +922,7 @@ describe("keypin rotate --discard", () => {
     ]);
     expect(run.issuer.log).toEqual([
       "check key-2",
-      "create billing RESEND_API_KEY prod 2026-11-09T12:00Z a1b2c3 -> key-3",
+      "create billing-resend-api-key-prod-a1b2c3 -> key-3",
       "revoke key-2",
     ]);
     expect(run.writes(), "the destination that got the discarded key is overwritten").toEqual([
@@ -949,7 +959,7 @@ describe("keypin rotate --discard", () => {
     expect(await run.run("--discard")).toBe(0);
     expect(run.issuer.log).toEqual([
       "check key-2",
-      "create billing RESEND_API_KEY prod 2026-11-09T12:00Z a1b2c3 -> key-3",
+      "create billing-resend-api-key-prod-a1b2c3 -> key-3",
     ]);
     expect(run.stderr.text).toContain(
       "keypin didn't revoke key key-1, the one key key-2 replaced.",

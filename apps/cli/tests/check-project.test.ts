@@ -2473,7 +2473,7 @@ required = ["WEB_KEY"]
     const scoped = monorepo(`ignore = ["WEB_TOKEN"]\nscan_files = ["billing/wrangler.toml"]`);
     await cli(["check", "--json"], scoped.deps);
     expect(json(scoped.stdout.text).notes).toContain(
-      "secretspec.toml ignores 1 key; WEB_TOKEN isn't in any file check read, so remove it from ignore",
+      "secretspec.toml ignores 1 key; WEB_TOKEN had no effect, so remove it from ignore",
     );
   });
 

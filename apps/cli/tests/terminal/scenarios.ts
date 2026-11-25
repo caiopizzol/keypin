@@ -1286,6 +1286,16 @@ jobs:
 `,
     },
   },
+  monorepo: {
+    ...ready,
+    about:
+      "ready, but billing lives in apps/billing of a repo with a web project too; scan_files lists billing's workflow, a glob that matches nothing, and ignore names WEB_TOKEN",
+    files: {
+      "apps/billing/secretspec.toml": `${MAP}\n[tool.keypin]\nignore = ["WEB_TOKEN"]\nscan_files = [".github/workflows/billing-*.yml", "apps/billing/wrangler.toml"]\n`,
+      ".github/workflows/billing-deploy.yml": WORKFLOW,
+      ".github/workflows/web-deploy.yml": WORKFLOW.replaceAll("STRIPE_KEY", "WEB_TOKEN"),
+    },
+  },
   "slow-1password": {
     ...ready,
     about: "ready, but 1Password takes 1.5s to answer, as when it asks to approve keypin",

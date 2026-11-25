@@ -361,6 +361,24 @@ describe("keypin in a real terminal", () => {
   );
 
   test(
+    "in a monorepo, check reads only the files in scan_files and says what it left out",
+    async () => {
+      const result = await drive({ scenario: "monorepo", args: ["check", "apps/billing"] });
+      expect(result.exit).toBe(1);
+      expect(result.screen).toContain(
+        "read 0 env files, 0 wrangler configs, 1 workflow (1 not in scan_files)",
+      );
+      expect(result.screen).toContain(
+        'scan_files "apps/billing/wrangler.toml" matches no wrangler config or workflow; fix or remove it.',
+      );
+      expect(result.screen).toContain("Note: secretspec.toml ignores 1 key\n");
+      expect(result.screen).not.toContain("remove it from ignore");
+      clean(result);
+    },
+    SLOW,
+  );
+
+  test(
     "while 1Password is slow, the approval hint shows and no frame wraps at 60 columns",
     async () => {
       const result = await drive({

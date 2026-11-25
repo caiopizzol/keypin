@@ -1595,6 +1595,31 @@ jobs:
     );
   });
 
+  test("a key both a repo secret and an environment secret need names the workflow that uses each", async () => {
+    const run = setup({
+      files: {
+        [MAP]: MAPPED,
+        [`${ROOT}/.github/workflows/deploy.yml`]: ENV_WORKFLOW("production"),
+        [`${ROOT}/.github/workflows/test.yml`]: ENV_WORKFLOW("production").replace(
+          "    environment: production\n",
+          "",
+        ),
+      },
+      deps: {
+        workerSignIn: () => fakeSignIn("oauth"),
+        githubSecrets: async (_repo, _login, environment) => ({
+          ok: true,
+          secrets: environment ? [{ name: "STRIPE_API_KEY", updatedAt: null }] : [],
+        }),
+      },
+    });
+    expect(await cli(["check"], run.deps)).toBe(1);
+    expect(run.stdout.text).toContain(
+      "  STRIPE_API_KEY: .github/workflows/deploy.yml uses it; acme/billing (environment production) has it, but secretspec.toml doesn't publish it there.\n" +
+        "  STRIPE_API_KEY: .github/workflows/test.yml uses it; acme/billing doesn't have it, and secretspec.toml doesn't publish it there.\n",
+    );
+  });
+
   test("a map that publishes to the job's environment checks that environment's secrets", async () => {
     const map = PUBLISHED.replace(
       'repo = "acme/billing" }',
@@ -2463,6 +2488,24 @@ required = ["WEB_KEY"]
     const both = json(listed.stdout.text);
     expect(both.read).toMatchObject({ wrangler: ["wrangler.jsonc", "wrangler.toml"] });
     expect(listed.calls).toContain(`worker ${ACCOUNT} billing-worker`);
+  });
+
+  test("a generated description names a workflow from the repo root", async () => {
+    const run = monorepo(`scan_files = [".github/workflows/billing-*.yml"]`, NO_STRIPE);
+    await cli(["check"], run.deps);
+    expect(run.stdout.text).toContain(
+      'description = "Used by .github/workflows/billing-deploy.yml"',
+    );
+
+    const listed = monorepo(`scan_files = [".github/workflows/billing-*.yml"]`, NO_STRIPE);
+    await cli(["check", "--json"], listed.deps);
+    const data = json(listed.stdout.text);
+    const { folder, read } = data;
+    assert(typeof folder === "string" && isRecord(read) && Array.isArray(read.workflows));
+    const workflows: unknown[] = read.workflows;
+    expect(workflows.map((path) => join(folder, String(path)))).toEqual([
+      `${TOP}/.github/workflows/billing-deploy.yml`,
+    ]);
   });
 
   test("an ignored name only a workflow outside scan_files uses can go", async () => {

@@ -81,10 +81,16 @@ export async function scanProject(
 
   const tracked = await trackedFiles(deps, root, found.envFiles);
   const envFiles: ProjectScan["envFiles"] = [];
+  let missed = false;
+  const readFound = async (path: string) => {
+    const text = await readSource(deps, root, path, unknowns);
+    if (text === null) missed = true;
+    return text;
+  };
   for (const path of found.envFiles) {
     const kind = envFileKind(basename(path));
     if (!kind) continue;
-    const text = await readSource(deps, root, path, unknowns);
+    const text = await readFound(path);
     if (text === null) continue;
     envFiles.push({ path, kind, names: envNames(text), tracked: tracked?.has(path) ?? null });
   }
@@ -108,7 +114,7 @@ export async function scanProject(
           if (!globs.length) others.set(kind, (others.get(kind) ?? new Set()).add(path));
           return globs.length > 0;
         },
-    read: (path) => readSource(deps, root, path, unknowns),
+    read: readFound,
     list: (folder) => listing(deps, folder),
     unknown: (what, reason) => unknowns.push({ what, reason }),
   });
@@ -134,8 +140,11 @@ export async function scanProject(
     });
   }
   const nouns = listed.map(({ discovery }) => discovery.files.noun).join(" or ");
+  const problems = (scope?.globs ?? [])
+    .filter((glob) => !scope?.matched.has(glob))
+    .map((glob) => `scan_files "${glob}" matches no ${nouns}; fix or remove it`);
   return {
-    scan: { envFiles, discovered, complete: !unknowns.length },
+    scan: { envFiles, discovered, complete: !unknowns.length && !missed && !problems.length },
     files,
     read,
     about: discovered.flatMap((d) => (d.about === null ? [] : [d.about])),
@@ -143,9 +152,7 @@ export async function scanProject(
     used: new Map(byKind.map(({ kind, found }) => [kind, found?.used ?? false])),
     nested: found.nested,
     unknowns,
-    problems: (scope?.globs ?? [])
-      .filter((glob) => !scope?.matched.has(glob))
-      .map((glob) => `scan_files "${glob}" matches no ${nouns}; fix or remove it`),
+    problems,
   };
 }
 

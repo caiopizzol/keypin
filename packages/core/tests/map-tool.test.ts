@@ -64,7 +64,7 @@ describe("[tool.keypin]", () => {
     [
       "a key's settings that aren't a table",
       `${PROFILES}\n[tool.keypin.production]\nRESEND_API_KEY = "90d"\n`,
-      `${where()}must be a table with "rotate_every", "publish", "issuer"`,
+      `${where()}must be a table with "rotate_every", "publish", "issuer", "name"`,
     ],
     [
       "a profile's settings that aren't a table",
@@ -79,6 +79,7 @@ describe("[tool.keypin]", () => {
     ["rotate_every", `"90d"`],
     ["publish", `[${GITHUB}]`],
     ["issuer", `{ kind = "resend" }`],
+    ["name", `"acme-web-mail"`],
   ])("refuses %s inside a secret's entry", (setting, value) => {
     const text = `${HEAD}\n[profiles.production]\nAPI_KEY = { description = "API key", ${setting} = ${value} }\n`;
     expect(errorsOf(text)).toEqual([
@@ -198,6 +199,30 @@ describe("issuer", () => {
       },
       permission: "full_access",
     });
+  });
+
+  test("a name is what the issuer calls new keys, before the run's tag", () => {
+    const result = read(
+      tool(`name = "acme-web-mail"\nissuer = { ${KIND}, permission = "full_access" }`),
+    );
+    assert(result.ok, JSON.stringify(result));
+    expect(result.map.keys[1]?.environments.production?.name).toBe("acme-web-mail");
+  });
+
+  test.each([
+    [`"Acme Web"`, `field "name" uses lowercase letters, digits and -, such as "acme-web-mail"`],
+    [`"acme-"`, `field "name" uses lowercase letters, digits and -, such as "acme-web-mail"`],
+    [`""`, `field "name" must be a non-empty string`],
+  ])("refuses the name %s", (value, error) => {
+    expect(
+      errorsOf(tool(`name = ${value}\nissuer = { ${KIND}, permission = "full_access" }`)),
+    ).toEqual([`${where()}${error}`]);
+  });
+
+  test("refuses a name without an issuer, which has nothing to name", () => {
+    expect(errorsOf(tool(`name = "acme-web-mail"`))).toEqual([
+      `${where()}field "name" names the key at its issuer; add an issuer, or remove the name`,
+    ]);
   });
 
   test.each([

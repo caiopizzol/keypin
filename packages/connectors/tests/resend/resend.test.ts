@@ -263,13 +263,13 @@ describe("create", () => {
     expect(resend.dashboard()).toBe("https://resend.com/api-keys");
   });
 
-  test("a name longer than Resend's 50 characters keeps its start, the time and the run's tag", async () => {
+  test("a name longer than Resend's 50 characters keeps its start and the run's tag", async () => {
     const { resend, requests } = issuer(happyRoutes(), { permission: "full_access" });
     await resend.checkAccount(null, VAULT);
-    await resend.create("acme-api WEBHOOKS_OPENAI_API_KEY production 2026-01-15T09:30Z a1b2c3");
+    await resend.create("acme-billing-webhooks-resend-api-key-production-a1b2c3");
     const post = requests.find((r) => r.method === "POST");
     expect(JSON.parse(post?.body ?? "{}")).toEqual({
-      name: "acme-api WEBHOOKS_OPENAI… 2026-01-15T09:30Z a1b2c3",
+      name: "acme-billing-webhooks-resend-api-key-produc-a1b2c3",
       permission: "full_access",
     });
   });
@@ -318,9 +318,9 @@ describe("after a failed create", () => {
 
   test("a lost create names the key as Resend stores it, cut to 50 characters", () => {
     const { resend } = issuer(happyRoutes());
-    expect(
-      resend.lostCreate("acme-api WEBHOOKS_OPENAI_API_KEY production 2026-01-15T09:30Z a1b2c3"),
-    ).toContain('"acme-api WEBHOOKS_OPENAI… 2026-01-15T09:30Z a1b2c3"');
+    expect(resend.lostCreate("acme-billing-webhooks-resend-api-key-production-a1b2c3")).toContain(
+      '"acme-billing-webhooks-resend-api-key-produc-a1b2c3"',
+    );
   });
 });
 

@@ -53,7 +53,7 @@ Plan
   + GitHub  acme/app  first write  needs approval
   = random            nothing to revoke: the new value replaces the old one
 
-ok     random  created app AUTH_SECRET prod 2026-11-09T12:00Z a1b2c3
+ok     random  created app-auth-secret-prod-a1b2c3
 ok     1Password  op://Private/app secret/password  saved, rotated 2026-11-09
 ok     GitHub  acme/app  wrote AUTH_SECRET
 
@@ -111,7 +111,7 @@ This rotation is recorded only on this machine: .keypin/rotation.json doesn't ex
       "environment": "prod",
       "mapFile": "/work/billing/secretspec.toml",
       "issuer": "random",
-      "id": "app AUTH_SECRET prod 2026-11-09T12:00Z a1b2c3",
+      "id": "app-auth-secret-prod-a1b2c3",
       "generation": "<generation of the new value>",
       "at": "2026-11-09T12:00:00.000Z",
       "old": {

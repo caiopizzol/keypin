@@ -81,6 +81,10 @@ in `[profiles.default]`.
   profiles.
 - `publish`: where `keypin publish` writes the key. See [Destinations](../guides/publishing.md#destinations).
 - `issuer`: how `keypin rotate` makes a new key. See [Rotating a key](../guides/rotating-a-key.md).
+- `name`: what the provider calls each new key, before a six-character tag that's new each run: `name = "web-mail"`
+  makes `web-mail-cfe159`. Use lowercase letters, digits and `-`. Without it, the name is the project, key and
+  profile: `web-resend-api-key-production-cfe159`. Where the provider allows fewer characters, keypin shortens the
+  part before the tag. Neon, AWS, MongoDB Atlas and Google Cloud service account keys take no name.
 
 An issuer's `admin` is not a provider URI. It's a reference in keypin's own syntax to one secret in the key's own
 vault, such as `op://Acme/resend admin/credential`; each vault's page has its form. The admin key isn't a declared

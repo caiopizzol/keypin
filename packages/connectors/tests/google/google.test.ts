@@ -28,7 +28,7 @@ const OLD: FakeGoogleKey = {
   displayName: "Maps web",
   restrictions: RESTRICTIONS,
 };
-const NAME = "web GOOGLE_MAPS_API_KEY prod 2026-11-17T12:00Z a1b2c3";
+const NAME = "acme-web-google-maps-api-key-production-a1b2c3";
 const NEW: FakeGoogleKey = {
   name: "projects/481537286014/locations/global/keys/maps-web-2",
   value: "AIzaSyNewNewNewNewNewNewNewNewNewNew0002",
@@ -95,7 +95,7 @@ describe("Google Cloud issuer", () => {
     );
     const created = await subject.issuer.create(NAME);
     expect(created.id).toBe(
-      "projects/481537286014/locations/global/keys/web-google-maps-api-key-prod-2026-11-17t12-00z-a1b2c3",
+      "projects/481537286014/locations/global/keys/acme-web-google-maps-api-key-production-a1b2c3",
     );
     expect(created.secret.equals(new Secret(`${PREFIX}1x`))).toBe(true);
     const post = subject.requests.find((r) => r.method === "POST" && r.path.endsWith("/keys"));
@@ -103,9 +103,7 @@ describe("Google Cloud issuer", () => {
       displayName: NAME,
       restrictions: RESTRICTIONS,
     });
-    expect(subject.issuer.label(created.id)).toBe(
-      "web-google-maps-api-key-prod-2026-11-17t12-00z-a1b2c3",
-    );
+    expect(subject.issuer.label(created.id)).toBe("acme-web-google-maps-api-key-production-a1b2c3");
   });
 
   test("copies IP, Android and iOS restrictions as they are", async () => {
@@ -178,7 +176,7 @@ describe("Google Cloud issuer", () => {
     expect(failed).not.toBeInstanceOf(NothingChanged);
     expect(failed.message).toBe("Google Cloud hasn't finished creating the key after 60 seconds");
     expect(subject.issuer.lostCreate(NAME)).toBe(
-      'Google Cloud may have made the key, or may still be making it. Only this run uses key ID web-google-maps-api-key-prod-2026-11-17t12-00z-a1b2c3 and the name "web GOOGLE_MAPS_API_KEY prod 2026-11-17T12:00Z a1b2c3": delete that key at https://console.cloud.google.com/apis/credentials?project=481537286014 before you run this again, or the rerun leaves it live.',
+      'Google Cloud may have made the key, or may still be making it. Only this run uses key ID acme-web-google-maps-api-key-production-a1b2c3 and the name "acme-web-google-maps-api-key-production-a1b2c3": delete that key at https://console.cloud.google.com/apis/credentials?project=481537286014 before you run this again, or the rerun leaves it live.',
     );
   });
 
@@ -432,15 +430,15 @@ describe("Google Cloud issuer refusals", () => {
 
 describe("key IDs", () => {
   test("keypin's name becomes a valid key ID", () => {
-    expect(keyIdOf(NAME)).toBe("web-google-maps-api-key-prod-2026-11-17t12-00z-a1b2c3");
+    expect(keyIdOf(NAME)).toBe("acme-web-google-maps-api-key-production-a1b2c3");
   });
 
-  test("a long name keeps its start, the time and the run's tag", () => {
-    expect(keyIdOf(`web ${"VERY_LONG_".repeat(8)}KEY prod 2026-11-17T12:00Z a1b2c3`)).toBe(
-      "web-very-long-very-long-very-long-ver-2026-11-17t12-00z-a1b2c3",
+  test("a long name keeps its start and the run's tag", () => {
+    expect(keyIdOf(`acme-web-${"very-long-".repeat(8)}key-production-a1b2c3`)).toBe(
+      "acme-web-very-long-very-long-very-long-very-long-very-lo-a1b2c3",
     );
-    expect(keyIdOf(`9web ${"VERY_LONG_".repeat(8)} prod 2026-11-17T12:00Z a1b2c3`)).toBe(
-      "k-9web-very-long-very-long-very-long-2026-11-17t12-00z-a1b2c3",
+    expect(keyIdOf(`9web-${"very-long-".repeat(8)}key-production-a1b2c3`)).toBe(
+      "k-9web-very-long-very-long-very-long-very-long-very-long-a1b2c3",
     );
   });
 
@@ -449,11 +447,11 @@ describe("key IDs", () => {
   });
 
   test("a project name that grows when lowercased still fits in 63 characters", () => {
-    const id = keyIdOf(`${"İ".repeat(30)} KEY prod 2026-11-17T12:00Z a1b2c3`);
+    const id = keyIdOf(`${"İ".repeat(30)}-key-production-a1b2c3`);
     expect(id).toMatch(/^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$/);
     expect(id.endsWith("-a1b2c3")).toBe(true);
-    expect(keyIdOf(`${"İ".repeat(24)} KEY prod 2026-11-17T12:00Z a1b2c3`)).toMatch(
-      /^[i-]+-2026-11-17t12-00z-a1b2c3$/,
+    expect(keyIdOf(`${"İ".repeat(24)}-key-production-a1b2c3`)).toBe(
+      `${"i-".repeat(24)}key-prod-a1b2c3`,
     );
   });
 });

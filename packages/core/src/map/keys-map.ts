@@ -8,6 +8,7 @@ export interface EnvEntry {
   publish: PublishTarget[];
   issuer?: IssuerSpec;
   idKey?: KeyId;
+  name?: string;
 }
 
 export interface KeyEntry {

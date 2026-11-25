@@ -10,13 +10,14 @@ type Fail = (where: string, message: string) => void;
 interface Tool {
   readonly keys: KeyEntry[];
   readonly ignore: readonly string[];
+  readonly scanFiles: readonly string[] | null;
 }
 
 export function readTool(raw: unknown, profiles: Profiles, context: MapContext, fail: Fail): Tool {
   const tool = raw === undefined ? {} : raw;
   if (!isRecord(tool)) {
     fail("", "[tool.keypin] must be a table");
-    return { keys: [], ignore: [] };
+    return { keys: [], ignore: [], scanFiles: null };
   }
   const keys: KeyEntry[] = [];
   const keyOf = (name: string): KeyEntry => {
@@ -33,7 +34,7 @@ export function readTool(raw: unknown, profiles: Profiles, context: MapContext, 
 
   const schedules = new Map<string, { text: string; at: string }>();
   for (const [profile, entries] of Object.entries(tool)) {
-    if (profile === "ignore") continue;
+    if (profile === "ignore" || profile === "scan_files") continue;
     const at = `[tool.keypin.${profile}]`;
     if (!profiles.environments.includes(profile)) {
       fail(`${at}: `, `secretspec.toml has no [profiles.${profile}]`);
@@ -70,7 +71,23 @@ export function readTool(raw: unknown, profiles: Profiles, context: MapContext, 
   }
   for (const [name, { text }] of schedules) keyOf(name).rotateEvery = rotation(text, () => {});
   const ignore = readIgnore(tool, keys, (message) => fail("[tool.keypin] ", message));
-  return { keys, ignore };
+  return {
+    keys,
+    ignore,
+    scanFiles: readScanFiles(tool, (message) => fail("[tool.keypin] ", message)),
+  };
+}
+
+function readScanFiles(tool: Table, fail: (message: string) => void): readonly string[] | null {
+  const raw = tool.scan_files;
+  if (raw === undefined) return null;
+  const globs: unknown[] = Array.isArray(raw) ? raw : [];
+  const valid = globs.filter((glob): glob is string => typeof glob === "string" && glob !== "");
+  if (!Array.isArray(raw) || valid.length !== globs.length) {
+    fail(`"scan_files" must be a list of file globs from the repo root`);
+    return null;
+  }
+  return valid;
 }
 
 function readIgnore(

@@ -31,16 +31,19 @@ export const wranglerDiscovery: Discovery<WranglerHost> = {
   async scan(project, host) {
     const workers: Worker[] = [];
     const { used, ignored } = configsWranglerUses(project.found);
-    const skipped = ignored.map(
-      ({ config, used }) => `wrangler reads ${used}, not ${config}, so check ignores ${config}`,
-    );
+    const owned = used.filter((config) => project.owns(config));
+    const skipped = ignored
+      .filter(({ used }) => owned.includes(used))
+      .map(
+        ({ config, used }) => `wrangler reads ${used}, not ${config}, so check ignores ${config}`,
+      );
     const texts: { text: string; config: string }[] = [];
     for (const config of used) {
       const text = await project.read(config);
       if (text !== null) texts.push({ text, config });
     }
     const called = calledAcross(texts);
-    for (const { text, config } of texts) {
+    for (const { text, config } of texts.filter(({ config }) => owned.includes(config))) {
       const parsed = wranglerWorkers(text, config, called);
       if (!parsed.ok) {
         project.unknown(`the Workers in ${config}`, "it couldn't be parsed");
@@ -75,7 +78,7 @@ export const wranglerDiscovery: Discovery<WranglerHost> = {
       }
     }
     const discovered = {
-      files: used,
+      files: owned,
       used: workers.some((worker) => worker.read !== null),
       about: null,
       report: {},

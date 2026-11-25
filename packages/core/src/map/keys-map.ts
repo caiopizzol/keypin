@@ -22,6 +22,7 @@ export interface KeysMap {
   project: string;
   environments: readonly Environment[];
   ignore: readonly string[];
+  scanFiles: readonly string[] | null;
   keys: KeyEntry[];
 }
 

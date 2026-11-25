@@ -2344,3 +2344,95 @@ describe("keypin check, for a 1Password provider that names no account", () => {
     expect(run.stdout.text).not.toContain("names no account");
   });
 });
+
+describe("keypin check in a monorepo, with scan_files", () => {
+  const TOP = "/work";
+  const WORKFLOW = (name: string) => `
+on: push
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - run: deploy
+        env:
+          ${name}: \${{ secrets.${name} }}
+`;
+  const monorepo = (tool: string | null, map = PUBLISHED) => {
+    const run = setup({
+      files: {
+        [MAP]: tool === null ? map : `${map}\n[tool.keypin]\n${tool}\n`,
+        [`${ROOT}/.github/workflows/deploy.yml`]: null,
+        [`${ROOT}/wrangler.toml`]: `name = "billing-worker"
+account_id = "${ACCOUNT}"
+
+[secrets]
+required = ["RESEND_API_KEY"]
+
+[env.prod]
+routes = []
+workers_dev = false
+
+[env.prod.secrets]
+required = ["RESEND_API_KEY"]
+`,
+        [`${TOP}/.github/workflows/billing-deploy.yml`]: WORKFLOW("STRIPE_API_KEY"),
+        [`${TOP}/.github/workflows/web-deploy.yml`]: WORKFLOW("WEB_TOKEN"),
+        [`${TOP}/web/wrangler.toml`]: `name = "web-worker"
+account_id = "${ACCOUNT}"
+services = [{ binding = "BILLING", service = "billing-worker-prod" }]
+
+[secrets]
+required = ["WEB_KEY"]
+`,
+      },
+      git: { "rev-parse --show-toplevel": `${TOP}\n` },
+      deps: { workerSignIn: () => fakeSignIn("oauth") },
+      github: { ok: true, secrets: [{ name: "STRIPE_API_KEY", updatedAt: null }] },
+      worker: { ok: true, secrets: [{ name: "RESEND_API_KEY", updatedAt: null }] },
+    });
+    for (const folder of [`${TOP}/.github`, `${TOP}/.github/workflows`])
+      run.disk.folders.add(folder);
+    return run;
+  };
+
+  test("reports gaps only from the workflows and wrangler configs it lists", async () => {
+    const run = monorepo(
+      `scan_files = [".github/workflows/billing-*.yml", "billing/wrangler.toml"]`,
+    );
+    expect(await run.record("scan-files", ["check"])).toBe(1);
+    expect(run.stdout.text).toContain(
+      "read 2 env files, 1 wrangler config (1 not in scan_files), 1 workflow (1 not in scan_files)",
+    );
+    expect(run.stdout.text).not.toContain("WEB_TOKEN");
+    expect(run.stdout.text).not.toContain("WEB_KEY");
+  });
+
+  test("counts an owned Worker that only a sibling's wrangler config calls", async () => {
+    const scoped = monorepo(`scan_files = ["billing/wrangler.toml"]`);
+    await cli(["check", "--json"], scoped.deps);
+    expect(JSON.stringify(json(scoped.stdout.text).production)).toContain("billing-worker-prod");
+
+    const unscoped = monorepo(null);
+    await cli(["check", "--json"], unscoped.deps);
+    const data = json(unscoped.stdout.text);
+    expect(JSON.stringify(data.production)).not.toContain("billing-worker-prod");
+    expect(JSON.stringify(data.production)).toContain("WEB_TOKEN");
+  });
+
+  test("an empty list owns no workflow or Worker, so check reads no secrets and asks no sign-in", async () => {
+    const run = monorepo("scan_files = []", MAPPED);
+    await cli(["check", "--json"], run.deps);
+    const data = json(run.stdout.text);
+    expect(data.production).toEqual([]);
+    expect(data.prerequisites).toEqual([]);
+    expect(run.calls.filter((call) => !call.startsWith("git "))).toEqual([]);
+  });
+
+  test("a glob that matches no file is a problem", async () => {
+    const run = monorepo(`scan_files = ["billing/wrangler.toml", ".github/workflows/billing.yml"]`);
+    expect(await cli(["check", "--json"], run.deps)).toBe(1);
+    expect(json(run.stdout.text).problems).toContain(
+      `scan_files ".github/workflows/billing.yml" matches no wrangler config or workflow; fix or remove it`,
+    );
+  });
+});

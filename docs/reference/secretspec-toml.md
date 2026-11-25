@@ -73,6 +73,10 @@ secretspec leaves this table alone.
 
 - `ignore`: keys a workflow or env file names that keypin shouldn't manage, such as the optional keys of a copied
   workflow. `keypin check` leaves them out, in any profile and any case, and says how many it ignores.
+- `scan_files`: in a monorepo, the workflows and wrangler configs this project owns, as globs from the repo root,
+  such as `[".github/workflows/billing-*.yml", "apps/billing/wrangler.toml"]`. `keypin check` reports keys only
+  from those and from env files in the project's folder. Without it, check reads every workflow and the wrangler
+  configs in the project's folder. `[]` owns none.
 
 Each `[tool.keypin.<profile>.<KEY>]` table sets one key in one profile. The key must be declared in that profile or
 in `[profiles.default]`.

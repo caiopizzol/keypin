@@ -109,7 +109,7 @@ async function readWorkflows(project: ProjectReader, top: string | null): Promis
     const path = `${WORKFLOWS}/${entry.name}`;
     const text = await project.read(file);
     const refs = text === null ? null : workflowRefs(text);
-    if (refs) workflows.push({ path, refs });
+    if (refs) workflows.push({ file, path, refs });
     else if (text !== null) project.unknown(`the secrets ${path} uses`, "it isn't valid YAML");
   }
   return workflows;
@@ -181,7 +181,7 @@ async function lookUp(
     );
   }
   return {
-    files: workflows.map((w) => w.path),
+    files: workflows.map((w) => w.file),
     used: uses,
     about: github.repo ? `GitHub ${github.repo}` : null,
     report: { github: { repo: github.repo, login } },

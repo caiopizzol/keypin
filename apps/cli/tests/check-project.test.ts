@@ -2496,6 +2496,16 @@ required = ["WEB_KEY"]
     expect(run.stdout.text).toContain(
       'description = "Used by .github/workflows/billing-deploy.yml"',
     );
+
+    const listed = monorepo(`scan_files = [".github/workflows/billing-*.yml"]`, NO_STRIPE);
+    await cli(["check", "--json"], listed.deps);
+    const data = json(listed.stdout.text);
+    const { folder, read } = data;
+    assert(typeof folder === "string" && isRecord(read) && Array.isArray(read.workflows));
+    const workflows: unknown[] = read.workflows;
+    expect(workflows.map((path) => join(folder, String(path)))).toEqual([
+      `${TOP}/.github/workflows/billing-deploy.yml`,
+    ]);
   });
 
   test("an ignored name only a workflow outside scan_files uses can go", async () => {

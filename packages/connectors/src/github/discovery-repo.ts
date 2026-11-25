@@ -9,6 +9,7 @@ export interface WorkflowHost {
 }
 
 export interface Workflow {
+  file: string;
   path: string;
   refs: WorkflowRefs;
 }

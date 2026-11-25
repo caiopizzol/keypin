@@ -119,7 +119,7 @@ check github-actions:acme/billing
 --- stdout ---
 billing /work/billing · read 2 env files, 1 wrangler config, 1 workflow; GitHub acme/billing
 ok     3 keys, 2 destinations. Everything checks out.
-Note: secretspec.toml ignores 4 keys
+Note: secretspec.toml ignores 4 keys; UNUSED isn't in any file check read, so remove it from ignore
 
 --- stderr ---
 ok     Looked up 4 items in 1Password account my.1password.com, not the values

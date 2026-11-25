@@ -2465,6 +2465,18 @@ required = ["WEB_KEY"]
     expect(listed.calls).toContain(`worker ${ACCOUNT} billing-worker`);
   });
 
+  test("an ignored name only a workflow outside scan_files uses can go", async () => {
+    const run = monorepo(`ignore = ["WEB_TOKEN"]\nscan_files = [".github/workflows/*.yml"]`);
+    await cli(["check", "--json"], run.deps);
+    expect(json(run.stdout.text).notes).toContain("secretspec.toml ignores 1 key");
+
+    const scoped = monorepo(`ignore = ["WEB_TOKEN"]\nscan_files = ["billing/wrangler.toml"]`);
+    await cli(["check", "--json"], scoped.deps);
+    expect(json(scoped.stdout.text).notes).toContain(
+      "secretspec.toml ignores 1 key; WEB_TOKEN isn't in any file check read, so remove it from ignore",
+    );
+  });
+
   test("a glob that matches no file is a problem", async () => {
     const run = monorepo(`scan_files = ["billing/wrangler.toml", ".github/workflows/billing.yml"]`);
     expect(await cli(["check", "--json"], run.deps)).toBe(1);

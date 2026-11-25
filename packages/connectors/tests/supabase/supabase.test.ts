@@ -262,8 +262,8 @@ describe("create", () => {
       `${"i_".repeat(19)}2026_11_24t16_12z_a1b2c3`,
     ],
     [
-      "orbit-ci PULLFROG_OPENAI_API_KEY production 2026-11-24T16:12Z 668dbf",
-      "orbit_ci_pullfrog_openai_api_key_prod_2026_11_24t16_12z_668dbf",
+      "acme-api WEBHOOKS_OPENAI_API_KEY production 2026-01-15T09:30Z a1b2c3",
+      "acme_api_webhooks_openai_api_key_prod_2026_01_15t09_30z_a1b2c3",
     ],
     [`${"9".repeat(70)} a1b2c3`, `_${"9".repeat(55)}_a1b2c3`],
   ])("fits %s to Supabase's name rules", async (name, fitted) => {

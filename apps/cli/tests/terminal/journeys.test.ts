@@ -371,9 +371,8 @@ describe("keypin in a real terminal", () => {
       expect(result.screen).toContain(
         'scan_files "apps/billing/wrangler.toml" matches no wrangler config or workflow; fix or remove it.',
       );
-      expect(result.screen).toContain(
-        "Note: secretspec.toml ignores 1 key; WEB_TOKEN isn't in any file check read, so remove it from ignore",
-      );
+      expect(result.screen).toContain("Note: secretspec.toml ignores 1 key\n");
+      expect(result.screen).not.toContain("remove it from ignore");
       clean(result);
     },
     SLOW,

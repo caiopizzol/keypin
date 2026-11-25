@@ -24,7 +24,7 @@ export function waitsNotice(
   const local = ["keypin", "rotate", ...args].map(shellWord).join(" ");
   const warned = deps.warnRunner(
     "An old key waits for approval",
-    `The old ${keyId} (${environment}) still works. Once nothing uses it, run this in your checkout: ${local}`,
+    `The old ${keyId} (${environment}) still works. Once nothing uses it, run this in a checkout with the latest .keypin/rotation.json: ${local}`,
   );
   if (!warned)
     out.line(

@@ -158,11 +158,12 @@ jobs:
           # npm can serve the previous version for minutes; publish keypin once each new one downloads.
           deadline=$((SECONDS + 1800))
           for package in $platforms; do
-            until timeout 60 npm pack "$(spec "$package")" --dry-run --fetch-retries=0 --cache "$(mktemp -d)" >/dev/null 2>&1; do
+            while :; do
               if [ $((SECONDS + 90)) -gt "$deadline" ]; then
                 echo "::error::$(spec "$package") didn't download from npm within 30 minutes, so keypin wasn't published. Once it does, use Re-run failed jobs."
                 exit 1
               fi
+              timeout 60 npm pack "$(spec "$package")" --dry-run --fetch-retries=0 --cache "$(mktemp -d)" >/dev/null 2>&1 && break
               sleep 30
             done
           done

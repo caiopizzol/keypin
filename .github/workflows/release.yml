@@ -156,13 +156,15 @@ jobs:
           platforms="cli-darwin-arm64 cli-darwin-x64 cli-linux-x64 cli-linux-arm64"
           for package in $platforms; do publish "$package"; done
           # npm can serve the previous version for minutes; publish keypin once each new one downloads.
+          deadline=$((SECONDS + 1800))
           for package in $platforms; do
-            for _ in $(seq 60); do
-              npm pack "$(spec "$package")" --dry-run --cache "$(mktemp -d)" >/dev/null 2>&1 && continue 2
+            until timeout 60 npm pack "$(spec "$package")" --dry-run --fetch-retries=0 --cache "$(mktemp -d)" >/dev/null 2>&1; do
+              if [ $((SECONDS + 90)) -gt "$deadline" ]; then
+                echo "::error::$(spec "$package") didn't download from npm within 30 minutes, so keypin wasn't published. Once it does, use Re-run failed jobs."
+                exit 1
+              fi
               sleep 30
             done
-            echo "::error::$(spec "$package") didn't download from npm within 30 minutes, so keypin wasn't published. Once it does, use Re-run failed jobs."
-            exit 1
           done
           publish keypin
 

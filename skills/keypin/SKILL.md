@@ -34,8 +34,8 @@ the app with them (`secretspec run`).
    tables the file already has.
 5. Give the user any `secretspec add` and `secretspec import` commands from `notes` to run, leaving out names that
    aren't secrets.
-6. Run `keypin check --json` again and, with the user's agreement, add its `add` TOML. Ask for every `<...>` in one
-   list.
+6. Once the user has run them, or right away if there are none, run `keypin check --json` again and, with their
+   agreement, add only that run's `add` TOML. Ask for every `<...>` in one list.
 
 ## Publish
 

@@ -30,10 +30,11 @@ the app with them (`secretspec run`).
 3. Ask the user in one message: which names in `local` are secrets, which vault to use, which profiles they use
    besides `default` and `production`, and whether each production secret is in the vault. A secret only in GitHub
    or Cloudflare can't be read back: the user makes a new key and saves it with `secretspec set`.
-4. Give the user the `secretspec add` and `secretspec import` commands from `notes` to run, leaving out names that
+4. With the user's agreement, paste the `providers` TOML into `secretspec.toml`, with their vault in it.
+5. Give the user the `secretspec add` and `secretspec import` commands from `notes` to run, leaving out names that
    aren't secrets.
-5. With the user's agreement, paste the `providers` and `add` TOML into `secretspec.toml`. Ask for every `<...>` in
-   one list.
+6. After they run them, paste the `add` TOML from a new `keypin check --json`, with their agreement. Ask for every
+   `<...>` in one list.
 
 ## Publish
 
@@ -45,8 +46,9 @@ the app with them (`secretspec run`).
 ## Rotate
 
 - With an `issuer`: run `keypin rotate NAME --plan`, show the plan, and give the user the printed command.
-- Without one: the user makes a new value at the provider and saves it with `secretspec set`, with today's rotated
-  date. Then publish it, and remind them to revoke the old key.
+- Without one: the user makes a new value at the provider and saves it with `secretspec set` (or in the vault, for a
+  `ref` secretspec only reads, such as AWS Secrets Manager's), with today's rotated date. Then publish it, and remind
+  them to revoke the old key.
 - Before an old key is revoked, ask the user to confirm nothing still uses it. A published secret isn't proof a
   deployment picked it up.
 - `keypin status --json` lists every project's keys and when each is due.

@@ -31,11 +31,13 @@ export const wranglerDiscovery: Discovery<WranglerHost> = {
   async scan(project, host) {
     const workers: Worker[] = [];
     const { used } = configsWranglerUses(project.found);
-    const scoped = configsWranglerUses(project.found.filter((config) => project.owns(config)));
-    const owned = scoped.used;
-    const skipped = scoped.ignored.map(
-      ({ config, used }) => `wrangler reads ${used}, not ${config}, so check ignores ${config}`,
-    );
+    const { owns } = project;
+    const owned = owns ? project.found.filter((config) => owns(config)) : used;
+    const skipped = owns
+      ? []
+      : configsWranglerUses(project.found).ignored.map(
+          ({ config, used }) => `wrangler reads ${used}, not ${config}, so check ignores ${config}`,
+        );
     const texts: { text: string; config: string }[] = [];
     for (const config of new Set([...used, ...owned])) {
       const text = await project.read(config);

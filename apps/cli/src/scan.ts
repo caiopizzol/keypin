@@ -99,14 +99,15 @@ export async function scanProject(
     root,
     found,
     ignores: (name) => ignores(ignore, name),
-    owns: (path) => {
-      if (!scope) return true;
-      const file = relative(scope.top, join(root, path));
-      const globs = scope.globs.filter((glob) => matchesGlob(file, glob));
-      for (const glob of globs) scope.matched.add(glob);
-      if (!globs.length) others.set(kind, (others.get(kind) ?? new Set()).add(path));
-      return globs.length > 0;
-    },
+    owns: !scope
+      ? null
+      : (path) => {
+          const file = relative(scope.top, join(root, path));
+          const globs = scope.globs.filter((glob) => matchesGlob(file, glob));
+          for (const glob of globs) scope.matched.add(glob);
+          if (!globs.length) others.set(kind, (others.get(kind) ?? new Set()).add(path));
+          return globs.length > 0;
+        },
     read: (path) => readSource(deps, root, path, unknowns),
     list: (folder) => listing(deps, folder),
     unknown: (what, reason) => unknowns.push({ what, reason }),
@@ -158,7 +159,7 @@ export async function jobReaders(deps: Deps, root: string, profile: string): Pro
     root,
     found: [],
     ignores: () => false,
-    owns: () => true,
+    owns: null,
     read: (path) => readSource(deps, root, path, []),
     list: (folder) => listing(deps, folder),
     unknown: () => undefined,

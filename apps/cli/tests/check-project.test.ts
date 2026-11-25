@@ -2456,6 +2456,13 @@ required = ["WEB_KEY"]
     unscoped.disk.contents.set(`${ROOT}/wrangler.jsonc`, `{ "name": "billing-jsonc" }`);
     await cli(["check", "--json"], unscoped.deps);
     expect(json(unscoped.stdout.text).read).toMatchObject({ wrangler: ["wrangler.jsonc"] });
+
+    const listed = monorepo(`scan_files = ["billing/wrangler.toml", "billing/wrangler.jsonc"]`);
+    listed.disk.contents.set(`${ROOT}/wrangler.jsonc`, `{ "name": "billing-jsonc" }`);
+    await cli(["check", "--json"], listed.deps);
+    const both = json(listed.stdout.text);
+    expect(both.read).toMatchObject({ wrangler: ["wrangler.jsonc", "wrangler.toml"] });
+    expect(listed.calls).toContain(`worker ${ACCOUNT} billing-worker`);
   });
 
   test("a glob that matches no file is a problem", async () => {

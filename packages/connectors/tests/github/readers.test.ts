@@ -58,9 +58,7 @@ const checkout = (inputs: string) => `uses: actions/checkout@v4
 const inFolder = (folder: string) =>
   `run: secretspec run --profile prod -- ./deploy.sh\n        working-directory: ${folder}`;
 
-const LISTED = [
-  { file: "../../.github/workflows/deploy.yml", how: "secretspec run --profile prod" },
-];
+const LISTED = [{ file: ".github/workflows/deploy.yml", how: "secretspec run --profile prod" }];
 
 describe("the workflows a vault-only rotation lists", () => {
   test("a workflow that runs secretspec run in another app of the repo isn't listed", async () => {
@@ -69,7 +67,7 @@ describe("the workflows a vault-only rotation lists", () => {
     );
     expect(await readers("apps/billing", workflow)).toEqual([]);
     expect(await readers("apps/web", workflow)).toEqual([
-      { file: "../../.github/workflows/deploy.yml", how: "secretspec run --profile prod" },
+      { file: ".github/workflows/deploy.yml", how: "secretspec run --profile prod" },
     ]);
   });
 
@@ -98,7 +96,7 @@ describe("the workflows a vault-only rotation lists", () => {
   ])("a step with %s is listed, saying keypin can't tell its folder", async (_, step) => {
     expect(await readers("apps/billing", deploy(step))).toEqual([
       {
-        file: "../../.github/workflows/deploy.yml",
+        file: ".github/workflows/deploy.yml",
         how: "secretspec run --profile prod, from a folder keypin can't tell",
       },
     ]);
@@ -126,7 +124,7 @@ describe("the workflows a vault-only rotation lists", () => {
   ])("a checkout %s is listed, saying keypin can't tell its folder", async (_, checkouts) => {
     expect(await readers("apps/billing", deploy(checkouts + inFolder("repo/apps/web")))).toEqual([
       {
-        file: "../../.github/workflows/deploy.yml",
+        file: ".github/workflows/deploy.yml",
         how: "secretspec run --profile prod, from a folder keypin can't tell",
       },
     ]);
@@ -155,7 +153,7 @@ describe("the workflows a vault-only rotation lists", () => {
       await readers("apps/web", deploy(self + nested + inFolder("repo/apps/web/tools"))),
     ).toEqual([
       {
-        file: "../../.github/workflows/deploy.yml",
+        file: ".github/workflows/deploy.yml",
         how: "secretspec run --profile prod, from a folder keypin can't tell",
       },
     ]);

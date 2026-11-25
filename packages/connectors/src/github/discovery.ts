@@ -88,23 +88,26 @@ async function runsIn(project: ProjectReader, root: string, folder: string): Pro
   return true;
 }
 
+const WORKFLOWS = ".github/workflows";
+
 async function readWorkflows(project: ProjectReader, top: string | null): Promise<Workflow[]> {
-  const dir = join(top ?? project.root, ".github", "workflows");
+  const dir = join(top ?? project.root, WORKFLOWS);
   const listed = await project.list(dir);
   if (!listed.ok) {
     if (!listed.missing)
       project.unknown(
         "the secrets the workflows use",
-        `${relative(project.root, dir)} couldn't be read: ${listed.reason}`,
+        `${WORKFLOWS} couldn't be read: ${listed.reason}`,
       );
     return [];
   }
   const workflows: Workflow[] = [];
   for (const entry of listed.entries.toSorted((a, b) => a.name.localeCompare(b.name))) {
     if (entry.kind !== "file" || !/\.ya?ml$/.test(entry.name)) continue;
-    const path = relative(project.root, join(dir, entry.name));
-    if (project.owns && !project.owns(path)) continue;
-    const text = await project.read(path);
+    const file = relative(project.root, join(dir, entry.name));
+    if (project.owns && !project.owns(file)) continue;
+    const path = `${WORKFLOWS}/${entry.name}`;
+    const text = await project.read(file);
     const refs = text === null ? null : workflowRefs(text);
     if (refs) workflows.push({ path, refs });
     else if (text !== null) project.unknown(`the secrets ${path} uses`, "it isn't valid YAML");

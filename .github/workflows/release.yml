@@ -145,14 +145,26 @@ jobs:
       - name: publish the platform packages, then keypin
         working-directory: apps/cli/packages
         run: |
-          for package in cli-darwin-arm64 cli-darwin-x64 cli-linux-x64 cli-linux-arm64 keypin; do
-            spec=$(node -p "const p = require('./$package/package.json'); p.name + '@' + p.version")
-            if npm view "$spec" version >/dev/null 2>&1; then
-              echo "$spec is already on npm"
+          spec() { node -p "const p = require('./$1/package.json'); p.name + '@' + p.version"; }
+          publish() {
+            if npm view "$(spec "$1")" version >/dev/null 2>&1; then
+              echo "$(spec "$1") is already on npm"
             else
-              (cd "$package" && npm publish --access public)
+              (cd "$1" && npm publish --access public)
             fi
+          }
+          platforms="cli-darwin-arm64 cli-darwin-x64 cli-linux-x64 cli-linux-arm64"
+          for package in $platforms; do publish "$package"; done
+          # npm can serve the previous version for minutes; publish keypin once each new one downloads.
+          for package in $platforms; do
+            for _ in $(seq 40); do
+              timeout 60 npm pack "$(spec "$package")" --dry-run --fetch-retries=0 --cache "$(mktemp -d)" >/dev/null 2>&1 && continue 2
+              sleep 30
+            done
+            echo "::error::$(spec "$package") still didn't download from npm after 40 tries, so keypin wasn't published. Once it does, use Re-run failed jobs."
+            exit 1
           done
+          publish keypin
 
   rules-tarball:
     needs: release-please

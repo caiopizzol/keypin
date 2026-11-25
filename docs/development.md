@@ -95,9 +95,9 @@ workflow runs it for all four.
 
 Release Please keeps a release PR open. Approve its workflows so `check` runs, then merge it as an admin: pullfrog
 doesn't review release PRs, so `pullfrog-approval` never passes. The `release` workflow posts the PR's `pr-title`
-check, then, after the merge, builds and checks each binary and publishes the four platform packages before `keypin`.
-It also attaches `keypin-rules-<version>.tgz` to the GitHub release: `@keypin/rules`, the `secretspec.toml` rules
-keypin.dev installs. If that upload fails, use Re-run failed jobs, not all jobs. If you can't, check out
+check, then, after the merge, builds and checks each binary and publishes the four platform packages, then `keypin`
+once npm serves them. It also attaches `keypin-rules-<version>.tgz` to the GitHub release: `@keypin/rules`, the
+`secretspec.toml` rules keypin.dev installs. If that upload fails, use Re-run failed jobs, not all jobs. If you can't, check out
 `v<version>`, run `bun install --frozen-lockfile`, then
 `bun run pack && gh release upload v<version> keypin-rules-<version>.tgz` in `packages/rules`.
 

@@ -73,12 +73,10 @@ export async function scanProject(
   const scope = map?.scanFiles ? await scopeOf(deps, root, map.scanFiles) : null;
   if (scope && scope.top !== root) {
     const repo = await walk(deps, scope.top, unknowns, walked);
-    found.byKind = new Map(
-      [...repo.byKind].map(([kind, paths]) => [
-        kind,
-        paths.map((path) => relative(root, join(scope.top, path))),
-      ]),
-    );
+    for (const [kind, paths] of repo.byKind) {
+      const fromTop = paths.map((path) => relative(root, join(scope.top, path)));
+      found.byKind.set(kind, [...new Set([...(found.byKind.get(kind) ?? []), ...fromTop])]);
+    }
   }
 
   const tracked = await trackedFiles(deps, root, found.envFiles);

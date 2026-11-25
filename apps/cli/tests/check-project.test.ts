@@ -2428,6 +2428,36 @@ required = ["WEB_KEY"]
     expect(run.calls.filter((call) => !call.startsWith("git "))).toEqual([]);
   });
 
+  test("keeps a project's own config when the repo walk skips its folder name", async () => {
+    const BUILD = `${TOP}/apps/build`;
+    const run = monorepo(null);
+    for (const [path, text] of Object.entries({
+      [`${BUILD}/secretspec.toml`]: `${PUBLISHED}\n[tool.keypin]\nscan_files = ["apps/build/wrangler.toml"]\n`,
+      [`${BUILD}/wrangler.toml`]: `name = "build-worker"\naccount_id = "${ACCOUNT}"\n`,
+    }))
+      run.disk.contents.set(path, text);
+    for (const folder of [`${TOP}/apps`, BUILD]) run.disk.folders.add(folder);
+    await cli(["check", "--json"], { ...run.deps, cwd: BUILD });
+    const data = json(run.stdout.text);
+    expect(data.read).toMatchObject({ wrangler: ["wrangler.toml"] });
+    expect(JSON.stringify(data.problems)).not.toContain("matches no");
+  });
+
+  test("reads the config scan_files names, even when wrangler would read its sibling", async () => {
+    const run = monorepo(`scan_files = ["billing/wrangler.toml"]`);
+    run.disk.contents.set(`${ROOT}/wrangler.jsonc`, `{ "name": "billing-jsonc" }`);
+    await cli(["check", "--json"], run.deps);
+    const data = json(run.stdout.text);
+    expect(data.read).toMatchObject({ wrangler: ["wrangler.toml"] });
+    expect(JSON.stringify(data.problems)).not.toContain("matches no");
+    expect(run.calls).toContain(`worker ${ACCOUNT} billing-worker`);
+
+    const unscoped = monorepo(null);
+    unscoped.disk.contents.set(`${ROOT}/wrangler.jsonc`, `{ "name": "billing-jsonc" }`);
+    await cli(["check", "--json"], unscoped.deps);
+    expect(json(unscoped.stdout.text).read).toMatchObject({ wrangler: ["wrangler.jsonc"] });
+  });
+
   test("a glob that matches no file is a problem", async () => {
     const run = monorepo(`scan_files = ["billing/wrangler.toml", ".github/workflows/billing.yml"]`);
     expect(await cli(["check", "--json"], run.deps)).toBe(1);

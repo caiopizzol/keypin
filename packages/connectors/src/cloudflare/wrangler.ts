@@ -55,21 +55,27 @@ function parseConfig(text: string, config: string): Record<string, unknown> | nu
   return isRecord(data) ? data : null;
 }
 
-export function calledAcross(configs: readonly { text: string; config: string }[]): Set<string> {
-  const names = new Set<string>();
+export function calledAcross(
+  configs: readonly { text: string; config: string }[],
+): { worker: string; account: string | null }[] {
+  const calls: { worker: string; account: string | null }[] = [];
   for (const { text, config } of configs) {
     const data = parseConfig(text, config);
     if (!data) continue;
     const envs = isRecord(data.env) ? Object.values(data.env) : [];
-    for (const name of calledWorkers([data, ...envs])) names.add(name);
+    for (const table of [data, ...envs]) {
+      const own = isRecord(table) ? stringOf(table.account_id) : null;
+      const account = accountId(own ?? stringOf(data.account_id));
+      for (const worker of calledWorkers([table])) calls.push({ worker, account });
+    }
   }
-  return names;
+  return calls;
 }
 
 export function wranglerWorkers(
   text: string,
   config: string,
-  calledElsewhere: ReadonlySet<string> = new Set(),
+  calledElsewhere: readonly { worker: string; account: string | null }[] = [],
 ): { ok: true; workers: WorkerDeclaration[]; skipped: string[]; pages: boolean } | { ok: false } {
   const data = parseConfig(text, config);
   if (!data) return { ok: false };
@@ -80,12 +86,17 @@ export function wranglerWorkers(
   const workers = [declaration(config, null, data, topName, topAccount)];
   const skipped: string[] = [];
   const envs = isRecord(data.env) ? data.env : {};
-  const called = new Set([...calledWorkers([data, ...Object.values(envs)]), ...calledElsewhere]);
+  const local = calledWorkers([data, ...Object.values(envs)]);
   for (const [env, raw] of Object.entries(envs)) {
     if (!isRecord(raw)) continue;
     const name = stringOf(raw.name) ?? (topName ? `${topName}-${env}` : null);
+    const account = stringOf(raw.account_id) ?? topAccount;
+    const id = accountId(account);
+    const called = new Set(local);
+    for (const call of calledElsewhere)
+      if (call.account === null || id === null || call.account === id) called.add(call.worker);
     if (localOnly(data, raw, name, called)) skipped.push(env);
-    else workers.push(declaration(config, env, raw, name, stringOf(raw.account_id) ?? topAccount));
+    else workers.push(declaration(config, env, raw, name, account));
   }
   return { ok: true, workers, skipped, pages: false };
 }
@@ -163,10 +174,14 @@ function declaration(
     config,
     env,
     worker,
-    account: account && ACCOUNT_ID.test(account) ? account : null,
+    account: accountId(account),
     required,
     vars: isRecord(table.vars) ? Object.keys(table.vars) : [],
   };
+}
+
+function accountId(account: string | null): string | null {
+  return account && ACCOUNT_ID.test(account) ? account : null;
 }
 
 function stringOf(value: unknown): string | null {

@@ -30,15 +30,14 @@ export const wranglerDiscovery: Discovery<WranglerHost> = {
   files: { key: "wrangler", noun: "wrangler config", names: WRANGLER_FILES, skip: [".wrangler"] },
   async scan(project, host) {
     const workers: Worker[] = [];
-    const { used, ignored } = configsWranglerUses(project.found);
-    const owned = used.filter((config) => project.owns(config));
-    const skipped = ignored
-      .filter(({ used }) => owned.includes(used))
-      .map(
-        ({ config, used }) => `wrangler reads ${used}, not ${config}, so check ignores ${config}`,
-      );
+    const { used } = configsWranglerUses(project.found);
+    const scoped = configsWranglerUses(project.found.filter((config) => project.owns(config)));
+    const owned = scoped.used;
+    const skipped = scoped.ignored.map(
+      ({ config, used }) => `wrangler reads ${used}, not ${config}, so check ignores ${config}`,
+    );
     const texts: { text: string; config: string }[] = [];
-    for (const config of used) {
+    for (const config of new Set([...used, ...owned])) {
       const text = await project.read(config);
       if (text !== null) texts.push({ text, config });
     }

@@ -3,21 +3,32 @@ import { commandLine, terminalCommand } from "../src/approval";
 import { fakeDeps } from "./fakes";
 
 const RUN = "/opt/bun/bin/bun --no-env-file /home/me/keypin/apps/cli/src/main.ts rotate A";
+const ROOT = '"$(git rev-parse --show-toplevel)"';
 
 describe("a command keypin prints", () => {
-  test("in a CI checkout, a retry keeps the runner's folder and a terminal hand-off names it from the checkout", () => {
+  test("in a CI checkout, a retry keeps the runner's folder and keypin", () => {
     const { deps } = fakeDeps({ deps: { ciCheckout: "/work" } });
     expect(commandLine(deps, "rotate", ["A"])).toBe(`cd /work/billing && ${RUN}`);
-    expect(terminalCommand(deps, "rotate", ["A"])).toBe(`cd billing && ${RUN}`);
   });
 
-  test("at the checkout's root, the terminal hand-off has no cd", () => {
-    const { deps } = fakeDeps({ deps: { ciCheckout: "/work/billing" } });
-    expect(terminalCommand(deps, "rotate", ["A"])).toBe(RUN);
-    expect(commandLine(deps, "rotate", ["A"])).toBe(`cd /work/billing && ${RUN}`);
+  test("in a CI checkout, a terminal hand-off starts from the person's repo root and runs keypin from npm", () => {
+    const { deps } = fakeDeps({ deps: { ciCheckout: "/work" } });
+    expect(terminalCommand(deps, "rotate", ["A"])).toBe(
+      `cd ${ROOT}/billing && npx keypin@0.39.0 rotate A`,
+    );
+    const atRoot = fakeDeps({ deps: { ciCheckout: "/work/billing" } }).deps;
+    expect(terminalCommand(atRoot, "rotate", ["A"])).toBe(
+      `cd ${ROOT} && npx keypin@0.39.0 rotate A`,
+    );
   });
 
-  test("outside CI, or in a folder outside the checkout, both keep the full folder", () => {
+  test("a keypin the runner found on its PATH stays keypin in the hand-off", () => {
+    const { deps } = fakeDeps({ deps: { ciCheckout: "/work" } });
+    const onPath = { ...deps, self: { ...deps.self, command: ["keypin"] } };
+    expect(terminalCommand(onPath, "rotate", ["A"])).toBe(`cd ${ROOT}/billing && keypin rotate A`);
+  });
+
+  test("outside CI, or in a folder outside the checkout, the hand-off is the same as a retry", () => {
     for (const ciCheckout of [null, "/elsewhere"]) {
       const { deps } = fakeDeps({ deps: { ciCheckout } });
       expect(terminalCommand(deps, "rotate", ["A"])).toBe(`cd /work/billing && ${RUN}`);

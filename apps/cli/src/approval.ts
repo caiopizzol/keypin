@@ -15,22 +15,22 @@ export function rerun(deps: Deps, command: string, args: readonly string[]): str
 }
 
 export function commandLine(deps: Deps, command: string, args: readonly string[]): string {
-  return inFolder(deps.self.folder, deps, command, args);
+  return `cd ${shellWord(deps.self.folder)} && ${spoken(deps.self.command, command, args)}`;
 }
 
 export function terminalCommand(deps: Deps, command: string, args: readonly string[]): string {
-  return inFolder(checkoutFolder(deps), deps, command, args);
+  const inside = deps.ciCheckout === null ? null : relative(deps.ciCheckout, deps.self.folder);
+  if (inside === null || inside.startsWith("..") || isAbsolute(inside))
+    return commandLine(deps, command, args);
+  const root = '"$(git rev-parse --show-toplevel)"';
+  const folder = inside === "" ? root : `${root}/${shellWord(inside)}`;
+  const keypin =
+    deps.self.command[0] === "keypin" ? deps.self.command : ["npx", `keypin@${deps.self.version}`];
+  return `cd ${folder} && ${spoken(keypin, command, args)}`;
 }
 
-function inFolder(folder: string, deps: Deps, command: string, args: readonly string[]): string {
-  const words = [...deps.self.command, command, ...args].map(shellWord).join(" ");
-  return folder === "" ? words : `cd ${shellWord(folder)} && ${words}`;
-}
-
-function checkoutFolder(deps: Deps): string {
-  if (deps.ciCheckout === null) return deps.self.folder;
-  const inside = relative(deps.ciCheckout, deps.self.folder);
-  return inside.startsWith("..") || isAbsolute(inside) ? deps.self.folder : inside;
+function spoken(keypin: readonly string[], command: string, args: readonly string[]): string {
+  return [...keypin, command, ...args].map(shellWord).join(" ");
 }
 
 export function planOnly(

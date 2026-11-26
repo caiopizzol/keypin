@@ -119,7 +119,7 @@ jobs:
         with:
           node-version: 24
           package-manager-cache: false
-      - run: npm install -g keypin@0.46.0 # x-release-please-version
+      - run: npm install -g keypin@0.46.1 # x-release-please-version
       - id: app
         uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:

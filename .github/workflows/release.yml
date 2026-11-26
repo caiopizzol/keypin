@@ -146,8 +146,10 @@ jobs:
         working-directory: apps/cli/packages
         run: |
           spec() { node -p "const p = require('./$1/package.json'); p.name + '@' + p.version"; }
+          # npm refuses to run under the repo's package.json, which names bun as the package manager.
+          outside() { (cd "$RUNNER_TEMP" && "$@"); }
           publish() {
-            if npm view "$(spec "$1")" version >/dev/null 2>&1; then
+            if outside npm view "$(spec "$1")" version >/dev/null 2>&1; then
               echo "$(spec "$1") is already on npm"
             else
               (cd "$1" && npm publish --access public)
@@ -158,7 +160,7 @@ jobs:
           # npm can serve the previous version for minutes; publish keypin once each new one downloads.
           for package in $platforms; do
             for _ in $(seq 40); do
-              timeout 60 npm pack "$(spec "$package")" --dry-run --fetch-retries=0 --cache "$(mktemp -d)" >/dev/null 2>&1 && continue 2
+              outside timeout 60 npm pack "$(spec "$package")" --dry-run --fetch-retries=0 --cache "$(mktemp -d)" >/dev/null 2>&1 && continue 2
               sleep 30
             done
             echo "::error::$(spec "$package") still didn't download from npm after 40 tries, so keypin wasn't published. Once it does, use Re-run failed jobs."

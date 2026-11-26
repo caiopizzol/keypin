@@ -22,7 +22,7 @@ STRIPE_KEY = { description = "Stripe test key" }
 RESEND_API_KEY = { description = "Resend", ref = { item = "resend key", field = "credential" } }
 
 [tool.keypin]
-ignore = ["KEYPIN_APP_PRIVATE_KEY", "OP_SERVICE_ACCOUNT_TOKEN"]
+ignore = ["KEYPIN_GITHUB_TOKEN", "OP_SERVICE_ACCOUNT_TOKEN"]
 
 [tool.keypin.production.RESEND_API_KEY]
 rotate_every = "90d"

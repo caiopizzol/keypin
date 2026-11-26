@@ -68,7 +68,7 @@ project = "acme/billing"
 `secretspec.toml` says where a key goes, not who writes it, so every teammate publishes from the same file:
 
 - **GitHub:** Actions secrets, as the login in `git config github.account`, or else the active `gh` login. It needs
-  write access to the repo, or, signed in with a GitHub App's token, the App's Secrets permission. Add `environment = "production"` to write a secret of that GitHub environment instead of a repo secret; the
+  write access to the repo. Add `environment = "production"` to write a secret of that GitHub environment instead of a repo secret; the
   environment must already exist. The two are separate destinations. keypin doesn't publish to GitHub Enterprise
   Server or ghe.com.
 - **Cloudflare:** Worker secrets, with the `wrangler` login or `KEYPIN_CLOUDFLARE_API_TOKEN` (see

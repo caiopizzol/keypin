@@ -299,12 +299,12 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
     const check = machine(w, { ciCheckout: "/work" });
     expect(await check.run("--check")).toBe(1);
     expect(check.stderr.text).toContain(
-      `${why} Run this in a terminal, then commit .keypin/. keypin records the new key with a proof, so this check passes:\n  root=$(git rev-parse --show-toplevel) && cd "$root"/billing && npx keypin@0.39.0 rotate RESEND_API_KEY\n`,
+      `${why} Run this in a terminal, then commit .keypin/. keypin records the new key with a proof, so this check passes:\n  cd billing && npx keypin@0.39.0 rotate RESEND_API_KEY\n`,
     );
     const atRoot = machine(w, { ciCheckout: "/work/billing" });
     await atRoot.run("--check");
     expect(atRoot.stderr.text).toContain(
-      'so this check passes:\n  root=$(git rev-parse --show-toplevel) && cd "$root" && npx keypin@0.39.0 rotate RESEND_API_KEY\n',
+      "so this check passes:\n  npx keypin@0.39.0 rotate RESEND_API_KEY\n",
     );
     const declined = machine(w, { terminal: true, answers: ["n"] });
     expect(await declined.run("--due", "--yes")).toBe(NEEDS_APPROVAL);

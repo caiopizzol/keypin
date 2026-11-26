@@ -22,10 +22,10 @@ export function terminalCommand(deps: Deps, command: string, args: readonly stri
   const inside = deps.ciCheckout === null ? null : relative(deps.ciCheckout, deps.self.folder);
   if (inside === null || inside.startsWith("..") || isAbsolute(inside))
     return commandLine(deps, command, args);
-  const folder = inside === "" ? '"$root"' : `"$root"/${shellWord(inside)}`;
   const keypin =
     deps.self.command[0] === "keypin" ? deps.self.command : ["npx", `keypin@${deps.self.version}`];
-  return `root=$(git rev-parse --show-toplevel) && cd ${folder} && ${spoken(keypin, command, args)}`;
+  const words = spoken(keypin, command, args);
+  return inside === "" ? words : `cd ${shellWord(inside)} && ${words}`;
 }
 
 function spoken(keypin: readonly string[], command: string, args: readonly string[]): string {

@@ -34,7 +34,7 @@ another vault, see [Other vaults](#other-vaults).
    Client ID as the variable `KEYPIN_APP_CLIENT_ID` and a private key it generates as the secret
    `KEYPIN_APP_PRIVATE_KEY`. The workflow's own `GITHUB_TOKEN` can't write secrets.
 5. Add the workflow below as `.github/workflows/rotate-keys.yml`, pinned to the keypin version you run on your
-   laptop. It runs daily at 06:17 UTC; change the
+   laptop, 0.46.0 or later: earlier versions refuse an App's token. It runs daily at 06:17 UTC; change the
    [schedule](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
    to run at other times.
 6. Every run, manual ones too, pushes `.keypin/` to the default branch with the workflow's `GITHUB_TOKEN`, which a

@@ -11,12 +11,19 @@ export function withoutPlan(args: readonly string[]): string[] {
 }
 
 export function rerun(deps: Deps, command: string, args: readonly string[]): string {
-  return `To approve, run this in a terminal:\n  ${commandLine(deps, command, withoutPlan(args))}`;
+  return `To approve, run this in a terminal:\n  ${terminalCommand(deps, command, withoutPlan(args))}`;
 }
 
 export function commandLine(deps: Deps, command: string, args: readonly string[]): string {
+  return inFolder(deps.self.folder, deps, command, args);
+}
+
+export function terminalCommand(deps: Deps, command: string, args: readonly string[]): string {
+  return inFolder(checkoutFolder(deps), deps, command, args);
+}
+
+function inFolder(folder: string, deps: Deps, command: string, args: readonly string[]): string {
   const words = [...deps.self.command, command, ...args].map(shellWord).join(" ");
-  const folder = checkoutFolder(deps);
   return folder === "" ? words : `cd ${shellWord(folder)} && ${words}`;
 }
 

@@ -12,7 +12,7 @@ import {
   vaultName,
 } from "@keypin/core";
 import { confirm } from "../../output";
-import { commandLine, confirmed, NEEDS_APPROVAL, planOnly } from "../../approval";
+import { commandLine, confirmed, NEEDS_APPROVAL, planOnly, terminalCommand } from "../../approval";
 import { showPlan, showRemoved, writeEach, writesFor } from "../../publishing";
 import { type Job, type Ready } from "./job";
 import { saveId, itemIdsAfterSave } from "./vault-and-issuer";
@@ -166,7 +166,7 @@ async function revokeOld(
     return 1;
   }
   const asked = job.args.filter((arg) => arg !== "--yes");
-  const later = `To revoke it later, run this in a terminal:\n  ${commandLine(deps, "rotate", asked)}`;
+  const later = `To revoke it later, run this in a terminal:\n  ${terminalCommand(deps, "rotate", asked)}`;
   if (job.due && !deps.isTerminal) {
     out.line(`The old key ${shown(issuer, old)} still works, and waits for approval.`);
     waitsNotice({ ...job, environment: owner.environment }, key.name);
@@ -186,7 +186,7 @@ async function revokeOld(
   if (proof === undefined) return unprovenRevoke(job, ready.issuer, issued, state);
   if (job.approve && !deps.isTerminal && behind.length) {
     out.line(
-      `Stopped: something no longer in secretspec.toml may still use the old key ${shown(issuer, old)}, so keypin won't revoke it without a terminal. Nothing was revoked. Once nothing uses it, run this in a terminal:\n  ${commandLine(deps, "rotate", asked)}`,
+      `Stopped: something no longer in secretspec.toml may still use the old key ${shown(issuer, old)}, so keypin won't revoke it without a terminal. Nothing was revoked. Once nothing uses it, run this in a terminal:\n  ${terminalCommand(deps, "rotate", asked)}`,
     );
     return 1;
   }

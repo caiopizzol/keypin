@@ -11,7 +11,7 @@ export function withoutPlan(args: readonly string[]): string[] {
 }
 
 export function rerun(deps: Deps, command: string, args: readonly string[]): string {
-  return `To approve, run this in a terminal:\n  ${terminalCommand(deps, command, withoutPlan(args))}`;
+  return `To approve, run this ${inTerminal(deps)}:\n  ${terminalCommand(deps, command, withoutPlan(args))}`;
 }
 
 export function commandLine(deps: Deps, command: string, args: readonly string[]): string {
@@ -19,13 +19,23 @@ export function commandLine(deps: Deps, command: string, args: readonly string[]
 }
 
 export function terminalCommand(deps: Deps, command: string, args: readonly string[]): string {
-  const inside = deps.ciCheckout === null ? null : relative(deps.ciCheckout, deps.self.folder);
-  if (inside === null || inside.startsWith("..") || isAbsolute(inside))
-    return commandLine(deps, command, args);
+  if (checkoutFolder(deps) === null) return commandLine(deps, command, args);
   const keypin =
     deps.self.command[0] === "keypin" ? deps.self.command : ["npx", `keypin@${deps.self.version}`];
-  const words = spoken(keypin, command, args);
-  return inside === "" ? words : `cd ${shellWord(inside)} && ${words}`;
+  return spoken(keypin, command, args);
+}
+
+export function inTerminal(deps: Deps): string {
+  const folder = checkoutFolder(deps);
+  if (folder === null) return "in a terminal";
+  return folder === ""
+    ? "in a terminal, from your checkout's root"
+    : `in a terminal, from ${folder}/ in your checkout`;
+}
+
+function checkoutFolder(deps: Deps): string | null {
+  const inside = deps.ciCheckout === null ? null : relative(deps.ciCheckout, deps.self.folder);
+  return inside === null || inside.startsWith("..") || isAbsolute(inside) ? null : inside;
 }
 
 function spoken(keypin: readonly string[], command: string, args: readonly string[]): string {

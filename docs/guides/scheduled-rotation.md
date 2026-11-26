@@ -28,12 +28,13 @@ another vault, see [Other vaults](#other-vaults).
    [set a reminder](service-accounts.md#expiry) to replace the token before then. Without `--expires-in`, the token
    keeps write access to the vault until you delete it. Admin keys stay in the vault, not in repo secrets.
 
-4. Create a fine-grained GitHub token for this repository only, with the Secrets permission set to Read and write,
-   and save it as the secret `KEYPIN_GITHUB_TOKEN` in `rotation`. Keys published to an environment also need
-   Environments set to Read and write. Neither the workflow's own `GITHUB_TOKEN` nor a GitHub App installation token
-   works: keypin checks which account a token belongs to, and GitHub answers that only for a person's token.
+4. [Register a GitHub App](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app)
+   with no webhook and the repository permission Secrets set to Read and write, and install it on this repository
+   only. Keys published to an environment also need Environments set to Read and write. In `rotation`, save its
+   Client ID as the variable `KEYPIN_APP_CLIENT_ID` and a private key it generates as the secret
+   `KEYPIN_APP_PRIVATE_KEY`. The workflow's own `GITHUB_TOKEN` can't write secrets.
 5. Add the workflow below as `.github/workflows/rotate-keys.yml`, pinned to the keypin version you run on your
-   laptop. It runs daily at 06:17 UTC; change the
+   laptop, 0.46.0 or later: earlier versions refuse an App's token. It runs daily at 06:17 UTC; change the
    [schedule](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)
    to run at other times.
 6. Every run, manual ones too, pushes `.keypin/` to the default branch with the workflow's `GITHUB_TOKEN`, which a
@@ -44,13 +45,13 @@ another vault, see [Other vaults](#other-vaults).
 
    ```toml
    [tool.keypin]
-   ignore = ["KEYPIN_GITHUB_TOKEN", "OP_SERVICE_ACCOUNT_TOKEN"]
+   ignore = ["KEYPIN_APP_PRIVATE_KEY", "OP_SERVICE_ACCOUNT_TOKEN"]
    ```
 
    Or declare them in a profile no app runs with, so `keypin publish --all --profile rotation` writes them and
    `keypin status` shows when they're due. `inherit = false` keeps other profiles' keys out of it, not their vault:
    keep these two in a vault the service account can't read, through a provider of their own (`bootstrap` below,
-   added to your `[providers]`), or it can read `KEYPIN_GITHUB_TOKEN`. In step 3, pipe the token to
+   added to your `[providers]`), or it can read `KEYPIN_APP_PRIVATE_KEY`. In step 3, pipe the token to
    `secretspec set OP_SERVICE_ACCOUNT_TOKEN --profile rotation`, and give each item a
    [rotated date](../integrations/vaults/1password.md#rotated-date). Without a `production` profile, put this one
    above the last, which `publish` and `rotate` use.
@@ -60,15 +61,14 @@ another vault, see [Other vaults](#other-vaults).
    bootstrap = "onepassword://Bootstrap"
    
    [profiles.rotation]
-   KEYPIN_GITHUB_TOKEN = { description = "GitHub token for scheduled rotation" }
+   KEYPIN_APP_PRIVATE_KEY = { description = "GitHub App private key for scheduled rotation" }
    OP_SERVICE_ACCOUNT_TOKEN = { description = "1Password service account for scheduled rotation" }
    
    [profiles.rotation.defaults]
    inherit = false
    providers = ["bootstrap"]
    
-   [tool.keypin.rotation.KEYPIN_GITHUB_TOKEN]
-   rotate_every = "80d" # before the token expires
+   [tool.keypin.rotation.KEYPIN_APP_PRIVATE_KEY]
    publish = [{ to = "github-actions", repo = "acme/web", environment = "rotation" }]
    
    [tool.keypin.rotation.OP_SERVICE_ACCOUNT_TOKEN]
@@ -79,7 +79,7 @@ another vault, see [Other vaults](#other-vaults).
    run `keypin rotate --due`, and commit `.keypin/`. It asks before it rotates a key that's due: answer `n` to only
    record what you published.
 9. Run the workflow with **check setup** checked. `keypin rotate --check` changes nothing, and fails with the next step
-   if a key, an admin key, the GitHub token or a receipt isn't ready. It can't see the token's Secrets permission
+   if a key, an admin key, the GitHub App or a receipt isn't ready. It can't see the App's Secrets permission
    without writing a secret, so check that one yourself.
 
 ```yaml
@@ -120,10 +120,15 @@ jobs:
           node-version: 24
           package-manager-cache: false
       - run: npm install -g keypin@0.46.0 # x-release-please-version
+      - id: app
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.KEYPIN_APP_CLIENT_ID }}
+          private-key: ${{ secrets.KEYPIN_APP_PRIVATE_KEY }}
       - run: gh auth login --hostname github.com --with-token --insecure-storage <<< "$TOKEN"
         env:
           GH_CONFIG_DIR: ${{ runner.temp }}/gh
-          TOKEN: ${{ secrets.KEYPIN_GITHUB_TOKEN }}
+          TOKEN: ${{ steps.app.outputs.token }}
       - run: |
           if [ "$CHECK" = true ]; then
             keypin rotate --check
@@ -221,9 +226,8 @@ terminal, `--yes` approves only routine writes, as in [publishing](publishing.md
 to act, even while an old key waits for approval; 3 while a key is due and its old key still waits, every run until
 someone approves (`--check` too); and 1 when something failed, or a key's rotated date is missing or couldn't be read.
 
-Every run also checks the credentials it uses, on days nothing is due too. It warns when the GitHub token expires in
-under 14 days and fails under 7, and fails when a Cloudflare admin token expires within 7 days of the key's next due
-date. A [service account](service-accounts.md#expiry)'s expiry can't be read.
+Every run also checks the credentials it uses, on days nothing is due too. It fails when a Cloudflare admin token
+expires within 7 days of the key's next due date. A [service account](service-accounts.md#expiry)'s expiry can't be read.
 
 GitHub emails a failed scheduled run only to the account that last changed the `schedule` or re-enabled the workflow,
 and only if it turned on Actions [notifications](https://docs.github.com/en/actions/concepts/workflows-and-actions/notifications-for-workflow-runs).

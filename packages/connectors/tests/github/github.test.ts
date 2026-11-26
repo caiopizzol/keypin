@@ -71,12 +71,15 @@ function fakeFetch(routes: Routes) {
 
 function destination(
   routes: Routes,
-  options: { login?: string | null; environment?: string } = {},
+  {
+    token = TOKEN,
+    ...options
+  }: { login?: string | null; environment?: string; token?: string } = {},
 ) {
   const fake = fakeFetch(routes);
   const github = new GitHubSecretDestination({
     repo: REPO,
-    token: async () => TOKEN,
+    token: async () => token,
     fetch: fake.fetch,
     ...options,
   });
@@ -305,6 +308,82 @@ describe("checkAccount", () => {
     owner = "someone-else";
     expect((await github.checkAccount()).ok).toBe(false);
     await expect(github.write("API_KEY", new Secret(SENTINEL))).rejects.toThrow(/checkAccount/);
+  });
+});
+
+describe("checkAccount with a GitHub App installation token", () => {
+  const APP_TOKEN = "ghs_installation-sentinel-9d4e";
+  function appRoutes(): Routes {
+    const routes = happyRoutes();
+    routes["GET /user"] = {
+      status: 403,
+      body: { message: "Resource not accessible by integration" },
+    };
+    routes[`GET /repos/${REPO}`] = {
+      status: 200,
+      body: { owner: { login: "acme" }, permissions: { admin: false, push: false, pull: false } },
+    };
+    return routes;
+  }
+  const app = (routes: Routes, login: string | null = "alice") =>
+    destination(routes, { token: APP_TOKEN, login });
+
+  test("passes without a user, push permission or the chosen login, and writes", async () => {
+    const { github, requests } = app(appRoutes());
+    expect(await github.checkAccount()).toEqual({
+      publisher: "the GitHub App",
+      destinationAccount: "acme",
+      expected: "acme",
+      ok: true,
+    });
+    expect(requests.map((r) => `${r.method} ${r.path}`)).toEqual([
+      `GET /repos/${REPO}`,
+      `GET /repos/${REPO}/actions/secrets/public-key`,
+    ]);
+    expect((await github.write("API_KEY", new Secret(SENTINEL))).created).toBe(true);
+    expectNoneOf([APP_TOKEN, SENTINEL], await github.checkAccount());
+  });
+
+  test("a repository with another owner is refused", async () => {
+    const routes = appRoutes();
+    routes[`GET /repos/${REPO}`] = {
+      status: 200,
+      body: { owner: { login: "someone-else" }, permissions: { push: false } },
+    };
+    const check = await app(routes).github.checkAccount();
+    assert(!check.ok);
+    expect(check.reason).toBe(`${REPO} is owned by someone-else, not acme (moved or renamed?)`);
+  });
+
+  test("without access to the repository's secrets it's refused, and nothing is written", async () => {
+    const routes = appRoutes();
+    routes[`GET /repos/${REPO}/actions/secrets/public-key`] = {
+      status: 403,
+      body: { message: "Resource not accessible by integration" },
+    };
+    const { github, requests } = app(routes);
+    const check = await github.checkAccount();
+    assert(!check.ok);
+    expect(check.reason).toBe(
+      `the token can't use ${REPO}'s Actions secrets (HTTP 403: Resource not accessible by integration)`,
+    );
+    expect(check.fix).toBe("give the GitHub App the repository permission Secrets: Read and write");
+    await expect(github.write("API_KEY", new Secret(SENTINEL))).rejects.toThrow(/checkAccount/);
+    expect(requests.some((r) => r.method === "PUT")).toBe(false);
+  });
+
+  test("a repository it isn't installed on is refused", async () => {
+    const routes = appRoutes();
+    delete routes[`GET /repos/${REPO}`];
+    const check = await app(routes, null).github.checkAccount();
+    expect(check).toMatchObject({
+      publisher: "the GitHub App",
+      destinationAccount: null,
+      ok: false,
+    });
+    assert(!check.ok);
+    expect(check.reason).toBe(`the GitHub App can't see ${REPO}`);
+    expect(check.fix).toMatch(/^install the GitHub App on acme\/billing, or check repo/);
   });
 });
 

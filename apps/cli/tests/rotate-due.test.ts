@@ -101,6 +101,7 @@ function machine(
     answers?: string[];
     runner?: boolean;
     vaults?: Deps["vaults"];
+    token?: string;
   } = {},
 ) {
   const disk = memoryFiles();
@@ -117,7 +118,7 @@ function machine(
       destination: (target) =>
         new GitHubSecretDestination({
           repo: String(target.repo),
-          token: async () => "fake-gh-token",
+          token: async () => options.token ?? "fake-gh-token",
           fetch: w.github.fetch,
         }),
     },
@@ -261,6 +262,15 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
     );
     const printed = [first.stderr.text, approve.stderr.text, committed].join("\n");
     for (const value of [OLD, ADMIN, w.value()]) expect(printed).not.toContain(value);
+  });
+
+  test("a GitHub App installation token publishes the new key, though GitHub has no user for it", async () => {
+    const w = await rotatedOnceOnALaptop();
+    w.gh.app = true;
+    const run = machine(w, { token: "ghs_fake-installation-token" });
+    expect(await run.run("--due", "--yes"), run.stderr.text).toBe(0);
+    expect(w.github.value("acme/mailer", "RESEND_API_KEY")).toBe(w.value());
+    expect(run.stderr.text).toContain("GitHub  acme/mailer  as the GitHub App, account acme\n");
   });
 
   test("a finished rotation with no proof needs a person's answer before keypin creates a key", async () => {

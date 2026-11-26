@@ -14,6 +14,7 @@ export interface FakeGitHub {
   failPut?: boolean;
   tokenExpires?: string;
   revoked?: boolean;
+  app?: boolean;
 }
 
 const SECRETS = /^\/repos\/([^/]+\/[^/]+)\/(?:actions|environments\/([^/]+))\/secrets(?:\/(.+))?$/;
@@ -40,6 +41,8 @@ export async function githubFetch(fake: FakeGitHub) {
       new Response(body === undefined ? null : JSON.stringify(body), { status, headers });
     const scopes = fake.scopes === undefined ? "repo" : fake.scopes;
     if (fake.revoked) return reply(401, { message: "Bad credentials" });
+    if (path === "/user" && fake.app)
+      return reply(403, { message: "Resource not accessible by integration" });
     if (path === "/user")
       return reply(
         200,
@@ -55,7 +58,10 @@ export async function githubFetch(fake: FakeGitHub) {
     if (repoName !== undefined) {
       const repo = fake.repos[repoName];
       return repo
-        ? reply(200, { owner: { login: repo.owner }, permissions: { push: repo.push } })
+        ? reply(200, {
+            owner: { login: repo.owner },
+            permissions: { push: !fake.app && repo.push },
+          })
         : reply(404, { message: "Not Found" });
     }
     const [, repoOf = "", encoded, rest] = SECRETS.exec(path) ?? [];
@@ -67,7 +73,8 @@ export async function githubFetch(fake: FakeGitHub) {
     if (rest === undefined) return reply(404, { message: "Not Found" });
     const where = place(repoOf, environment, rest);
     if (init.method === "PUT") {
-      if (!repo.push) return reply(403, { message: "Resource not accessible by integration" });
+      if (!fake.app && !repo.push)
+        return reply(403, { message: "Resource not accessible by integration" });
       const sent: unknown = JSON.parse(init.body ?? "{}");
       const sealed = isRecord(sent) ? sent.encrypted_value : undefined;
       if (typeof sealed !== "string") return reply(422, { message: "encrypted_value missing" });

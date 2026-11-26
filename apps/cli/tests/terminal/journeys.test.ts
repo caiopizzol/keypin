@@ -1524,6 +1524,36 @@ describe("keypin rotate in a real terminal", () => {
   );
 
   test(
+    "a key recorded without a proof: --check names the terminal command, which asks one y and records a proof",
+    async () => {
+      const check = await drive({ scenario: "resend-no-proof", args: ["rotate", "--check"] });
+      expect(check.exit).toBe(1);
+      expect(check.screen).toContain(
+        "an older keypin recorded it, or someone removed the proof. Resend can't confirm which key the vault holds",
+      );
+      expect(check.screen).toContain(
+        "Run this in a terminal, then commit .keypin/. keypin records the new key with a proof, so this check passes:\n  cd <sandbox>/billing && keypin rotate RESEND_API_KEY\n",
+      );
+      expect(check.effects).toEqual([]);
+      clean(check);
+
+      const person = await drive({
+        scenario: "resend-no-proof",
+        args: ["rotate", "RESEND_API_KEY"],
+        answers: ["y"],
+      });
+      expect(person.exit).toBe(0);
+      expect(person.screen).toContain("Rotate RESEND_API_KEY? [y/N] y");
+      expect(person.screen).not.toContain("this check passes");
+      expect(person.effects[0]).toBe("resend create re-new-1");
+      const state: unknown = JSON.parse(person.files[".local/state/keypin/state.json"] ?? "{}");
+      expect(state).toMatchObject({ issued: [{ id: "re-new-1", proof: {} }] });
+      clean(person);
+    },
+    SLOW,
+  );
+
+  test(
     "a key keypin issued and someone deleted at Resend has nothing to revoke, and asks one y",
     async () => {
       const result = await drive({

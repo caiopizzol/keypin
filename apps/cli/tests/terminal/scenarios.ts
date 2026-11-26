@@ -385,6 +385,17 @@ const resendReceipt = (
 
 const RESEND_OLD_GENERATION = "5f85700cd2d85825";
 
+const RESEND_UNPROVEN = {
+  keyId: "RESEND_API_KEY",
+  environment: "prod",
+  mapFile: "<project>/secretspec.toml",
+  issuer: "resend",
+  id: "re-old",
+  generation: RESEND_OLD_GENERATION,
+  at: "2026-08-01T12:00:00.000Z",
+  old: { id: "re-older", generation: "0000000000000000", revoked: true },
+};
+
 const resend: Scenario = {
   ...ready,
   about:
@@ -413,14 +424,7 @@ const resend: Scenario = {
     operations: [],
     issued: [
       {
-        keyId: "RESEND_API_KEY",
-        environment: "prod",
-        mapFile: "<project>/secretspec.toml",
-        issuer: "resend",
-        id: "re-old",
-        generation: RESEND_OLD_GENERATION,
-        at: "2026-08-01T12:00:00.000Z",
-        old: { id: "re-older", generation: "0000000000000000", revoked: true },
+        ...RESEND_UNPROVEN,
         proof: {
           new: "2558b6fcd9af2fa7b53e1dc5bc2a4c9d19837fae6b2522466a4899f2541ad091",
           old: "19c15a4f7624779f65331f25314583f1c70ae2935dcf1857f40c30d5520b8891",
@@ -1509,6 +1513,11 @@ jobs:
     ...resend,
     about: "resend, but someone deleted key re-old at Resend after a leak",
     resend: { keys: [] },
+  },
+  "resend-no-proof": {
+    ...resend,
+    about: "resend, but an older keypin recorded key re-old without a proof",
+    state: { ...resend.state, issued: [RESEND_UNPROVEN] },
   },
   "resend-worker-down": {
     ...resend,

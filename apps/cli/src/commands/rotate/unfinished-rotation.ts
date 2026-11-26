@@ -78,7 +78,9 @@ export function migrationNote(
   const recorded = next.action === "create" ? next.current : null;
   if (job.pair || !issuer.revoke || recorded === null || inVault !== null) return null;
   if (named !== undefined) return null;
-  return `${ROTATION_FILE} records key ${shown(issuer, recorded)} for the vault's value without a proof, and ${issuer.describe()} can't confirm which key the vault holds, so a person checks this plan in a terminal before keypin creates a key.`;
+  const note = `${ROTATION_FILE} records key ${shown(issuer, recorded)} for the vault's value without a proof: an older keypin recorded it, or someone removed the proof. ${issuer.describe()} can't confirm which key the vault holds, so a person approves this rotation in a terminal before keypin creates a key.`;
+  if (!job.check) return note;
+  return `${note} Run this in a terminal, then commit .keypin/. keypin records the new key with a proof, so this check passes:\n  ${commandLine(job.deps, "rotate", terminalArgs(job.args))}`;
 }
 
 export async function unprovenRevoke(

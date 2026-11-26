@@ -102,6 +102,7 @@ function machine(
     runner?: boolean;
     vaults?: Deps["vaults"];
     token?: string;
+    ciCheckout?: string;
   } = {},
 ) {
   const disk = memoryFiles();
@@ -111,6 +112,7 @@ function machine(
     backend: w.vault,
     deps: {
       isTerminal: options.terminal ?? false,
+      ...(options.ciCheckout ? { ciCheckout: options.ciCheckout } : {}),
       ...(options.runner === false ? { warnRunner: () => false } : {}),
       ...(options.vaults ? { vaults: options.vaults } : {}),
       ask: async () => answers.shift() ?? "",
@@ -280,7 +282,7 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
     for (const issued of file.issued) if (isRecord(issued)) delete issued.proof;
     w.repo.contents.set(ROTATION, `${JSON.stringify(file, null, 2)}\n`);
     const why =
-      ".keypin/rotation.json records key re-new-1 for the vault's value without a proof: an older keypin recorded it, or someone removed the proof. Resend can't confirm which key the vault holds, so a person approves this rotation in a terminal before keypin creates a key.";
+      ".keypin/rotation.json names key re-new-1 for the vault's value without a proof: an older keypin recorded it, or someone removed the proof. Resend can't confirm which key the vault holds, so a person approves this rotation in a terminal before keypin creates a key.";
 
     const run = ci(w);
     expect(await run.run("--due", "--yes")).toBe(NEEDS_APPROVAL);
@@ -294,10 +296,15 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
     expect(plan.stderr.text).toContain(
       "This plan needs approval in a terminal; --yes can't give it.",
     );
-    const check = ci(w);
+    const check = machine(w, { ciCheckout: "/work" });
     expect(await check.run("--check")).toBe(1);
     expect(check.stderr.text).toContain(
-      `${why} Run this in a terminal, then commit .keypin/. keypin records the new key with a proof, so this check passes:\n  ${RERUN} rotate RESEND_API_KEY\n`,
+      `${why} Run this in a terminal, then commit .keypin/. keypin records the new key with a proof, so this check passes:\n  ${RERUN.replace("cd /work/billing", "cd billing")} rotate RESEND_API_KEY\n`,
+    );
+    const atRoot = machine(w, { ciCheckout: "/work/billing" });
+    await atRoot.run("--check");
+    expect(atRoot.stderr.text).toContain(
+      `so this check passes:\n  ${RERUN.replace("cd /work/billing && ", "")} rotate RESEND_API_KEY\n`,
     );
     const declined = machine(w, { terminal: true, answers: ["n"] });
     expect(await declined.run("--due", "--yes")).toBe(NEEDS_APPROVAL);

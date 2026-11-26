@@ -57,6 +57,7 @@ export interface Writer {
 export interface Deps {
   cwd: string;
   self: Self;
+  ciCheckout: string | null;
   env: Readonly<Record<string, string | undefined>>;
   home: string;
   files: Files;

@@ -320,6 +320,7 @@ export function fakeDeps(setup: FakeSetup = {}) {
       command: ["/opt/bun/bin/bun", "--no-env-file", "/home/me/keypin/apps/cli/src/main.ts"],
       version: "0.39.0",
     },
+    ciCheckout: null,
     env: {},
     home: HOME,
     files: disk.files,

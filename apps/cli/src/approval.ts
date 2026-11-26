@@ -1,3 +1,4 @@
+import { isAbsolute, relative } from "node:path";
 import { type ItemIds, type KeyRef, messageOf, shellWord } from "@keypin/core";
 import type { Deps } from "./deps";
 import { confirm, type Output } from "./output";
@@ -15,7 +16,14 @@ export function rerun(deps: Deps, command: string, args: readonly string[]): str
 
 export function commandLine(deps: Deps, command: string, args: readonly string[]): string {
   const words = [...deps.self.command, command, ...args].map(shellWord).join(" ");
-  return `cd ${shellWord(deps.self.folder)} && ${words}`;
+  const folder = checkoutFolder(deps);
+  return folder === "" ? words : `cd ${shellWord(folder)} && ${words}`;
+}
+
+function checkoutFolder(deps: Deps): string {
+  if (deps.ciCheckout === null) return deps.self.folder;
+  const inside = relative(deps.ciCheckout, deps.self.folder);
+  return inside.startsWith("..") || isAbsolute(inside) ? deps.self.folder : inside;
 }
 
 export function planOnly(

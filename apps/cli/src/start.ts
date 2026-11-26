@@ -267,6 +267,7 @@ export function realDeps(): Deps {
   return {
     cwd,
     self: self(cwd),
+    ciCheckout: process.env.GITHUB_WORKSPACE || null,
     env: process.env,
     home: homedir(),
     files: diskFiles,

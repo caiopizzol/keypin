@@ -1529,11 +1529,12 @@ describe("keypin rotate in a real terminal", () => {
       const check = await drive({ scenario: "resend-no-proof", args: ["rotate", "--check"] });
       expect(check.exit).toBe(1);
       expect(check.screen).toContain(
-        "an older keypin recorded it, or someone removed the proof. Resend can't confirm which key the vault holds",
+        "keypin's record on this machine names key re-old for the vault's value without a proof: an older keypin recorded it, or someone removed the proof.",
       );
       expect(check.screen).toContain(
-        "Run this in a terminal, then commit .keypin/. keypin records the new key with a proof, so this check passes:\n  cd <sandbox>/billing && keypin rotate RESEND_API_KEY\n",
+        "Run this in a terminal. keypin records the new key with a proof, so this check passes:\n  cd <sandbox>/billing && keypin rotate RESEND_API_KEY\n",
       );
+      expect(check.screen).not.toContain("commit .keypin/");
       expect(check.effects).toEqual([]);
       clean(check);
 

@@ -10,9 +10,9 @@ another vault, see [Other vaults](#other-vaults).
    [Service accounts](service-accounts.md) says, and point `[providers]` and each `admin` reference in
    `secretspec.toml` at it. In a shared vault, this repository's token would reach other projects' keys.
 2. In Settings → Environments, create the environment `rotation`, and limit its deployment branches to the default
-   branch. A private repository on GitHub Free has no environment secrets. There, use repo secrets: delete
-   `environment:` from the workflow, `--env rotation` from the command below, and `environment = "rotation"` from
-   step 7's publish targets.
+   branch. A private repository on GitHub Free has no environment secrets. There, save steps 3 and 4's secrets and
+   variable in the repository instead of `rotation`, and delete `environment:` from the workflow, `--env rotation`
+   from the command below, and `environment = "rotation"` from step 7's publish targets.
 3. Create a service account with write access to that vault, and save its token as the secret
    `OP_SERVICE_ACCOUNT_TOKEN` in `rotation`. By default, only 1Password owners and administrators can create one;
    anyone else needs them to

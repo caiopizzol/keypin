@@ -58,10 +58,15 @@ jobs:
           node-version: 24
           package-manager-cache: false
       - run: npm install -g keypin@<version> # x-release-please-version
+      - id: app
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.KEYPIN_APP_CLIENT_ID }}
+          private-key: ${{ secrets.KEYPIN_APP_PRIVATE_KEY }}
       - run: gh auth login --hostname github.com --with-token --insecure-storage <<< "$TOKEN"
         env:
           GH_CONFIG_DIR: ${{ runner.temp }}/gh
-          TOKEN: ${{ secrets.KEYPIN_GITHUB_TOKEN }}
+          TOKEN: ${{ steps.app.outputs.token }}
       - run: |
           if [ "$CHECK" = true ]; then
             keypin rotate --check
@@ -127,7 +132,7 @@ rotate_every = "90d"
 publish = [{ to = "github-actions", repo = "acme/billing" }]
 
 [tool.keypin]
-ignore = ["KEYPIN_GITHUB_TOKEN", "OP_SERVICE_ACCOUNT_TOKEN"]
+ignore = ["KEYPIN_APP_PRIVATE_KEY", "OP_SERVICE_ACCOUNT_TOKEN"]
 
 --- file wrangler.toml ---
 name = "billing-worker"

@@ -1,3 +1,4 @@
+import { isAbsolute, relative } from "node:path";
 import { type ItemIds, type KeyRef, messageOf, shellWord } from "@keypin/core";
 import type { Deps } from "./deps";
 import { confirm, type Output } from "./output";
@@ -10,12 +11,35 @@ export function withoutPlan(args: readonly string[]): string[] {
 }
 
 export function rerun(deps: Deps, command: string, args: readonly string[]): string {
-  return `To approve, run this in a terminal:\n  ${commandLine(deps, command, withoutPlan(args))}`;
+  return `To approve, run this ${inTerminal(deps)}:\n  ${terminalCommand(deps, command, withoutPlan(args))}`;
 }
 
 export function commandLine(deps: Deps, command: string, args: readonly string[]): string {
-  const words = [...deps.self.command, command, ...args].map(shellWord).join(" ");
-  return `cd ${shellWord(deps.self.folder)} && ${words}`;
+  return `cd ${shellWord(deps.self.folder)} && ${spoken(deps.self.command, command, args)}`;
+}
+
+export function terminalCommand(deps: Deps, command: string, args: readonly string[]): string {
+  if (checkoutFolder(deps) === null) return commandLine(deps, command, args);
+  const keypin =
+    deps.self.command[0] === "keypin" ? deps.self.command : ["npx", `keypin@${deps.self.version}`];
+  return spoken(keypin, command, args);
+}
+
+export function inTerminal(deps: Deps): string {
+  const folder = checkoutFolder(deps);
+  if (folder === null) return "in a terminal";
+  return folder === ""
+    ? "in a terminal, from your checkout's root"
+    : `in a terminal, from ${folder}/ in your checkout`;
+}
+
+function checkoutFolder(deps: Deps): string | null {
+  const inside = deps.ciCheckout === null ? null : relative(deps.ciCheckout, deps.self.folder);
+  return inside === null || inside.startsWith("..") || isAbsolute(inside) ? null : inside;
+}
+
+function spoken(keypin: readonly string[], command: string, args: readonly string[]): string {
+  return [...keypin, command, ...args].map(shellWord).join(" ");
 }
 
 export function planOnly(

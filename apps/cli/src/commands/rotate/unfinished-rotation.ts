@@ -15,7 +15,7 @@ import {
   type State,
   waitsForRevoke,
 } from "@keypin/core";
-import { commandLine } from "../../approval";
+import { inTerminal, terminalCommand } from "../../approval";
 import { confirm } from "../../output";
 import { ROTATION_FILE } from "../../project";
 import { type Job, terminalArgs } from "./job";
@@ -78,7 +78,11 @@ export function migrationNote(
   const recorded = next.action === "create" ? next.current : null;
   if (job.pair || !issuer.revoke || recorded === null || inVault !== null) return null;
   if (named !== undefined) return null;
-  return `${ROTATION_FILE} records key ${shown(issuer, recorded)} for the vault's value without a proof, and ${issuer.describe()} can't confirm which key the vault holds, so a person checks this plan in a terminal before keypin creates a key.`;
+  const record = job.committed === null ? "keypin's record on this machine" : ROTATION_FILE;
+  const note = `${record} names key ${shown(issuer, recorded)} for the vault's value without a proof: an older keypin recorded it, or someone removed the proof. ${issuer.describe()} can't confirm which key the vault holds, so a person approves this rotation in a terminal before keypin creates a key.`;
+  if (!job.check) return note;
+  const then = job.committed === null ? "" : ", then commit .keypin/";
+  return `${note} Run this ${inTerminal(job.deps)}${then}. keypin records the new key with a proof, so this check passes:\n  ${terminalCommand(job.deps, "rotate", terminalArgs(job.args))}`;
 }
 
 export async function unprovenRevoke(
@@ -98,7 +102,7 @@ export async function unprovenRevoke(
   );
   if (!deps.isTerminal) {
     out.line(
-      `Stopped. Nothing was revoked. Once you've deleted it, run this in a terminal to record it:\n  ${commandLine(deps, "rotate", terminalArgs(job.args))}`,
+      `Stopped. Nothing was revoked. Once you've deleted it, run this ${inTerminal(deps)} to record it:\n  ${terminalCommand(deps, "rotate", terminalArgs(job.args))}`,
     );
     return 1;
   }

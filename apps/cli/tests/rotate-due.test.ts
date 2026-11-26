@@ -102,6 +102,7 @@ function machine(
     runner?: boolean;
     vaults?: Deps["vaults"];
     token?: string;
+    ciCheckout?: string;
   } = {},
 ) {
   const disk = memoryFiles();
@@ -111,6 +112,7 @@ function machine(
     backend: w.vault,
     deps: {
       isTerminal: options.terminal ?? false,
+      ...(options.ciCheckout ? { ciCheckout: options.ciCheckout } : {}),
       ...(options.runner === false ? { warnRunner: () => false } : {}),
       ...(options.vaults ? { vaults: options.vaults } : {}),
       ask: async () => answers.shift() ?? "",
@@ -280,7 +282,7 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
     for (const issued of file.issued) if (isRecord(issued)) delete issued.proof;
     w.repo.contents.set(ROTATION, `${JSON.stringify(file, null, 2)}\n`);
     const why =
-      ".keypin/rotation.json records key re-new-1 for the vault's value without a proof, and Resend can't confirm which key the vault holds, so a person checks this plan in a terminal before keypin creates a key.";
+      ".keypin/rotation.json names key re-new-1 for the vault's value without a proof: an older keypin recorded it, or someone removed the proof. Resend can't confirm which key the vault holds, so a person approves this rotation in a terminal before keypin creates a key.";
 
     const run = ci(w);
     expect(await run.run("--due", "--yes")).toBe(NEEDS_APPROVAL);
@@ -288,21 +290,33 @@ describe("keypin rotate --due without a terminal, Resend to GitHub Actions", () 
     expect(run.stderr.text).toContain(
       "Stopped: this plan needs approval, and --yes can't give it. Nothing was created.",
     );
+    expect(run.stderr.text).not.toContain("this check passes");
     const plan = ci(w);
     await plan.run("--due", "--plan");
     expect(plan.stderr.text).toContain(
       "This plan needs approval in a terminal; --yes can't give it.",
     );
-    const check = machine(w, { terminal: true });
+    const check = machine(w, { ciCheckout: "/work" });
     expect(await check.run("--check")).toBe(1);
-    expect(check.stderr.text).toContain(why);
+    expect(check.stderr.text).toContain(
+      `${why} Run this in a terminal, from billing/ in your checkout, then commit .keypin/. keypin records the new key with a proof, so this check passes:\n  npx keypin@0.39.0 rotate RESEND_API_KEY\n`,
+    );
+    const atRoot = machine(w, { ciCheckout: "/work/billing" });
+    await atRoot.run("--check");
+    expect(atRoot.stderr.text).toContain(
+      "Run this in a terminal, from your checkout's root, then commit .keypin/. keypin records the new key with a proof, so this check passes:\n  npx keypin@0.39.0 rotate RESEND_API_KEY\n",
+    );
     const declined = machine(w, { terminal: true, answers: ["n"] });
     expect(await declined.run("--due", "--yes")).toBe(NEEDS_APPROVAL);
     expect(w.effects).toEqual(["resend create re-new-1"]);
 
     const person = machine(w, { terminal: true, answers: ["y"] });
-    expect(await person.run("--due", "--yes")).toBe(0);
+    expect(await person.run("RESEND_API_KEY")).toBe(0);
+    expect(person.stderr.text).toContain(why);
     expect(w.effects).toEqual(["resend create re-new-1", "resend create re-new-2"]);
+    expect(json(w, ROTATION)).toMatchObject({ issued: [{ id: "re-new-2", proof: {} }] });
+    const after = ci(w);
+    expect(await after.run("--check"), after.stderr.text).toBe(0);
   });
 
   test("outside GitHub Actions, the waiting old key comes with the command that approves it", async () => {

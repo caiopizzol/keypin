@@ -12,7 +12,7 @@ import {
 } from "@keypin/core";
 import { type Deps } from "../../deps";
 import { ROTATION_FILE } from "../../project";
-import { commandLine, withoutPlan } from "../../approval";
+import { commandLine, inTerminal, terminalCommand, withoutPlan } from "../../approval";
 import { type Checked, type PlanRow, publishRows } from "../../publishing";
 import { type Pair, type Job, type Context, terminalArgs } from "./job";
 
@@ -53,7 +53,7 @@ export function resetStop(
   const when = reset.unsaved
     ? `which keypin may have saved to ${vault} on ${reset.at} (it couldn't tell), so something may use it`
     : `which keypin saved on ${reset.at} before ${vault} went back to the key it replaced, and something may still use it`;
-  return `Stopped: ${issuer.describe()} makes a new key by resetting key ${shown(issuer, reset.id)}, ${when}. --yes can't approve that. To rotate anyway, run this in a terminal:\n  ${commandLine(deps, "rotate", terminalArgs(args))}\nNothing was created.`;
+  return `Stopped: ${issuer.describe()} makes a new key by resetting key ${shown(issuer, reset.id)}, ${when}. --yes can't approve that. To rotate anyway, run this ${inTerminal(deps)}:\n  ${terminalCommand(deps, "rotate", terminalArgs(args))}\nNothing was created.`;
 }
 
 export function saveIdRow({ deps }: Job, pair: Pair): PlanRow {

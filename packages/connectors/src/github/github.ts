@@ -16,6 +16,8 @@ const REPO = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 const SECRET_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const MAX_VALUE_BYTES = 48 * 1024;
 const MAX_SECRETS = 100;
+const APP = "the GitHub App";
+const APP_INSTALLATION_TOKEN = "ghs_";
 
 type Reply = { status: number; headers: Headers; body: Record<string, unknown> };
 type Refusal = { reason: string; fix: string };
@@ -38,6 +40,7 @@ export class GitHubSecretDestination implements Destination {
   readonly #fetch: Fetch;
   #token: Promise<string> | undefined;
   #passed = false;
+  #app = false;
 
   constructor(options: GitHubSecretOptions) {
     if (!REPO.test(options.repo))
@@ -60,15 +63,17 @@ export class GitHubSecretDestination implements Destination {
 
   async checkAccount(): Promise<AccountCheck> {
     this.#passed = false;
-    const user = await this.#get("/user");
-    if (user.status === 401)
+    this.#token ??= this.#tokenSource();
+    this.#app = (await this.#token).startsWith(APP_INSTALLATION_TOKEN);
+    const user = this.#app ? null : await this.#get("/user");
+    if (user?.status === 401)
       throw new Error(
         `GitHub refused the token for ${this.#login ?? "the active gh login"} (HTTP 401): the login expired or was revoked; run gh auth status to refresh it, or gh auth login --hostname github.com`,
       );
-    if (user.status !== 200) throw this.#failure("GitHub GET /user", user);
-    const publisher = stringField(user.body, "login");
-    const scopes = user.headers.get("x-oauth-scopes");
-    const expires = this.#expiry(user.headers);
+    if (user && user.status !== 200) throw this.#failure("GitHub GET /user", user);
+    const publisher = user === null ? APP : stringField(user.body, "login");
+    const scopes = user?.headers.get("x-oauth-scopes") ?? null;
+    const expires = user === null ? null : this.#expiry(user.headers);
 
     const repo = await this.#get(`/repos/${this.#repo}`);
     const facts = { publisher, expected: this.#owner, ...(expires ? { expires } : {}) };
@@ -80,7 +85,9 @@ export class GitHubSecretDestination implements Destination {
         destinationAccount: null,
         ok: false,
         reason: `${publisher} can't see ${this.#repo}`,
-        fix: `check repo in secretspec.toml, or publish as a login that can see it: git config github.account <login> (${NOT_ENTERPRISE})`,
+        fix: this.#app
+          ? `install the GitHub App on ${this.#repo}, or check repo in secretspec.toml (${NOT_ENTERPRISE})`
+          : `check repo in secretspec.toml, or publish as a login that can see it: git config github.account <login> (${NOT_ENTERPRISE})`,
       };
     }
     if (repo.status !== 200) throw this.#failure(`GitHub GET /repos/${this.#repo}`, repo);
@@ -98,7 +105,7 @@ export class GitHubSecretDestination implements Destination {
         reason: `${this.#repo} is owned by ${owner}, not ${this.#owner} (moved or renamed?)`,
         fix: `if the repository moved, set repo to its current owner/name in secretspec.toml`,
       });
-    if (this.#login !== null && !sameLogin(publisher, this.#login))
+    if (!this.#app && this.#login !== null && !sameLogin(publisher, this.#login))
       return refused({
         reason: `the token acts as ${publisher}, not ${this.#login}`,
         fix: `run gh auth login --hostname github.com and sign in as ${this.#login}, or change git config github.account`,
@@ -108,7 +115,7 @@ export class GitHubSecretDestination implements Destination {
         reason: `${this.#repo} is archived, so it's read-only and GitHub won't let anyone set its secrets`,
         fix: `unarchive it in the repository's Settings, or remove it from secretspec.toml`,
       });
-    if (!write)
+    if (!this.#app && !write)
       return refused({
         reason: `${publisher} has no write access to ${this.#repo}, so GitHub won't let it set Actions secrets`,
         fix: `ask an admin of ${this.#owner} for the Write role, or publish as another login: git config github.account <login>`,
@@ -179,7 +186,7 @@ export class GitHubSecretDestination implements Destination {
     if (key.status === 403 || key.status === 404)
       return {
         reason: `the token can't use ${this.#repo}'s Actions secrets (HTTP ${key.status}${gitHubSaid(key.body)})`,
-        fix: `give the token the repository permission ${this.#environment === null ? "Secrets" : "Environments"}: Read and write, or sign gh in with the browser: gh auth login --hostname github.com`,
+        fix: `give ${this.#app ? APP : "the token"} the repository permission ${this.#environment === null ? "Secrets" : "Environments"}: Read and write${this.#app ? "" : ", or sign gh in with the browser: gh auth login --hostname github.com"}`,
       };
     throw this.#failure(`GitHub GET ${path}`, key);
   }

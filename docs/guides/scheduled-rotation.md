@@ -158,8 +158,7 @@ jobs:
 ## A protected default branch
 
 When a rule on the default branch rejects the workflow's push, keep `.keypin/` on a branch no rule covers, such as
-`keypin/state`. The [console](https://keypin.dev/console/) reads `.keypin/status.json` from the default branch, so it
-then shows no rotation dates for this repository.
+`keypin/state`.
 
 In the workflow, add `STATE_BRANCH` to the job, restore `.keypin/` after checkout, and replace the last step:
 
